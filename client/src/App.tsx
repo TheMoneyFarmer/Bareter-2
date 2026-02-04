@@ -17,6 +17,12 @@ import { ListingDetailPage } from "@/pages/listing-detail";
 import { DealsPage } from "@/pages/deals";
 import { DealDetailPage } from "@/pages/deal-detail";
 import { AdminPage } from "@/pages/admin";
+import { HowItWorksPage } from "@/pages/how-it-works";
+import { PricingPage } from "@/pages/pricing";
+import { HelpPage } from "@/pages/help";
+import { FAQPage } from "@/pages/faq";
+import { TermsPage } from "@/pages/terms";
+import { PrivacyPage } from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,6 +38,12 @@ function Router() {
       <Route path="/deals" component={DealsPage} />
       <Route path="/deals/:id" component={DealDetailPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/how-it-works" component={HowItWorksPage} />
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/help" component={HelpPage} />
+      <Route path="/faq" component={FAQPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/privacy" component={PrivacyPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
@@ -177,7 +177,7 @@ export async function registerRoutes(
     res.setHeader("Cache-Control", "public, max-age=31536000");
     next();
   });
-  app.use("/uploads", require("express").static(uploadDir));
+  app.use("/uploads", express.static(uploadDir));
 
   // File upload endpoint
   app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
