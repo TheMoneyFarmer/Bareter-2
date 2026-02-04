@@ -77,7 +77,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Session middleware
+  // Session middleware - trust proxy for Replit's HTTPS
+  app.set("trust proxy", 1);
+  
   app.use(
     session({
       secret: process.env.SESSION_SECRET || "recipro-secret-key",
@@ -87,8 +89,9 @@ export async function registerRoutes(
         checkPeriod: 86400000,
       }),
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: true, // Always secure since Replit serves over HTTPS
         httpOnly: true,
+        sameSite: "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       },
     })
