@@ -1,0 +1,56 @@
+Build a complete, production-ready full-stack barter marketplace called "Recipro" using Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui components, Supabase for auth/database/storage/realtime, and Stripe for payments.
+
+Core user flow and features (implement ALL of these):
+
+1. Authentication
+   - Email/password + Google + Apple sign-in (Supabase Auth)
+   - Protected routes (app router middleware)
+   - Profile completion on first login: bio, location (UAE/GCC focus), business verification (upload trade license or ID to Supabase Storage)
+
+2. User Profile
+   - "What I Offer" section (list of goods/services with retail values in AED)
+   - "What I Need" section
+   - Portfolio/gallery (images/videos)
+   - Verified badge toggle (admin-approved)
+
+3. Listings / Discovery
+   - Create Offer or Request listing: title, description, category (multi-select: Hospitality, Fashion, SaaS, Services, Food, Events, etc.), retail value (AED), images, location, tags
+   - Browse feed + advanced filters (category, value range, location, verified only)
+   - AI-powered matching suggestions (simple similarity on categories/values)
+   - Search bar (full-text on title/description)
+
+4. Deal Flow (the core)
+   - From any listing, click "Propose Trade" → select what you offer in return + values
+   - Negotiation chat (Supabase realtime)
+   - Generate binding Barter Contract as PDF:
+     - Both parties' offers + declared retail values in AED
+     - Clause: "Both parties must issue VAT tax invoices at 5% on open market value (UAE FTA rules)"
+     - Timelines, deliverables, penalties
+     - Unique deal ID + digital signatures placeholder
+   - Deal states: Draft → Proposed → Accepted → In Progress → Delivery Proof → Completed
+   - Delivery proof: upload photos/links/tracking (Supabase Storage)
+
+5. Chat
+   - In-app realtime chat per deal (Supabase Realtime + channels)
+
+6. Completion & Monetization
+   - When both mark "Complete" + proof uploaded:
+     - Charge success fee (default 12% of the smaller declared value, min AED 100) to the "seeker" side via Stripe Checkout
+     - Webhook to mark deal complete, release ratings, send notifications
+     - Option to split fee or let provider pay
+
+7. Ratings & Reputation
+   - Post-completion 5-star rating + review (visible on profile)
+
+8. Additional Requirements
+   - Fully responsive + PWA (manifest + offline support)
+   - English + Arabic (i18n with next-intl or simple switch)
+   - Dark mode
+   - Admin dashboard route (/admin) – list all deals/users, moderate listings, view analytics
+   - Notifications (in-app + email via Resend or Supabase)
+   - Proper error handling, loading states, Zod validation
+   - Environment variables placeholders for: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+
+Start with a clean project structure. Use Supabase for everything possible. Make the UI modern, clean, professional (inspired by Airbnb + LinkedIn). Use shadcn/ui components heavily.
+
+After building the core, ask me for refinements (e.g., "add VAT invoice PDF generator", "make mobile PWA install prompt", etc.).
