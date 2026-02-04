@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -68,6 +69,9 @@ app.use((req, res, next) => {
     console.error("Failed to seed database:", error);
   }
 
+  // Register object storage routes
+  registerObjectStorageRoutes(app);
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

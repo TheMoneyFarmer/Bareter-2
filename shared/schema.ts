@@ -7,9 +7,12 @@ import { z } from "zod";
 export const CATEGORIES = [
   "Hospitality",
   "Fashion",
+  "Modeling",
   "SaaS",
+  "Photography",
   "Services",
   "Food",
+  "Legal",
   "Events",
   "Real Estate",
   "Automotive",
@@ -17,6 +20,9 @@ export const CATEGORIES = [
   "Education",
   "Marketing",
   "Technology",
+  "Consulting",
+  "Design",
+  "Entertainment",
 ] as const;
 
 // Locations (UAE/GCC focus)
@@ -70,6 +76,13 @@ export const users = pgTable("users", {
   verificationDocUrl: text("verification_doc_url"),
   verificationStatus: text("verification_status").default("pending"), // pending, submitted, verified, rejected
   profileCompleted: boolean("profile_completed").default(false),
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  onboardingStep: integer("onboarding_step").default(1), // 1-4
+  emailVerified: boolean("email_verified").default(false),
+  emailVerificationToken: text("email_verification_token"),
+  emailVerificationExpires: timestamp("email_verification_expires"),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetExpires: timestamp("password_reset_expires"),
   whatIOffer: jsonb("what_i_offer").$type<OfferNeedItem[]>().default([]),
   whatINeed: jsonb("what_i_need").$type<OfferNeedItem[]>().default([]),
   portfolioImages: jsonb("portfolio_images").$type<string[]>().default([]),
