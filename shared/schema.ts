@@ -47,6 +47,13 @@ export const DEAL_STATES = [
   "cancelled",
 ] as const;
 
+// Offer/Need item with value
+export type OfferNeedItem = {
+  name: string;
+  value: number; // in AED
+  description?: string;
+};
+
 // Users table
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -60,9 +67,13 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").default(false),
   businessName: text("business_name"),
   businessLicenseUrl: text("business_license_url"),
-  whatIOffer: jsonb("what_i_offer").$type<string[]>().default([]),
-  whatINeed: jsonb("what_i_need").$type<string[]>().default([]),
+  verificationDocUrl: text("verification_doc_url"),
+  verificationStatus: text("verification_status").default("pending"), // pending, submitted, verified, rejected
+  profileCompleted: boolean("profile_completed").default(false),
+  whatIOffer: jsonb("what_i_offer").$type<OfferNeedItem[]>().default([]),
+  whatINeed: jsonb("what_i_need").$type<OfferNeedItem[]>().default([]),
   portfolioImages: jsonb("portfolio_images").$type<string[]>().default([]),
+  language: text("language").default("en"), // en, ar
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

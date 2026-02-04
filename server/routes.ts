@@ -4,6 +4,9 @@ import { storage } from "./storage";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import {
   loginSchema,
   registerSchema,
@@ -13,6 +16,36 @@ import {
   insertRatingSchema,
 } from "@shared/schema";
 import memorystore from "memorystore";
+
+// Configure multer for file uploads
+const uploadDir = "./uploads";
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const multerStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage: multerStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|pdf|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error("Invalid file type"));
+  },
+});
 
 const MemoryStore = memorystore(session);
 
@@ -139,26 +172,90 @@ export async function registerRoutes(
     res.json(userWithoutPassword);
   });
 
+  // Serve uploaded files
+  app.use("/uploads", (req, res, next) => {
+    res.setHeader("Cache-Control", "public, max-age=31536000");
+    next();
+  });
+  app.use("/uploads", require("express").static(uploadDir));
+
+  // File upload endpoint
+  app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const fileUrl = `/uploads/${req.file.filename}`;
+      const uploadType = req.body.type;
+
+      // Update user profile based on upload type
+      if (uploadType === "avatar") {
+        await storage.updateUser(req.session.userId!, { avatarUrl: fileUrl });
+      } else if (uploadType === "verification") {
+        await storage.updateUser(req.session.userId!, {
+          verificationDocUrl: fileUrl,
+          verificationStatus: "submitted",
+        });
+      } else if (uploadType === "portfolio") {
+        const user = await storage.getUser(req.session.userId!);
+        if (user) {
+          const portfolioImages = [...(user.portfolioImages || []), fileUrl];
+          await storage.updateUser(req.session.userId!, { portfolioImages });
+        }
+      }
+
+      res.json({ url: fileUrl, type: uploadType });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({ message: "Upload failed" });
+    }
+  });
+
   // User routes - with strict allowlist to prevent privilege escalation
+  const offerNeedItemSchema = z.object({
+    name: z.string(),
+    value: z.number(),
+    description: z.string().optional(),
+  });
+
   const updateProfileSchema = z.object({
     fullName: z.string().min(2).optional(),
     bio: z.string().optional(),
     location: z.string().optional(),
     businessName: z.string().optional(),
     avatarUrl: z.string().optional(),
-    whatIOffer: z.array(z.string()).optional(),
-    whatINeed: z.array(z.string()).optional(),
+    whatIOffer: z.array(offerNeedItemSchema).optional(),
+    whatINeed: z.array(offerNeedItemSchema).optional(),
     portfolioImages: z.array(z.string()).optional(),
+    language: z.enum(["en", "ar"]).optional(),
   });
 
   app.patch("/api/users/profile", requireAuth, async (req, res) => {
     try {
       const data = updateProfileSchema.parse(req.body);
-      const user = await storage.updateUser(req.session.userId!, data);
-      if (!user) {
+      
+      // Check if profile is being completed
+      const user = await storage.getUser(req.session.userId!);
+      let profileCompleted = user?.profileCompleted;
+      
+      if (!profileCompleted) {
+        const newBio = data.bio ?? user?.bio;
+        const newLocation = data.location ?? user?.location;
+        const newBusinessName = data.businessName ?? user?.businessName;
+        if (newBio && newLocation && newBusinessName) {
+          profileCompleted = true;
+        }
+      }
+
+      const updatedUser = await storage.updateUser(req.session.userId!, {
+        ...data,
+        profileCompleted,
+      });
+      if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
       }
-      const { password, ...userWithoutPassword } = user;
+      const { password, ...userWithoutPassword } = updatedUser;
       res.json(userWithoutPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
