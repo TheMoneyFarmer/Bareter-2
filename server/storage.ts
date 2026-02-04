@@ -1,38 +1,307 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
+import {
+  users,
+  listings,
+  deals,
+  messages,
+  ratings,
+  notifications,
+  type User,
+  type InsertUser,
+  type Listing,
+  type InsertListing,
+  type Deal,
+  type InsertDeal,
+  type Message,
+  type InsertMessage,
+  type Rating,
+  type InsertRating,
+  type Notification,
+  type InsertNotification,
+  type ListingWithUser,
+  type DealWithUsers,
+  type MessageWithSender,
+} from "@shared/schema";
+import { v4 as uuid } from "uuid";
 
 export interface IStorage {
+  // Users
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+
+  // Listings
+  getListing(id: string): Promise<Listing | undefined>;
+  getListingWithUser(id: string): Promise<ListingWithUser | undefined>;
+  getListings(): Promise<ListingWithUser[]>;
+  getListingsByUser(userId: string): Promise<Listing[]>;
+  createListing(listing: InsertListing): Promise<Listing>;
+  updateListing(id: string, data: Partial<Listing>): Promise<Listing | undefined>;
+  incrementListingViews(id: string): Promise<void>;
+
+  // Deals
+  getDeal(id: string): Promise<Deal | undefined>;
+  getDealWithUsers(id: string): Promise<DealWithUsers | undefined>;
+  getDealsByUser(userId: string): Promise<DealWithUsers[]>;
+  getAllDeals(): Promise<DealWithUsers[]>;
+  createDeal(deal: InsertDeal): Promise<Deal>;
+  updateDeal(id: string, data: Partial<Deal>): Promise<Deal | undefined>;
+
+  // Messages
+  getMessagesByDeal(dealId: string): Promise<MessageWithSender[]>;
+  createMessage(message: InsertMessage): Promise<Message>;
+  markMessagesAsRead(dealId: string, userId: string): Promise<void>;
+
+  // Ratings
+  getRatingsByUser(userId: string): Promise<Rating[]>;
+  getRatingsByDeal(dealId: string): Promise<Rating[]>;
+  createRating(rating: InsertRating): Promise<Rating>;
+
+  // Notifications
+  getNotificationsByUser(userId: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<void>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
+  // Users
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  // Listings
+  async getListing(id: string): Promise<Listing | undefined> {
+    const [listing] = await db.select().from(listings).where(eq(listings.id, id));
+    return listing;
+  }
+
+  async getListingWithUser(id: string): Promise<ListingWithUser | undefined> {
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(eq(listings.id, id));
+
+    if (result.length === 0) return undefined;
+
+    const { listings: listing, users: user } = result[0];
+    return { ...listing, user: user! };
+  }
+
+  async getListings(): Promise<ListingWithUser[]> {
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(eq(listings.isActive, true))
+      .orderBy(desc(listings.createdAt));
+
+    return result.map(({ listings: listing, users: user }) => ({
+      ...listing,
+      user: user!,
+    }));
+  }
+
+  async getListingsByUser(userId: string): Promise<Listing[]> {
+    return db
+      .select()
+      .from(listings)
+      .where(eq(listings.userId, userId))
+      .orderBy(desc(listings.createdAt));
+  }
+
+  async createListing(insertListing: InsertListing): Promise<Listing> {
+    const [listing] = await db.insert(listings).values(insertListing).returning();
+    return listing;
+  }
+
+  async updateListing(id: string, data: Partial<Listing>): Promise<Listing | undefined> {
+    const [listing] = await db
+      .update(listings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(listings.id, id))
+      .returning();
+    return listing;
+  }
+
+  async incrementListingViews(id: string): Promise<void> {
+    await db
+      .update(listings)
+      .set({ viewCount: sql`${listings.viewCount} + 1` })
+      .where(eq(listings.id, id));
+  }
+
+  // Deals
+  async getDeal(id: string): Promise<Deal | undefined> {
+    const [deal] = await db.select().from(deals).where(eq(deals.id, id));
+    return deal;
+  }
+
+  async getDealWithUsers(id: string): Promise<DealWithUsers | undefined> {
+    const result = await db
+      .select()
+      .from(deals)
+      .where(eq(deals.id, id));
+
+    if (result.length === 0) return undefined;
+
+    const deal = result[0];
+    const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
+    const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
+
+    return { ...deal, seeker, provider };
+  }
+
+  async getDealsByUser(userId: string): Promise<DealWithUsers[]> {
+    const result = await db
+      .select()
+      .from(deals)
+      .where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)))
+      .orderBy(desc(deals.createdAt));
+
+    const dealsWithUsers = await Promise.all(
+      result.map(async (deal) => {
+        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
+        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
+        return { ...deal, seeker, provider };
+      })
+    );
+
+    return dealsWithUsers;
+  }
+
+  async getAllDeals(): Promise<DealWithUsers[]> {
+    const result = await db.select().from(deals).orderBy(desc(deals.createdAt));
+
+    const dealsWithUsers = await Promise.all(
+      result.map(async (deal) => {
+        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
+        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
+        return { ...deal, seeker, provider };
+      })
+    );
+
+    return dealsWithUsers;
+  }
+
+  async createDeal(insertDeal: InsertDeal): Promise<Deal> {
+    const dealNumber = `RCP-${Date.now().toString(36).toUpperCase()}`;
+    const [deal] = await db
+      .insert(deals)
+      .values({ ...insertDeal, dealNumber })
+      .returning();
+    return deal;
+  }
+
+  async updateDeal(id: string, data: Partial<Deal>): Promise<Deal | undefined> {
+    const [deal] = await db
+      .update(deals)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(deals.id, id))
+      .returning();
+    return deal;
+  }
+
+  // Messages
+  async getMessagesByDeal(dealId: string): Promise<MessageWithSender[]> {
+    const result = await db
+      .select()
+      .from(messages)
+      .leftJoin(users, eq(messages.senderId, users.id))
+      .where(eq(messages.dealId, dealId))
+      .orderBy(messages.createdAt);
+
+    return result.map(({ messages: message, users: sender }) => ({
+      ...message,
+      sender: sender!,
+    }));
+  }
+
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const [message] = await db.insert(messages).values(insertMessage).returning();
+    return message;
+  }
+
+  async markMessagesAsRead(dealId: string, userId: string): Promise<void> {
+    await db
+      .update(messages)
+      .set({ isRead: true })
+      .where(and(eq(messages.dealId, dealId), eq(messages.senderId, userId)));
+  }
+
+  // Ratings
+  async getRatingsByUser(userId: string): Promise<Rating[]> {
+    return db
+      .select()
+      .from(ratings)
+      .where(eq(ratings.toUserId, userId))
+      .orderBy(desc(ratings.createdAt));
+  }
+
+  async getRatingsByDeal(dealId: string): Promise<Rating[]> {
+    return db.select().from(ratings).where(eq(ratings.dealId, dealId));
+  }
+
+  async createRating(insertRating: InsertRating): Promise<Rating> {
+    const [rating] = await db.insert(ratings).values(insertRating).returning();
+    return rating;
+  }
+
+  // Notifications
+  async getNotificationsByUser(userId: string): Promise<Notification[]> {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
+    const [notification] = await db
+      .insert(notifications)
+      .values(insertNotification)
+      .returning();
+    return notification;
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
