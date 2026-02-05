@@ -1305,22 +1305,132 @@ export async function registerRoutes(
     try {
       const allDeals = await storage.getAllDeals();
       const allUsers = await storage.getAllUsers();
+      const allListings = await storage.getListings();
       
       const completedDeals = allDeals.filter(d => d.state === "completed");
+      const activeDeals = allDeals.filter(d => ["proposed", "accepted", "in_progress", "delivery_proof"].includes(d.state));
       const totalGMV = completedDeals.reduce((sum, d) => 
         sum + parseFloat(d.seekerValue as string) + parseFloat(d.providerValue as string), 0);
       const feesCollected = completedDeals.reduce((sum, d) => 
         sum + (d.successFee ? parseFloat(d.successFee as string) : 0), 0);
       
+      const now = new Date();
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthlyDeals = completedDeals.filter(d => d.createdAt && new Date(d.createdAt) >= thisMonth);
+      const monthlyGMV = monthlyDeals.reduce((sum, d) => 
+        sum + parseFloat(d.seekerValue as string) + parseFloat(d.providerValue as string), 0);
+      const monthlyFees = monthlyDeals.reduce((sum, d) => 
+        sum + (d.successFee ? parseFloat(d.successFee as string) : 0), 0);
+      
+      const pendingVerifications = allUsers.filter(u => 
+        (u.kycStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || 
+         u.kybStatus === "IN_PROGRESS" || u.kybStatus === "IN_REVIEW")
+      ).length;
+      
+      const categoryStats: Record<string, number> = {};
+      allListings.forEach(l => {
+        const cats = l.categories as string[] || [];
+        cats.forEach(cat => {
+          categoryStats[cat] = (categoryStats[cat] || 0) + 1;
+        });
+      });
+      
+      const dealsPerWeek: { week: string; count: number }[] = [];
+      for (let i = 11; i >= 0; i--) {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - (i * 7));
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        const count = allDeals.filter(d => {
+          if (!d.createdAt) return false;
+          const created = new Date(d.createdAt);
+          return created >= weekStart && created < weekEnd;
+        }).length;
+        dealsPerWeek.push({
+          week: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count
+        });
+      }
+      
       res.json({
+        totalUsers: allUsers.length,
         totalDeals: allDeals.length,
+        activeDeals: activeDeals.length,
         completedDeals: completedDeals.length,
+        totalListings: allListings.length,
+        activeListings: allListings.filter(l => l.isActive).length,
         totalGMV,
         feesCollected,
-        activeUsers: allUsers.length,
+        monthlyGMV,
+        monthlyFees,
+        pendingVerifications,
+        categoryStats,
+        dealsPerWeek,
       });
     } catch (error) {
       console.error("Admin analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/role", requireAdmin, async (req, res) => {
+    try {
+      const { role } = req.body;
+      if (!["user", "admin", "super_admin"].includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      const isAdmin = role === "admin" || role === "super_admin";
+      const user = await storage.updateUser(req.params.id, { role, isAdmin });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin change role error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
+    try {
+      const { banned, reason } = req.body;
+      const updates: any = { 
+        isBanned: banned,
+        bannedReason: banned ? reason : null,
+        bannedAt: banned ? new Date() : null
+      };
+      const user = await storage.updateUser(req.params.id, updates);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin ban user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/listings/:id", requireAdmin, async (req, res) => {
+    try {
+      const listing = await storage.updateListing(req.params.id, { isActive: false });
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      res.json({ message: "Listing removed successfully" });
+    } catch (error) {
+      console.error("Admin delete listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/deals/:id/messages", requireAdmin, async (req, res) => {
+    try {
+      const messages = await storage.getMessagesByDeal(req.params.id);
+      res.json(messages);
+    } catch (error) {
+      console.error("Admin get deal messages error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

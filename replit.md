@@ -82,6 +82,18 @@ Preferred communication style: Simple, everyday language.
   - Followers management with follow/unfollow functionality
   - Deals folder with contract PDF download for completed deals
 
+### Admin Dashboard
+- **Route**: `/admin` (protected - requires admin role)
+- **Role System**: Users table has `role` column (user, admin, super_admin) and `isBanned` status
+- **Sections**:
+  - **Dashboard**: Stats cards (Total Users, Active Deals, Monthly GMV, Fees Collected, Pending Verifications) + deals trend chart
+  - **Users**: Table with search, verify/unverify, make admin, ban user actions
+  - **Listings**: Table with search, view listing, delete listing actions
+  - **Deals**: Table with click-through to deal details including chat history and contract PDF
+  - **Analytics**: Deals per week (bar chart), top categories (pie chart), platform summary
+  - **Settings**: Platform configuration display
+- **Access**: Only visible to users with `isAdmin=true`, Admin badge in user menu
+
 ## External Dependencies
 
 ### Database

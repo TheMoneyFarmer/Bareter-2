@@ -74,6 +74,9 @@ export const VERIFICATION_STATUSES = [
 // Account type for verification
 export const ACCOUNT_TYPES = ["individual", "business"] as const;
 
+// User roles
+export const USER_ROLES = ["user", "admin", "super_admin"] as const;
+
 // Users table
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -85,6 +88,10 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   isVerified: boolean("is_verified").default(false),
   isAdmin: boolean("is_admin").default(false),
+  role: text("role").default("user"), // user, admin, super_admin
+  isBanned: boolean("is_banned").default(false),
+  bannedAt: timestamp("banned_at"),
+  bannedReason: text("banned_reason"),
   businessName: text("business_name"),
   businessLicenseUrl: text("business_license_url"),
   verificationDocUrl: text("verification_doc_url"),

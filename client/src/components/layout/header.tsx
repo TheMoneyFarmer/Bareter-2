@@ -219,8 +219,9 @@ export function Header() {
                       <DropdownMenuSeparator />
                       <Link href="/admin">
                         <DropdownMenuItem className="cursor-pointer" data-testid="menu-admin">
-                          <LayoutDashboard className="mr-2 h-4 w-4" />
-                          Admin Dashboard
+                          <Shield className="mr-2 h-4 w-4" />
+                          <span className="flex-1">Admin Panel</span>
+                          <Badge variant="destructive" className="ml-2 text-xs">Admin</Badge>
                         </DropdownMenuItem>
                       </Link>
                     </>
