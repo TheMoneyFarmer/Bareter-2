@@ -202,6 +202,12 @@ export function Header() {
                       My Deals
                     </DropdownMenuItem>
                   </Link>
+                  <Link href="/dashboard">
+                    <DropdownMenuItem className="cursor-pointer" data-testid="menu-dashboard">
+                      <LayoutDashboard className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </DropdownMenuItem>
+                  </Link>
                   <Link href="/settings">
                     <DropdownMenuItem className="cursor-pointer" data-testid="menu-settings">
                       <Settings className="mr-2 h-4 w-4" />

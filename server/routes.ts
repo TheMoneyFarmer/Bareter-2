@@ -503,6 +503,161 @@ export async function registerRoutes(
     }
   });
 
+  // Dashboard routes
+  app.get("/api/dashboard/analytics", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const timeRange = parseInt(req.query.timeRange as string) || 30;
+      
+      // Get user's listings
+      const userListings = await storage.getListingsByUser(userId);
+      const activeListings = userListings.filter(l => l.isActive);
+      const totalViews = userListings.reduce((sum, l) => sum + (l.viewCount || 0), 0);
+      
+      // Get user's deals
+      const userDeals = await storage.getDealsByUser(userId);
+      const completedDeals = userDeals.filter(d => d.state === "completed");
+      const totalValue = completedDeals.reduce((sum, d) => {
+        const isSeeker = d.seekerId === userId;
+        return sum + Number(isSeeker ? d.seekerValue : d.providerValue);
+      }, 0);
+      
+      // Get follower counts
+      const followerCount = await storage.getFollowerCount(userId);
+      const followingCount = await storage.getFollowingCount(userId);
+      
+      // Generate sample views over time data
+      const viewsOverTime = [];
+      for (let i = timeRange; i >= 0; i -= Math.ceil(timeRange / 10)) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        viewsOverTime.push({
+          date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          views: Math.floor(Math.random() * 50) + 10,
+        });
+      }
+      
+      // Listings by category
+      const categoryMap = new Map<string, number>();
+      userListings.forEach(l => {
+        (l.categories || []).forEach(cat => {
+          categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+        });
+      });
+      const listingsByCategory = Array.from(categoryMap.entries()).map(([category, count]) => ({
+        category,
+        count,
+      }));
+      
+      res.json({
+        totalListings: userListings.length,
+        activeListings: activeListings.length,
+        totalViews,
+        totalDeals: userDeals.length,
+        completedDeals: completedDeals.length,
+        totalValue,
+        followerCount,
+        followingCount,
+        viewsOverTime,
+        dealsOverTime: [],
+        listingsByCategory,
+      });
+    } catch (error) {
+      console.error("Get analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard/deals", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const filter = req.query.filter as string || "completed";
+      
+      let deals = await storage.getDealsByUser(userId);
+      
+      if (filter === "completed") {
+        deals = deals.filter(d => d.state === "completed");
+      } else if (filter === "in_progress") {
+        deals = deals.filter(d => d.state === "in_progress");
+      }
+      
+      res.json(deals);
+    } catch (error) {
+      console.error("Get dashboard deals error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Followers routes
+  app.get("/api/users/:id/followers", requireAuth, async (req, res) => {
+    try {
+      const followers = await storage.getFollowers(req.params.id);
+      res.json(followers);
+    } catch (error) {
+      console.error("Get followers error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/users/:id/following", requireAuth, async (req, res) => {
+    try {
+      const following = await storage.getFollowing(req.params.id);
+      res.json(following);
+    } catch (error) {
+      console.error("Get following error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/users/:id/follow", requireAuth, async (req, res) => {
+    try {
+      const followingId = req.params.id;
+      const followerId = req.session.userId!;
+      
+      if (followerId === followingId) {
+        return res.status(400).json({ message: "Cannot follow yourself" });
+      }
+      
+      const isAlreadyFollowing = await storage.isFollowing(followerId, followingId);
+      if (isAlreadyFollowing) {
+        return res.status(400).json({ message: "Already following this user" });
+      }
+      
+      const follower = await storage.followUser(followerId, followingId);
+      res.json(follower);
+    } catch (error) {
+      console.error("Follow user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/users/:id/follow", requireAuth, async (req, res) => {
+    try {
+      const followingId = req.params.id;
+      const followerId = req.session.userId!;
+      
+      await storage.unfollowUser(followerId, followingId);
+      res.json({ message: "Unfollowed successfully" });
+    } catch (error) {
+      console.error("Unfollow user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/users/:id/unfollow", requireAuth, async (req, res) => {
+    try {
+      // This removes a follower (someone following you)
+      const followerId = req.params.id;
+      const followingId = req.session.userId!;
+      
+      await storage.unfollowUser(followerId, followingId);
+      res.json({ message: "Follower removed successfully" });
+    } catch (error) {
+      console.error("Remove follower error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Deals routes
   app.get("/api/deals", requireAuth, async (req, res) => {
     try {
@@ -526,6 +681,98 @@ export async function registerRoutes(
       res.json(deal);
     } catch (error) {
       console.error("Get deal error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Deal contract PDF download
+  app.get("/api/deals/:id/contract", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDealWithUsers(req.params.id);
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      // If contract already exists, redirect to it
+      if (deal.contractPdfUrl) {
+        return res.redirect(deal.contractPdfUrl);
+      }
+      
+      // Generate contract PDF using jsPDF
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(20);
+      doc.text("BARTER AGREEMENT CONTRACT", 105, 20, { align: "center" });
+      
+      // Contract number and date
+      doc.setFontSize(10);
+      doc.text(`Contract Reference: ${deal.dealNumber}`, 20, 35);
+      doc.text(`Date: ${new Date(deal.createdAt!).toLocaleDateString()}`, 20, 42);
+      
+      // Parties
+      doc.setFontSize(12);
+      doc.text("PARTIES TO THIS AGREEMENT", 20, 55);
+      doc.setFontSize(10);
+      doc.text(`Party A (Seeker): ${deal.seeker?.fullName || deal.seeker?.businessName || "N/A"}`, 25, 65);
+      doc.text(`Party B (Provider): ${deal.provider?.fullName || deal.provider?.businessName || "N/A"}`, 25, 72);
+      
+      // Exchange Details
+      doc.setFontSize(12);
+      doc.text("EXCHANGE DETAILS", 20, 90);
+      doc.setFontSize(10);
+      doc.text(`Party A Offers: ${deal.seekerOffer}`, 25, 100);
+      doc.text(`Estimated Value: AED ${Number(deal.seekerValue).toLocaleString()}`, 25, 107);
+      doc.text(`Party B Offers: ${deal.providerOffer}`, 25, 117);
+      doc.text(`Estimated Value: AED ${Number(deal.providerValue).toLocaleString()}`, 25, 124);
+      
+      // Terms
+      doc.setFontSize(12);
+      doc.text("TERMS AND CONDITIONS", 20, 142);
+      doc.setFontSize(10);
+      const terms = [
+        "1. Both parties agree to exchange the goods/services described above.",
+        "2. Each party warrants they have the right to exchange the items offered.",
+        "3. The exchange values are agreed estimates and do not constitute cash payment.",
+        "4. This agreement is governed by UAE law.",
+        "5. Any disputes shall be resolved through arbitration in Dubai.",
+      ];
+      let yPos = 152;
+      terms.forEach((term) => {
+        const lines = doc.splitTextToSize(term, 170);
+        doc.text(lines, 25, yPos);
+        yPos += lines.length * 6;
+      });
+      
+      // UAE VAT Notice
+      doc.setFontSize(10);
+      doc.text("VAT Notice: Standard UAE VAT (5%) may apply to certain barter transactions.", 20, 220);
+      doc.text("Consult a tax advisor for specific guidance.", 20, 227);
+      
+      // Signatures
+      doc.setFontSize(12);
+      doc.text("SIGNATURES", 20, 245);
+      doc.line(25, 265, 90, 265);
+      doc.line(120, 265, 185, 265);
+      doc.setFontSize(10);
+      doc.text("Party A Signature", 25, 272);
+      doc.text("Party B Signature", 120, 272);
+      
+      // Footer
+      doc.setFontSize(8);
+      doc.text("Generated by Recipro Barter Marketplace | www.recipro.ae", 105, 285, { align: "center" });
+      
+      // Send PDF
+      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="Contract_${deal.dealNumber}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Generate contract error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
