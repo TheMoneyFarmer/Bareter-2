@@ -60,6 +60,20 @@ export type OfferNeedItem = {
   description?: string;
 };
 
+// Verification status constants
+export const VERIFICATION_STATUSES = [
+  "NOT_STARTED",
+  "IN_PROGRESS", 
+  "APPROVED",
+  "DECLINED",
+  "IN_REVIEW",
+  "EXPIRED",
+  "ABANDONED",
+] as const;
+
+// Account type for verification
+export const ACCOUNT_TYPES = ["individual", "business"] as const;
+
 // Users table
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -87,6 +101,12 @@ export const users = pgTable("users", {
   whatINeed: jsonb("what_i_need").$type<OfferNeedItem[]>().default([]),
   portfolioImages: jsonb("portfolio_images").$type<string[]>().default([]),
   language: text("language").default("en"), // en, ar
+  accountType: text("account_type").default("individual"), // individual or business
+  kycStatus: text("kyc_status").default("NOT_STARTED"), // Didit KYC status
+  kybStatus: text("kyb_status").default("NOT_STARTED"), // Didit KYB status  
+  diditSessionId: text("didit_session_id"), // Current Didit verification session
+  diditVerifiedAt: timestamp("didit_verified_at"), // When Didit verification was completed
+  diditVerificationData: jsonb("didit_verification_data"), // Verification data from Didit
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
