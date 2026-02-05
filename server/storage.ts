@@ -7,6 +7,7 @@ import {
   messages,
   ratings,
   notifications,
+  followers,
   type User,
   type InsertUser,
   type Listing,
@@ -19,6 +20,8 @@ import {
   type InsertRating,
   type Notification,
   type InsertNotification,
+  type Follower,
+  type InsertFollower,
   type ListingWithUser,
   type DealWithUsers,
   type MessageWithSender,
@@ -65,6 +68,15 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<void>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+
+  // Followers
+  getFollowers(userId: string): Promise<(Follower & { follower: User })[]>;
+  getFollowing(userId: string): Promise<(Follower & { following: User })[]>;
+  isFollowing(followerId: string, followingId: string): Promise<boolean>;
+  followUser(followerId: string, followingId: string): Promise<Follower>;
+  unfollowUser(followerId: string, followingId: string): Promise<void>;
+  getFollowerCount(userId: string): Promise<number>;
+  getFollowingCount(userId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -301,6 +313,79 @@ export class DatabaseStorage implements IStorage {
       .update(notifications)
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
+  }
+
+  // Followers
+  async getFollowers(userId: string): Promise<(Follower & { follower: User })[]> {
+    const result = await db
+      .select()
+      .from(followers)
+      .innerJoin(users, eq(followers.followerId, users.id))
+      .where(eq(followers.followingId, userId))
+      .orderBy(desc(followers.createdAt));
+    
+    return result.map(r => ({
+      ...r.followers,
+      follower: r.users,
+    }));
+  }
+
+  async getFollowing(userId: string): Promise<(Follower & { following: User })[]> {
+    const result = await db
+      .select()
+      .from(followers)
+      .innerJoin(users, eq(followers.followingId, users.id))
+      .where(eq(followers.followerId, userId))
+      .orderBy(desc(followers.createdAt));
+    
+    return result.map(r => ({
+      ...r.followers,
+      following: r.users,
+    }));
+  }
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(followers)
+      .where(and(
+        eq(followers.followerId, followerId),
+        eq(followers.followingId, followingId)
+      ));
+    return !!existing;
+  }
+
+  async followUser(followerId: string, followingId: string): Promise<Follower> {
+    const [follower] = await db
+      .insert(followers)
+      .values({ followerId, followingId })
+      .returning();
+    return follower;
+  }
+
+  async unfollowUser(followerId: string, followingId: string): Promise<void> {
+    await db
+      .delete(followers)
+      .where(and(
+        eq(followers.followerId, followerId),
+        eq(followers.followingId, followingId)
+      ));
+  }
+
+  async getFollowerCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(followers)
+      .where(eq(followers.followingId, userId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  async getFollowingCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(followers)
+      .where(eq(followers.followerId, userId));
+    return Number(result[0]?.count ?? 0);
   }
 }
 

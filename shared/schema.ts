@@ -218,6 +218,14 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Followers table for user following
+export const followers = pgTable("followers", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id", { length: 36 }).notNull().references(() => users.id),
+  followingId: varchar("following_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -263,6 +271,11 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   isRead: true,
 });
 
+export const insertFollowerSchema = createInsertSchema(followers).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -293,6 +306,9 @@ export type Rating = typeof ratings.$inferSelect;
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+export type InsertFollower = z.infer<typeof insertFollowerSchema>;
+export type Follower = typeof followers.$inferSelect;
 
 // Extended types with relations
 export type ListingWithUser = Listing & { user: User };
