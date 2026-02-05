@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
+import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import {
   Menu,
@@ -26,12 +27,14 @@ import {
   Search,
   Plus,
   Shield,
+  Languages,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 
 export function Header() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { language, setLanguage, t } = useI18n();
   const [location] = useLocation();
 
   const { data: notifications } = useQuery<Notification[]>({
@@ -78,6 +81,15 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+            data-testid="button-language-toggle"
+          >
+            <Languages className="h-5 w-5" />
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
+import { I18nProvider } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { LandingPage } from "@/pages/landing";
@@ -23,6 +24,7 @@ import { HelpPage } from "@/pages/help";
 import { FAQPage } from "@/pages/faq";
 import { TermsPage } from "@/pages/terms";
 import { PrivacyPage } from "@/pages/privacy";
+import OnboardingPage from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -44,6 +46,7 @@ function Router() {
       <Route path="/faq" component={FAQPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -53,18 +56,20 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <TooltipProvider>
-            <div className="min-h-screen flex flex-col bg-background">
-              <Header />
-              <main className="flex-1">
-                <Router />
-              </main>
-              <Footer />
-            </div>
-            <Toaster />
-          </TooltipProvider>
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <div className="min-h-screen flex flex-col bg-background">
+                <Header />
+                <main className="flex-1">
+                  <Router />
+                </main>
+                <Footer />
+              </div>
+              <Toaster />
+            </TooltipProvider>
+          </AuthProvider>
+        </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

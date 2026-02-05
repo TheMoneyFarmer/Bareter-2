@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { RatingModal } from "@/components/RatingModal";
 import type { DealWithUsers, MessageWithSender } from "@shared/schema";
 import {
   ArrowLeft,
@@ -37,6 +38,8 @@ import {
   Loader2,
   AlertTriangle,
   DollarSign,
+  CreditCard,
+  Star,
 } from "lucide-react";
 
 const stateConfig: Record<string, { label: string; color: string; step: number }> = {
@@ -57,7 +60,10 @@ export function DealDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
+  const [showRatingModal, setShowRatingModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const searchParams = new URLSearchParams(window.location.search);
+  const paymentStatus = searchParams.get("payment");
 
   const { data: deal, isLoading } = useQuery<DealWithUsers>({
     queryKey: ["/api/deals", id],
@@ -100,6 +106,41 @@ export function DealDetailPage() {
       });
     },
   });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/deals/${id}/checkout`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Checkout failed",
+        description: error.message || "Could not start checkout. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (paymentStatus === "success") {
+      toast({
+        title: "Payment Successful!",
+        description: "Your deal has been completed. Don't forget to rate your experience!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", id] });
+    } else if (paymentStatus === "cancelled") {
+      toast({
+        title: "Payment Cancelled",
+        description: "You can complete the payment when you're ready.",
+        variant: "destructive",
+      });
+    }
+  }, [paymentStatus, id, toast, queryClient]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -440,6 +481,34 @@ export function DealDetailPage() {
                 </Button>
               )}
 
+              {deal.state === "delivery_proof" && myCompleted && theirCompleted && isSeeker && (
+                <Button
+                  className="w-full gap-2"
+                  onClick={() => checkoutMutation.mutate()}
+                  disabled={checkoutMutation.isPending}
+                  data-testid="button-pay-fee"
+                >
+                  {checkoutMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-4 w-4" />
+                  )}
+                  Pay Success Fee (AED {successFee.toLocaleString()})
+                </Button>
+              )}
+
+              {deal.state === "completed" && (
+                <Button
+                  className="w-full gap-2"
+                  variant="outline"
+                  onClick={() => setShowRatingModal(true)}
+                  data-testid="button-rate-deal"
+                >
+                  <Star className="h-4 w-4" />
+                  Rate Your Experience
+                </Button>
+              )}
+
               {deal.state !== "completed" && deal.state !== "cancelled" && (
                 <Dialog>
                   <DialogTrigger asChild>
@@ -531,6 +600,16 @@ export function DealDetailPage() {
           </Card>
         </div>
       </div>
+
+      {otherParty && (
+        <RatingModal
+          open={showRatingModal}
+          onOpenChange={setShowRatingModal}
+          dealId={deal.id}
+          toUserId={otherParty.id}
+          toUserName={otherParty.fullName}
+        />
+      )}
     </div>
   );
 }

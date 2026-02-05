@@ -40,7 +40,19 @@ Preferred communication style: Simple, everyday language.
 - **Shared Types**: Schema definitions in `shared/` are imported by both client and server
 - **Storage Interface**: `server/storage.ts` abstracts all database operations behind an interface
 - **API Request Helper**: `client/src/lib/queryClient.ts` provides typed fetch wrappers
-- **Context Providers**: Auth and Theme contexts wrap the application for global state
+- **Context Providers**: Auth, Theme, and I18n contexts wrap the application for global state
+
+### Internationalization (i18n)
+- **Languages**: English (LTR) and Arabic (RTL) supported
+- **Provider**: `client/src/lib/i18n.tsx` - I18nProvider context
+- **Storage**: Language preference persisted in localStorage
+- **RTL Support**: Document direction automatically switches based on language
+- **Translations**: Key-value pairs in `translations` object in i18n.tsx
+
+### Onboarding Flow
+- **4-Step Wizard**: Basic Info → Offers → Needs → Profile Photo
+- **Progress Tracking**: `onboardingStep` and `onboardingCompleted` fields on User model
+- **Route**: `/onboarding` page
 
 ### Core Domain Models
 - **Users**: Profile data, verification status, what they offer/need
@@ -63,6 +75,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Payment Processing
 - **Stripe**: Payment integration for success fees (12% of smaller deal value, min AED 100)
+- **Checkout Flow**: `/api/deals/:id/checkout` creates Stripe checkout session
+- **Webhook**: Stripe webhooks handled at `/api/webhooks/stripe` (raw body required)
+- **Fee Calculation**: 12% of smaller deal value, minimum AED 100
 
 ### Email Services
 - **Nodemailer**: Email sending capability for notifications

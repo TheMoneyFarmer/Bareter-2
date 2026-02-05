@@ -16,6 +16,7 @@ import {
   insertRatingSchema,
 } from "@shared/schema";
 import memorystore from "memorystore";
+import { WebhookHandlers } from "./webhookHandlers";
 
 // Configure multer for file uploads
 const uploadDir = "./uploads";
@@ -77,6 +78,24 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Stripe webhook route - must be before other middleware that parse body
+  app.post("/api/webhooks/stripe", async (req, res) => {
+    try {
+      const signature = req.headers["stripe-signature"] as string;
+      const rawBody = (req as any).rawBody as Buffer;
+      
+      if (!rawBody || !signature) {
+        return res.status(400).json({ message: "Missing webhook payload or signature" });
+      }
+      
+      await WebhookHandlers.processWebhook(rawBody, signature);
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Webhook error:", error);
+      res.status(400).json({ message: "Webhook processing failed" });
+    }
+  });
+
   // Session middleware - trust proxy for Replit's HTTPS
   app.set("trust proxy", 1);
   
@@ -719,7 +738,8 @@ export async function registerRoutes(
 
   app.patch("/api/admin/users/:id/verify", requireAdmin, async (req, res) => {
     try {
-      const user = await storage.updateUser(req.params.id, { isVerified: true });
+      const { verified } = req.body;
+      const user = await storage.updateUser(req.params.id, { isVerified: verified });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -727,6 +747,203 @@ export async function registerRoutes(
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Admin verify user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/listings/:id/flag", requireAdmin, async (req, res) => {
+    try {
+      const { flagged } = req.body;
+      const listing = await storage.updateListing(req.params.id, { isActive: !flagged });
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      res.json(listing);
+    } catch (error) {
+      console.error("Admin flag listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
+    try {
+      const allDeals = await storage.getAllDeals();
+      const allUsers = await storage.getAllUsers();
+      
+      const completedDeals = allDeals.filter(d => d.state === "completed");
+      const totalGMV = completedDeals.reduce((sum, d) => 
+        sum + parseFloat(d.seekerValue as string) + parseFloat(d.providerValue as string), 0);
+      const feesCollected = completedDeals.reduce((sum, d) => 
+        sum + (d.successFee ? parseFloat(d.successFee as string) : 0), 0);
+      
+      res.json({
+        totalDeals: allDeals.length,
+        completedDeals: completedDeals.length,
+        totalGMV,
+        feesCollected,
+        activeUsers: allUsers.length,
+      });
+    } catch (error) {
+      console.error("Admin analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Stripe checkout for deal completion
+  app.post("/api/deals/:id/checkout", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDeal(req.params.id);
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      if (deal.state !== "delivery_proof" || !deal.seekerCompleted || !deal.providerCompleted) {
+        return res.status(400).json({ message: "Deal must be in delivery_proof state with both parties marking complete" });
+      }
+      
+      const seekerValue = parseFloat(deal.seekerValue as string);
+      const providerValue = parseFloat(deal.providerValue as string);
+      const smallerValue = Math.min(seekerValue, providerValue);
+      const successFee = Math.max(smallerValue * 0.12, 100);
+      
+      const { getUncachableStripeClient, getStripePublishableKey } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
+      
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "aed",
+            product_data: {
+              name: `Recipro Success Fee - Deal ${deal.dealNumber}`,
+              description: `12% success fee for completed barter deal (min AED 100)`,
+            },
+            unit_amount: Math.round(successFee * 100),
+          },
+          quantity: 1,
+        }],
+        mode: "payment",
+        success_url: `${baseUrl}/deals/${deal.id}?payment=success`,
+        cancel_url: `${baseUrl}/deals/${deal.id}?payment=cancelled`,
+        metadata: {
+          dealId: deal.id,
+          dealNumber: deal.dealNumber,
+        },
+      });
+      
+      await storage.updateDeal(deal.id, { successFee: successFee.toString() });
+      
+      res.json({ url: session.url, fee: successFee });
+    } catch (error) {
+      console.error("Checkout error:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Onboarding routes
+  const onboardingSchema = z.object({
+    step: z.number().min(1).max(4),
+    fullName: z.string().optional(),
+    businessName: z.string().optional(),
+    location: z.string().optional(),
+    bio: z.string().optional(),
+    whatIOffer: z.array(z.object({
+      name: z.string(),
+      value: z.number(),
+      description: z.string().optional(),
+    })).optional(),
+    whatINeed: z.array(z.object({
+      name: z.string(),
+      value: z.number(),
+      description: z.string().optional(),
+    })).optional(),
+    avatarUrl: z.string().optional(),
+    portfolioImages: z.array(z.string()).optional(),
+  });
+
+  app.patch("/api/onboarding", requireAuth, async (req, res) => {
+    try {
+      const data = onboardingSchema.parse(req.body);
+      const { step, ...profileData } = data;
+      
+      const updateData: any = {
+        ...profileData,
+        onboardingStep: step,
+      };
+      
+      if (step === 4) {
+        updateData.onboardingCompleted = true;
+        updateData.profileCompleted = true;
+      }
+      
+      const user = await storage.updateUser(req.session.userId!, updateData);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Onboarding error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // AI Matching suggestions
+  app.get("/api/suggestions", requireAuth, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const userNeeds = currentUser.whatINeed || [];
+      const allListings = await storage.getListings();
+      
+      const suggestions = allListings
+        .filter(listing => {
+          if (listing.userId === req.session.userId) return false;
+          
+          const needKeywords = userNeeds.map(n => n.name.toLowerCase());
+          const listingText = `${listing.title} ${listing.description}`.toLowerCase();
+          
+          return needKeywords.some(keyword => listingText.includes(keyword));
+        })
+        .slice(0, 10);
+      
+      res.json(suggestions);
+    } catch (error) {
+      console.error("Suggestions error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // User profile by ID (public)
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const ratings = await storage.getRatingsByUser(req.params.id);
+      const avgRating = ratings.length > 0 
+        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length 
+        : 0;
+      
+      const { password, emailVerificationToken, passwordResetToken, ...publicUser } = user;
+      res.json({ ...publicUser, avgRating, totalRatings: ratings.length, ratings });
+    } catch (error) {
+      console.error("Get user error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
