@@ -39,7 +39,11 @@ import {
   Share2,
   Heart,
   ExternalLink,
+  ArrowLeftRight,
+  Sparkles,
+  CheckCircle,
 } from "lucide-react";
+import type { ExchangeItem } from "@shared/schema";
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -234,6 +238,78 @@ export function ListingDetailPage() {
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(((listing as any).exchangeItems?.length > 0) || ((listing as any).wantedCategories?.length > 0)) && (
+              <div className="mt-6">
+                <Separator className="mb-6" />
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <ArrowLeftRight className="h-5 w-5 text-primary" />
+                      What I Want in Exchange
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {((listing as any).exchangeItems as ExchangeItem[] || []).filter((item: ExchangeItem) => item.isPriority).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5 text-primary">
+                          <Star className="h-4 w-4 fill-current" />
+                          Priority Items (What I Really Want)
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {((listing as any).exchangeItems as ExchangeItem[] || [])
+                            .filter((item: ExchangeItem) => item.isPriority)
+                            .map((item: ExchangeItem) => (
+                              <Badge key={item.name} className="gap-1">
+                                <Star className="h-3 w-3 fill-current" />
+                                {item.name}
+                              </Badge>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {((listing as any).exchangeItems as ExchangeItem[] || []).filter((item: ExchangeItem) => !item.isPriority).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5 text-muted-foreground">
+                          <Sparkles className="h-4 w-4" />
+                          Also Open To
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {((listing as any).exchangeItems as ExchangeItem[] || [])
+                            .filter((item: ExchangeItem) => !item.isPriority)
+                            .map((item: ExchangeItem) => (
+                              <Badge key={item.name} variant="secondary">
+                                {item.name}
+                              </Badge>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {((listing as any).wantedCategories as string[] || []).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2 text-muted-foreground">Preferred Categories</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {((listing as any).wantedCategories as string[] || []).map((category: string) => (
+                            <Badge key={category} variant="outline">
+                              {category}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(listing as any).openToOffers && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span>Open to other offers not listed above</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             )}
           </div>

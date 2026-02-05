@@ -24,7 +24,10 @@ import {
   Eye,
   Sparkles,
   X,
+  ArrowLeftRight,
+  Star,
 } from "lucide-react";
+import type { ExchangeItem } from "@shared/schema";
 
 export function BrowsePage() {
   const [search, setSearch] = useState("");
@@ -366,9 +369,48 @@ export function BrowsePage() {
                       )}
                       <div className="p-4">
                         <h3 className="font-semibold line-clamp-1 mb-1">{listing.title}</h3>
-                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
                           {listing.description}
                         </p>
+                        
+                        {((listing as any).exchangeItems?.length > 0 || (listing as any).wantedCategories?.length > 0) && (
+                          <div className="mb-3 p-2 rounded-lg bg-primary/5 border border-primary/10">
+                            <div className="flex items-center gap-1 text-xs text-primary mb-1.5">
+                              <ArrowLeftRight className="h-3 w-3" />
+                              <span className="font-medium">Wants in exchange:</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {((listing as any).exchangeItems as ExchangeItem[] || [])
+                                .filter((item: ExchangeItem) => item.isPriority)
+                                .slice(0, 2)
+                                .map((item: ExchangeItem) => (
+                                  <Badge key={item.name} variant="default" className="text-[10px] px-1.5 py-0 gap-0.5">
+                                    <Star className="h-2 w-2 fill-current" />
+                                    {item.name}
+                                  </Badge>
+                                ))}
+                              {((listing as any).exchangeItems as ExchangeItem[] || [])
+                                .filter((item: ExchangeItem) => !item.isPriority)
+                                .slice(0, 2)
+                                .map((item: ExchangeItem) => (
+                                  <Badge key={item.name} variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    {item.name}
+                                  </Badge>
+                                ))}
+                              {((listing as any).wantedCategories as string[] || []).slice(0, 2).map((cat: string) => (
+                                <Badge key={cat} variant="outline" className="text-[10px] px-1.5 py-0">
+                                  {cat}
+                                </Badge>
+                              ))}
+                              {(((listing as any).exchangeItems?.length || 0) + ((listing as any).wantedCategories?.length || 0)) > 4 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  +{((listing as any).exchangeItems?.length || 0) + ((listing as any).wantedCategories?.length || 0) - 4} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="flex items-center justify-between">
                           <span className="text-lg font-bold text-primary">
                             AED {parseFloat(listing.retailValue as string).toLocaleString()}

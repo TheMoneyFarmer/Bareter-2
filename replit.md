@@ -57,10 +57,30 @@ Preferred communication style: Simple, everyday language.
 ### Core Domain Models
 - **Users**: Profile data, verification status, what they offer/need
 - **Listings**: Offers or requests with categories, values in AED, locations
+  - **Exchange Preferences**: `wantedCategories` (array), `exchangeItems` (array with priority flag), `openToOffers` (boolean)
+  - Visual priority system with stars for priority items
 - **Deals**: Trade proposals with state machine (draft → proposed → accepted → in_progress → completed)
 - **Messages**: Real-time chat messages per deal
 - **Ratings**: Post-completion reviews
 - **Notifications**: In-app notification system
+- **Followers**: User following system for marketplace sellers
+
+### Sample Data
+- **Demo Endpoint**: `/api/demo/sample-deals` (POST, requires auth) creates sample barter scenarios
+- **Sample Scenarios**:
+  - Suit manufacturer ↔ Models (bespoke suits for modeling services)
+  - Hotel ↔ Influencer (free stays for reels + stories)
+  - Restaurant ↔ Food photographer (dining credits for professional photos)
+  - SaaS company ↔ Graphic designer (12-month license for full rebrand)
+  - Dentist ↔ Marketing agency (teeth whitening for ad campaign)
+
+### Professional Dashboard
+- **Route**: `/dashboard`
+- **Tabs**: Analytics, Followers, Deals Folder
+- **Features**:
+  - Analytics with charts (Recharts) for views over time and listings by category
+  - Followers management with follow/unfollow functionality
+  - Deals folder with contract PDF download for completed deals
 
 ## External Dependencies
 

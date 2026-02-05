@@ -140,6 +140,12 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Exchange preference item with optional priority
+export type ExchangeItem = {
+  name: string;
+  isPriority: boolean;
+};
+
 // Listings table
 export const listings = pgTable("listings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -154,6 +160,10 @@ export const listings = pgTable("listings", {
   tags: jsonb("tags").$type<string[]>().default([]),
   isActive: boolean("is_active").default(true),
   viewCount: integer("view_count").default(0),
+  // Exchange preferences - what the lister wants in return
+  wantedCategories: jsonb("wanted_categories").$type<string[]>().default([]),
+  exchangeItems: jsonb("exchange_items").$type<ExchangeItem[]>().default([]),
+  openToOffers: boolean("open_to_offers").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

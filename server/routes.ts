@@ -1484,5 +1484,273 @@ export async function registerRoutes(
     }
   });
 
+  // Create sample barter scenario deals for the current user
+  app.post("/api/demo/sample-deals", requireAuth, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash("demo123", 10);
+
+      const sampleBusinesses = [
+        {
+          email: `suit_manufacturer_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Marco Bellini",
+          bio: "Master tailor and bespoke suit manufacturer. Specializing in luxury menswear and custom tailoring for executives.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "Bellini Bespoke Tailoring",
+          whatIOffer: [{ name: "Bespoke Suits", value: 5000, description: "Custom tailored suits" }, { name: "Formal Wear", value: 3000 }],
+          whatINeed: [{ name: "Model Services", value: 2000 }, { name: "Photography", value: 1500 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `luxury_hotel_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Layla Al-Farsi",
+          bio: "General Manager of a boutique luxury hotel. Offering premium stays for content creators and influencers.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "The Azure Resort & Spa",
+          whatIOffer: [{ name: "Hotel Stays", value: 3000, description: "Luxury suite accommodations" }, { name: "Spa Treatments", value: 500 }],
+          whatINeed: [{ name: "Social Media Content", value: 2000 }, { name: "Reels & Stories", value: 1000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `influencer_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Sofia Reyes",
+          bio: "Travel and lifestyle influencer with 500K+ followers. Creating engaging content for premium brands.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: null,
+          whatIOffer: [{ name: "Instagram Reels", value: 1500 }, { name: "Stories Coverage", value: 500 }, { name: "TikTok Content", value: 1000 }],
+          whatINeed: [{ name: "Hotel Stays", value: 3000 }, { name: "Experiences", value: 2000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `restaurant_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Chef Khalid Al-Rashid",
+          bio: "Award-winning chef and restaurant owner. Offering premium dining experiences in exchange for creative services.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "Saffron & Sage Restaurant",
+          whatIOffer: [{ name: "Fine Dining Experiences", value: 1500 }, { name: "Catering Services", value: 5000 }],
+          whatINeed: [{ name: "Food Photography", value: 2000 }, { name: "Menu Design", value: 1000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `food_photographer_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Nina Chen",
+          bio: "Professional food and lifestyle photographer. Specializing in restaurant, menu, and culinary content.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "NinaChen Studios",
+          whatIOffer: [{ name: "Food Photography Session", value: 2500 }, { name: "Menu Shoot Package", value: 4000 }],
+          whatINeed: [{ name: "Dining Credits", value: 1500 }, { name: "Event Catering", value: 3000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `saas_company_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "James Mitchell",
+          bio: "Founder of a fast-growing SaaS startup. Offering enterprise software licenses in exchange for creative services.",
+          location: "Abu Dhabi",
+          isVerified: true,
+          businessName: "CloudFlow Technologies",
+          whatIOffer: [{ name: "12-Month SaaS License", value: 15000 }, { name: "Custom Integrations", value: 5000 }],
+          whatINeed: [{ name: "Full Rebrand", value: 12000 }, { name: "UI/UX Design", value: 8000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `graphic_designer_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Zara Ahmed",
+          bio: "Senior brand designer with 10+ years experience. Specializing in complete brand identity and rebranding projects.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "Zara Design Studio",
+          whatIOffer: [{ name: "Full Rebrand Package", value: 15000 }, { name: "Logo Design", value: 3000 }],
+          whatINeed: [{ name: "SaaS Tools", value: 10000 }, { name: "Project Management Software", value: 5000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `dentist_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Dr. Amira Hassan",
+          bio: "Cosmetic dentist specializing in teeth whitening and smile makeovers. Trading dental services for marketing.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "Pearl Smile Dental Clinic",
+          whatIOffer: [{ name: "Teeth Whitening", value: 2500 }, { name: "Dental Cleaning", value: 500 }],
+          whatINeed: [{ name: "Digital Ad Campaign", value: 5000 }, { name: "Social Media Marketing", value: 3000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `marketing_agency_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Ryan Thompson",
+          bio: "Digital marketing agency founder. Running performance campaigns for healthcare and wellness brands.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: "Spark Digital Marketing",
+          whatIOffer: [{ name: "Ad Campaign Management", value: 8000 }, { name: "Social Media Strategy", value: 4000 }],
+          whatINeed: [{ name: "Health Services", value: 3000 }, { name: "Wellness Treatments", value: 2000 }],
+          kycStatus: "APPROVED",
+        },
+        {
+          email: `model_${Date.now()}@demo.recipro.ae`,
+          password: hashedPassword,
+          fullName: "Alessandro Romano",
+          bio: "Professional male model for fashion and commercial shoots. Available for runway and editorial work.",
+          location: "Dubai",
+          isVerified: true,
+          businessName: null,
+          whatIOffer: [{ name: "Fashion Modeling", value: 3000 }, { name: "Commercial Shoots", value: 2000 }],
+          whatINeed: [{ name: "Custom Suits", value: 5000 }, { name: "Formal Attire", value: 3000 }],
+          kycStatus: "APPROVED",
+        },
+      ];
+
+      const createdUsers = [];
+      for (const userData of sampleBusinesses) {
+        const user = await storage.createUser(userData);
+        createdUsers.push(user);
+      }
+
+      const [suitMaker, hotel, influencer, restaurant, foodPhotographer, saasCompany, graphicDesigner, dentist, marketingAgency, model] = createdUsers;
+
+      const generateDealNumber = () => `RCP-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+
+      const barterScenarios = [
+        {
+          dealNumber: generateDealNumber(),
+          seekerId: model.id,
+          providerId: suitMaker.id,
+          seekerListingId: null,
+          providerListingId: null,
+          seekerOffer: "Fashion modeling for lookbook and promotional materials (3 sessions)",
+          seekerValue: "4500.00",
+          providerOffer: "2 Custom Bespoke Suits with fittings",
+          providerValue: "5000.00",
+          state: "completed",
+          timeline: "6 weeks for suit completion, modeling sessions over 2 weeks",
+          deliverables: "Model: 3 full-day photo shoots; Tailor: 2 custom suits with 3 fitting sessions each",
+          seekerCompleted: true,
+          providerCompleted: true,
+        },
+        {
+          dealNumber: generateDealNumber(),
+          seekerId: influencer.id,
+          providerId: hotel.id,
+          seekerListingId: null,
+          providerListingId: null,
+          seekerOffer: "15 Instagram Reels + 30 Stories + 5 TikTok videos featuring the resort",
+          seekerValue: "4000.00",
+          providerOffer: "5-Night Stay in Ocean View Suite with all meals",
+          providerValue: "4500.00",
+          state: "in_progress",
+          timeline: "Content delivery within 2 weeks of stay",
+          deliverables: "Influencer: 50+ content pieces with tags and mentions; Hotel: Full accommodation package",
+          seekerCompleted: false,
+          providerCompleted: true,
+        },
+        {
+          dealNumber: generateDealNumber(),
+          seekerId: foodPhotographer.id,
+          providerId: restaurant.id,
+          seekerListingId: null,
+          providerListingId: null,
+          seekerOffer: "Complete menu photography session (50+ dishes) with editing",
+          seekerValue: "4000.00",
+          providerOffer: "AED 3,500 dining credit + 2 private chef experiences",
+          providerValue: "4500.00",
+          state: "completed",
+          timeline: "Photography over 2 days, 1-week editing, dining credits valid 6 months",
+          deliverables: "Photographer: 50+ edited photos; Restaurant: Dining credit and 2 chef table experiences",
+          seekerCompleted: true,
+          providerCompleted: true,
+        },
+        {
+          dealNumber: generateDealNumber(),
+          seekerId: graphicDesigner.id,
+          providerId: saasCompany.id,
+          seekerListingId: null,
+          providerListingId: null,
+          seekerOffer: "Complete brand identity redesign including logo, guidelines, and templates",
+          seekerValue: "15000.00",
+          providerOffer: "12-month enterprise license for entire team (up to 25 users)",
+          providerValue: "15000.00",
+          state: "in_progress",
+          timeline: "Rebrand delivery in 8 weeks, license activated immediately",
+          deliverables: "Designer: Full brand kit; SaaS: 12-month unlimited license with priority support",
+          seekerCompleted: false,
+          providerCompleted: false,
+        },
+        {
+          dealNumber: generateDealNumber(),
+          seekerId: marketingAgency.id,
+          providerId: dentist.id,
+          seekerListingId: null,
+          providerListingId: null,
+          seekerOffer: "3-month digital advertising campaign (Google & Meta Ads)",
+          seekerValue: "6000.00",
+          providerOffer: "Teeth whitening for 4 team members + dental cleaning package",
+          providerValue: "5500.00",
+          state: "completed",
+          timeline: "Campaign runs 3 months, dental services scheduled over 2 months",
+          deliverables: "Agency: Full campaign with reporting; Dentist: Whitening + cleaning for 4 people",
+          seekerCompleted: true,
+          providerCompleted: true,
+        },
+      ];
+
+      const createdDeals = [];
+      for (const dealData of barterScenarios) {
+        const deal = await storage.createDeal(dealData);
+        createdDeals.push(deal);
+      }
+
+      for (const deal of createdDeals.filter(d => d.state === "completed")) {
+        await storage.createRating({
+          dealId: deal.id,
+          fromUserId: deal.seekerId,
+          toUserId: deal.providerId,
+          score: 5,
+          review: "Excellent trade partner! Professional and delivered exactly as promised.",
+        });
+        await storage.createRating({
+          dealId: deal.id,
+          fromUserId: deal.providerId,
+          toUserId: deal.seekerId,
+          score: 5,
+          review: "Great experience working together. Would definitely trade again!",
+        });
+      }
+
+      res.json({
+        message: "Sample barter scenarios created successfully!",
+        users: createdUsers.length,
+        deals: createdDeals.length,
+        scenarios: [
+          "Suit manufacturer ↔ Models (pay models in bespoke suits)",
+          "Hotel ↔ Influencer (free stays ↔ reels + stories)",
+          "Restaurant ↔ Food photographer (free meals ↔ professional photos)",
+          "SaaS company ↔ Graphic designer (12-month license ↔ full rebrand)",
+          "Dentist ↔ Marketing agency (free teeth whitening ↔ ad campaign)",
+        ],
+      });
+    } catch (error) {
+      console.error("Create sample deals error:", error);
+      res.status(500).json({ message: "Failed to create sample deals" });
+    }
+  });
+
   return httpServer;
 }

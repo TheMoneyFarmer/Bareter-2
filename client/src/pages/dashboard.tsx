@@ -133,6 +133,25 @@ export default function DashboardPage() {
     },
   });
 
+  // Load sample deals mutation
+  const loadSampleDealsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/demo/sample-deals", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/analytics", timeRange] });
+      toast({ 
+        title: "Sample deals loaded!",
+        description: `Created ${data.deals} sample barter scenario deals.`
+      });
+    },
+    onError: () => {
+      toast({ title: "Failed to load sample deals", variant: "destructive" });
+    },
+  });
+
   if (authLoading) {
     return (
       <div className="container py-8">
@@ -527,12 +546,24 @@ export default function DashboardPage() {
                 <div className="text-center py-12">
                   <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="font-medium mb-2">No deals found</h3>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-sm mb-4">
                     Complete deals to see them here with downloadable contracts
                   </p>
-                  <Button className="mt-4" onClick={() => navigate("/browse")}>
-                    Browse Listings
-                  </Button>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <Button variant="outline" onClick={() => navigate("/browse")} data-testid="button-browse-listings">
+                      Browse Listings
+                    </Button>
+                    <Button 
+                      onClick={() => loadSampleDealsMutation.mutate()}
+                      disabled={loadSampleDealsMutation.isPending}
+                      data-testid="button-load-samples"
+                    >
+                      {loadSampleDealsMutation.isPending ? "Loading..." : "Load Sample Deals"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Load sample barter scenarios: Suits↔Models, Hotel↔Influencer, Restaurant↔Photographer, SaaS↔Designer, Dentist↔Marketing
+                  </p>
                 </div>
               )}
             </CardContent>

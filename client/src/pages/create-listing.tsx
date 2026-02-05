@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { CATEGORIES, LOCATIONS } from "@shared/schema";
+import { CATEGORIES, LOCATIONS, ExchangeItem } from "@shared/schema";
 import {
   Package,
   ShoppingCart,
@@ -26,8 +27,16 @@ import {
   MapPin,
   DollarSign,
   FileText,
+  ArrowLeftRight,
+  Star,
+  Sparkles,
 } from "lucide-react";
 import { z } from "zod";
+
+const exchangeItemSchema = z.object({
+  name: z.string(),
+  isPriority: z.boolean(),
+});
 
 const createListingSchema = z.object({
   type: z.enum(["offer", "request"]),
@@ -40,6 +49,9 @@ const createListingSchema = z.object({
   location: z.string().min(1, "Select a location"),
   tags: z.array(z.string()).optional(),
   images: z.array(z.string()).optional(),
+  wantedCategories: z.array(z.string()).optional(),
+  exchangeItems: z.array(exchangeItemSchema).optional(),
+  openToOffers: z.boolean().optional(),
 });
 
 type CreateListingForm = z.infer<typeof createListingSchema>;
@@ -50,6 +62,8 @@ export function CreateListingPage() {
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [newTag, setNewTag] = useState("");
+  const [newExchangeItem, setNewExchangeItem] = useState("");
+  const [newItemPriority, setNewItemPriority] = useState(false);
 
   const form = useForm<CreateListingForm>({
     resolver: zodResolver(createListingSchema),
@@ -62,6 +76,9 @@ export function CreateListingPage() {
       location: user?.location || "",
       tags: [],
       images: [],
+      wantedCategories: [],
+      exchangeItems: [],
+      openToOffers: true,
     },
   });
 
@@ -103,6 +120,15 @@ export function CreateListingPage() {
     }
   };
 
+  const toggleWantedCategory = (category: string) => {
+    const current = form.getValues("wantedCategories") || [];
+    if (current.includes(category)) {
+      form.setValue("wantedCategories", current.filter((c) => c !== category));
+    } else {
+      form.setValue("wantedCategories", [...current, category]);
+    }
+  };
+
   const addTag = () => {
     if (newTag.trim()) {
       const current = form.getValues("tags") || [];
@@ -118,9 +144,45 @@ export function CreateListingPage() {
     form.setValue("tags", current.filter((t) => t !== tag));
   };
 
+  const addExchangeItem = () => {
+    if (newExchangeItem.trim()) {
+      const current = form.getValues("exchangeItems") || [];
+      const exists = current.some((item) => item.name.toLowerCase() === newExchangeItem.trim().toLowerCase());
+      if (!exists) {
+        form.setValue("exchangeItems", [
+          ...current,
+          { name: newExchangeItem.trim(), isPriority: newItemPriority },
+        ]);
+      }
+      setNewExchangeItem("");
+      setNewItemPriority(false);
+    }
+  };
+
+  const removeExchangeItem = (name: string) => {
+    const current = form.getValues("exchangeItems") || [];
+    form.setValue("exchangeItems", current.filter((item) => item.name !== name));
+  };
+
+  const toggleItemPriority = (name: string) => {
+    const current = form.getValues("exchangeItems") || [];
+    form.setValue(
+      "exchangeItems",
+      current.map((item) =>
+        item.name === name ? { ...item, isPriority: !item.isPriority } : item
+      )
+    );
+  };
+
   const selectedType = form.watch("type");
   const selectedCategories = form.watch("categories");
+  const wantedCategories = form.watch("wantedCategories") || [];
+  const exchangeItems = form.watch("exchangeItems") || [];
   const tags = form.watch("tags") || [];
+  const openToOffers = form.watch("openToOffers");
+
+  const priorityItems = exchangeItems.filter((item) => item.isPriority);
+  const otherItems = exchangeItems.filter((item) => !item.isPriority);
 
   if (!user) {
     return (
@@ -263,7 +325,7 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Tag className="h-5 w-5" />
-                Categories
+                {selectedType === "offer" ? "What I'm Offering" : "What I Need"} - Categories
               </CardTitle>
               <CardDescription>
                 Select all categories that apply (at least one required)
@@ -282,7 +344,7 @@ export function CreateListingPage() {
                           variant={selectedCategories.includes(category) ? "default" : "outline"}
                           className="cursor-pointer text-sm py-1.5 px-3"
                           onClick={() => toggleCategory(category)}
-                          data-testid={`badge-category-${category.toLowerCase()}`}
+                          data-testid={`badge-category-${category.toLowerCase().replace(/\s+/g, "-")}`}
                         >
                           {category}
                         </Badge>
@@ -292,6 +354,168 @@ export function CreateListingPage() {
                   </FormItem>
                 )}
               />
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ArrowLeftRight className="h-5 w-5 text-primary" />
+                What I Want in Exchange
+              </CardTitle>
+              <CardDescription>
+                Tell potential trade partners what you're looking for in return
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <FormLabel className="text-base mb-3 block">Preferred Categories</FormLabel>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Select categories of goods/services you'd accept in trade
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((category) => (
+                    <Badge
+                      key={`wanted-${category}`}
+                      variant={wantedCategories.includes(category) ? "default" : "outline"}
+                      className="cursor-pointer text-sm py-1.5 px-3"
+                      onClick={() => toggleWantedCategory(category)}
+                      data-testid={`badge-wanted-${category.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      {category}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <FormLabel className="text-base mb-3 block flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Specific Exchange Items
+                </FormLabel>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Add specific items you'd accept. Mark priority items with a star!
+                </p>
+                
+                <div className="flex gap-2 mb-4">
+                  <Input
+                    value={newExchangeItem}
+                    onChange={(e) => setNewExchangeItem(e.target.value)}
+                    placeholder="e.g., Professional photos, Marketing services..."
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExchangeItem())}
+                    className="flex-1"
+                    data-testid="input-exchange-item"
+                  />
+                  <Button
+                    type="button"
+                    variant={newItemPriority ? "default" : "outline"}
+                    size="icon"
+                    onClick={() => setNewItemPriority(!newItemPriority)}
+                    title={newItemPriority ? "Priority item" : "Mark as priority"}
+                    data-testid="button-toggle-priority"
+                  >
+                    <Star className={`h-4 w-4 ${newItemPriority ? "fill-current" : ""}`} />
+                  </Button>
+                  <Button type="button" onClick={addExchangeItem} data-testid="button-add-exchange">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {priorityItems.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-primary mb-2 flex items-center gap-1">
+                      <Star className="h-3 w-3 fill-current" />
+                      Priority Items (What I Really Want)
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {priorityItems.map((item) => (
+                        <Badge
+                          key={item.name}
+                          className="gap-1 pr-1 bg-primary/10 text-primary border-primary/30"
+                        >
+                          <Star className="h-3 w-3 fill-current" />
+                          {item.name}
+                          <button
+                            type="button"
+                            className="ml-1 p-0.5 rounded hover-elevate"
+                            onClick={(e) => { e.stopPropagation(); toggleItemPriority(item.name); }}
+                            title="Remove priority"
+                            data-testid={`button-toggle-priority-${item.name.replace(/\s+/g, "-")}`}
+                          >
+                            <Star className="h-3 w-3 fill-current text-primary" />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-0.5 rounded hover-elevate"
+                            onClick={(e) => { e.stopPropagation(); removeExchangeItem(item.name); }}
+                            data-testid={`button-remove-item-${item.name.replace(/\s+/g, "-")}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {otherItems.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                      Also Open To
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {otherItems.map((item) => (
+                        <Badge key={item.name} variant="secondary" className="gap-1 pr-1">
+                          {item.name}
+                          <button
+                            type="button"
+                            className="ml-1 p-0.5 rounded hover-elevate"
+                            onClick={(e) => { e.stopPropagation(); toggleItemPriority(item.name); }}
+                            title="Mark as priority"
+                            data-testid={`button-make-priority-${item.name.replace(/\s+/g, "-")}`}
+                          >
+                            <Star className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-0.5 rounded hover-elevate"
+                            onClick={(e) => { e.stopPropagation(); removeExchangeItem(item.name); }}
+                            data-testid={`button-remove-${item.name.replace(/\s+/g, "-")}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t pt-6">
+                <FormField
+                  control={form.control}
+                  name="openToOffers"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-open-offers"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="cursor-pointer">
+                          Open to other offers
+                        </FormLabel>
+                        <FormDescription>
+                          Allow traders to propose items not listed above
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
             </CardContent>
           </Card>
 
@@ -386,15 +610,14 @@ export function CreateListingPage() {
                 {tags.map((tag) => (
                   <Badge key={tag} variant="secondary" className="gap-1 pr-1">
                     {tag}
-                    <Button
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-4 w-4 hover:bg-transparent"
-                      onClick={() => removeTag(tag)}
+                      className="p-0.5 rounded hover-elevate"
+                      onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+                      data-testid={`button-remove-tag-${tag.replace(/\s+/g, "-")}`}
                     >
                       <X className="h-3 w-3" />
-                    </Button>
+                    </button>
                   </Badge>
                 ))}
               </div>
