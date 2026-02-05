@@ -107,6 +107,35 @@ export const users = pgTable("users", {
   diditSessionId: text("didit_session_id"), // Current Didit verification session
   diditVerifiedAt: timestamp("didit_verified_at"), // When Didit verification was completed
   diditVerificationData: jsonb("didit_verification_data"), // Verification data from Didit
+  
+  // Notification Settings
+  emailNotifications: boolean("email_notifications").default(true),
+  dealNotifications: boolean("deal_notifications").default(true),
+  messageNotifications: boolean("message_notifications").default(true),
+  marketingEmails: boolean("marketing_emails").default(false),
+  
+  // Privacy Settings
+  profileVisibility: text("profile_visibility").default("public"), // public, verified_only, private
+  showEmail: boolean("show_email").default(false),
+  showPhone: boolean("show_phone").default(false),
+  allowDirectMessages: boolean("allow_direct_messages").default(true),
+  
+  // Trading Preferences
+  preferredCategories: jsonb("preferred_categories").$type<string[]>().default([]),
+  tradingRadius: integer("trading_radius").default(0), // 0 = unlimited, in km
+  minTradeValue: decimal("min_trade_value", { precision: 12, scale: 2 }).default("0"),
+  maxTradeValue: decimal("max_trade_value", { precision: 12, scale: 2 }),
+  autoMatchEnabled: boolean("auto_match_enabled").default(true),
+  
+  // Contact Info
+  phone: text("phone"),
+  website: text("website"),
+  socialLinks: jsonb("social_links").$type<{linkedin?: string; instagram?: string; twitter?: string}>(),
+  
+  // Display Settings
+  timezone: text("timezone").default("Asia/Dubai"),
+  currency: text("currency").default("AED"),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

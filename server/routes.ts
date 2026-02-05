@@ -304,6 +304,74 @@ export async function registerRoutes(
     }
   });
 
+  // Settings update route
+  app.patch("/api/users/settings", requireAuth, async (req, res) => {
+    try {
+      const allowedFields = [
+        "fullName", "email", "phone", "website", "businessName", "location",
+        "timezone", "currency", "language",
+        "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
+        "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
+        "preferredCategories", "tradingRadius", "minTradeValue", "maxTradeValue", "autoMatchEnabled",
+      ];
+      
+      const data: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (req.body[key] !== undefined) {
+          data[key] = req.body[key];
+        }
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      const updatedUser = await storage.updateUser(req.session.userId!, data);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { password, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Update settings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Password change route
+  app.post("/api/users/change-password", requireAuth, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current and new passwords are required" });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters" });
+      }
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const validPassword = await bcrypt.compare(currentPassword, user.password);
+      if (!validPassword) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await storage.updateUser(req.session.userId!, { password: hashedPassword });
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Listings routes with search/filter
   app.get("/api/listings", async (req, res) => {
     try {
