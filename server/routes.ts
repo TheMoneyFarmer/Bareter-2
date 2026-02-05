@@ -705,6 +705,189 @@ export async function registerRoutes(
     }
   });
 
+  // Verification routes (Didit KYC/KYB)
+  app.post("/api/verification/session", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { accountType } = req.body;
+      const userAccountType = accountType || user.accountType || "individual";
+      
+      const workflowId = userAccountType === "business" 
+        ? process.env.DIDIT_KYB_WORKFLOW_ID 
+        : process.env.DIDIT_KYC_WORKFLOW_ID;
+
+      if (!workflowId) {
+        return res.status(500).json({ message: "Verification workflow not configured" });
+      }
+
+      const { createVerificationSession } = await import("./diditClient");
+      
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DOMAINS 
+          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+          : "http://localhost:5000";
+      
+      const callbackUrl = `${baseUrl}/profile`;
+      
+      const session = await createVerificationSession(
+        workflowId,
+        user.id,
+        callbackUrl
+      );
+
+      if (!session) {
+        return res.status(500).json({ message: "Failed to create verification session" });
+      }
+
+      await storage.updateUser(user.id, {
+        accountType: userAccountType,
+        diditSessionId: session.session_id,
+        ...(userAccountType === "business" 
+          ? { kybStatus: "IN_PROGRESS" }
+          : { kycStatus: "IN_PROGRESS" }
+        ),
+      });
+
+      res.json({
+        sessionId: session.session_id,
+        verificationUrl: session.url,
+      });
+    } catch (error) {
+      console.error("Create verification session error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/verification/status", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { getVerificationStatus, isUserVerified } = await import("./diditClient");
+      
+      const accountType = user.accountType || "individual";
+      const kycStatus = user.kycStatus || "NOT_STARTED";
+      const kybStatus = user.kybStatus || "NOT_STARTED";
+
+      const statusInfo = getVerificationStatus(accountType, kycStatus, kybStatus);
+      const verified = isUserVerified(accountType, kycStatus, kybStatus);
+
+      res.json({
+        accountType,
+        kycStatus,
+        kybStatus,
+        isVerified: verified,
+        ...statusInfo,
+      });
+    } catch (error) {
+      console.error("Get verification status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/webhooks/didit", async (req, res) => {
+    try {
+      const signature = req.headers["x-webhook-signature"] as string;
+      const rawBody = (req as any).rawBody as Buffer;
+      
+      if (!rawBody) {
+        return res.status(400).json({ message: "Missing webhook payload" });
+      }
+
+      const { verifyWebhookSignature } = await import("./diditClient");
+      const payload = rawBody.toString();
+      
+      if (!verifyWebhookSignature(payload, signature)) {
+        console.error("Invalid Didit webhook signature");
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+
+      const data = JSON.parse(payload);
+      console.log("Didit webhook received:", data);
+
+      const sessionId = data.session_id;
+      const status = data.status;
+      const vendorData = data.vendor_data;
+
+      if (!sessionId) {
+        return res.status(400).json({ message: "Missing session_id" });
+      }
+
+      const users = await storage.getAllUsers();
+      const user = users.find(u => u.diditSessionId === sessionId);
+
+      if (!user) {
+        console.log("User not found for session:", sessionId);
+        return res.json({ received: true });
+      }
+
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      if (user.accountType === "business") {
+        updateData.kybStatus = status;
+      } else {
+        updateData.kycStatus = status;
+      }
+
+      if (status === "APPROVED") {
+        updateData.isVerified = true;
+        updateData.diditVerifiedAt = new Date();
+        updateData.diditVerificationData = data.user_data || data.verification || {};
+        
+        await storage.createNotification({
+          userId: user.id,
+          type: "system",
+          title: "Verification Complete",
+          message: "Your identity has been verified. You can now start trading!",
+        });
+      } else if (status === "DECLINED") {
+        updateData.isVerified = false;
+        
+        await storage.createNotification({
+          userId: user.id,
+          type: "system",
+          title: "Verification Failed",
+          message: "Your identity verification was declined. Please try again or contact support.",
+        });
+      }
+
+      await storage.updateUser(user.id, updateData);
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Didit webhook error:", error);
+      res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  app.patch("/api/users/account-type", requireAuth, async (req, res) => {
+    try {
+      const { accountType } = req.body;
+      if (!["individual", "business"].includes(accountType)) {
+        return res.status(400).json({ message: "Invalid account type" });
+      }
+
+      const user = await storage.updateUser(req.session.userId!, { accountType });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Update account type error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Admin routes
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
