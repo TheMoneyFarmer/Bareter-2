@@ -47,6 +47,231 @@ const profileSchema = z.object({
 
 type ProfileForm = z.infer<typeof profileSchema>;
 
+type User = {
+  id: string;
+  fullName: string;
+  email: string;
+  accountType?: string | null;
+  kycStatus?: string | null;
+  kybStatus?: string | null;
+  isVerified?: boolean | null;
+  [key: string]: any;
+};
+
+function VerificationSection({ user }: { user: User }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [selectedAccountType, setSelectedAccountType] = useState(user.accountType || "individual");
+
+  const { data: verificationStatus, isLoading: statusLoading } = useQuery<{
+    accountType: string;
+    kycStatus: string;
+    kybStatus: string;
+    isVerified: boolean;
+    status: string;
+    label: string;
+    color: string;
+  }>({
+    queryKey: ["/api/verification/status"],
+  });
+
+  const startVerificationMutation = useMutation({
+    mutationFn: async (accountType: string) => {
+      const res = await apiRequest("POST", "/api/verification/session", { accountType });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.verificationUrl) {
+        window.open(data.verificationUrl, "_blank");
+        toast({
+          title: "Verification Started",
+          description: "Complete the verification process in the new window.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to start verification. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateAccountTypeMutation = useMutation({
+    mutationFn: async (accountType: string) => {
+      const res = await apiRequest("PATCH", "/api/users/account-type", { accountType });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    },
+  });
+
+  const handleAccountTypeChange = (value: string) => {
+    setSelectedAccountType(value);
+    updateAccountTypeMutation.mutate(value);
+  };
+
+  const status = verificationStatus?.status || "NOT_STARTED";
+  const isVerified = verificationStatus?.isVerified || user.isVerified;
+  const canStartVerification = status === "NOT_STARTED" || status === "DECLINED" || status === "EXPIRED" || status === "ABANDONED";
+
+  const getStatusConfig = () => {
+    switch (status) {
+      case "APPROVED":
+        return { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50 dark:bg-green-950", text: "Verified" };
+      case "IN_PROGRESS":
+        return { icon: Clock, color: "text-yellow-500", bgColor: "bg-yellow-50 dark:bg-yellow-950", text: "Verification In Progress" };
+      case "IN_REVIEW":
+        return { icon: Clock, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950", text: "Under Review" };
+      case "DECLINED":
+        return { icon: AlertCircle, color: "text-red-500", bgColor: "bg-red-50 dark:bg-red-950", text: "Verification Failed" };
+      case "EXPIRED":
+        return { icon: AlertCircle, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950", text: "Verification Expired" };
+      case "ABANDONED":
+        return { icon: AlertCircle, color: "text-gray-500", bgColor: "bg-gray-50 dark:bg-gray-950", text: "Verification Abandoned" };
+      default:
+        return { icon: Shield, color: "text-muted-foreground", bgColor: "bg-muted", text: "Not Verified" };
+    }
+  };
+
+  const statusConfig = getStatusConfig();
+  const StatusIcon = statusConfig.icon;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-primary" />
+          Identity Verification
+        </CardTitle>
+        <CardDescription>
+          Verify your identity to start trading on Recipro
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className={`flex items-start gap-4 p-4 rounded-lg ${statusConfig.bgColor}`}>
+          <div className={`p-2 rounded-full bg-background ${statusConfig.color}`}>
+            <StatusIcon className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <h4 className="font-medium">Status: {statusConfig.text}</h4>
+            <p className="text-sm text-muted-foreground mt-1">
+              {status === "NOT_STARTED" && "Complete identity verification to start trading."}
+              {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
+              {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
+              {status === "APPROVED" && "You are verified and can now trade on Recipro!"}
+              {status === "DECLINED" && "Your verification was declined. Please try again with valid documents."}
+              {status === "EXPIRED" && "Your verification session expired. Please start again."}
+              {status === "ABANDONED" && "You didn't complete verification. Please try again."}
+            </p>
+          </div>
+        </div>
+
+        {!isVerified && (
+          <>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Account Type</label>
+                <Select value={selectedAccountType} onValueChange={handleAccountTypeChange}>
+                  <SelectTrigger data-testid="select-account-type">
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual (Personal ID)</SelectItem>
+                    <SelectItem value="business">Business (Trade License)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedAccountType === "individual" 
+                    ? "You'll verify with Emirates ID or Passport"
+                    : "You'll verify with Trade License and authorized signatory ID"
+                  }
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {canStartVerification && (
+              <Button
+                className="w-full gap-2"
+                size="lg"
+                onClick={() => startVerificationMutation.mutate(selectedAccountType)}
+                disabled={startVerificationMutation.isPending}
+                data-testid="button-start-verification"
+              >
+                {startVerificationMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Shield className="h-4 w-4" />
+                )}
+                {status === "NOT_STARTED" ? "Start Verification" : "Retry Verification"}
+              </Button>
+            )}
+
+            {status === "IN_PROGRESS" && (
+              <Alert>
+                <Clock className="h-4 w-4" />
+                <AlertTitle>Verification in Progress</AlertTitle>
+                <AlertDescription>
+                  If you closed the verification window, click the button below to continue.
+                  <Button
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => startVerificationMutation.mutate(selectedAccountType)}
+                    disabled={startVerificationMutation.isPending}
+                    data-testid="button-continue-verification"
+                  >
+                    Continue Verification
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+          </>
+        )}
+
+        {isVerified && (
+          <Alert className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <AlertTitle className="text-green-700 dark:text-green-300">Verified Account</AlertTitle>
+            <AlertDescription className="text-green-600 dark:text-green-400">
+              Your identity has been verified. You can now trade with confidence on Recipro.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Separator />
+
+        <div className="space-y-3">
+          <h4 className="font-medium">Why Verification is Required</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Mandatory for all trading activities
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Builds trust with trading partners
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Complies with UAE regulations
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Protects against fraud
+            </li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -674,95 +899,7 @@ export function ProfilePage() {
         </TabsContent>
 
         <TabsContent value="verification">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                Business Verification
-              </CardTitle>
-              <CardDescription>
-                Get verified to build trust and unlock more trading opportunities
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-muted">
-                <div className={`p-2 rounded-full bg-background ${verificationStatus.color}`}>
-                  <verificationStatus.icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">Verification Status: {verificationStatus.text}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {user.verificationStatus === "pending" && "Upload your trade license or Emirates ID to get verified."}
-                    {user.verificationStatus === "submitted" && "Your documents are being reviewed. This usually takes 1-2 business days."}
-                    {user.verificationStatus === "verified" && "Your business is verified! You now have access to all trading features."}
-                    {user.verificationStatus === "rejected" && "Your verification was rejected. Please upload a clearer document."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="font-medium">Upload Verification Document</h4>
-                <p className="text-sm text-muted-foreground">
-                  Accepted documents: Trade License, Commercial Registration, Emirates ID, or Passport for sole traders.
-                </p>
-                <input
-                  type="file"
-                  ref={verificationInputRef}
-                  className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileUpload("verification")}
-                />
-                <div className="flex gap-4">
-                  <Button
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => verificationInputRef.current?.click()}
-                    disabled={uploadFileMutation.isPending}
-                    data-testid="button-upload-verification"
-                  >
-                    {uploadFileMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    Upload Document
-                  </Button>
-                  {user.verificationDocUrl && (
-                    <Button variant="ghost" className="gap-2" asChild>
-                      <a href={user.verificationDocUrl} target="_blank" rel="noopener noreferrer">
-                        <FileText className="h-4 w-4" />
-                        View Current Document
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-3">
-                <h4 className="font-medium">Benefits of Verification</h4>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Display verified badge on your profile
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Higher visibility in search results
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Build trust with potential trading partners
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Access to premium trade opportunities
-                  </li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+          <VerificationSection user={user} />
         </TabsContent>
       </Tabs>
     </div>

@@ -79,6 +79,20 @@ Preferred communication style: Simple, everyday language.
 - **Webhook**: Stripe webhooks handled at `/api/webhooks/stripe` (raw body required)
 - **Fee Calculation**: 12% of smaller deal value, minimum AED 100
 
+### Identity Verification (Didit KYC/KYB)
+- **Provider**: Didit (https://didit.me) for identity verification
+- **KYC**: Know Your Customer verification for individuals (Emirates ID/Passport)
+- **KYB**: Know Your Business verification for businesses (Trade License)
+- **Session Flow**: `/api/verification/session` creates a Didit verification session
+- **Status Check**: `/api/verification/status` returns current verification status
+- **Webhook**: Didit webhooks handled at `/api/webhooks/didit` (raw body, HMAC-SHA256 signature)
+- **Trading Block**: Users must be verified (KYC or KYB approved) before creating listings or deals
+- **Required Environment Variables**:
+  - `DIDIT_API_KEY`: API key from Didit Business Console
+  - `DIDIT_WEBHOOK_SECRET`: Webhook secret for signature verification
+  - `DIDIT_KYC_WORKFLOW_ID`: Workflow ID for individual verification
+  - `DIDIT_KYB_WORKFLOW_ID`: Workflow ID for business verification
+
 ### Email Services
 - **Nodemailer**: Email sending capability for notifications
 

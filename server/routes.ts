@@ -384,6 +384,25 @@ export async function registerRoutes(
 
   app.post("/api/listings", requireAuth, async (req, res) => {
     try {
+      const listingUser = await storage.getUser(req.session.userId!);
+      if (!listingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { isUserVerified } = await import("./diditClient");
+      const userVerified = isUserVerified(
+        listingUser.accountType || "individual",
+        listingUser.kycStatus || "NOT_STARTED",
+        listingUser.kybStatus || "NOT_STARTED"
+      );
+
+      if (!userVerified) {
+        return res.status(403).json({ 
+          message: "You must be verified to create listings. Please complete identity verification first.",
+          requiresVerification: true
+        });
+      }
+
       const data = insertListingSchema.parse({
         ...req.body,
         userId: req.session.userId,
@@ -446,6 +465,25 @@ export async function registerRoutes(
   app.post("/api/deals", requireAuth, async (req, res) => {
     try {
       const { providerListingId, seekerOffer, seekerValue } = req.body;
+
+      const seeker = await storage.getUser(req.session.userId!);
+      if (!seeker) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { isUserVerified } = await import("./diditClient");
+      const seekerVerified = isUserVerified(
+        seeker.accountType || "individual",
+        seeker.kycStatus || "NOT_STARTED",
+        seeker.kybStatus || "NOT_STARTED"
+      );
+
+      if (!seekerVerified) {
+        return res.status(403).json({ 
+          message: "You must be verified to start a trade. Please complete identity verification first.",
+          requiresVerification: true
+        });
+      }
 
       const listing = await storage.getListing(providerListingId);
       if (!listing) {
