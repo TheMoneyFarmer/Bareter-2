@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,6 +30,7 @@ import {
   ArrowLeftRight,
   Star,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -48,7 +49,7 @@ const createListingSchema = z.object({
   }),
   location: z.string().min(1, "Select a location"),
   tags: z.array(z.string()).optional(),
-  images: z.array(z.string()).optional(),
+  images: z.array(z.string()).min(3, "Please upload at least 3 images"),
   wantedCategories: z.array(z.string()).optional(),
   exchangeItems: z.array(exchangeItemSchema).optional(),
   openToOffers: z.boolean().optional(),
@@ -64,6 +65,8 @@ export function CreateListingPage() {
   const [newTag, setNewTag] = useState("");
   const [newExchangeItem, setNewExchangeItem] = useState("");
   const [newItemPriority, setNewItemPriority] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<CreateListingForm>({
     resolver: zodResolver(createListingSchema),
@@ -174,11 +177,67 @@ export function CreateListingPage() {
     );
   };
 
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    setUploadingImages(true);
+    const currentImages = form.getValues("images") || [];
+
+    try {
+      const uploadPromises = Array.from(files).map(async (file) => {
+        if (!file.type.startsWith("image/")) {
+          throw new Error(`${file.name} is not an image file`);
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${file.name} exceeds 5MB limit`);
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "listing");
+
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || "Upload failed");
+        }
+
+        const data = await res.json();
+        return data.url as string;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      form.setValue("images", [...currentImages, ...uploadedUrls], { shouldValidate: true });
+    } catch (error: any) {
+      toast({
+        title: "Upload failed",
+        description: error.message || "Could not upload one or more images. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImages(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const current = form.getValues("images") || [];
+    form.setValue("images", current.filter((_, i) => i !== index), { shouldValidate: true });
+  };
+
   const selectedType = form.watch("type");
   const selectedCategories = form.watch("categories");
   const wantedCategories = form.watch("wantedCategories") || [];
   const exchangeItems = form.watch("exchangeItems") || [];
   const tags = form.watch("tags") || [];
+  const images = form.watch("images") || [];
   const openToOffers = form.watch("openToOffers");
 
   const priorityItems = exchangeItems.filter((item) => item.isPriority);
@@ -628,24 +687,82 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ImagePlus className="h-5 w-5" />
-                Images (Optional)
+                Images
+                <Badge variant="destructive" className="text-xs">Required</Badge>
               </CardTitle>
               <CardDescription>
-                Add photos to showcase what you're offering
+                Upload at least 3 photos to showcase your listing. Max 5MB per image.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="aspect-square flex flex-col items-center justify-center gap-2 h-auto"
-                  data-testid="button-add-image"
-                >
-                  <ImagePlus className="h-8 w-8 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Add Image</span>
-                </Button>
-              </div>
+              <FormField
+                control={form.control}
+                name="images"
+                render={() => (
+                  <FormItem>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleImageUpload(e.target.files)}
+                      data-testid="input-image-upload"
+                    />
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                      {images.map((url, index) => (
+                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-muted group">
+                          <img
+                            src={url}
+                            alt={`Listing image ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ visibility: "visible" }}
+                            data-testid={`button-remove-image-${index}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="aspect-square flex flex-col items-center justify-center gap-2 h-auto border-dashed border-2"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImages}
+                        data-testid="button-add-image"
+                      >
+                        {uploadingImages ? (
+                          <>
+                            <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
+                            <span className="text-xs text-muted-foreground">Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-8 w-8 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Add Images</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <FormDescription>
+                        {images.length}/3 minimum images uploaded
+                      </FormDescription>
+                      {images.length < 3 && (
+                        <span className="text-xs text-destructive">
+                          {3 - images.length} more {3 - images.length === 1 ? "image" : "images"} needed
+                        </span>
+                      )}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
 
