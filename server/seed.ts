@@ -22,14 +22,14 @@ export async function seedDatabase() {
     .insert(users)
     .values([
       {
-        email: "admin@recipro.ae",
+        email: "admin@margin.ae",
         password: hashedPassword,
         fullName: "Admin User",
-        bio: "Platform administrator managing Recipro marketplace",
+        bio: "Platform administrator managing Margin marketplace",
         location: "Dubai",
         isAdmin: true,
         isVerified: true,
-        businessName: "Recipro Platform",
+        businessName: "Margin Platform",
         whatIOffer: ["Platform Management", "Support Services"],
         whatINeed: ["Quality Partners", "Business Growth"],
       },

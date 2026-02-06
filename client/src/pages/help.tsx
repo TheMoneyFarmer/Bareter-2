@@ -19,7 +19,7 @@ import {
 const categories = [
   {
     title: "Getting Started",
-    description: "Learn the basics of trading on Recipro",
+    description: "Learn the basics of trading on Margin",
     icon: UserPlus,
     articles: [
       "How to create your account",
@@ -93,7 +93,7 @@ export function HelpPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Help Center</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-          Find answers to common questions and learn how to make the most of Recipro
+          Find answers to common questions and learn how to make the most of Margin
         </p>
         <div className="max-w-xl mx-auto relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -149,7 +149,7 @@ export function HelpPage() {
             <p className="text-muted-foreground mb-4">
               Can't find what you're looking for? Our support team is here to help.
             </p>
-            <p className="font-medium mb-2">support@recipro.ae</p>
+            <p className="font-medium mb-2">support@margin.ae</p>
             <p className="text-sm text-muted-foreground">
               Response time: Within 24 hours (business days)
             </p>

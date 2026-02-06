@@ -11,7 +11,7 @@ interface I18nContextType {
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
-    "app.name": "Recipro",
+    "app.name": "Margin",
     "app.tagline": "UAE's Premier Barter Marketplace",
     "nav.home": "Home",
     "nav.listings": "Listings",
@@ -94,7 +94,7 @@ const translations: Record<Language, Record<string, string>> = {
     "invoice.vatNote": "Users are responsible for issuing official VAT invoices",
   },
   ar: {
-    "app.name": "ريسيبرو",
+    "app.name": "مارجن",
     "app.tagline": "سوق المقايضة الأول في الإمارات",
     "nav.home": "الرئيسية",
     "nav.listings": "القوائم",
@@ -182,13 +182,13 @@ const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("recipro-language");
+    const saved = localStorage.getItem("margin-language");
     return (saved as Language) || "en";
   });
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("recipro-language", lang);
+    localStorage.setItem("margin-language", lang);
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = lang;
   };

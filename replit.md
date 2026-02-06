@@ -1,8 +1,8 @@
-# Recipro - UAE Barter Marketplace
+# Margin - UAE Barter Marketplace
 
 ## Overview
 
-Recipro is a full-stack barter marketplace platform designed for UAE and GCC businesses to trade goods and services without cash. The platform enables verified businesses to create listings (offers and requests), propose trades, negotiate via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees.
+Margin is a full-stack barter marketplace platform designed for UAE and GCC businesses to trade goods and services without cash. The platform enables verified businesses to create listings (offers and requests), propose trades, negotiate via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees.
 
 ## User Preferences
 

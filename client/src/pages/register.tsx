@@ -56,7 +56,7 @@ export function RegisterPage() {
       await register(data.email, data.password, data.fullName);
       toast({
         title: "Account created!",
-        description: "Welcome to Recipro. Complete your profile to start trading.",
+        description: "Welcome to Margin. Complete your profile to start trading.",
       });
       navigate("/profile");
     } catch (error: any) {
@@ -79,7 +79,7 @@ export function RegisterPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
                 <Handshake className="h-6 w-6 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold">Recipro</span>
+              <span className="text-2xl font-bold">Margin</span>
             </Link>
             <h1 className="text-3xl font-bold mb-3">
               Start Trading Value,<br />Not Cash
@@ -111,7 +111,7 @@ export function RegisterPage() {
             </Link>
             <h1 className="text-2xl font-bold text-center">Create your account</h1>
             <p className="text-muted-foreground text-center mt-1">
-              Join Recipro and start trading today
+              Join Margin and start trading today
             </p>
           </div>
 
@@ -119,7 +119,7 @@ export function RegisterPage() {
             <CardHeader className="space-y-1">
               <CardTitle className="text-xl">Create Account</CardTitle>
               <CardDescription>
-                Fill in your details to get started with Recipro
+                Fill in your details to get started with Margin
               </CardDescription>
             </CardHeader>
             <CardContent>

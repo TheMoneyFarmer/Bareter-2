@@ -60,7 +60,7 @@ export function Header() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
               <Handshake className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Recipro</span>
+            <span className="text-xl font-bold tracking-tight">Margin</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">

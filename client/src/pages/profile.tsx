@@ -149,7 +149,7 @@ function VerificationSection({ user }: { user: User }) {
           Identity Verification
         </CardTitle>
         <CardDescription>
-          Verify your identity to start trading on Recipro
+          Verify your identity to start trading on Margin
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -163,7 +163,7 @@ function VerificationSection({ user }: { user: User }) {
               {status === "NOT_STARTED" && "Complete identity verification to start trading."}
               {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
               {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
-              {status === "APPROVED" && "You are verified and can now trade on Recipro!"}
+              {status === "APPROVED" && "You are verified and can now trade on Margin!"}
               {status === "DECLINED" && "Your verification was declined. Please try again with valid documents."}
               {status === "EXPIRED" && "Your verification session expired. Please start again."}
               {status === "ABANDONED" && "You didn't complete verification. Please try again."}
@@ -239,7 +239,7 @@ function VerificationSection({ user }: { user: User }) {
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertTitle className="text-green-700 dark:text-green-300">Verified Account</AlertTitle>
             <AlertDescription className="text-green-600 dark:text-green-400">
-              Your identity has been verified. You can now trade with confidence on Recipro.
+              Your identity has been verified. You can now trade with confidence on Margin.
             </AlertDescription>
           </Alert>
         )}

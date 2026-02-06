@@ -141,7 +141,7 @@ export function LandingPage() {
       <section className="py-20">
         <div className="container px-4 mx-auto max-w-7xl">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">How Recipro Works</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">How Margin Works</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
               Simple, secure, and transparent barter trading in four easy steps
             </p>
@@ -175,7 +175,7 @@ export function LandingPage() {
         <div className="container px-4 mx-auto max-w-7xl">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <Badge variant="secondary" className="mb-4">Why Choose Recipro</Badge>
+              <Badge variant="secondary" className="mb-4">Why Choose Margin</Badge>
               <h2 className="text-3xl md:text-4xl font-bold mb-6">
                 Secure, Compliant, Professional
               </h2>

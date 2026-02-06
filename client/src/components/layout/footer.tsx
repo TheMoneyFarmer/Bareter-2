@@ -12,7 +12,7 @@ export function Footer() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
                 <Handshake className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold tracking-tight">Recipro</span>
+              <span className="text-xl font-bold tracking-tight">Margin</span>
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               UAE's premier barter marketplace. Trade goods and services without cash,
@@ -88,7 +88,7 @@ export function Footer() {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>hello@recipro.ae</span>
+                <span>hello@margin.ae</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4 flex-shrink-0" />
@@ -100,7 +100,7 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Recipro. All rights reserved.
+            &copy; {new Date().getFullYear()} Margin. All rights reserved.
           </p>
           <p className="text-sm text-muted-foreground">
             VAT Registered | UAE Federal Tax Authority Compliant

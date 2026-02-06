@@ -12,7 +12,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Welcome to Recipro ("Company", "we", "our", "us"). These Terms of Service ("Terms") govern your access to and use of the Recipro platform, including our website, mobile applications, and services (collectively, the "Platform").
+            Welcome to Margin ("Company", "we", "our", "us"). These Terms of Service ("Terms") govern your access to and use of the Margin platform, including our website, mobile applications, and services (collectively, the "Platform").
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
             By accessing or using our Platform, you agree to be bound by these Terms. If you do not agree to these Terms, please do not use our Platform.
@@ -22,7 +22,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">2. Eligibility</h2>
           <p className="text-muted-foreground leading-relaxed">
-            To use Recipro, you must:
+            To use Margin, you must:
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>Be at least 18 years of age</li>
@@ -45,7 +45,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">4. Barter Transactions</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Recipro facilitates barter exchanges between businesses. When you engage in a trade:
+            Margin facilitates barter exchanges between businesses. When you engage in a trade:
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>You represent that you have the right to trade the goods or services listed</li>
@@ -58,7 +58,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">5. Fees and Payments</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Recipro charges a success fee of 12% of the smaller declared value in a completed trade, with a minimum fee of AED 100. This fee is charged to the trade seeker (initiator) upon completion of the deal, unless otherwise agreed by the parties.
+            Margin charges a success fee of 12% of the smaller declared value in a completed trade, with a minimum fee of AED 100. This fee is charged to the trade seeker (initiator) upon completion of the deal, unless otherwise agreed by the parties.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
             Payment is processed through our secure payment partner, Stripe. By using our Platform, you agree to Stripe's terms of service.
@@ -97,7 +97,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">8. Dispute Resolution</h2>
           <p className="text-muted-foreground leading-relaxed">
-            We encourage users to resolve disputes directly through the Platform's chat feature. If a resolution cannot be reached, you may contact our support team for assistance. However, Recipro acts as a platform facilitator and is not a party to transactions between users.
+            We encourage users to resolve disputes directly through the Platform's chat feature. If a resolution cannot be reached, you may contact our support team for assistance. However, Margin acts as a platform facilitator and is not a party to transactions between users.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
             Any disputes arising from these Terms shall be governed by the laws of the United Arab Emirates and shall be subject to the exclusive jurisdiction of the courts of Dubai.
@@ -107,7 +107,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">9. Limitation of Liability</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Recipro provides the Platform "as is" and "as available" without warranties of any kind. We are not liable for any indirect, incidental, special, or consequential damages arising from your use of the Platform or any transactions conducted through it.
+            Margin provides the Platform "as is" and "as available" without warranties of any kind. We are not liable for any indirect, incidental, special, or consequential damages arising from your use of the Platform or any transactions conducted through it.
           </p>
         </section>
 
@@ -124,9 +124,9 @@ export function TermsPage() {
             If you have any questions about these Terms, please contact us at:
           </p>
           <div className="mt-4 text-muted-foreground">
-            <p>Recipro</p>
+            <p>Margin</p>
             <p>Dubai, United Arab Emirates</p>
-            <p>Email: legal@recipro.ae</p>
+            <p>Email: legal@margin.ae</p>
             <p>Phone: +971 4 123 4567</p>
           </div>
         </section>
@@ -134,7 +134,7 @@ export function TermsPage() {
 
       <div className="mt-12 pt-8 border-t">
         <p className="text-sm text-muted-foreground text-center">
-          By using Recipro, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
+          By using Margin, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
         </p>
         <div className="flex justify-center gap-4 mt-6">
           <Link href="/privacy" className="text-sm text-primary hover:underline">

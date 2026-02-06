@@ -60,7 +60,7 @@ export function LoginPage() {
           </Link>
           <h1 className="text-2xl font-bold text-center">Welcome back</h1>
           <p className="text-muted-foreground text-center mt-1">
-            Sign in to continue trading on Recipro
+            Sign in to continue trading on Margin
           </p>
         </div>
 

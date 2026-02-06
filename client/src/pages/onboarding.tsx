@@ -58,7 +58,7 @@ export default function OnboardingPage() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       if (data.onboardingCompleted) {
-        toast({ title: "Welcome to Recipro!", description: "Your profile is complete." });
+        toast({ title: "Welcome to Margin!", description: "Your profile is complete." });
         setLocation("/");
       }
     },
