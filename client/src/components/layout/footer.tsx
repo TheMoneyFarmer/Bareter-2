@@ -1,8 +1,11 @@
 import { Link } from "wouter";
 import { Handshake, Mail, MapPin, Phone } from "lucide-react";
 import { SiLinkedin, SiInstagram, SiX } from "react-icons/si";
+import { useI18n } from "@/lib/i18n";
 
 export function Footer() {
+  const { t } = useI18n();
+
   return (
     <footer className="border-t bg-card">
       <div className="container px-4 py-12 mx-auto max-w-7xl">
@@ -12,11 +15,10 @@ export function Footer() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
                 <Handshake className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold tracking-tight">Margin</span>
+              <span className="text-xl font-bold tracking-tight">{t("app.name")}</span>
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              UAE's premier barter marketplace. Trade goods and services without cash,
-              connecting verified businesses for value-based exchanges.
+              {t("app.description")}
             </p>
             <div className="flex items-center gap-3">
               <a
@@ -44,43 +46,43 @@ export function Footer() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-semibold">Quick Links</h4>
+            <h4 className="font-semibold">{t("nav.quickLinks")}</h4>
             <nav className="flex flex-col gap-2">
               <Link href="/browse" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Browse Listings
+                {t("nav.browseListings")}
               </Link>
               <Link href="/create-listing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Create Listing
+                {t("nav.createListing")}
               </Link>
               <Link href="/how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                How It Works
+                {t("footer.howItWorks")}
               </Link>
               <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Pricing
+                {t("footer.pricing")}
               </Link>
             </nav>
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-semibold">Support</h4>
+            <h4 className="font-semibold">{t("nav.support")}</h4>
             <nav className="flex flex-col gap-2">
               <Link href="/help" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Help Center
+                {t("footer.help")}
               </Link>
               <Link href="/faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                FAQs
+                {t("footer.faq")}
               </Link>
               <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Terms of Service
+                {t("footer.terms")}
               </Link>
               <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Privacy Policy
+                {t("footer.privacy")}
               </Link>
             </nav>
           </div>
 
           <div className="space-y-4">
-            <h4 className="font-semibold">Contact</h4>
+            <h4 className="font-semibold">{t("nav.contact")}</h4>
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
@@ -100,10 +102,10 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Margin. All rights reserved.
+            &copy; {new Date().getFullYear()} {t("app.copyright")}
           </p>
           <p className="text-sm text-muted-foreground">
-            VAT Registered | UAE Federal Tax Authority Compliant
+            {t("app.vatCompliant")}
           </p>
         </div>
       </div>

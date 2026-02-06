@@ -45,9 +45,9 @@ export function Header() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
   const navItems = [
-    { href: "/browse", label: "Browse", icon: Search },
-    { href: "/create-listing", label: "Create Listing", icon: Plus },
-    { href: "/deals", label: "My Deals", icon: Handshake },
+    { href: "/browse", label: t("nav.browse"), icon: Search },
+    { href: "/create-listing", label: t("nav.createListing"), icon: Plus },
+    { href: "/deals", label: t("nav.myDeals"), icon: Handshake },
   ];
 
   const isActive = (path: string) => location === path;
@@ -60,7 +60,7 @@ export function Header() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
               <Handshake className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Margin</span>
+            <span className="text-xl font-bold tracking-tight">{t("app.name")}</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
@@ -71,7 +71,7 @@ export function Header() {
                     variant={isActive(item.href) ? "secondary" : "ghost"}
                     size="sm"
                     className="gap-2"
-                    data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
+                    data-testid={`nav-${item.href.replace("/", "")}`}
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
@@ -87,7 +87,7 @@ export function Header() {
                   data-testid="nav-browse-marketplace"
                 >
                   <Search className="h-4 w-4" />
-                  Browse Marketplace
+                  {t("nav.browseMarketplace")}
                 </Button>
               </Link>
             )}
@@ -140,9 +140,9 @@ export function Header() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-80">
                   <div className="flex items-center justify-between p-3 border-b">
-                    <span className="font-semibold">Notifications</span>
+                    <span className="font-semibold">{t("nav.notifications")}</span>
                     {unreadCount > 0 && (
-                      <Badge variant="secondary">{unreadCount} new</Badge>
+                      <Badge variant="secondary">{unreadCount} {t("nav.new")}</Badge>
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
@@ -162,7 +162,7 @@ export function Header() {
                       ))
                     ) : (
                       <div className="p-6 text-center text-muted-foreground text-sm">
-                        No notifications yet
+                        {t("nav.noNotifications")}
                       </div>
                     )}
                   </div>
@@ -207,25 +207,25 @@ export function Header() {
                   <Link href="/profile">
                     <DropdownMenuItem className="cursor-pointer" data-testid="menu-profile">
                       <User className="mr-2 h-4 w-4" />
-                      Profile
+                      {t("nav.profile")}
                     </DropdownMenuItem>
                   </Link>
                   <Link href="/deals">
                     <DropdownMenuItem className="cursor-pointer" data-testid="menu-deals">
                       <Handshake className="mr-2 h-4 w-4" />
-                      My Deals
+                      {t("nav.myDeals")}
                     </DropdownMenuItem>
                   </Link>
                   <Link href="/dashboard">
                     <DropdownMenuItem className="cursor-pointer" data-testid="menu-dashboard">
                       <LayoutDashboard className="mr-2 h-4 w-4" />
-                      Dashboard
+                      {t("nav.dashboard")}
                     </DropdownMenuItem>
                   </Link>
                   <Link href="/settings">
                     <DropdownMenuItem className="cursor-pointer" data-testid="menu-settings">
                       <Settings className="mr-2 h-4 w-4" />
-                      Settings
+                      {t("nav.settings")}
                     </DropdownMenuItem>
                   </Link>
                   {user.isAdmin && (
@@ -234,7 +234,7 @@ export function Header() {
                       <Link href="/admin">
                         <DropdownMenuItem className="cursor-pointer" data-testid="menu-admin">
                           <Shield className="mr-2 h-4 w-4" />
-                          <span className="flex-1">Admin Panel</span>
+                          <span className="flex-1">{t("nav.admin")}</span>
                           <Badge variant="destructive" className="ml-2 text-xs">Admin</Badge>
                         </DropdownMenuItem>
                       </Link>
@@ -247,7 +247,7 @@ export function Header() {
                     data-testid="menu-logout"
                   >
                     <LogOut className="mr-2 h-4 w-4" />
-                    Logout
+                    {t("nav.logout")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -279,11 +279,11 @@ export function Header() {
             <div className="flex items-center gap-2">
               <Link href="/login">
                 <Button variant="ghost" data-testid="button-login">
-                  Sign In
+                  {t("nav.login")}
                 </Button>
               </Link>
               <Link href="/register">
-                <Button data-testid="button-register">Get Started</Button>
+                <Button data-testid="button-register">{t("nav.register")}</Button>
               </Link>
             </div>
           )}

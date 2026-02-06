@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { loginSchema } from "@shared/schema";
 import { Handshake, Loader2, Eye, EyeOff } from "lucide-react";
@@ -17,6 +18,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 export function LoginPage() {
   const { login } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,13 +36,13 @@ export function LoginPage() {
     try {
       await login(data.email, data.password);
       toast({
-        title: "Welcome back!",
-        description: "You have successfully signed in.",
+        title: t("auth.welcomeBack") + "!",
+        description: t("auth.signInToContinue"),
       });
       navigate("/browse");
     } catch (error: any) {
       toast({
-        title: "Sign in failed",
+        title: t("auth.loginFailed"),
         description: error.message || "Invalid email or password",
         variant: "destructive",
       });
@@ -58,17 +60,17 @@ export function LoginPage() {
               <Handshake className="h-6 w-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-center">Welcome back</h1>
+          <h1 className="text-2xl font-bold text-center">{t("auth.welcomeBack")}</h1>
           <p className="text-muted-foreground text-center mt-1">
-            Sign in to continue bartering on Margin
+            {t("auth.signInToContinue")}
           </p>
         </div>
 
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Sign In</CardTitle>
+            <CardTitle className="text-xl">{t("auth.signIn")}</CardTitle>
             <CardDescription>
-              Enter your email and password to access your account
+              {t("auth.signInToContinue")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -79,7 +81,7 @@ export function LoginPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>{t("auth.email")}</FormLabel>
                       <FormControl>
                         <Input
                           type="email"
@@ -98,12 +100,12 @@ export function LoginPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel>{t("auth.password")}</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input
                             type={showPassword ? "text" : "password"}
-                            placeholder="Enter your password"
+                            placeholder="••••••••"
                             data-testid="input-password"
                             {...field}
                           />
@@ -137,19 +139,19 @@ export function LoginPage() {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Signing in...
+                      {t("common.loading")}
                     </>
                   ) : (
-                    "Sign In"
+                    t("auth.signIn")
                   )}
                 </Button>
               </form>
             </Form>
 
             <div className="mt-6 text-center text-sm">
-              <span className="text-muted-foreground">Don't have an account? </span>
+              <span className="text-muted-foreground">{t("auth.noAccount")} </span>
               <Link href="/register" className="text-primary hover:underline font-medium">
-                Create one
+                {t("auth.signUp")}
               </Link>
             </div>
           </CardContent>

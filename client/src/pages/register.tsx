@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { registerSchema } from "@shared/schema";
 import { Handshake, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
@@ -25,19 +26,20 @@ const extendedRegisterSchema = registerSchema.extend({
 
 type RegisterForm = z.infer<typeof extendedRegisterSchema>;
 
-const benefits = [
-  "No subscription fees - pay only on success",
-  "Connect with verified UAE businesses",
-  "Secure barter contracts with VAT compliance",
-  "Real-time chat and deal management",
-];
-
 export function RegisterPage() {
   const { register } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const benefits = [
+    t("landing.noSubscription"),
+    t("landing.verifiedPartners"),
+    t("landing.bindingContracts"),
+    t("deal.chat"),
+  ];
 
   const form = useForm<RegisterForm>({
     resolver: zodResolver(extendedRegisterSchema),
@@ -55,13 +57,13 @@ export function RegisterPage() {
     try {
       await register(data.email, data.password, data.fullName);
       toast({
-        title: "Account created!",
-        description: "Welcome to Margin. Complete your profile to start bartering.",
+        title: t("auth.accountCreated"),
+        description: t("auth.welcomeToMargin"),
       });
       navigate("/profile");
     } catch (error: any) {
       toast({
-        title: "Registration failed",
+        title: t("auth.registrationFailed"),
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
@@ -79,20 +81,19 @@ export function RegisterPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
                 <Handshake className="h-6 w-6 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold">Margin</span>
+              <span className="text-2xl font-bold">{t("app.name")}</span>
             </Link>
             <h1 className="text-3xl font-bold mb-3">
-              Start Bartering Value,<br />Not Cash
+              {t("auth.startBartering")}<br />{t("auth.notCash")}
             </h1>
             <p className="text-muted-foreground text-lg">
-              Join UAE's premier barter marketplace and connect with verified businesses
-              for value-based exchanges.
+              {t("auth.joinDescription")}
             </p>
           </div>
 
           <div className="space-y-3">
-            {benefits.map((benefit) => (
-              <div key={benefit} className="flex items-center gap-3">
+            {benefits.map((benefit, i) => (
+              <div key={i} className="flex items-center gap-3">
                 <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
                   <CheckCircle className="h-4 w-4 text-primary" />
                 </div>
@@ -109,17 +110,17 @@ export function RegisterPage() {
                 <Handshake className="h-6 w-6 text-primary-foreground" />
               </div>
             </Link>
-            <h1 className="text-2xl font-bold text-center">Create your account</h1>
+            <h1 className="text-2xl font-bold text-center">{t("auth.createAccount")}</h1>
             <p className="text-muted-foreground text-center mt-1">
-              Join Margin and start bartering today
+              {t("auth.joinMargin")}
             </p>
           </div>
 
           <Card>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Create Account</CardTitle>
+              <CardTitle className="text-xl">{t("auth.register")}</CardTitle>
               <CardDescription>
-                Fill in your details to get started with Margin
+                {t("auth.joinMargin")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -130,7 +131,7 @@ export function RegisterPage() {
                     name="fullName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Full Name</FormLabel>
+                        <FormLabel>{t("auth.fullName")}</FormLabel>
                         <FormControl>
                           <Input
                             placeholder="John Smith"
@@ -148,7 +149,7 @@ export function RegisterPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email</FormLabel>
+                        <FormLabel>{t("auth.email")}</FormLabel>
                         <FormControl>
                           <Input
                             type="email"
@@ -167,12 +168,12 @@ export function RegisterPage() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel>{t("auth.password")}</FormLabel>
                         <FormControl>
                           <div className="relative">
                             <Input
                               type={showPassword ? "text" : "password"}
-                              placeholder="Create a strong password"
+                              placeholder="••••••••"
                               data-testid="input-password"
                               {...field}
                             />
@@ -201,11 +202,11 @@ export function RegisterPage() {
                     name="confirmPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
+                        <FormLabel>{t("auth.password")}</FormLabel>
                         <FormControl>
                           <Input
                             type="password"
-                            placeholder="Confirm your password"
+                            placeholder="••••••••"
                             data-testid="input-confirm-password"
                             {...field}
                           />
@@ -229,14 +230,7 @@ export function RegisterPage() {
                         </FormControl>
                         <div className="space-y-1 leading-none">
                           <FormLabel className="text-sm font-normal">
-                            I agree to the{" "}
-                            <Link href="/terms" className="text-primary hover:underline">
-                              Terms of Service
-                            </Link>{" "}
-                            and{" "}
-                            <Link href="/privacy" className="text-primary hover:underline">
-                              Privacy Policy
-                            </Link>
+                            {t("footer.terms")} & {t("footer.privacy")}
                           </FormLabel>
                           <FormMessage />
                         </div>
@@ -253,19 +247,19 @@ export function RegisterPage() {
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
+                        {t("common.loading")}
                       </>
                     ) : (
-                      "Create Account"
+                      t("auth.register")
                     )}
                   </Button>
                 </form>
               </Form>
 
               <div className="mt-6 text-center text-sm">
-                <span className="text-muted-foreground">Already have an account? </span>
+                <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
                 <Link href="/login" className="text-primary hover:underline font-medium">
-                  Sign in
+                  {t("auth.signIn")}
                 </Link>
               </div>
             </CardContent>
