@@ -31,6 +31,7 @@ import {
   Star,
   Sparkles,
   Upload,
+  Settings2,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -66,6 +67,7 @@ export function CreateListingPage() {
   const [newExchangeItem, setNewExchangeItem] = useState("");
   const [newItemPriority, setNewItemPriority] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [categoryDetails, setCategoryDetails] = useState<Record<string, string | number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<CreateListingForm>({
@@ -90,6 +92,7 @@ export function CreateListingPage() {
       const res = await apiRequest("POST", "/api/listings", {
         ...data,
         retailValue: data.retailValue,
+        categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
       });
       return res.json();
     },
@@ -415,6 +418,97 @@ export function CreateListingPage() {
               />
             </CardContent>
           </Card>
+
+          {(selectedCategories.includes("Fashion") || selectedCategories.includes("Modeling") || selectedCategories.includes("Hospitality") || selectedCategories.includes("SaaS")) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings2 className="h-5 w-5" />
+                  Category Details
+                </CardTitle>
+                <CardDescription>
+                  Provide additional details specific to your selected categories
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(selectedCategories.includes("Fashion") || selectedCategories.includes("Modeling")) && (
+                  <>
+                    <div className="space-y-2">
+                      <FormLabel>Number of Outfits</FormLabel>
+                      <Input
+                        type="number"
+                        value={categoryDetails.numberOfOutfits ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, numberOfOutfits: e.target.value ? Number(e.target.value) : "" }))}
+                        data-testid="input-number-of-outfits"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FormLabel>Shoot Duration</FormLabel>
+                      <Input
+                        value={categoryDetails.shootDuration ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, shootDuration: e.target.value }))}
+                        placeholder="e.g., 2 hours, Full day"
+                        data-testid="input-shoot-duration"
+                      />
+                    </div>
+                  </>
+                )}
+                {selectedCategories.includes("Hospitality") && (
+                  <>
+                    <div className="space-y-2">
+                      <FormLabel>Preferred Dates</FormLabel>
+                      <Input
+                        value={categoryDetails.dates ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, dates: e.target.value }))}
+                        placeholder="e.g., Dec 15-20, Flexible"
+                        data-testid="input-preferred-dates"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FormLabel>Room Type</FormLabel>
+                      <Input
+                        value={categoryDetails.roomType ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, roomType: e.target.value }))}
+                        placeholder="e.g., Deluxe Suite, Standard"
+                        data-testid="input-room-type"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FormLabel>Content Deliverables</FormLabel>
+                      <Input
+                        value={categoryDetails.contentDeliverables ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, contentDeliverables: e.target.value }))}
+                        placeholder="e.g., 3 Reels + 5 Stories"
+                        data-testid="input-content-deliverables"
+                      />
+                    </div>
+                  </>
+                )}
+                {selectedCategories.includes("SaaS") && (
+                  <>
+                    <div className="space-y-2">
+                      <FormLabel>License Duration</FormLabel>
+                      <Input
+                        value={categoryDetails.licenseDuration ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, licenseDuration: e.target.value }))}
+                        placeholder="e.g., 12 months, Annual"
+                        data-testid="input-license-duration"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <FormLabel>Features Included</FormLabel>
+                      <Input
+                        value={categoryDetails.featuresIncluded ?? ""}
+                        onChange={(e) => setCategoryDetails((prev) => ({ ...prev, featuresIncluded: e.target.value }))}
+                        placeholder="e.g., Pro plan, All features"
+                        data-testid="input-features-included"
+                      />
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>

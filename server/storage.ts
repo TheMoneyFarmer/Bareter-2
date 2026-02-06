@@ -8,6 +8,8 @@ import {
   ratings,
   notifications,
   followers,
+  referrals,
+  wishlists,
   type User,
   type InsertUser,
   type Listing,
@@ -22,6 +24,10 @@ import {
   type InsertNotification,
   type Follower,
   type InsertFollower,
+  type Referral,
+  type InsertReferral,
+  type Wishlist,
+  type InsertWishlist,
   type ListingWithUser,
   type DealWithUsers,
   type MessageWithSender,
@@ -77,6 +83,19 @@ export interface IStorage {
   unfollowUser(followerId: string, followingId: string): Promise<void>;
   getFollowerCount(userId: string): Promise<number>;
   getFollowingCount(userId: string): Promise<number>;
+
+  // Referrals
+  getReferralByUsers(referrerId: string, referredId: string): Promise<Referral | undefined>;
+  getReferralsByUser(userId: string): Promise<Referral[]>;
+  createReferral(referral: InsertReferral): Promise<Referral>;
+  updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined>;
+  getUserByReferralCode(code: string): Promise<User | undefined>;
+
+  // Wishlists
+  getWishlistByUser(userId: string): Promise<(Wishlist & { listing: ListingWithUser })[]>;
+  isWishlisted(userId: string, listingId: string): Promise<boolean>;
+  addToWishlist(userId: string, listingId: string): Promise<Wishlist>;
+  removeFromWishlist(userId: string, listingId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -386,6 +405,80 @@ export class DatabaseStorage implements IStorage {
       .from(followers)
       .where(eq(followers.followerId, userId));
     return Number(result[0]?.count ?? 0);
+  }
+
+  // Referrals
+  async getReferralByUsers(referrerId: string, referredId: string): Promise<Referral | undefined> {
+    const [referral] = await db
+      .select()
+      .from(referrals)
+      .where(and(eq(referrals.referrerId, referrerId), eq(referrals.referredId, referredId)));
+    return referral;
+  }
+
+  async getReferralsByUser(userId: string): Promise<Referral[]> {
+    return db
+      .select()
+      .from(referrals)
+      .where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)))
+      .orderBy(desc(referrals.createdAt));
+  }
+
+  async createReferral(insertReferral: InsertReferral): Promise<Referral> {
+    const [referral] = await db.insert(referrals).values(insertReferral).returning();
+    return referral;
+  }
+
+  async updateReferral(id: string, data: Partial<Referral>): Promise<Referral | undefined> {
+    const [referral] = await db
+      .update(referrals)
+      .set(data)
+      .where(eq(referrals.id, id))
+      .returning();
+    return referral;
+  }
+
+  async getUserByReferralCode(code: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.referralCode, code));
+    return user;
+  }
+
+  // Wishlists
+  async getWishlistByUser(userId: string): Promise<(Wishlist & { listing: ListingWithUser })[]> {
+    const result = await db
+      .select()
+      .from(wishlists)
+      .innerJoin(listings, eq(wishlists.listingId, listings.id))
+      .innerJoin(users, eq(listings.userId, users.id))
+      .where(eq(wishlists.userId, userId))
+      .orderBy(desc(wishlists.createdAt));
+
+    return result.map(r => ({
+      ...r.wishlists,
+      listing: { ...r.listings, user: r.users },
+    }));
+  }
+
+  async isWishlisted(userId: string, listingId: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(wishlists)
+      .where(and(eq(wishlists.userId, userId), eq(wishlists.listingId, listingId)));
+    return !!existing;
+  }
+
+  async addToWishlist(userId: string, listingId: string): Promise<Wishlist> {
+    const [wishlist] = await db
+      .insert(wishlists)
+      .values({ userId, listingId })
+      .returning();
+    return wishlist;
+  }
+
+  async removeFromWishlist(userId: string, listingId: string): Promise<void> {
+    await db
+      .delete(wishlists)
+      .where(and(eq(wishlists.userId, userId), eq(wishlists.listingId, listingId)));
   }
 }
 

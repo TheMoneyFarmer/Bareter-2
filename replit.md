@@ -68,6 +68,22 @@ Preferred communication style: Simple, everyday language.
 - **Ratings**: Post-completion reviews
 - **Notifications**: In-app notification system
 - **Followers**: User following system for marketplace sellers
+- **Referrals**: Referral/invite system with `referralCode` and `referredBy` on users, `referrals` table tracking referrer/referred pairs and fee waivers
+  - **Referral Code Format**: `MARGIN-XXXX` auto-generated with user ID prefix + random characters
+  - **Fee Waiver**: Both referrer and referred user get 1 free deal fee waived
+  - **Routes**: `/referrals` page with stats, code display, copy/WhatsApp share, and apply code form
+  - **API**: `/api/referral/code`, `/api/referral/stats`, `/api/referral/apply`, `/api/referral/check-waiver`
+- **Wishlists**: Save/bookmark listings with heart icon toggle
+  - **Table**: `wishlists` with userId + listingId pairs
+  - **Routes**: `/saved` page showing all wishlisted listings with remove functionality
+  - **API**: `/api/wishlist`, `/api/wishlist/check/:listingId`, `POST/DELETE /api/wishlist/:listingId`
+  - **UI**: Heart icon on browse page cards (filled red when saved, gray outline when not)
+- **Category Templates**: Dynamic form fields in create-listing based on category selection
+  - **Fashion/Modeling**: Number of outfits, shoot duration
+  - **Hospitality**: Dates, room type, content deliverables
+  - **SaaS**: License duration, features included
+  - **Storage**: `categoryDetails` jsonb field on listings table
+- **WhatsApp Support**: Floating green button (bottom-right, z-50) opens chat with +971523133512
 
 ### Sample Data
 - **Demo Endpoint**: `/api/demo/sample-deals` (POST, requires auth) creates sample barter scenarios

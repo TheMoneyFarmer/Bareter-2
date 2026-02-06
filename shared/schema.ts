@@ -143,6 +143,10 @@ export const users = pgTable("users", {
   // Display Settings
   timezone: text("timezone").default("Asia/Dubai"),
   currency: text("currency").default("AED"),
+
+  // Referral System
+  referralCode: text("referral_code").unique(),
+  referredBy: varchar("referred_by", { length: 36 }),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -172,6 +176,7 @@ export const listings = pgTable("listings", {
   wantedCategories: jsonb("wanted_categories").$type<string[]>().default([]),
   exchangeItems: jsonb("exchange_items").$type<ExchangeItem[]>().default([]),
   openToOffers: boolean("open_to_offers").default(true),
+  categoryDetails: jsonb("category_details").$type<Record<string, string | number>>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -244,6 +249,38 @@ export const followers = pgTable("followers", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Referrals table
+export const referrals = pgTable("referrals", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id", { length: 36 }).notNull().references(() => users.id),
+  referredId: varchar("referred_id", { length: 36 }).notNull().references(() => users.id),
+  referrerFeeWaived: boolean("referrer_fee_waived").default(false),
+  referredFeeWaived: boolean("referred_fee_waived").default(false),
+  referrerDealId: varchar("referrer_deal_id", { length: 36 }).references(() => deals.id),
+  referredDealId: varchar("referred_deal_id", { length: 36 }).references(() => deals.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Wishlists table
+export const wishlists = pgTable("wishlists", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Category template details type
+export type CategoryDetails = {
+  numberOfOutfits?: number;
+  shootDuration?: string;
+  dates?: string;
+  roomType?: string;
+  contentDeliverables?: string;
+  licenseDuration?: string;
+  featuresIncluded?: string;
+  [key: string]: string | number | undefined;
+};
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -294,6 +331,20 @@ export const insertFollowerSchema = createInsertSchema(followers).omit({
   createdAt: true,
 });
 
+export const insertReferralSchema = createInsertSchema(referrals).omit({
+  id: true,
+  createdAt: true,
+  referrerFeeWaived: true,
+  referredFeeWaived: true,
+  referrerDealId: true,
+  referredDealId: true,
+});
+
+export const insertWishlistSchema = createInsertSchema(wishlists).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -327,6 +378,12 @@ export type Notification = typeof notifications.$inferSelect;
 
 export type InsertFollower = z.infer<typeof insertFollowerSchema>;
 export type Follower = typeof followers.$inferSelect;
+
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type Referral = typeof referrals.$inferSelect;
+
+export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
+export type Wishlist = typeof wishlists.$inferSelect;
 
 // Extended types with relations
 export type ListingWithUser = Listing & { user: User };

@@ -1242,6 +1242,139 @@ export async function registerRoutes(
     }
   });
 
+  // Referral routes
+  app.get("/api/referral/code", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      
+      if (!user.referralCode) {
+        const code = "MARGIN-" + user.id.substring(0, 4).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const updated = await storage.updateUser(user.id, { referralCode: code });
+        return res.json({ referralCode: updated?.referralCode });
+      }
+      
+      res.json({ referralCode: user.referralCode });
+    } catch (error) {
+      console.error("Get referral code error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referral/stats", requireAuth, async (req, res) => {
+    try {
+      const referralsList = await storage.getReferralsByUser(req.session.userId!);
+      const sent = referralsList.filter(r => r.referrerId === req.session.userId);
+      const feeWaiversEarned = sent.filter(r => r.referrerFeeWaived).length;
+      const feeWaiversPending = sent.filter(r => !r.referrerFeeWaived).length;
+      
+      res.json({
+        totalReferrals: sent.length,
+        feeWaiversEarned,
+        feeWaiversPending,
+        referrals: referralsList,
+      });
+    } catch (error) {
+      console.error("Get referral stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/referral/apply", requireAuth, async (req, res) => {
+    try {
+      const { referralCode } = req.body;
+      if (!referralCode) return res.status(400).json({ message: "Referral code required" });
+      
+      const referrer = await storage.getUserByReferralCode(referralCode);
+      if (!referrer) return res.status(404).json({ message: "Invalid referral code" });
+      if (referrer.id === req.session.userId) return res.status(400).json({ message: "Cannot use your own referral code" });
+      
+      const user = await storage.getUser(req.session.userId!);
+      if (user?.referredBy) return res.status(400).json({ message: "You have already used a referral code" });
+      
+      const existing = await storage.getReferralByUsers(referrer.id, req.session.userId!);
+      if (existing) return res.status(400).json({ message: "Referral already exists" });
+      
+      await storage.updateUser(req.session.userId!, { referredBy: referrer.id });
+      const referral = await storage.createReferral({ referrerId: referrer.id, referredId: req.session.userId! });
+      
+      await storage.createNotification({
+        userId: referrer.id,
+        type: "referral",
+        title: "New Referral",
+        message: `${user?.fullName} joined using your referral code! You both get 1 free deal fee waived.`,
+      });
+      
+      res.json({ message: "Referral applied! Both you and the referrer get 1 free deal fee waived.", referral });
+    } catch (error) {
+      console.error("Apply referral error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referral/check-waiver", requireAuth, async (req, res) => {
+    try {
+      const referralsList = await storage.getReferralsByUser(req.session.userId!);
+      const hasWaiver = referralsList.some(r => {
+        if (r.referrerId === req.session.userId && !r.referrerFeeWaived) return true;
+        if (r.referredId === req.session.userId && !r.referredFeeWaived) return true;
+        return false;
+      });
+      res.json({ hasWaiver, waiverCount: referralsList.filter(r => {
+        if (r.referrerId === req.session.userId && !r.referrerFeeWaived) return true;
+        if (r.referredId === req.session.userId && !r.referredFeeWaived) return true;
+        return false;
+      }).length });
+    } catch (error) {
+      console.error("Check waiver error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Wishlist routes
+  app.get("/api/wishlist", requireAuth, async (req, res) => {
+    try {
+      const items = await storage.getWishlistByUser(req.session.userId!);
+      res.json(items);
+    } catch (error) {
+      console.error("Get wishlist error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/wishlist/check/:listingId", requireAuth, async (req, res) => {
+    try {
+      const isWishlisted = await storage.isWishlisted(req.session.userId!, req.params.listingId);
+      res.json({ isWishlisted });
+    } catch (error) {
+      console.error("Check wishlist error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/wishlist/:listingId", requireAuth, async (req, res) => {
+    try {
+      const already = await storage.isWishlisted(req.session.userId!, req.params.listingId);
+      if (already) return res.status(400).json({ message: "Already in wishlist" });
+      
+      const wishlist = await storage.addToWishlist(req.session.userId!, req.params.listingId);
+      res.json(wishlist);
+    } catch (error) {
+      console.error("Add to wishlist error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/wishlist/:listingId", requireAuth, async (req, res) => {
+    try {
+      await storage.removeFromWishlist(req.session.userId!, req.params.listingId);
+      res.json({ message: "Removed from wishlist" });
+    } catch (error) {
+      console.error("Remove from wishlist error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Admin routes
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {

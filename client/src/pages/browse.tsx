@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { Slider } from "@/components/ui/slider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CATEGORIES, LOCATIONS, type ListingWithUser } from "@shared/schema";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Search,
   Filter,
@@ -26,10 +29,14 @@ import {
   X,
   ArrowLeftRight,
   Star,
+  Heart,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
 
 export function BrowsePage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -37,9 +44,33 @@ export function BrowsePage() {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [valueRange, setValueRange] = useState([0, 100000]);
   const [sortBy, setSortBy] = useState<string>("newest");
+  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
 
   const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings"],
+  });
+
+  const { data: wishlistItems } = useQuery<Array<{ listingId: string }>>({
+    queryKey: ["/api/wishlist"],
+    enabled: !!user,
+  });
+
+  const currentWishlistedIds = new Set(wishlistItems?.map(w => w.listingId) || []);
+
+  const toggleWishlistMutation = useMutation({
+    mutationFn: async ({ listingId, isWishlisted }: { listingId: string; isWishlisted: boolean }) => {
+      if (isWishlisted) {
+        await apiRequest("DELETE", `/api/wishlist/${listingId}`);
+      } else {
+        await apiRequest("POST", `/api/wishlist/${listingId}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const filteredListings = listings?.filter((listing) => {
@@ -330,7 +361,9 @@ export function BrowsePage() {
             </Card>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedListings.map((listing) => (
+              {sortedListings.map((listing) => {
+                const isWishlisted = currentWishlistedIds.has(listing.id);
+                return (
                 <Link key={listing.id} href={`/listings/${listing.id}`}>
                   <Card className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid={`card-listing-${listing.id}`}>
                     <CardContent className="p-0">
@@ -351,6 +384,19 @@ export function BrowsePage() {
                               <><ShoppingCart className="h-3 w-3 mr-1" /> Request</>
                             )}
                           </Badge>
+                          {user && (
+                            <button
+                              className="absolute top-3 right-3 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleWishlistMutation.mutate({ listingId: listing.id, isWishlisted });
+                              }}
+                              data-testid={`button-wishlist-${listing.id}`}
+                            >
+                              <Heart className={`h-4 w-4 ${isWishlisted ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="relative h-48 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
@@ -365,6 +411,19 @@ export function BrowsePage() {
                           >
                             {listing.type === "offer" ? "Offer" : "Request"}
                           </Badge>
+                          {user && (
+                            <button
+                              className="absolute top-3 right-3 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleWishlistMutation.mutate({ listingId: listing.id, isWishlisted });
+                              }}
+                              data-testid={`button-wishlist-${listing.id}`}
+                            >
+                              <Heart className={`h-4 w-4 ${isWishlisted ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
+                            </button>
+                          )}
                         </div>
                       )}
                       <div className="p-4">
@@ -450,7 +509,8 @@ export function BrowsePage() {
                     </CardFooter>
                   </Card>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

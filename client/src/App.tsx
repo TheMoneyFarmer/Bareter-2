@@ -29,6 +29,9 @@ import { SettingsPage } from "@/pages/settings";
 import DashboardPage from "@/pages/dashboard";
 import { BrowsePublicPage } from "@/pages/browse-public";
 import { UserProfilePage } from "@/pages/user-profile";
+import { SavedListingsPage } from "@/pages/saved-listings";
+import { ReferralsPage } from "@/pages/referrals";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -55,6 +58,8 @@ function Router() {
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/browse-public" component={BrowsePublicPage} />
       <Route path="/users/:id" component={UserProfilePage} />
+      <Route path="/saved" component={SavedListingsPage} />
+      <Route path="/referrals" component={ReferralsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -75,6 +80,7 @@ function App() {
                 <Footer />
               </div>
               <Toaster />
+              <WhatsAppButton />
             </TooltipProvider>
           </AuthProvider>
         </I18nProvider>
