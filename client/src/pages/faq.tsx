@@ -17,7 +17,7 @@ const faqs = [
       },
       {
         q: "Who can use Margin?",
-        a: "Margin is designed for businesses and professionals in the UAE and GCC region. Whether you're a hotel, a marketing agency, a freelance designer, or any other business, you can join and start trading.",
+        a: "Margin is designed for businesses and professionals in the UAE and GCC region. Whether you're a hotel, a marketing agency, a freelance designer, or any other business, you can join and start bartering.",
       },
       {
         q: "Is Margin free to use?",
@@ -25,12 +25,12 @@ const faqs = [
       },
       {
         q: "How is Margin different from other marketplaces?",
-        a: "Unlike traditional marketplaces, Margin focuses on barter exchanges rather than cash transactions. We provide verified business profiles, legally binding contracts, VAT compliance tools, and a structured deal flow specifically designed for B2B barter trading.",
+        a: "Unlike traditional marketplaces, Margin focuses on barter exchanges rather than cash transactions. We provide verified business profiles, legally binding contracts, VAT compliance tools, and a structured deal flow specifically designed for B2B bartering.",
       },
     ],
   },
   {
-    category: "Trading",
+    category: "Bartering",
     questions: [
       {
         q: "How do I propose a trade?",
@@ -113,7 +113,7 @@ export function FAQPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Frequently Asked Questions</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Everything you need to know about trading on Margin
+          Everything you need to know about bartering on Margin
         </p>
       </div>
 

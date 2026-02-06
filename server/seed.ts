@@ -246,7 +246,7 @@ export async function seedDatabase() {
       toUserId: sampleUsers[1].id, // Sarah
       score: 5,
       review:
-        "Excellent partner to work with! The hotel experience was amazing and everything was delivered as promised. Highly recommend trading with Sarah.",
+        "Excellent partner to work with! The hotel experience was amazing and everything was delivered as promised. Highly recommend bartering with Sarah.",
     },
     {
       dealId: sampleDeals[0].id,

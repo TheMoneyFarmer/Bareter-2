@@ -56,7 +56,7 @@ export function RegisterPage() {
       await register(data.email, data.password, data.fullName);
       toast({
         title: "Account created!",
-        description: "Welcome to Margin. Complete your profile to start trading.",
+        description: "Welcome to Margin. Complete your profile to start bartering.",
       });
       navigate("/profile");
     } catch (error: any) {
@@ -82,7 +82,7 @@ export function RegisterPage() {
               <span className="text-2xl font-bold">Margin</span>
             </Link>
             <h1 className="text-3xl font-bold mb-3">
-              Start Trading Value,<br />Not Cash
+              Start Bartering Value,<br />Not Cash
             </h1>
             <p className="text-muted-foreground text-lg">
               Join UAE's premier barter marketplace and connect with verified businesses
@@ -111,7 +111,7 @@ export function RegisterPage() {
             </Link>
             <h1 className="text-2xl font-bold text-center">Create your account</h1>
             <p className="text-muted-foreground text-center mt-1">
-              Join Margin and start trading today
+              Join Margin and start bartering today
             </p>
           </div>
 

@@ -82,7 +82,7 @@ export function RatingModal({
         <DialogHeader>
           <DialogTitle>Rate Your Experience</DialogTitle>
           <DialogDescription>
-            How was your trading experience with {toUserName}?
+            How was your bartering experience with {toUserName}?
           </DialogDescription>
         </DialogHeader>
 

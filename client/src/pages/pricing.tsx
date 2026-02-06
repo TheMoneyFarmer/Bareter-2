@@ -64,8 +64,8 @@ export function PricingPage() {
               </Tooltip>
             </div>
             <Link href="/register">
-              <Button className="w-full" size="lg" data-testid="button-start-trading">
-                Start Trading Free
+              <Button className="w-full" size="lg" data-testid="button-start-bartering">
+                Start Bartering Free
               </Button>
             </Link>
           </CardContent>
@@ -134,7 +134,7 @@ export function PricingPage() {
           <div>
             <h3 className="font-semibold mb-2">Can I split the fee?</h3>
             <p className="text-sm text-muted-foreground">
-              Yes, you can agree with your trading partner to split the fee or have the provider pay instead.
+              Yes, you can agree with your bartering partner to split the fee or have the provider pay instead.
             </p>
           </div>
           <div>

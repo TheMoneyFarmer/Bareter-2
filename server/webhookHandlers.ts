@@ -31,14 +31,14 @@ export class WebhookHandlers {
             userId: deal.seekerId,
             type: 'deal_update',
             title: 'Deal Completed',
-            message: 'Payment received! Your deal is now complete. You can now rate your trading partner.',
+            message: 'Payment received! Your deal is now complete. You can now rate your bartering partner.',
             relatedDealId: dealId,
           });
           await storage.createNotification({
             userId: deal.providerId,
             type: 'deal_update',
             title: 'Deal Completed',
-            message: 'Payment received! Your deal is now complete. You can now rate your trading partner.',
+            message: 'Payment received! Your deal is now complete. You can now rate your bartering partner.',
             relatedDealId: dealId,
           });
         }

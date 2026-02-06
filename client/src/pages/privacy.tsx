@@ -54,7 +54,7 @@ export function PrivacyPage() {
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>Listings you create (offers and requests)</li>
             <li>Trade proposals and deal terms</li>
-            <li>Chat messages with trading partners</li>
+            <li>Chat messages with bartering partners</li>
             <li>Delivery proof documentation</li>
             <li>Ratings and reviews</li>
           </ul>
@@ -86,7 +86,7 @@ export function PrivacyPage() {
           
           <h3 className="text-lg font-medium mt-6 mb-3">With Other Users</h3>
           <p className="text-muted-foreground leading-relaxed">
-            Your public profile information (name, business name, location, what you offer/need, portfolio, ratings) is visible to other users. When you engage in a trade, your contact information may be shared with your trading partner.
+            Your public profile information (name, business name, location, what you offer/need, portfolio, ratings) is visible to other users. When you engage in a trade, your contact information may be shared with your bartering partner.
           </p>
 
           <h3 className="text-lg font-medium mt-6 mb-3">With Service Providers</h3>

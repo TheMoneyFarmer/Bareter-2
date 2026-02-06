@@ -149,7 +149,7 @@ function VerificationSection({ user }: { user: User }) {
           Identity Verification
         </CardTitle>
         <CardDescription>
-          Verify your identity to start trading on Margin
+          Verify your identity to start bartering on Margin
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -160,7 +160,7 @@ function VerificationSection({ user }: { user: User }) {
           <div className="flex-1">
             <h4 className="font-medium">Status: {statusConfig.text}</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              {status === "NOT_STARTED" && "Complete identity verification to start trading."}
+              {status === "NOT_STARTED" && "Complete identity verification to start bartering."}
               {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
               {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
               {status === "APPROVED" && "You are verified and can now trade on Margin!"}
@@ -251,11 +251,11 @@ function VerificationSection({ user }: { user: User }) {
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Mandatory for all trading activities
+              Mandatory for all bartering activities
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Builds trust with trading partners
+              Builds trust with bartering partners
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
@@ -449,7 +449,7 @@ export function ProfilePage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Complete your profile</AlertTitle>
           <AlertDescription>
-            Add your bio, location, and business details to start trading. Complete profiles get more trade proposals.
+            Add your bio, location, and business details to start bartering. Complete profiles get more trade proposals.
           </AlertDescription>
         </Alert>
       )}

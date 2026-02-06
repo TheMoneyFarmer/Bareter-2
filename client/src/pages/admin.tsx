@@ -913,7 +913,7 @@ export function AdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Verification Required</p>
-                <p className="text-sm text-muted-foreground">KYC/KYB required for trading</p>
+                <p className="text-sm text-muted-foreground">KYC/KYB required for bartering</p>
               </div>
               <Badge>Enabled</Badge>
             </div>

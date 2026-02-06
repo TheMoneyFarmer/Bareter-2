@@ -219,7 +219,7 @@ export function DealDetailPage() {
             </Badge>
           </div>
           <p className="text-muted-foreground">
-            Trading with {otherParty?.fullName}
+            Bartering with {otherParty?.fullName}
           </p>
         </div>
 
@@ -418,7 +418,7 @@ export function DealDetailPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Trading With</CardTitle>
+              <CardTitle className="text-lg">Bartering With</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3">

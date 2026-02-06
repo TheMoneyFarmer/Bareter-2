@@ -19,7 +19,7 @@ import {
 const categories = [
   {
     title: "Getting Started",
-    description: "Learn the basics of trading on Margin",
+    description: "Learn the basics of bartering on Margin",
     icon: UserPlus,
     articles: [
       "How to create your account",
@@ -41,7 +41,7 @@ const categories = [
   },
   {
     title: "Chat & Communication",
-    description: "Stay connected with trading partners",
+    description: "Stay connected with bartering partners",
     icon: MessageSquare,
     articles: [
       "Using the deal chat",
@@ -63,7 +63,7 @@ const categories = [
   },
   {
     title: "Trust & Safety",
-    description: "Stay safe while trading",
+    description: "Stay safe while bartering",
     icon: Shield,
     articles: [
       "Verified business badges",

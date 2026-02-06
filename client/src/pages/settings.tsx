@@ -297,9 +297,9 @@ export function SettingsPage() {
             <Eye className="h-4 w-4 mr-2" />
             Privacy
           </TabsTrigger>
-          <TabsTrigger value="trading" data-testid="tab-trading">
+          <TabsTrigger value="trading" data-testid="tab-bartering">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Trading
+            Bartering
           </TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-security">
             <Lock className="h-4 w-4 mr-2" />
@@ -729,8 +729,8 @@ export function SettingsPage() {
         <TabsContent value="trading">
           <Card>
             <CardHeader>
-              <CardTitle>Trading Preferences</CardTitle>
-              <CardDescription>Customize your trading experience and preferences</CardDescription>
+              <CardTitle>Bartering Preferences</CardTitle>
+              <CardDescription>Customize your bartering experience and preferences</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...tradingForm}>
@@ -738,7 +738,7 @@ export function SettingsPage() {
                   <div className="space-y-4">
                     <Label>Preferred Categories</Label>
                     <p className="text-sm text-muted-foreground">
-                      Select categories you're most interested in trading
+                      Select categories you're most interested in bartering
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {CATEGORIES.map(category => (
@@ -762,7 +762,7 @@ export function SettingsPage() {
                     name="tradingRadius"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Trading Radius</FormLabel>
+                        <FormLabel>Bartering Radius</FormLabel>
                         <Select 
                           onValueChange={(v) => field.onChange(parseInt(v))} 
                           value={field.value.toString()}
@@ -856,12 +856,12 @@ export function SettingsPage() {
                   <Button 
                     type="submit"
                     disabled={updateSettingsMutation.isPending}
-                    data-testid="button-save-trading"
+                    data-testid="button-save-bartering"
                   >
                     {updateSettingsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    Save Trading Preferences
+                    Save Bartering Preferences
                   </Button>
                 </form>
               </Form>

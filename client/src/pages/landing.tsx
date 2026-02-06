@@ -88,7 +88,7 @@ export function LandingPage() {
             <div className="flex flex-col sm:flex-row gap-4">
               <Link href={user ? "/browse" : "/register"}>
                 <Button size="lg" className="gap-2 px-8" data-testid="button-get-started">
-                  {user ? "Browse Listings" : "Start Trading Free"}
+                  {user ? "Browse Listings" : "Start Bartering Free"}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -150,7 +150,7 @@ export function LandingPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">How Margin Works</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Simple, secure, and transparent barter trading in four easy steps
+              Simple, secure, and transparent bartering in four easy steps
             </p>
           </div>
 
@@ -231,7 +231,7 @@ export function LandingPage() {
                     <h4 className="font-semibold mb-1">Ratings & Reputation</h4>
                     <p className="text-sm text-muted-foreground">
                       Build your reputation through verified reviews. 
-                      Higher ratings mean better trading opportunities.
+                      Higher ratings mean better bartering opportunities.
                     </p>
                   </div>
                 </div>
@@ -246,9 +246,9 @@ export function LandingPage() {
                       <Handshake className="h-10 w-10 text-primary-foreground" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold mb-2">Ready to Start Trading?</h3>
+                      <h3 className="text-2xl font-bold mb-2">Ready to Start Bartering?</h3>
                       <p className="text-muted-foreground mb-6">
-                        Join thousands of UAE businesses already trading value for value
+                        Join thousands of UAE businesses already bartering value for value
                       </p>
                       <Link href={user ? "/browse" : "/register"}>
                         <Button size="lg" className="w-full gap-2" data-testid="button-cta-bottom">

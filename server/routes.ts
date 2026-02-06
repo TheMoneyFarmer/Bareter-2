@@ -1201,7 +1201,7 @@ export async function registerRoutes(
           userId: user.id,
           type: "system",
           title: "Verification Complete",
-          message: "Your identity has been verified. You can now start trading!",
+          message: "Your identity has been verified. You can now start bartering!",
         });
       } else if (status === "DECLINED") {
         updateData.isVerified = false;
@@ -1880,7 +1880,7 @@ export async function registerRoutes(
           email: `marketing_agency_${Date.now()}@demo.margin.ae`,
           password: hashedPassword,
           fullName: "Ryan Thompson",
-          bio: "Founder of Spark Digital Marketing, a performance-driven digital agency specializing in healthcare, wellness, and lifestyle brands. We manage AED 2M+ in annual ad spend across Google, Meta, and TikTok. Our data-driven approach has helped 50+ businesses achieve 3x+ ROAS. Open to trading our services for health, wellness, and lifestyle experiences.",
+          bio: "Founder of Spark Digital Marketing, a performance-driven digital agency specializing in healthcare, wellness, and lifestyle brands. We manage AED 2M+ in annual ad spend across Google, Meta, and TikTok. Our data-driven approach has helped 50+ businesses achieve 3x+ ROAS. Open to bartering our services for health, wellness, and lifestyle experiences.",
           location: "Dubai",
           isVerified: true,
           kycStatus: "APPROVED",

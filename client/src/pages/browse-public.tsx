@@ -252,7 +252,7 @@ export function BrowsePublicPage() {
           Browse the Marketplace
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto mb-6">
-          Discover what UAE businesses are offering and looking for. Sign up to start trading.
+          Discover what UAE businesses are offering and looking for. Sign up to start bartering.
         </p>
         <div className="relative max-w-xl mx-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -273,7 +273,7 @@ export function BrowsePublicPage() {
         <Link href="/register">
           <Button className="gap-2" data-testid="button-join-to-trade">
             <Sparkles className="h-4 w-4" />
-            Join to Start Trading
+            Join to Start Bartering
           </Button>
         </Link>
       </div>
@@ -398,7 +398,7 @@ export function BrowsePublicPage() {
       <div className="mt-12 text-center">
         <Card>
           <CardContent className="py-10">
-            <h2 className="text-2xl font-bold mb-3">Ready to Start Trading?</h2>
+            <h2 className="text-2xl font-bold mb-3">Ready to Start Bartering?</h2>
             <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
               Create your free account to browse all listings, contact sellers, and propose trades with verified UAE businesses.
             </p>

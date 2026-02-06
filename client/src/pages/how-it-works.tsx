@@ -48,7 +48,7 @@ const steps = [
   {
     step: 6,
     title: "Complete & Review",
-    description: "Deliver your goods/services, upload proof, and mark complete. Rate your trading partner to build community trust.",
+    description: "Deliver your goods/services, upload proof, and mark complete. Rate your bartering partner to build community trust.",
     icon: CheckCircle,
   },
 ];
@@ -129,9 +129,9 @@ export function HowItWorksPage() {
       </div>
 
       <div className="text-center bg-primary/5 rounded-2xl p-8">
-        <h2 className="text-2xl font-bold mb-4">Ready to Start Trading?</h2>
+        <h2 className="text-2xl font-bold mb-4">Ready to Start Bartering?</h2>
         <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-          Join hundreds of UAE businesses already trading on Margin. Create your free account today.
+          Join hundreds of UAE businesses already bartering on Margin. Create your free account today.
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
           <Link href="/register">
