@@ -60,6 +60,10 @@ Preferred communication style: Simple, everyday language.
   - **Exchange Preferences**: `wantedCategories` (array), `exchangeItems` (array with priority flag), `openToOffers` (boolean)
   - Visual priority system with stars for priority items
 - **Deals**: Trade proposals with state machine (draft → proposed → accepted → in_progress → completed)
+  - **Deliverables Checklist**: Auto-populated checklist based on listing categories (stored as jsonb array of `{label, checked}`)
+  - **Deliverables Mapping**: `shared/deliverables.ts` defines per-category deliverable templates for all 18 categories
+  - Checklist shown in Propose Trade dialog (listing-detail.tsx) with toggleable checkboxes
+  - Checked items saved with deal and displayed on deal detail page
 - **Messages**: Real-time chat messages per deal
 - **Ratings**: Post-completion reviews
 - **Notifications**: In-app notification system

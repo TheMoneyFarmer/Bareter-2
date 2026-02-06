@@ -306,10 +306,30 @@ export function DealDetailPage() {
                 </div>
               )}
 
-              {deal.deliverables && (
-                <div className="mt-4">
-                  <h4 className="font-medium mb-2">Deliverables</h4>
-                  <p className="text-sm text-muted-foreground">{deal.deliverables}</p>
+              {deal.deliverables && Array.isArray(deal.deliverables) && deal.deliverables.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Deliverables Checklist
+                  </h4>
+                  <div className="space-y-2">
+                    {(deal.deliverables as Array<{label: string; checked: boolean}>).map((item, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm">
+                        {item.checked ? (
+                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        ) : (
+                          <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
+                        )}
+                        <span className={item.checked ? "text-foreground" : "text-muted-foreground line-through"}>
+                          {item.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    {(deal.deliverables as Array<{label: string; checked: boolean}>).filter(d => d.checked).length} of{" "}
+                    {(deal.deliverables as Array<{label: string; checked: boolean}>).length} deliverables agreed
+                  </p>
                 </div>
               )}
             </CardContent>

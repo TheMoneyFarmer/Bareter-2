@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { DeliverableItem } from "./deliverables";
 
 // Categories for listings
 export const CATEGORIES = [
@@ -189,7 +190,7 @@ export const deals = pgTable("deals", {
   providerValue: decimal("provider_value", { precision: 12, scale: 2 }).notNull(),
   state: text("state").notNull().default("draft"),
   timeline: text("timeline"),
-  deliverables: text("deliverables"),
+  deliverables: jsonb("deliverables").$type<DeliverableItem[]>(),
   penalties: text("penalties"),
   seekerProofUrl: text("seeker_proof_url"),
   providerProofUrl: text("provider_proof_url"),

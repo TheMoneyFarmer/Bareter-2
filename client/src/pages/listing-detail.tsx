@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -42,8 +44,10 @@ import {
   ArrowLeftRight,
   Sparkles,
   CheckCircle,
+  ClipboardList,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
+import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deliverables";
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +58,7 @@ export function ListingDetailPage() {
   const [proposeOpen, setProposeOpen] = useState(false);
   const [counterOffer, setCounterOffer] = useState("");
   const [counterValue, setCounterValue] = useState("");
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
     queryKey: ["/api/listings", id],
@@ -64,16 +69,31 @@ export function ListingDetailPage() {
     enabled: !!user,
   });
 
+  useEffect(() => {
+    if (proposeOpen && listing?.categories) {
+      const items = getDeliverablesForCategories(listing.categories as string[]);
+      setDeliverables(items);
+    }
+  }, [proposeOpen, listing]);
+
+  const toggleDeliverable = (index: number) => {
+    setDeliverables(prev => prev.map((item, i) =>
+      i === index ? { ...item, checked: !item.checked } : item
+    ));
+  };
+
   const proposeTradeMutation = useMutation({
     mutationFn: async (data: {
       providerListingId: string;
       seekerOffer: string;
       seekerValue: string;
+      deliverables: DeliverableItem[];
     }) => {
       const res = await apiRequest("POST", "/api/deals", {
         providerListingId: data.providerListingId,
         seekerOffer: data.seekerOffer,
         seekerValue: data.seekerValue,
+        deliverables: data.deliverables,
       });
       return res.json();
     },
@@ -100,6 +120,7 @@ export function ListingDetailPage() {
       providerListingId: listing.id,
       seekerOffer: counterOffer,
       seekerValue: counterValue,
+      deliverables,
     });
   };
 
@@ -372,52 +393,92 @@ export function ListingDetailPage() {
                   Propose Trade
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle>Propose a Trade</DialogTitle>
                   <DialogDescription>
                     Tell {listing.user?.fullName} what you can offer in exchange
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-xs text-muted-foreground mb-1">They are offering:</p>
-                    <p className="font-medium">{listing.title}</p>
-                    <p className="text-sm text-primary font-bold">
-                      AED {parseFloat(listing.retailValue as string).toLocaleString()}
-                    </p>
-                  </div>
+                <ScrollArea className="flex-1 pr-4">
+                  <div className="space-y-4 py-4">
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">They are offering:</p>
+                      <p className="font-medium">{listing.title}</p>
+                      <p className="text-sm text-primary font-bold">
+                        AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                      </p>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="counter-offer">Your Counter-Offer</Label>
-                    <Textarea
-                      id="counter-offer"
-                      placeholder="Describe what you can offer in return..."
-                      value={counterOffer}
-                      onChange={(e) => setCounterOffer(e.target.value)}
-                      className="min-h-[100px] resize-none"
-                      data-testid="textarea-counter-offer"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="counter-value">Estimated Value (AED)</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                        AED
-                      </span>
-                      <Input
-                        id="counter-value"
-                        type="number"
-                        placeholder="0.00"
-                        value={counterValue}
-                        onChange={(e) => setCounterValue(e.target.value)}
-                        className="pl-14"
-                        data-testid="input-counter-value"
+                    <div className="space-y-2">
+                      <Label htmlFor="counter-offer">Your Counter-Offer</Label>
+                      <Textarea
+                        id="counter-offer"
+                        placeholder="Describe what you can offer in return..."
+                        value={counterOffer}
+                        onChange={(e) => setCounterOffer(e.target.value)}
+                        className="min-h-[100px] resize-none"
+                        data-testid="textarea-counter-offer"
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="counter-value">Estimated Value (AED)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          AED
+                        </span>
+                        <Input
+                          id="counter-value"
+                          type="number"
+                          placeholder="0.00"
+                          value={counterValue}
+                          onChange={(e) => setCounterValue(e.target.value)}
+                          className="pl-14"
+                          data-testid="input-counter-value"
+                        />
+                      </div>
+                    </div>
+
+                    {deliverables.length > 0 && (
+                      <div className="space-y-3" data-testid="deliverables-checklist">
+                        <Separator />
+                        <div>
+                          <Label className="flex items-center gap-2 mb-1">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            Deliverables Checklist
+                          </Label>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Suggested deliverables based on the listing category. Check or uncheck items to customize.
+                          </p>
+                        </div>
+                        <div className="space-y-2.5 rounded-lg border p-3">
+                          {deliverables.map((item, index) => (
+                            <div key={index} className="flex items-start gap-2.5">
+                              <Checkbox
+                                id={`deliverable-${index}`}
+                                checked={item.checked}
+                                onCheckedChange={() => toggleDeliverable(index)}
+                                data-testid={`checkbox-deliverable-${index}`}
+                              />
+                              <label
+                                htmlFor={`deliverable-${index}`}
+                                className={`text-sm leading-tight cursor-pointer ${
+                                  item.checked ? "text-foreground" : "text-muted-foreground line-through"
+                                }`}
+                              >
+                                {item.label}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {deliverables.filter(d => d.checked).length} of {deliverables.length} items selected
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </div>
+                </ScrollArea>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setProposeOpen(false)}>
                     Cancel
