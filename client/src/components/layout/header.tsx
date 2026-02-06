@@ -64,19 +64,33 @@ export function Header() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {user && navItems.map((item) => (
-              <Link key={item.href} href={item.href}>
+            {user ? (
+              navItems.map((item) => (
+                <Link key={item.href} href={item.href}>
+                  <Button
+                    variant={isActive(item.href) ? "secondary" : "ghost"}
+                    size="sm"
+                    className="gap-2"
+                    data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Button>
+                </Link>
+              ))
+            ) : (
+              <Link href="/browse-public">
                 <Button
-                  variant={isActive(item.href) ? "secondary" : "ghost"}
+                  variant={isActive("/browse-public") ? "secondary" : "ghost"}
                   size="sm"
                   className="gap-2"
-                  data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
+                  data-testid="nav-browse-marketplace"
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
+                  <Search className="h-4 w-4" />
+                  Browse Marketplace
                 </Button>
               </Link>
-            ))}
+            )}
           </nav>
         </div>
 

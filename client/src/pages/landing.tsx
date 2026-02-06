@@ -92,6 +92,13 @@ export function LandingPage() {
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
+              {!user && (
+                <Link href="/browse-public">
+                  <Button size="lg" variant="outline" data-testid="button-browse-public">
+                    Browse Marketplace
+                  </Button>
+                </Link>
+              )}
               <Link href="/how-it-works">
                 <Button size="lg" variant="outline" data-testid="button-how-it-works">
                   See How It Works

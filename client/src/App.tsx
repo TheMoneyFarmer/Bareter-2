@@ -27,6 +27,8 @@ import { PrivacyPage } from "@/pages/privacy";
 import OnboardingPage from "@/pages/onboarding";
 import { SettingsPage } from "@/pages/settings";
 import DashboardPage from "@/pages/dashboard";
+import { BrowsePublicPage } from "@/pages/browse-public";
+import { UserProfilePage } from "@/pages/user-profile";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -51,6 +53,8 @@ function Router() {
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/browse-public" component={BrowsePublicPage} />
+      <Route path="/users/:id" component={UserProfilePage} />
       <Route component={NotFound} />
     </Switch>
   );
