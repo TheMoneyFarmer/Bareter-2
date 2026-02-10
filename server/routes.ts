@@ -14,6 +14,7 @@ import {
   insertDealSchema,
   insertMessageSchema,
   insertRatingSchema,
+  insertPostSchema,
 } from "@shared/schema";
 import memorystore from "memorystore";
 import { WebhookHandlers } from "./webhookHandlers";
@@ -54,6 +55,11 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
   }
+}
+
+function param(val: string | string[] | undefined): string {
+  if (Array.isArray(val)) return val[0] || "";
+  return val || "";
 }
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -131,6 +137,8 @@ export async function registerRoutes(
         email: data.email,
         password: hashedPassword,
         fullName: data.fullName,
+        signupType: req.body.signupType || "creator",
+        socialProfiles: req.body.socialProfiles || [],
       });
 
       req.session.userId = user.id;
@@ -428,7 +436,7 @@ export async function registerRoutes(
 
   app.get("/api/listings/user/:userId", requireAuth, async (req, res) => {
     try {
-      const listings = await storage.getListingsByUser(req.params.userId);
+      const listings = await storage.getListingsByUser(param(req.params.userId));
       res.json(listings);
     } catch (error) {
       console.error("Get user listings error:", error);
@@ -438,11 +446,11 @@ export async function registerRoutes(
 
   app.get("/api/listings/:id", async (req, res) => {
     try {
-      const listing = await storage.getListingWithUser(req.params.id);
+      const listing = await storage.getListingWithUser(param(req.params.id));
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
-      await storage.incrementListingViews(req.params.id);
+      await storage.incrementListingViews(param(req.params.id));
       res.json(listing);
     } catch (error) {
       console.error("Get listing error:", error);
@@ -488,14 +496,14 @@ export async function registerRoutes(
 
   app.patch("/api/listings/:id", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
       if (listing.userId !== req.session.userId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const updated = await storage.updateListing(req.params.id, req.body);
+      const updated = await storage.updateListing(param(req.params.id), req.body);
       res.json(updated);
     } catch (error) {
       console.error("Update listing error:", error);
@@ -591,7 +599,7 @@ export async function registerRoutes(
   // Followers routes
   app.get("/api/users/:id/followers", requireAuth, async (req, res) => {
     try {
-      const followers = await storage.getFollowers(req.params.id);
+      const followers = await storage.getFollowers(param(req.params.id));
       res.json(followers);
     } catch (error) {
       console.error("Get followers error:", error);
@@ -601,7 +609,7 @@ export async function registerRoutes(
 
   app.get("/api/users/:id/following", requireAuth, async (req, res) => {
     try {
-      const following = await storage.getFollowing(req.params.id);
+      const following = await storage.getFollowing(param(req.params.id));
       res.json(following);
     } catch (error) {
       console.error("Get following error:", error);
@@ -611,7 +619,7 @@ export async function registerRoutes(
 
   app.post("/api/users/:id/follow", requireAuth, async (req, res) => {
     try {
-      const followingId = req.params.id;
+      const followingId = param(req.params.id);
       const followerId = req.session.userId!;
       
       if (followerId === followingId) {
@@ -633,7 +641,7 @@ export async function registerRoutes(
 
   app.delete("/api/users/:id/follow", requireAuth, async (req, res) => {
     try {
-      const followingId = req.params.id;
+      const followingId = param(req.params.id);
       const followerId = req.session.userId!;
       
       await storage.unfollowUser(followerId, followingId);
@@ -647,7 +655,7 @@ export async function registerRoutes(
   app.delete("/api/users/:id/unfollow", requireAuth, async (req, res) => {
     try {
       // This removes a follower (someone following you)
-      const followerId = req.params.id;
+      const followerId = param(req.params.id);
       const followingId = req.session.userId!;
       
       await storage.unfollowUser(followerId, followingId);
@@ -671,7 +679,7 @@ export async function registerRoutes(
 
   app.get("/api/deals/:id", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDealWithUsers(req.params.id);
+      const deal = await storage.getDealWithUsers(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
@@ -688,7 +696,7 @@ export async function registerRoutes(
   // Deal contract PDF download
   app.get("/api/deals/:id/contract", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDealWithUsers(req.params.id);
+      const deal = await storage.getDealWithUsers(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
@@ -857,7 +865,7 @@ export async function registerRoutes(
 
   app.patch("/api/deals/:id", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDeal(req.params.id);
+      const deal = await storage.getDeal(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
@@ -897,11 +905,11 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only the provider can upload provider proof" });
       }
 
-      let updated = await storage.updateDeal(req.params.id, data);
+      let updated = await storage.updateDeal(param(req.params.id), data);
 
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
-        updated = await storage.updateDeal(req.params.id, { state: "completed" });
+        updated = await storage.updateDeal(param(req.params.id), { state: "completed" });
       }
 
       res.json(updated);
@@ -917,14 +925,14 @@ export async function registerRoutes(
   // Messages routes
   app.get("/api/deals/:id/messages", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDeal(req.params.id);
+      const deal = await storage.getDeal(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
       if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const messages = await storage.getMessagesByDeal(req.params.id);
+      const messages = await storage.getMessagesByDeal(param(req.params.id));
       res.json(messages);
     } catch (error) {
       console.error("Get messages error:", error);
@@ -938,7 +946,7 @@ export async function registerRoutes(
 
   app.post("/api/deals/:id/messages", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDeal(req.params.id);
+      const deal = await storage.getDeal(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
@@ -949,7 +957,7 @@ export async function registerRoutes(
       const data = createMessageSchema.parse(req.body);
 
       const message = await storage.createMessage({
-        dealId: req.params.id,
+        dealId: param(req.params.id),
         senderId: req.session.userId!,
         content: data.content,
       });
@@ -977,7 +985,7 @@ export async function registerRoutes(
   // Ratings routes
   app.get("/api/ratings/user/:userId", async (req, res) => {
     try {
-      const ratings = await storage.getRatingsByUser(req.params.userId);
+      const ratings = await storage.getRatingsByUser(param(req.params.userId));
       res.json(ratings);
     } catch (error) {
       console.error("Get ratings error:", error);
@@ -1041,7 +1049,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     try {
-      await storage.markNotificationAsRead(req.params.id);
+      await storage.markNotificationAsRead(param(req.params.id));
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
@@ -1344,7 +1352,7 @@ export async function registerRoutes(
 
   app.get("/api/wishlist/check/:listingId", requireAuth, async (req, res) => {
     try {
-      const isWishlisted = await storage.isWishlisted(req.session.userId!, req.params.listingId);
+      const isWishlisted = await storage.isWishlisted(req.session.userId!, param(req.params.listingId));
       res.json({ isWishlisted });
     } catch (error) {
       console.error("Check wishlist error:", error);
@@ -1354,10 +1362,10 @@ export async function registerRoutes(
 
   app.post("/api/wishlist/:listingId", requireAuth, async (req, res) => {
     try {
-      const already = await storage.isWishlisted(req.session.userId!, req.params.listingId);
+      const already = await storage.isWishlisted(req.session.userId!, param(req.params.listingId));
       if (already) return res.status(400).json({ message: "Already in wishlist" });
       
-      const wishlist = await storage.addToWishlist(req.session.userId!, req.params.listingId);
+      const wishlist = await storage.addToWishlist(req.session.userId!, param(req.params.listingId));
       res.json(wishlist);
     } catch (error) {
       console.error("Add to wishlist error:", error);
@@ -1367,7 +1375,7 @@ export async function registerRoutes(
 
   app.delete("/api/wishlist/:listingId", requireAuth, async (req, res) => {
     try {
-      await storage.removeFromWishlist(req.session.userId!, req.params.listingId);
+      await storage.removeFromWishlist(req.session.userId!, param(req.params.listingId));
       res.json({ message: "Removed from wishlist" });
     } catch (error) {
       console.error("Remove from wishlist error:", error);
@@ -1409,7 +1417,7 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/verify", requireAdmin, async (req, res) => {
     try {
       const { verified } = req.body;
-      const user = await storage.updateUser(req.params.id, { isVerified: verified });
+      const user = await storage.updateUser(param(req.params.id), { isVerified: verified });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -1424,7 +1432,7 @@ export async function registerRoutes(
   app.patch("/api/admin/listings/:id/flag", requireAdmin, async (req, res) => {
     try {
       const { flagged } = req.body;
-      const listing = await storage.updateListing(req.params.id, { isActive: !flagged });
+      const listing = await storage.updateListing(param(req.params.id), { isActive: !flagged });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
@@ -1514,7 +1522,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid role" });
       }
       const isAdmin = role === "admin" || role === "super_admin";
-      const user = await storage.updateUser(req.params.id, { role, isAdmin });
+      const user = await storage.updateUser(param(req.params.id), { role, isAdmin });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -1534,7 +1542,7 @@ export async function registerRoutes(
         bannedReason: banned ? reason : null,
         bannedAt: banned ? new Date() : null
       };
-      const user = await storage.updateUser(req.params.id, updates);
+      const user = await storage.updateUser(param(req.params.id), updates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -1548,7 +1556,7 @@ export async function registerRoutes(
 
   app.delete("/api/admin/listings/:id", requireAdmin, async (req, res) => {
     try {
-      const listing = await storage.updateListing(req.params.id, { isActive: false });
+      const listing = await storage.updateListing(param(req.params.id), { isActive: false });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
@@ -1561,7 +1569,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/deals/:id/messages", requireAdmin, async (req, res) => {
     try {
-      const messages = await storage.getMessagesByDeal(req.params.id);
+      const messages = await storage.getMessagesByDeal(param(req.params.id));
       res.json(messages);
     } catch (error) {
       console.error("Admin get deal messages error:", error);
@@ -1572,7 +1580,7 @@ export async function registerRoutes(
   // Stripe checkout for deal completion
   app.post("/api/deals/:id/checkout", requireAuth, async (req, res) => {
     try {
-      const deal = await storage.getDeal(req.params.id);
+      const deal = await storage.getDeal(param(req.params.id));
       if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
@@ -1707,20 +1715,116 @@ export async function registerRoutes(
     }
   });
 
+  // ========== Posts API ==========
+
+  // Get feed posts with optional category filter
+  app.get("/api/posts", async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const postsData = await storage.getPosts({ category, limit, offset });
+
+      // If user is logged in, check which posts they liked
+      if (req.session.userId) {
+        const postsWithLikes = await Promise.all(
+          postsData.map(async (post) => {
+            const liked = await storage.isPostLiked(post.id, req.session.userId!);
+            return { ...post, liked };
+          })
+        );
+        return res.json(postsWithLikes);
+      }
+
+      res.json(postsData);
+    } catch (error) {
+      console.error("Get posts error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get stories
+  app.get("/api/stories", async (req, res) => {
+    try {
+      const stories = await storage.getStories();
+      res.json(stories);
+    } catch (error) {
+      console.error("Get stories error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get single post
+  app.get("/api/posts/:id", async (req, res) => {
+    try {
+      const post = await storage.getPost(param(req.params.id));
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      if (req.session.userId) {
+        const liked = await storage.isPostLiked(post.id, req.session.userId);
+        return res.json({ ...post, liked });
+      }
+      res.json(post);
+    } catch (error) {
+      console.error("Get post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Create post
+  app.post("/api/posts", requireAuth, async (req, res) => {
+    try {
+      const validated = insertPostSchema.parse({
+        ...req.body,
+        userId: req.session.userId!,
+      });
+      const post = await storage.createPost(validated);
+      res.status(201).json(post);
+    } catch (error: any) {
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid post data", errors: error.errors });
+      }
+      console.error("Create post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Like/unlike post
+  app.post("/api/posts/:id/like", requireAuth, async (req, res) => {
+    try {
+      const postId = param(req.params.id);
+      const userId = req.session.userId!;
+      const isLiked = await storage.isPostLiked(postId, userId);
+      if (isLiked) {
+        await storage.unlikePost(postId, userId);
+        res.json({ liked: false });
+      } else {
+        await storage.likePost(postId, userId);
+        res.json({ liked: true });
+      }
+    } catch (error) {
+      console.error("Like post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== End Posts API ==========
+
   // User profile by ID (public)
   app.get("/api/users/:id", async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(param(req.params.id));
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const ratings = await storage.getRatingsByUser(req.params.id);
+      const ratings = await storage.getRatingsByUser(param(req.params.id));
       const avgRating = ratings.length > 0 
         ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length 
         : 0;
 
-      const userListings = await storage.getListingsByUser(req.params.id);
+      const userListings = await storage.getListingsByUser(param(req.params.id));
       const activeListings = userListings.filter(l => l.isActive);
       
       const { password, emailVerificationToken, passwordResetToken, ...publicUser } = user;

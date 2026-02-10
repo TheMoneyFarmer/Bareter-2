@@ -26,6 +26,90 @@ export const CATEGORIES = [
   "Entertainment",
 ] as const;
 
+// Feed category tabs for the home feed
+export const FEED_CATEGORIES = [
+  "All",
+  "Services & Skills",
+  "Space & Office",
+  "Food & Hospitality",
+  "Assets & Vehicles",
+  "Big Ticket",
+  "Other",
+] as const;
+
+// Signup types
+export const SIGNUP_TYPES = ["creator", "brand"] as const;
+
+// Social platform types
+export type SocialProfile = {
+  platform: string;
+  username: string;
+  url?: string;
+  followerCount?: number;
+  categories?: string[];
+};
+
+// Post media types
+export const POST_MEDIA_TYPES = ["image", "video", "reel"] as const;
+
+// Post category subtypes
+export const POST_SUBTYPES = {
+  "Real Estate": ["House", "Apartment", "Villa", "Office Space", "Commercial"],
+  "Vehicles": ["Car", "Motorcycle", "Yacht/Boat", "Truck/Van"],
+  "Luxury Goods": ["Watches", "Jewelry", "Art", "Electronics"],
+  "Services & Skills": [],
+  "Food & Hospitality": [],
+  "Space & Office": [],
+  "Assets & Vehicles": [],
+  "Big Ticket": [],
+  "Other": [],
+} as const;
+
+// Structured detail types for high-value posts
+export type RealEstateDetails = {
+  propertyType?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareMeters?: number;
+  yearBuilt?: number;
+  area?: string;
+  amenities?: string[];
+  ownershipStatus?: string;
+  floorNumber?: number;
+  viewType?: string;
+  furnished?: boolean;
+};
+
+export type VehicleDetails = {
+  make?: string;
+  model?: string;
+  year?: number;
+  mileage?: number;
+  doors?: number;
+  engineType?: string;
+  engineCapacity?: string;
+  transmission?: string;
+  condition?: string;
+  features?: string[];
+  color?: string;
+  registrationExpiry?: string;
+  cabins?: number;
+  hoursUsed?: number;
+};
+
+export type LuxuryGoodsDetails = {
+  brand?: string;
+  model?: string;
+  year?: number;
+  condition?: string;
+  material?: string;
+  features?: string[];
+  boxAndPapers?: boolean;
+  serialNumber?: string;
+};
+
+export type PostCategoryDetails = RealEstateDetails & VehicleDetails & LuxuryGoodsDetails;
+
 // Locations (UAE/GCC focus)
 export const LOCATIONS = [
   "Dubai",
@@ -147,6 +231,10 @@ export const users = pgTable("users", {
   // Referral System
   referralCode: text("referral_code").unique(),
   referredBy: varchar("referred_by", { length: 36 }),
+
+  // Signup & Social
+  signupType: text("signup_type").default("creator"),
+  socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -269,6 +357,38 @@ export const wishlists = pgTable("wishlists", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Posts table for Instagram-style feed
+export const posts = pgTable("posts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  title: text("title"),
+  caption: text("caption").notNull(),
+  mediaUrls: jsonb("media_urls").$type<string[]>().default([]),
+  mediaType: text("media_type").default("image"),
+  offerItems: jsonb("offer_items").$type<OfferNeedItem[]>().default([]),
+  wantItems: jsonb("want_items").$type<OfferNeedItem[]>().default([]),
+  declaredValue: decimal("declared_value", { precision: 12, scale: 2 }),
+  hashtags: jsonb("hashtags").$type<string[]>().default([]),
+  feedCategory: text("feed_category").default("Other"),
+  subCategory: text("sub_category"),
+  categoryDetails: jsonb("category_details").$type<PostCategoryDetails>(),
+  marketValuation: text("market_valuation"),
+  location: text("location"),
+  isStory: boolean("is_story").default(false),
+  expiresAt: timestamp("expires_at"),
+  likeCount: integer("like_count").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Post likes table
+export const postLikes = pgTable("post_likes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -345,6 +465,18 @@ export const insertWishlistSchema = createInsertSchema(wishlists).omit({
   createdAt: true,
 });
 
+export const insertPostSchema = createInsertSchema(posts).omit({
+  id: true,
+  createdAt: true,
+  likeCount: true,
+  isActive: true,
+});
+
+export const insertPostLikeSchema = createInsertSchema(postLikes).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -385,8 +517,15 @@ export type Referral = typeof referrals.$inferSelect;
 export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
 export type Wishlist = typeof wishlists.$inferSelect;
 
+export type InsertPost = z.infer<typeof insertPostSchema>;
+export type Post = typeof posts.$inferSelect;
+
+export type InsertPostLike = z.infer<typeof insertPostLikeSchema>;
+export type PostLike = typeof postLikes.$inferSelect;
+
 // Extended types with relations
 export type ListingWithUser = Listing & { user: User };
 export type DealWithUsers = Deal & { seeker: User; provider: User };
 export type MessageWithSender = Message & { sender: User };
 export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
+export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean };

@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { LOCATIONS, type Listing, type Rating, type OfferNeedItem } from "@shared/schema";
+import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile } from "@shared/schema";
 import {
   User,
   MapPin,
@@ -35,7 +35,10 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  Globe,
+  Users,
 } from "lucide-react";
+import { SiInstagram, SiTiktok, SiYoutube, SiLinkedin, SiX } from "react-icons/si";
 import { z } from "zod";
 
 const profileSchema = z.object({
@@ -430,7 +433,7 @@ export function ProfilePage() {
     rejected: { icon: AlertCircle, color: "text-red-500", text: "Rejected" },
   };
 
-  const verificationStatus = verificationStatusConfig[user?.verificationStatus || "pending"];
+  const verificationStatus = verificationStatusConfig[user?.verificationStatus || "pending"] || verificationStatusConfig.pending;
 
   if (!user) {
     return (
@@ -512,6 +515,37 @@ export function ProfilePage() {
               <MapPin className="h-4 w-4" />
               {user.location}
             </p>
+          )}
+          {user.signupType && (
+            <Badge variant="outline" className="mt-2">
+              {user.signupType === "creator" ? "Creator" : "Brand"}
+            </Badge>
+          )}
+          {user.socialProfiles && (user.socialProfiles as SocialProfile[]).length > 0 && (
+            <div className="flex items-center justify-center md:justify-start gap-3 mt-3 flex-wrap">
+              {(user.socialProfiles as SocialProfile[]).map((sp: SocialProfile) => {
+                const platformIcons: Record<string, typeof SiInstagram> = {
+                  instagram: SiInstagram,
+                  tiktok: SiTiktok,
+                  youtube: SiYoutube,
+                  linkedin: SiLinkedin,
+                  x: SiX,
+                };
+                const Icon = platformIcons[sp.platform] || Globe;
+                return (
+                  <div key={sp.platform} className="flex items-center gap-1 text-sm text-muted-foreground" data-testid={`social-${sp.platform}`}>
+                    <Icon className="h-4 w-4" />
+                    <span>@{sp.username}</span>
+                    {sp.followerCount && (
+                      <Badge variant="secondary" className="text-xs ml-1">
+                        <Users className="h-3 w-3 mr-1" />
+                        {sp.followerCount >= 1000 ? `${(sp.followerCount / 1000).toFixed(1)}K` : sp.followerCount}
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
           <div className="flex items-center justify-center md:justify-start gap-4 mt-4 flex-wrap">
             <div className="text-center">

@@ -10,6 +10,8 @@ import {
   followers,
   referrals,
   wishlists,
+  posts,
+  postLikes,
   type User,
   type InsertUser,
   type Listing,
@@ -28,6 +30,9 @@ import {
   type InsertReferral,
   type Wishlist,
   type InsertWishlist,
+  type Post,
+  type InsertPost,
+  type PostWithUser,
   type ListingWithUser,
   type DealWithUsers,
   type MessageWithSender,
@@ -96,6 +101,15 @@ export interface IStorage {
   isWishlisted(userId: string, listingId: string): Promise<boolean>;
   addToWishlist(userId: string, listingId: string): Promise<Wishlist>;
   removeFromWishlist(userId: string, listingId: string): Promise<void>;
+
+  // Posts
+  getPosts(options?: { category?: string; limit?: number; offset?: number; userId?: string }): Promise<PostWithUser[]>;
+  getPost(id: string): Promise<PostWithUser | undefined>;
+  getStories(): Promise<PostWithUser[]>;
+  createPost(post: InsertPost): Promise<Post>;
+  likePost(postId: string, userId: string): Promise<void>;
+  unlikePost(postId: string, userId: string): Promise<void>;
+  isPostLiked(postId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -479,6 +493,86 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(wishlists)
       .where(and(eq(wishlists.userId, userId), eq(wishlists.listingId, listingId)));
+  }
+
+  // Posts
+  async getPosts(options?: { category?: string; limit?: number; offset?: number; userId?: string }): Promise<PostWithUser[]> {
+    const limit = options?.limit || 20;
+    const offset = options?.offset || 0;
+
+    const conditions = [eq(posts.isActive, true), eq(posts.isStory, false)];
+    if (options?.category && options.category !== "All") {
+      conditions.push(eq(posts.feedCategory, options.category));
+    }
+    if (options?.userId) {
+      conditions.push(eq(posts.userId, options.userId));
+    }
+
+    const result = await db
+      .select()
+      .from(posts)
+      .leftJoin(users, eq(posts.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(posts.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return result.map(({ posts: post, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...post, user: safeUser };
+    });
+  }
+
+  async getPost(id: string): Promise<PostWithUser | undefined> {
+    const result = await db
+      .select()
+      .from(posts)
+      .leftJoin(users, eq(posts.userId, users.id))
+      .where(eq(posts.id, id));
+
+    if (result.length === 0) return undefined;
+
+    const { posts: post, users: user } = result[0];
+    const { password, ...safeUser } = user!;
+    return { ...post, user: safeUser };
+  }
+
+  async getStories(): Promise<PostWithUser[]> {
+    const result = await db
+      .select()
+      .from(posts)
+      .leftJoin(users, eq(posts.userId, users.id))
+      .where(and(eq(posts.isStory, true), eq(posts.isActive, true)))
+      .orderBy(desc(posts.createdAt))
+      .limit(20);
+
+    return result.map(({ posts: post, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...post, user: safeUser };
+    });
+  }
+
+  async createPost(insertPost: InsertPost): Promise<Post> {
+    const [post] = await db.insert(posts).values(insertPost).returning();
+    return post;
+  }
+
+  async likePost(postId: string, userId: string): Promise<void> {
+    await db.insert(postLikes).values({ postId, userId });
+    await db.update(posts).set({ likeCount: sql`${posts.likeCount} + 1` }).where(eq(posts.id, postId));
+  }
+
+  async unlikePost(postId: string, userId: string): Promise<void> {
+    await db.delete(postLikes).where(and(eq(postLikes.postId, postId), eq(postLikes.userId, userId)));
+    await db.update(posts).set({ likeCount: sql`GREATEST(${posts.likeCount} - 1, 0)` }).where(eq(posts.id, postId));
+  }
+
+  async isPostLiked(postId: string, userId: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(postLikes)
+      .where(and(eq(postLikes.postId, postId), eq(postLikes.userId, userId)));
+    return !!existing;
   }
 }
 

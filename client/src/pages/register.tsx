@@ -7,11 +7,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { registerSchema } from "@shared/schema";
-import { Handshake, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
+import type { SocialProfile } from "@shared/schema";
+import {
+  Handshake,
+  Loader2,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  Palette,
+  Building2,
+  ArrowLeft,
+  ArrowRight,
+  SkipForward,
+  Instagram,
+  Youtube,
+  Linkedin,
+  Twitter,
+  Video,
+  Users,
+} from "lucide-react";
 import { z } from "zod";
 
 const extendedRegisterSchema = registerSchema.extend({
@@ -26,6 +45,54 @@ const extendedRegisterSchema = registerSchema.extend({
 
 type RegisterForm = z.infer<typeof extendedRegisterSchema>;
 
+type SignupType = "creator" | "brand";
+
+interface SocialFormState {
+  instagram: { username: string; followerCount: string };
+  tiktok: { username: string; followerCount: string };
+  youtube: { username: string; followerCount: string };
+  linkedin: { username: string };
+  x: { username: string };
+}
+
+const SOCIAL_PLATFORMS = [
+  {
+    key: "instagram" as const,
+    label: "Instagram",
+    icon: Instagram,
+    hasFollowers: true,
+    placeholder: "@username",
+  },
+  {
+    key: "tiktok" as const,
+    label: "TikTok",
+    icon: Video,
+    hasFollowers: true,
+    placeholder: "@username",
+  },
+  {
+    key: "youtube" as const,
+    label: "YouTube",
+    icon: Youtube,
+    hasFollowers: true,
+    placeholder: "Channel name",
+  },
+  {
+    key: "linkedin" as const,
+    label: "LinkedIn",
+    icon: Linkedin,
+    hasFollowers: false,
+    placeholder: "Profile URL or username",
+  },
+  {
+    key: "x" as const,
+    label: "X / Twitter",
+    icon: Twitter,
+    hasFollowers: false,
+    placeholder: "@handle",
+  },
+];
+
 export function RegisterPage() {
   const { register } = useAuth();
   const { toast } = useToast();
@@ -33,6 +100,15 @@ export function RegisterPage() {
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [signupType, setSignupType] = useState<SignupType | null>(null);
+  const [socialForm, setSocialForm] = useState<SocialFormState>({
+    instagram: { username: "", followerCount: "" },
+    tiktok: { username: "", followerCount: "" },
+    youtube: { username: "", followerCount: "" },
+    linkedin: { username: "" },
+    x: { username: "" },
+  });
 
   const benefits = [
     t("landing.noSubscription"),
@@ -52,10 +128,64 @@ export function RegisterPage() {
     },
   });
 
-  const onSubmit = async (data: RegisterForm) => {
+  const buildSocialProfiles = (): SocialProfile[] => {
+    const profiles: SocialProfile[] = [];
+
+    if (socialForm.instagram.username.trim()) {
+      profiles.push({
+        platform: "instagram",
+        username: socialForm.instagram.username.trim(),
+        followerCount: socialForm.instagram.followerCount
+          ? parseInt(socialForm.instagram.followerCount, 10) || undefined
+          : undefined,
+      });
+    }
+    if (socialForm.tiktok.username.trim()) {
+      profiles.push({
+        platform: "tiktok",
+        username: socialForm.tiktok.username.trim(),
+        followerCount: socialForm.tiktok.followerCount
+          ? parseInt(socialForm.tiktok.followerCount, 10) || undefined
+          : undefined,
+      });
+    }
+    if (socialForm.youtube.username.trim()) {
+      profiles.push({
+        platform: "youtube",
+        username: socialForm.youtube.username.trim(),
+        followerCount: socialForm.youtube.followerCount
+          ? parseInt(socialForm.youtube.followerCount, 10) || undefined
+          : undefined,
+      });
+    }
+    if (socialForm.linkedin.username.trim()) {
+      profiles.push({
+        platform: "linkedin",
+        username: socialForm.linkedin.username.trim(),
+      });
+    }
+    if (socialForm.x.username.trim()) {
+      profiles.push({
+        platform: "x",
+        username: socialForm.x.username.trim(),
+      });
+    }
+
+    return profiles;
+  };
+
+  const handleFinalSubmit = async () => {
+    const formValues = form.getValues();
     setIsLoading(true);
     try {
-      await register(data.email, data.password, data.fullName);
+      const socialProfiles = buildSocialProfiles();
+      await register({
+        email: formValues.email,
+        password: formValues.password,
+        fullName: formValues.fullName,
+        signupType: signupType || undefined,
+        socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
+      });
       toast({
         title: t("auth.accountCreated"),
         description: t("auth.welcomeToMargin"),
@@ -71,6 +201,389 @@ export function RegisterPage() {
       setIsLoading(false);
     }
   };
+
+  const onStep2Submit = async (data: RegisterForm) => {
+    setStep(3);
+  };
+
+  const handleSocialChange = (
+    platform: keyof SocialFormState,
+    field: string,
+    value: string,
+  ) => {
+    setSocialForm((prev) => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        [field]: value,
+      },
+    }));
+  };
+
+  const renderStepIndicator = () => (
+    <div className="flex items-center justify-center gap-2 mb-6">
+      {[1, 2, 3].map((s) => (
+        <div key={s} className="flex items-center gap-2">
+          <div
+            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
+              s === step
+                ? "bg-primary text-primary-foreground"
+                : s < step
+                  ? "bg-primary/20 text-primary"
+                  : "bg-muted text-muted-foreground"
+            }`}
+            data-testid={`step-indicator-${s}`}
+          >
+            {s < step ? <CheckCircle className="h-4 w-4" /> : s}
+          </div>
+          {s < 3 && (
+            <div
+              className={`h-0.5 w-8 transition-colors ${
+                s < step ? "bg-primary" : "bg-muted"
+              }`}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderStep1 = () => (
+    <>
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-xl">Choose your account type</CardTitle>
+        <CardDescription>
+          Select how you plan to use Margin
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {renderStepIndicator()}
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setSignupType("creator");
+              setStep(2);
+            }}
+            className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
+              signupType === "creator"
+                ? "border-primary bg-primary/5"
+                : "border-border"
+            }`}
+            data-testid="card-signup-creator"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Palette className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold">Creator</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Content creators, freelancers, and service providers
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSignupType("brand");
+              setStep(2);
+            }}
+            className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
+              signupType === "brand"
+                ? "border-primary bg-primary/5"
+                : "border-border"
+            }`}
+            data-testid="card-signup-brand"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Building2 className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold">Brand</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Businesses, agencies, and organizations
+              </p>
+            </div>
+          </button>
+        </div>
+
+        <div className="mt-6 text-center text-sm">
+          <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
+          <Link href="/login" className="text-primary hover:underline font-medium" data-testid="link-login">
+            {t("auth.signIn")}
+          </Link>
+        </div>
+      </CardContent>
+    </>
+  );
+
+  const renderStep2 = () => (
+    <>
+      <CardHeader className="space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <CardTitle className="text-xl">{t("auth.register")}</CardTitle>
+          <Badge variant="secondary" className="text-xs capitalize">
+            {signupType}
+          </Badge>
+        </div>
+        <CardDescription>
+          {t("auth.joinMargin")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {renderStepIndicator()}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onStep2Submit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("auth.fullName")}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="John Smith"
+                      data-testid="input-fullname"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("auth.email")}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="name@company.com"
+                      data-testid="input-email"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("auth.password")}</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        data-testid="input-password"
+                        {...field}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                        data-testid="button-toggle-password"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      data-testid="input-confirm-password"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="acceptTerms"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      data-testid="checkbox-terms"
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-sm font-normal">
+                      {t("footer.terms")} & {t("footer.privacy")}
+                    </FormLabel>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(1)}
+                data-testid="button-back-step1"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                data-testid="button-next-step3"
+              >
+                Continue
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </form>
+        </Form>
+
+        <div className="mt-6 text-center text-sm">
+          <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
+          <Link href="/login" className="text-primary hover:underline font-medium" data-testid="link-login-step2">
+            {t("auth.signIn")}
+          </Link>
+        </div>
+      </CardContent>
+    </>
+  );
+
+  const renderStep3 = () => (
+    <>
+      <CardHeader className="space-y-1">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-xl">Social Media Presence</CardTitle>
+          <Badge variant="secondary" className="text-xs">Optional</Badge>
+        </div>
+        <CardDescription>
+          Add your social profiles to help partners find and verify you. You can skip this step.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {renderStepIndicator()}
+
+        <div className="space-y-4">
+          {SOCIAL_PLATFORMS.map((platform) => {
+            const Icon = platform.icon;
+            const state = socialForm[platform.key];
+            return (
+              <div
+                key={platform.key}
+                className="rounded-md border p-4 space-y-3"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{platform.label}</span>
+                </div>
+                <div className={`grid gap-3 ${platform.hasFollowers ? "grid-cols-2" : "grid-cols-1"}`}>
+                  <Input
+                    placeholder={platform.placeholder}
+                    value={state.username}
+                    onChange={(e) =>
+                      handleSocialChange(platform.key, "username", e.target.value)
+                    }
+                    data-testid={`input-social-${platform.key}-username`}
+                  />
+                  {platform.hasFollowers && "followerCount" in state && (
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        placeholder="Followers"
+                        value={(state as { username: string; followerCount: string }).followerCount}
+                        onChange={(e) =>
+                          handleSocialChange(
+                            platform.key,
+                            "followerCount",
+                            e.target.value,
+                          )
+                        }
+                        data-testid={`input-social-${platform.key}-followers`}
+                      />
+                      <Users className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setStep(2)}
+            data-testid="button-back-step2"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={handleFinalSubmit}
+            disabled={isLoading}
+            data-testid="button-skip-social"
+          >
+            <SkipForward className="mr-2 h-4 w-4" />
+            Skip
+          </Button>
+          <Button
+            type="button"
+            className="flex-1"
+            onClick={handleFinalSubmit}
+            disabled={isLoading}
+            data-testid="button-submit-register"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t("common.loading")}
+              </>
+            ) : (
+              <>
+                {t("auth.register")}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </>
+  );
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 py-12">
@@ -117,152 +630,9 @@ export function RegisterPage() {
           </div>
 
           <Card>
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">{t("auth.register")}</CardTitle>
-              <CardDescription>
-                {t("auth.joinMargin")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="fullName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("auth.fullName")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="John Smith"
-                            data-testid="input-fullname"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("auth.email")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            placeholder="name@company.com"
-                            data-testid="input-email"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("auth.password")}</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="••••••••"
-                              data-testid="input-password"
-                              {...field}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? (
-                                <EyeOff className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </Button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("auth.password")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="••••••••"
-                            data-testid="input-confirm-password"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="acceptTerms"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-terms"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-sm font-normal">
-                            {t("footer.terms")} & {t("footer.privacy")}
-                          </FormLabel>
-                          <FormMessage />
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isLoading}
-                    data-testid="button-submit-register"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("common.loading")}
-                      </>
-                    ) : (
-                      t("auth.register")
-                    )}
-                  </Button>
-                </form>
-              </Form>
-
-              <div className="mt-6 text-center text-sm">
-                <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
-                <Link href="/login" className="text-primary hover:underline font-medium">
-                  {t("auth.signIn")}
-                </Link>
-              </div>
-            </CardContent>
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
           </Card>
         </div>
       </div>

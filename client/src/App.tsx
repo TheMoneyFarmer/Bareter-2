@@ -31,6 +31,8 @@ import { BrowsePublicPage } from "@/pages/browse-public";
 import { UserProfilePage } from "@/pages/user-profile";
 import { SavedListingsPage } from "@/pages/saved-listings";
 import { ReferralsPage } from "@/pages/referrals";
+import { FeedPage } from "@/pages/feed";
+import { CreatePostPage } from "@/pages/create-post";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import NotFound from "@/pages/not-found";
 
@@ -60,6 +62,8 @@ function Router() {
       <Route path="/users/:id" component={UserProfilePage} />
       <Route path="/saved" component={SavedListingsPage} />
       <Route path="/referrals" component={ReferralsPage} />
+      <Route path="/feed" component={FeedPage} />
+      <Route path="/create-post" component={CreatePostPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -54,8 +54,35 @@ Preferred communication style: Simple, everyday language.
 - **Progress Tracking**: `onboardingStep` and `onboardingCompleted` fields on User model
 - **Route**: `/onboarding` page
 
+### Instagram-Style Feed
+- **Route**: `/feed` - Primary discovery mechanism for barter opportunities
+- **Stories Row**: Horizontal scrollable avatars showing active story posts
+- **Category Tabs**: "All", "Services & Skills", "Space & Office", "Food & Hospitality", "Assets & Vehicles", "Big Ticket", "Other"
+- **Feed Cards**: Rich post cards with user info, media, category-specific details, offer/want tags, like toggle, "Propose Barter" CTA
+- **Category-Specific Details**:
+  - Real Estate: bedrooms, bathrooms, sqm, amenities, ownership status
+  - Vehicles: make, model, year, mileage, engine, transmission, condition
+  - Luxury Goods: brand, model, condition, material, box & papers
+- **API**: GET `/api/posts?category=X&limit=N&offset=N`, POST `/api/posts`, POST `/api/posts/:id/like`, GET `/api/stories`
+- **Seeded Data**: 23 posts across all categories including 4 real estate, 4 cars, 2 yachts, 1 luxury watch
+
+### Post Creation
+- **Route**: `/create-post` - Smart form with dynamic category-specific fields
+- **Dynamic Fields**: Real estate (bedrooms, bathrooms, sqm, amenities), vehicles (make, model, year, mileage, engine), luxury (brand, condition, material)
+- **Common Fields**: Title, caption, photos, feed category, sub-category, declared value (AED), offer/want items, hashtags, location
+- **Sub-Categories**: Context-dependent (Cars/Yachts for vehicles, House/Villa/Apartment for property, Watches/Jewelry for luxury)
+
+### Creator/Brand Signup
+- **Route**: `/register` - 3-step signup wizard
+- **Step 1**: Account type selection (Creator vs Brand) with visual cards
+- **Step 2**: Standard registration form (name, email, password, terms)
+- **Step 3**: Optional social media presence (Instagram, TikTok, YouTube, LinkedIn, X with username and follower count)
+- **User Fields**: `signupType` (creator/brand), `socialProfiles` (JSONB array of platform/username/followerCount)
+
 ### Core Domain Models
-- **Users**: Profile data, verification status, what they offer/need
+- **Users**: Profile data, verification status, what they offer/need, social profiles, signup type
+- **Posts**: Feed posts with categoryDetails JSONB (structured data for real estate/vehicles/luxury), declaredValue, offerItems, wantItems, hashtags
+- **PostLikes**: User-post like pairs for feed engagement
 - **Listings**: Offers or requests with categories, values in AED, locations
   - **Exchange Preferences**: `wantedCategories` (array), `exchangeItems` (array with priority flag), `openToOffers` (boolean)
   - Visual priority system with stars for priority items

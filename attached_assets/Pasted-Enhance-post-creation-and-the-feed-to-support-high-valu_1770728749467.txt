@@ -1,0 +1,63 @@
+Enhance post creation and the feed to support high-value and structured barter items like real estate (houses/apartments), vehicles (cars), yachts, luxury watches, and other assets, while keeping everyday trades simple.
+
+Key changes:
+
+1. **Category System Upgrade**
+   - Expand categories with sub-types:
+     - Real Estate (House, Apartment, Villa, Office Space, Commercial)
+     - Vehicles (Car, Motorcycle, Yacht/Boat, Truck/Van)
+     - Luxury Goods (Watches, Jewelry, Art, Electronics)
+     - Services & Skills, Food & Hospitality, Space & Office, Other (existing)
+
+2. **Smart Post Creation Form**
+   - When user selects a category, dynamically show relevant structured fields (use conditional rendering).
+   - All posts must still include: Title, Description, Photos/Video (multiple), "What I Offer" summary, "What I Want in Return", Declared AED Value (mandatory, with note: "Use professional appraisal for high-value items")
+   - Add optional "Market Valuation / Trends" section: text field for user to paste/link current market value, trends, or forecast (e.g., "Dubizzle average AED 2.5M for similar villas")
+
+3. **Category-Specific Fields**
+
+   - **Real Estate**:
+     - Property Type (dropdown)
+     - Bedrooms, Bathrooms (numbers)
+     - Square Meters / Sq Ft
+     - Year Built
+     - Location (city, area, Google Maps link optional)
+     - Amenities (multi-select: Pool, Gym, Parking, Sea View, Furnished, Balcony, Garden, Security, etc.)
+     - Title Deed / Ownership Status
+     - Additional: Floor number, View type
+
+   - **Vehicles (Cars / Yachts / Boats)**:
+     - Make, Model, Year
+     - Mileage / Hours Used
+     - Number of Doors / Cabins
+     - Engine Type (e.g., Petrol, Diesel, Electric, Hybrid) + Capacity
+     - Transmission (Auto/Manual)
+     - Condition (New/Used, Excellent/Good/Fair)
+     - Features/Amenities (multi-select: Leather Seats, Navigation, Sunroof, AC, Sound System, etc.)
+     - Registration/Insurance Expiry
+     - Color, Fuel Efficiency
+
+   - **Luxury Watches / Goods**:
+     - Brand, Model
+     - Year, Condition
+     - Material (Gold, Steel, etc.)
+     - Features (Chronograph, Waterproof, etc.)
+     - Box & Papers Included? (yes/no)
+     - Serial Number (optional)
+
+   - For "Need/Request" posts: Mirror the same fields so users can specify exactly what they're looking for (e.g., "Want 3-bedroom villa with pool in Jumeirah")
+
+4. **Feed & Post Display**
+   - In the feed card, prominently show key structured details (e.g., "2022 Toyota Camry • 4 Doors • 35k km • AED 85k value")
+   - For real estate: Show bedrooms/bathrooms/sqm icons
+   - Make cards richer with badges (e.g., "High Value", "Verified Owner")
+
+5. **Validation & UX**
+   - Required fields per category (e.g., bedrooms for real estate)
+   - Help tooltips: "Accurate details build trust and better matches"
+   - Keep form mobile-friendly and fast
+
+6. **Seed Data**
+   - Add 10 new realistic high-value fake posts: 4 real estate (Dubai villas/apartments), 3 cars, 2 yachts, 1 luxury watch — with full structured details filled.
+
+After this, post creation will feel professional for big-ticket items while staying simple for everyday trades.
