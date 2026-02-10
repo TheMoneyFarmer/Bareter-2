@@ -28,6 +28,8 @@ import {
   Plus,
   Shield,
   Languages,
+  Rss,
+  PenSquare,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 
@@ -45,8 +47,9 @@ export function Header() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
   const navItems = [
+    { href: "/feed", label: t("nav.feed"), icon: Rss },
     { href: "/browse", label: t("nav.browse"), icon: Search },
-    { href: "/create-listing", label: t("nav.createListing"), icon: Plus },
+    { href: "/create-post", label: t("nav.createPost"), icon: PenSquare },
     { href: "/deals", label: t("nav.myDeals"), icon: Handshake },
   ];
 
@@ -79,17 +82,30 @@ export function Header() {
                 </Link>
               ))
             ) : (
-              <Link href="/browse-public">
-                <Button
-                  variant={isActive("/browse-public") ? "secondary" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                  data-testid="nav-browse-marketplace"
-                >
-                  <Search className="h-4 w-4" />
-                  {t("nav.browseMarketplace")}
-                </Button>
-              </Link>
+              <>
+                <Link href="/feed">
+                  <Button
+                    variant={isActive("/feed") ? "secondary" : "ghost"}
+                    size="sm"
+                    className="gap-2"
+                    data-testid="nav-feed"
+                  >
+                    <Rss className="h-4 w-4" />
+                    {t("nav.feed")}
+                  </Button>
+                </Link>
+                <Link href="/browse-public">
+                  <Button
+                    variant={isActive("/browse-public") ? "secondary" : "ghost"}
+                    size="sm"
+                    className="gap-2"
+                    data-testid="nav-browse-marketplace"
+                  >
+                    <Search className="h-4 w-4" />
+                    {t("nav.browseMarketplace")}
+                  </Button>
+                </Link>
+              </>
             )}
           </nav>
         </div>

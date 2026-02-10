@@ -38,6 +38,8 @@ const translations: Record<Language, Record<string, string>> = {
     "nav.support": "Support",
     "nav.contact": "Contact",
     "nav.browseListings": "Browse Listings",
+    "nav.feed": "Feed",
+    "nav.createPost": "Post",
 
     "auth.email": "Email",
     "auth.password": "Password",
@@ -360,6 +362,8 @@ const translations: Record<Language, Record<string, string>> = {
     "nav.support": "الدعم",
     "nav.contact": "اتصل بنا",
     "nav.browseListings": "تصفح الإعلانات",
+    "nav.feed": "المنشورات",
+    "nav.createPost": "نشر",
 
     "auth.email": "البريد الإلكتروني",
     "auth.password": "كلمة المرور",
