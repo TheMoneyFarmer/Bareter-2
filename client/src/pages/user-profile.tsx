@@ -42,7 +42,27 @@ export function UserProfilePage() {
 
   const { data: profileData, isLoading } = useQuery<PublicUserData>({
     queryKey: ["/api/users", id],
+    enabled: !!currentUser,
   });
+
+  if (!currentUser) {
+    return (
+      <div className="container px-4 py-16 mx-auto max-w-md text-center">
+        <h2 className="text-2xl font-bold mb-2" data-testid="text-signin-required">Sign in to view profiles</h2>
+        <p className="text-muted-foreground mb-6">
+          Create an account or sign in to view user profiles on BarterGram.
+        </p>
+        <div className="flex gap-3 justify-center">
+          <Link href="/login">
+            <Button variant="outline" data-testid="button-login-cta">Sign In</Button>
+          </Link>
+          <Link href="/register">
+            <Button data-testid="button-register-cta">Get Started</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

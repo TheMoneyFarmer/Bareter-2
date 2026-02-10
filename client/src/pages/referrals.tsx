@@ -74,7 +74,7 @@ export function ReferralsPage() {
   const shareViaWhatsApp = () => {
     if (codeData?.referralCode) {
       const message = encodeURIComponent(
-        `Join Margin - the UAE barter marketplace! Use my referral code ${codeData.referralCode} and we both get 1 free deal fee waived. Sign up at ${window.location.origin}/register`
+        `Join BarterGram - the UAE barter marketplace! Use my referral code ${codeData.referralCode} and we both get 1 free deal fee waived. Sign up at ${window.location.origin}/register`
       );
       window.open(`https://wa.me/?text=${message}`, "_blank");
     }
@@ -181,7 +181,7 @@ export function ReferralsPage() {
                 <Input
                   value={referralInput}
                   onChange={(e) => setReferralInput(e.target.value)}
-                  placeholder="Enter referral code (e.g., MARGIN-XXXX)"
+                  placeholder="Enter referral code (e.g., BG-XXXX)"
                   data-testid="input-referral-code"
                 />
                 <Button

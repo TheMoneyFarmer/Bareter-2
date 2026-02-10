@@ -78,6 +78,7 @@ export type RealEstateDetails = {
   floorNumber?: number;
   viewType?: string;
   furnished?: boolean;
+  mapsLink?: string;
 };
 
 export type VehicleDetails = {
@@ -93,6 +94,8 @@ export type VehicleDetails = {
   features?: string[];
   color?: string;
   registrationExpiry?: string;
+  insuranceExpiry?: string;
+  fuelEfficiency?: string;
   cabins?: number;
   hoursUsed?: number;
 };
@@ -362,6 +365,7 @@ export const posts = pgTable("posts", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   title: text("title"),
+  postType: text("post_type").default("offer"),
   caption: text("caption").notNull(),
   mediaUrls: jsonb("media_urls").$type<string[]>().default([]),
   mediaType: text("media_type").default("image"),

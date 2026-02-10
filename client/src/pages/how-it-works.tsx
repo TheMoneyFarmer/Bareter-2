@@ -75,7 +75,7 @@ export function HowItWorksPage() {
   return (
     <div className="container px-4 py-12 mx-auto max-w-6xl">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4">How Margin Works</h1>
+        <h1 className="text-4xl font-bold mb-4">How BarterGram Works</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Trade goods and services with UAE businesses in 6 simple steps. No cash needed.
         </p>
@@ -110,7 +110,7 @@ export function HowItWorksPage() {
       </div>
 
       <div className="mb-16">
-        <h2 className="text-2xl font-bold text-center mb-8">Why Trade on Margin?</h2>
+        <h2 className="text-2xl font-bold text-center mb-8">Why Trade on BarterGram?</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {benefits.map((benefit) => (
             <Card key={benefit.title}>
@@ -131,7 +131,7 @@ export function HowItWorksPage() {
       <div className="text-center bg-primary/5 rounded-2xl p-8">
         <h2 className="text-2xl font-bold mb-4">Ready to Start Bartering?</h2>
         <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-          Join hundreds of UAE businesses already bartering on Margin. Create your free account today.
+          Join hundreds of UAE businesses already bartering on BarterGram. Create your free account today.
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
           <Link href="/register">

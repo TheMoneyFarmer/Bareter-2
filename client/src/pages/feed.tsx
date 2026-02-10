@@ -27,6 +27,14 @@ import {
   Hash,
   TrendingUp,
   Plus,
+  Fuel,
+  Settings2,
+  Palette,
+  CheckCircle2,
+  PackagePlus,
+  Search,
+  Sofa,
+  Eye,
 } from "lucide-react";
 import type { PostWithUser, PostCategoryDetails } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
@@ -165,6 +173,11 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
     if (details.bedrooms) badges.push({ icon: Bed, label: `${details.bedrooms} bed` });
     if (details.bathrooms) badges.push({ icon: Bath, label: `${details.bathrooms} bath` });
     if (details.squareMeters) badges.push({ icon: Ruler, label: `${details.squareMeters} sqm` });
+    if (details.furnished) badges.push({ icon: Sofa, label: "Furnished" });
+    if (details.viewType) badges.push({ icon: Eye, label: details.viewType });
+    if (details.amenities && details.amenities.length > 0) {
+      badges.push({ icon: CheckCircle2, label: details.amenities.slice(0, 3).join(", ") });
+    }
   }
 
   if (feedCategory === "Vehicles" || feedCategory === "Assets & Vehicles") {
@@ -172,14 +185,18 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
       badges.push({ icon: Car, label: [details.make, details.model, details.year].filter(Boolean).join(" ") });
     }
     if (details.mileage) badges.push({ icon: Gauge, label: `${details.mileage.toLocaleString()} km` });
-    if (details.doors) badges.push({ icon: DoorOpen, label: `${details.doors} doors` });
+    if (details.engineType) badges.push({ icon: Fuel, label: details.engineType });
+    if (details.transmission) badges.push({ icon: Settings2, label: details.transmission });
+    if (details.color) badges.push({ icon: Palette, label: details.color });
   }
 
   if (feedCategory === "Luxury Goods" || feedCategory === "Big Ticket") {
     if (details.brand || details.model) {
       badges.push({ icon: Gem, label: [details.brand, details.model].filter(Boolean).join(" ") });
     }
-    if (details.condition) badges.push({ icon: Gem, label: details.condition });
+    if (details.condition) badges.push({ icon: CheckCircle2, label: details.condition });
+    if (details.material) badges.push({ icon: Gem, label: details.material });
+    if (details.boxAndPapers) badges.push({ icon: CheckCircle2, label: "Box & Papers" });
   }
 
   if (badges.length === 0) return null;
@@ -240,6 +257,17 @@ function FeedCard({ post }: { post: PostWithUser }) {
       navigate("/login");
       return;
     }
+    const kycApproved = user.kycStatus === "APPROVED";
+    const kybApproved = user.kybStatus === "APPROVED";
+    if (!kycApproved && !kybApproved) {
+      toast({
+        title: "Verification required",
+        description: "Please verify your identity before proposing a barter.",
+        variant: "destructive",
+      });
+      navigate("/profile");
+      return;
+    }
     navigate("/create-listing");
   };
 
@@ -275,6 +303,17 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 <Badge variant="default" className="text-[10px]" data-testid={`badge-high-value-${post.id}`}>
                   <TrendingUp className="h-3 w-3 mr-0.5" />
                   High Value
+                </Badge>
+              )}
+              {post.postType === "request" ? (
+                <Badge variant="outline" className="text-[10px] gap-0.5" data-testid={`badge-post-type-${post.id}`}>
+                  <Search className="h-3 w-3" />
+                  Looking For
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] gap-0.5" data-testid={`badge-post-type-${post.id}`}>
+                  <PackagePlus className="h-3 w-3" />
+                  Offering
                 </Badge>
               )}
             </div>
@@ -403,6 +442,8 @@ function FeedCard({ post }: { post: PostWithUser }) {
 }
 
 export function FeedPage() {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
 
   const postsQueryKey =
@@ -422,7 +463,30 @@ export function FeedPage() {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
+    enabled: !!user,
   });
+
+  if (!user) {
+    return (
+      <div className="container px-4 py-16 mx-auto max-w-md text-center">
+        <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
+          <Heart className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2" data-testid="text-signin-required">Sign in to explore</h2>
+        <p className="text-muted-foreground mb-6">
+          Create an account or sign in to discover barter opportunities on BarterGram.
+        </p>
+        <div className="flex gap-3 justify-center">
+          <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
+            Sign In
+          </Button>
+          <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
+            Get Started
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-8">

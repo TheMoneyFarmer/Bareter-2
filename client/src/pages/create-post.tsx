@@ -46,7 +46,11 @@ import {
   Building2,
   Car,
   Watch,
+  PackagePlus,
+  Search,
+  HelpCircle,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const STRUCTURED_SUBCATEGORIES = [
   "Car",
@@ -121,6 +125,7 @@ const VEHICLE_FEATURES = [
 const MATERIALS = ["Gold", "Platinum", "Steel", "Titanium", "Ceramic"];
 
 type FormValues = {
+  postType: string;
   title: string;
   feedCategory: string;
   subCategory: string;
@@ -151,6 +156,7 @@ export function CreatePostPage() {
 
   const form = useForm<FormValues>({
     defaultValues: {
+      postType: "offer",
       title: "",
       feedCategory: "",
       subCategory: "",
@@ -205,6 +211,7 @@ export function CreatePostPage() {
         : [];
 
       const body = {
+        postType: data.postType,
         title: data.title,
         caption: data.caption,
         mediaUrls,
@@ -345,7 +352,7 @@ export function CreatePostPage() {
           Create Post
         </h1>
         <p className="text-muted-foreground">
-          Share what you want to barter on the Margin marketplace
+          Share what you want to barter on the BarterGram marketplace
         </p>
       </div>
 
@@ -376,6 +383,29 @@ export function CreatePostPage() {
                   </FormItem>
                 )}
               />
+
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant={form.watch("postType") === "offer" ? "default" : "outline"}
+                  className="flex-1 toggle-elevate"
+                  onClick={() => form.setValue("postType", "offer")}
+                  data-testid="button-post-type-offer"
+                >
+                  <PackagePlus className="h-4 w-4 mr-2" />
+                  I'm Offering
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.watch("postType") === "request" ? "default" : "outline"}
+                  className="flex-1 toggle-elevate"
+                  onClick={() => form.setValue("postType", "request")}
+                  data-testid="button-post-type-request"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  I'm Looking For
+                </Button>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
@@ -683,8 +713,16 @@ export function CreatePostPage() {
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>
-                      Use professional appraisal for high-value items
+                    <FormDescription className="flex items-center gap-1">
+                      Use professional appraisal for high-value items. Accurate details build trust and better matches.
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs text-xs">Provide an accurate declared value based on professional appraisal or market research for the best matching results.</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -861,6 +899,26 @@ export function CreatePostPage() {
                         </label>
                       );
                     })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2 pt-2">
+                    <Checkbox
+                      checked={categoryDetails.furnished === true}
+                      onCheckedChange={(checked) => updateDetail("furnished", checked === true)}
+                      data-testid="checkbox-furnished"
+                    />
+                    <span className="text-sm">Fully Furnished</span>
+                  </div>
+                  <div className="space-y-2">
+                    <FormLabel>Google Maps Link (optional)</FormLabel>
+                    <Input
+                      value={(categoryDetails.mapsLink as string) ?? ""}
+                      onChange={(e) => updateDetail("mapsLink", e.target.value)}
+                      placeholder="https://maps.google.com/..."
+                      data-testid="input-maps-link"
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -1057,6 +1115,36 @@ export function CreatePostPage() {
                         </label>
                       );
                     })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <FormLabel>Registration Expiry</FormLabel>
+                    <Input
+                      type="date"
+                      value={(categoryDetails.registrationExpiry as string) ?? ""}
+                      onChange={(e) => updateDetail("registrationExpiry", e.target.value)}
+                      data-testid="input-registration-expiry"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <FormLabel>Insurance Expiry</FormLabel>
+                    <Input
+                      type="date"
+                      value={(categoryDetails.insuranceExpiry as string) ?? ""}
+                      onChange={(e) => updateDetail("insuranceExpiry", e.target.value)}
+                      data-testid="input-insurance-expiry"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <FormLabel>Fuel Efficiency</FormLabel>
+                    <Input
+                      value={(categoryDetails.fuelEfficiency as string) ?? ""}
+                      onChange={(e) => updateDetail("fuelEfficiency", e.target.value)}
+                      placeholder="e.g., 12 km/L"
+                      data-testid="input-fuel-efficiency"
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -1274,6 +1362,17 @@ export function CreatePostPage() {
                         {...field}
                       />
                     </FormControl>
+                    <FormDescription className="flex items-center gap-1">
+                      Reference market trends, e.g., 'Dubizzle average AED 2.5M for similar villas'
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs text-xs">Adding market references helps other traders understand fair value and increases trust in your listing.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

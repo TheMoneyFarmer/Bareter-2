@@ -19,7 +19,7 @@ import {
 const categories = [
   {
     title: "Getting Started",
-    description: "Learn the basics of bartering on Margin",
+    description: "Learn the basics of bartering on BarterGram",
     icon: UserPlus,
     articles: [
       "How to create your account",
@@ -93,7 +93,7 @@ export function HelpPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Help Center</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-          Find answers to common questions and learn how to make the most of Margin
+          Find answers to common questions and learn how to make the most of BarterGram
         </p>
         <div className="max-w-xl mx-auto relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />

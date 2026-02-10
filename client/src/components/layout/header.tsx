@@ -82,30 +82,17 @@ export function Header() {
                 </Link>
               ))
             ) : (
-              <>
-                <Link href="/feed">
-                  <Button
-                    variant={isActive("/feed") ? "secondary" : "ghost"}
-                    size="sm"
-                    className="gap-2"
-                    data-testid="nav-feed"
-                  >
-                    <Rss className="h-4 w-4" />
-                    {t("nav.feed")}
-                  </Button>
-                </Link>
-                <Link href="/browse-public">
-                  <Button
-                    variant={isActive("/browse-public") ? "secondary" : "ghost"}
-                    size="sm"
-                    className="gap-2"
-                    data-testid="nav-browse-marketplace"
-                  >
-                    <Search className="h-4 w-4" />
-                    {t("nav.browseMarketplace")}
-                  </Button>
-                </Link>
-              </>
+              <Link href="/browse-public">
+                <Button
+                  variant={isActive("/browse-public") ? "secondary" : "ghost"}
+                  size="sm"
+                  className="gap-2"
+                  data-testid="nav-browse-marketplace"
+                >
+                  <Search className="h-4 w-4" />
+                  {t("nav.browseMarketplace")}
+                </Button>
+              </Link>
             )}
           </nav>
         </div>

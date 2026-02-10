@@ -152,7 +152,7 @@ function VerificationSection({ user }: { user: User }) {
           Identity Verification
         </CardTitle>
         <CardDescription>
-          Verify your identity to start bartering on Margin
+          Verify your identity to start bartering on BarterGram
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -166,7 +166,7 @@ function VerificationSection({ user }: { user: User }) {
               {status === "NOT_STARTED" && "Complete identity verification to start bartering."}
               {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
               {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
-              {status === "APPROVED" && "You are verified and can now trade on Margin!"}
+              {status === "APPROVED" && "You are verified and can now trade on BarterGram!"}
               {status === "DECLINED" && "Your verification was declined. Please try again with valid documents."}
               {status === "EXPIRED" && "Your verification session expired. Please start again."}
               {status === "ABANDONED" && "You didn't complete verification. Please try again."}
@@ -242,7 +242,7 @@ function VerificationSection({ user }: { user: User }) {
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertTitle className="text-green-700 dark:text-green-300">Verified Account</AlertTitle>
             <AlertDescription className="text-green-600 dark:text-green-400">
-              Your identity has been verified. You can now trade with confidence on Margin.
+              Your identity has been verified. You can now trade with confidence on BarterGram.
             </AlertDescription>
           </Alert>
         )}

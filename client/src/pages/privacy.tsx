@@ -12,7 +12,7 @@ export function PrivacyPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Margin ("Company", "we", "our", "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our barter marketplace platform ("Platform").
+            BarterGram ("Company", "we", "our", "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our barter marketplace platform ("Platform").
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
             Please read this Privacy Policy carefully. By using the Platform, you consent to the practices described in this policy.
@@ -173,7 +173,7 @@ export function PrivacyPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">10. Children's Privacy</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Margin is not intended for individuals under 18 years of age. We do not knowingly collect personal information from minors. If we become aware that we have collected information from a minor, we will delete it promptly.
+            BarterGram is not intended for individuals under 18 years of age. We do not knowingly collect personal information from minors. If we become aware that we have collected information from a minor, we will delete it promptly.
           </p>
         </section>
 
@@ -190,7 +190,7 @@ export function PrivacyPage() {
             If you have questions about this Privacy Policy or our data practices, please contact us:
           </p>
           <div className="mt-4 text-muted-foreground">
-            <p>Margin - Data Protection</p>
+            <p>BarterGram - Data Protection</p>
             <p>Dubai, United Arab Emirates</p>
             <p>Email: privacy@margin.ae</p>
             <p>Phone: +971 4 123 4567</p>
@@ -200,7 +200,7 @@ export function PrivacyPage() {
 
       <div className="mt-12 pt-8 border-t">
         <p className="text-sm text-muted-foreground text-center">
-          This Privacy Policy is effective as of February 2026 and applies to all users of the Margin platform.
+          This Privacy Policy is effective as of February 2026 and applies to all users of the BarterGram platform.
         </p>
         <div className="flex justify-center gap-4 mt-6">
           <Link href="/terms" className="text-sm text-primary hover:underline">

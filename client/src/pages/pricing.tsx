@@ -140,7 +140,7 @@ export function PricingPage() {
           <div>
             <h3 className="font-semibold mb-2">Is there a subscription?</h3>
             <p className="text-sm text-muted-foreground">
-              No. Margin is completely free to use. You only pay when you successfully complete trades.
+              No. BarterGram is completely free to use. You only pay when you successfully complete trades.
             </p>
           </div>
           <div>

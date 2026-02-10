@@ -277,7 +277,8 @@ export async function seedDatabase() {
         wantItems: [{ name: "Luxury Fleet (3+ vehicles)", value: 5000000 }, { name: "Yacht", value: 4000000 }],
         hashtags: ["palmjumeirah", "luxuryvilla", "dubaiproperties", "beachfront"],
         location: "Dubai",
-        categoryDetails: { propertyType: "Villa", bedrooms: 4, bathrooms: 5, squareMeters: 650, yearBuilt: 2019, area: "Palm Jumeirah", amenities: ["Pool", "Sea View", "Parking", "Garden", "Security", "Furnished"], ownershipStatus: "Freehold", viewType: "Full Sea View" },
+        categoryDetails: { propertyType: "Villa", bedrooms: 4, bathrooms: 5, squareMeters: 650, yearBuilt: 2019, area: "Palm Jumeirah", amenities: ["Pool", "Sea View", "Parking", "Garden", "Security", "Furnished"], ownershipStatus: "Freehold", viewType: "Full Sea View", furnished: true, mapsLink: "https://maps.google.com/?q=Palm+Jumeirah" },
+        postType: "offer",
         likeCount: 24,
       },
       {
@@ -323,6 +324,7 @@ export async function seedDatabase() {
         hashtags: ["sharjah", "officespace", "commercial", "businessdistrict"],
         location: "Sharjah",
         categoryDetails: { propertyType: "Office Space", bedrooms: 0, bathrooms: 2, squareMeters: 350, yearBuilt: 2018, area: "Al Mamzar", amenities: ["Parking", "Security"], ownershipStatus: "Freehold" },
+        postType: "request",
         likeCount: 9,
       },
       // Cars (3)
@@ -338,7 +340,8 @@ export async function seedDatabase() {
         wantItems: [{ name: "Hotel Suite Nights (50+)", value: 400000 }, { name: "Private Jet Charter Hours", value: 300000 }],
         hashtags: ["g63", "amg", "mercedesbenz", "luxurycars", "dubailuxury"],
         location: "Dubai",
-        categoryDetails: { make: "Mercedes-Benz", model: "G63 AMG", year: 2024, mileage: 2500, doors: 5, engineType: "Petrol", engineCapacity: "4.0L V8 Biturbo", transmission: "Automatic", condition: "New", color: "Obsidian Black", features: ["Leather Seats", "Navigation", "Sunroof", "AC", "Sound System", "Bluetooth", "Rear Camera", "Cruise Control"] },
+        categoryDetails: { make: "Mercedes-Benz", model: "G63 AMG", year: 2024, mileage: 2500, doors: 5, engineType: "Petrol", engineCapacity: "4.0L V8 Biturbo", transmission: "Automatic", condition: "New", color: "Obsidian Black", features: ["Leather Seats", "Navigation", "Sunroof", "AC", "Sound System", "Bluetooth", "Rear Camera", "Cruise Control"], registrationExpiry: "2026-12-31", insuranceExpiry: "2025-12-31", fuelEfficiency: "8 km/L" },
+        postType: "offer",
         likeCount: 42,
       },
       {
@@ -353,7 +356,8 @@ export async function seedDatabase() {
         wantItems: [{ name: "Premium Office Space (2 years)", value: 400000 }, { name: "Enterprise Tech Infrastructure", value: 300000 }],
         hashtags: ["porsche", "911gt3", "sportscar", "trackday"],
         location: "Abu Dhabi",
-        categoryDetails: { make: "Porsche", model: "911 GT3", year: 2023, mileage: 8500, doors: 2, engineType: "Petrol", engineCapacity: "4.0L Flat-6", transmission: "Automatic", condition: "Excellent", color: "Guards Red", features: ["Leather Seats", "Navigation", "AC", "Sound System", "Bluetooth", "Rear Camera", "Cruise Control"] },
+        categoryDetails: { make: "Porsche", model: "911 GT3", year: 2023, mileage: 8500, doors: 2, engineType: "Petrol", engineCapacity: "4.0L Flat-6", transmission: "Automatic", condition: "Excellent", color: "Guards Red", features: ["Leather Seats", "Navigation", "AC", "Sound System", "Bluetooth", "Rear Camera", "Cruise Control"], registrationExpiry: "2026-06-15", fuelEfficiency: "10 km/L" },
+        postType: "offer",
         likeCount: 35,
       },
       {
