@@ -42,6 +42,21 @@ Preferred communication style: Simple, everyday language.
 - **API Request Helper**: `client/src/lib/queryClient.ts` provides typed fetch wrappers
 - **Context Providers**: Auth, Theme, and I18n contexts wrap the application for global state
 
+### Mobile-First Responsive Design
+- **Bottom Tab Navigation**: Instagram-style bottom nav (`client/src/components/layout/mobile-bottom-nav.tsx`) shows on mobile (< md breakpoint)
+  - Tabs: Feed, Browse, Create Post (auth-only), Deals (auth-only), Profile/Login
+  - Fixed at bottom with z-50, backdrop blur, safe-area-bottom support
+- **Header Mobile**: Language/theme toggles hidden on mobile, available in hamburger slide-out menu
+- **Hamburger Menu**: Expanded mobile menu with Profile, Dashboard, Saved, Referrals, Settings, Admin (if admin), Language/Theme toggles, Logout
+- **Footer**: Hidden on mobile (visible md+), replaced by bottom nav
+- **Main Content**: `pb-20 md:pb-0` padding to prevent content from hiding behind bottom nav
+- **Feed Cards**: Edge-to-edge on mobile (`px-0 sm:px-4`), compact action button gaps
+- **Category Tabs**: Sticky at `top-16` below header, horizontally scrollable with hidden scrollbar
+- **Browse Grid**: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` for responsive listing cards
+- **Profile Tabs**: Flex overflow-x-auto instead of grid-cols-5 for mobile scrollability
+- **WhatsApp Button**: Positioned at `bottom-20 md:bottom-6` to avoid overlapping bottom nav
+- **CSS Utilities**: `scrollbar-hide` and `safe-area-bottom` defined in `index.css`
+
 ### Internationalization (i18n)
 - **Languages**: English (LTR) and Arabic (RTL) supported
 - **Provider**: `client/src/lib/i18n.tsx` - I18nProvider context

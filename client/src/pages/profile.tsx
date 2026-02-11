@@ -572,26 +572,26 @@ export function ProfilePage() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="profile" data-testid="tab-profile">
-            <User className="h-4 w-4 mr-2" />
-            Profile
+        <TabsList className="flex w-full overflow-x-auto">
+          <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
+            <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Profile</span>
           </TabsTrigger>
-          <TabsTrigger value="offers" data-testid="tab-offers">
-            <Package className="h-4 w-4 mr-2" />
-            Offers
+          <TabsTrigger value="offers" className="flex-1 min-w-0" data-testid="tab-offers">
+            <Package className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Offers</span>
           </TabsTrigger>
-          <TabsTrigger value="needs" data-testid="tab-needs">
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            Needs
+          <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
+            <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Needs</span>
           </TabsTrigger>
-          <TabsTrigger value="portfolio" data-testid="tab-portfolio">
-            <ImageIcon className="h-4 w-4 mr-2" />
-            Portfolio
+          <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
+            <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Portfolio</span>
           </TabsTrigger>
-          <TabsTrigger value="verification" data-testid="tab-verification">
-            <Shield className="h-4 w-4 mr-2" />
-            Verify
+          <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
+            <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Verify</span>
           </TabsTrigger>
         </TabsList>
 

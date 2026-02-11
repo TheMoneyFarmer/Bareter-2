@@ -131,7 +131,7 @@ function CategoryTabs({
 }) {
   return (
     <div
-      className="flex gap-2 overflow-x-auto flex-nowrap py-3 px-1 scrollbar-hide sticky top-0 z-40 bg-background border-b"
+      className="flex gap-2 overflow-x-auto flex-nowrap py-3 px-2 sm:px-1 scrollbar-hide sticky top-16 z-40 bg-background border-b"
       data-testid="category-tabs"
     >
       {FEED_CATEGORIES.map((cat) => (
@@ -673,8 +673,8 @@ function FeedCard({ post }: { post: PostWithUser }) {
         </div>
 
         <div className="px-3 pt-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={handleLike}
                 className="flex items-center gap-1"
@@ -730,7 +730,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-0.5 sm:gap-1.5">
               <Button
                 size="icon"
                 variant="ghost"
@@ -1015,7 +1015,7 @@ export function FeedPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pb-8">
+    <div className="max-w-6xl mx-auto px-0 sm:px-4 pb-4 sm:pb-8">
       <div className="flex gap-8">
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />

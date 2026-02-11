@@ -117,28 +117,30 @@ export function Header() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLanguage(language === "en" ? "ar" : "en")}
-            data-testid="button-language-toggle"
-          >
-            <Languages className="h-5 w-5" />
-          </Button>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <div className="hidden sm:flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+              data-testid="button-language-toggle"
+            >
+              <Languages className="h-5 w-5" />
+            </Button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            data-testid="button-theme-toggle"
-          >
-            {theme === "light" ? (
-              <Moon className="h-5 w-5" />
-            ) : (
-              <Sun className="h-5 w-5" />
-            )}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              data-testid="button-theme-toggle"
+            >
+              {theme === "light" ? (
+                <Moon className="h-5 w-5" />
+              ) : (
+                <Sun className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
 
           {user ? (
             <>
@@ -283,30 +285,106 @@ export function Header() {
                 </SheetTrigger>
                 <SheetContent side="right" className="w-72">
                   <nav className="flex flex-col gap-2 mt-8">
-                    {navItems.map((item) => (
-                      <Link key={item.href} href={item.href}>
+                    <Link href="/profile">
+                      <Button
+                        variant={isActive("/profile") ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                      >
+                        <User className="h-4 w-4" />
+                        {t("nav.profile")}
+                      </Button>
+                    </Link>
+                    <Link href="/dashboard">
+                      <Button
+                        variant={isActive("/dashboard") ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                      >
+                        <LayoutDashboard className="h-4 w-4" />
+                        {t("nav.dashboard")}
+                      </Button>
+                    </Link>
+                    <Link href="/saved">
+                      <Button
+                        variant={isActive("/saved") ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                      >
+                        <Search className="h-4 w-4" />
+                        Saved Items
+                      </Button>
+                    </Link>
+                    <Link href="/referrals">
+                      <Button
+                        variant={isActive("/referrals") ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Referrals
+                      </Button>
+                    </Link>
+                    <Link href="/settings">
+                      <Button
+                        variant={isActive("/settings") ? "secondary" : "ghost"}
+                        className="w-full justify-start gap-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        {t("nav.settings")}
+                      </Button>
+                    </Link>
+                    {user.isAdmin && (
+                      <Link href="/admin">
                         <Button
-                          variant={isActive(item.href) ? "secondary" : "ghost"}
+                          variant={isActive("/admin") ? "secondary" : "ghost"}
                           className="w-full justify-start gap-2"
                         >
-                          <item.icon className="h-4 w-4" />
-                          {item.label}
+                          <Shield className="h-4 w-4" />
+                          {t("nav.admin")}
+                          <Badge variant="destructive" className="ml-auto text-xs">Admin</Badge>
                         </Button>
                       </Link>
-                    ))}
+                    )}
+                    <div className="border-t my-2" />
+                    <div className="flex items-center gap-2 sm:hidden">
+                      <Button
+                        variant="ghost"
+                        className="flex-1 justify-start gap-2"
+                        onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+                        data-testid="mobile-menu-language"
+                      >
+                        <Languages className="h-4 w-4" />
+                        {language === "en" ? "Arabic" : "English"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="flex-1 justify-start gap-2"
+                        onClick={toggleTheme}
+                        data-testid="mobile-menu-theme"
+                      >
+                        {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                        {theme === "light" ? "Dark" : "Light"}
+                      </Button>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2 text-destructive"
+                      onClick={logout}
+                      data-testid="mobile-menu-logout"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      {t("nav.logout")}
+                    </Button>
                   </nav>
                 </SheetContent>
               </Sheet>
             </>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Link href="/login">
-                <Button variant="ghost" data-testid="button-login">
+                <Button variant="ghost" size="sm" data-testid="button-login">
                   {t("nav.login")}
                 </Button>
               </Link>
               <Link href="/register">
-                <Button data-testid="button-register">{t("nav.register")}</Button>
+                <Button size="sm" data-testid="button-register">{t("nav.register")}</Button>
               </Link>
             </div>
           )}

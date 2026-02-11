@@ -34,6 +34,7 @@ import { ReferralsPage } from "@/pages/referrals";
 import { FeedPage } from "@/pages/feed";
 import { CreatePostPage } from "@/pages/create-post";
 import { WhatsAppButton } from "@/components/whatsapp-button";
+import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -78,10 +79,13 @@ function App() {
             <TooltipProvider>
               <div className="min-h-screen flex flex-col bg-background">
                 <Header />
-                <main className="flex-1">
+                <main className="flex-1 pb-20 md:pb-0">
                   <Router />
                 </main>
-                <Footer />
+                <div className="hidden md:block">
+                  <Footer />
+                </div>
+                <MobileBottomNav />
               </div>
               <Toaster />
               <WhatsAppButton />
