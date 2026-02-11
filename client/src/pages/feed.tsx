@@ -452,6 +452,169 @@ function FeedCard({ post }: { post: PostWithUser }) {
   );
 }
 
+function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+
+  const trendingCategories = [
+    { name: "Services & Skills", count: 42, color: "text-blue-600 dark:text-blue-400" },
+    { name: "Space & Office", count: 38, color: "text-emerald-600 dark:text-emerald-400" },
+    { name: "Food & Hospitality", count: 31, color: "text-orange-600 dark:text-orange-400" },
+    { name: "Assets & Vehicles", count: 27, color: "text-purple-600 dark:text-purple-400" },
+    { name: "Big Ticket", count: 15, color: "text-rose-600 dark:text-rose-400" },
+  ];
+
+  const suggestedUsers = posts
+    ?.reduce<PostWithUser[]>((acc, post) => {
+      if (!acc.find((p) => p.userId === post.userId) && post.user) {
+        acc.push(post);
+      }
+      return acc;
+    }, [])
+    .slice(0, 5) || [];
+
+  return (
+    <div className="space-y-5">
+      {user ? (
+        <Card>
+          <CardContent className="p-4">
+            <Link href="/profile" data-testid="sidebar-profile-link">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={user.avatarUrl || undefined} />
+                  <AvatarFallback className="font-medium">
+                    {user.fullName?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold truncate" data-testid="sidebar-username">{user.fullName}</span>
+                    {user.isVerified && <Shield className="h-3.5 w-3.5 text-primary flex-shrink-0" />}
+                  </div>
+                  <span className="text-xs text-muted-foreground">{user.businessName || user.email}</span>
+                </div>
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-4 text-center space-y-3">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <ArrowRightLeft className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">Join BarterGram</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Start trading goods & services with UAE businesses
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => navigate("/login")} data-testid="sidebar-login">
+                Sign In
+              </Button>
+              <Button size="sm" className="flex-1" onClick={() => navigate("/register")} data-testid="sidebar-register">
+                Sign Up
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-trending-title">Trending Categories</h3>
+          <div className="space-y-1">
+            {trendingCategories.map((cat) => (
+              <Link key={cat.name} href="/browse" data-testid={`sidebar-category-${cat.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+                <Button variant="ghost" size="sm" className="w-full justify-between gap-2">
+                  <span className="text-sm font-medium">{cat.name}</span>
+                  <Badge variant="secondary" className="text-xs">{cat.count}</Badge>
+                </Button>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {suggestedUsers.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="font-semibold text-sm" data-testid="sidebar-suggested-title">Active Traders</h3>
+              <Link href="/browse" data-testid="sidebar-see-all">
+                <span className="text-xs text-primary font-medium underline">See All</span>
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {suggestedUsers.map((p) => (
+                <Link key={p.userId} href={`/users/${p.userId}`} data-testid={`sidebar-user-${p.userId}`}>
+                  <div className="flex items-center gap-2.5 py-1">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={p.user?.avatarUrl || undefined} />
+                      <AvatarFallback className="text-xs font-medium">
+                        {p.user?.fullName?.charAt(0) || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm font-medium truncate">{p.user?.fullName}</span>
+                        {p.user?.isVerified && <Shield className="h-3 w-3 text-primary flex-shrink-0" />}
+                      </div>
+                      <span className="text-xs text-muted-foreground truncate block">
+                        {p.user?.businessName || p.location || "UAE"}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-stats-title">Platform Stats</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center p-2 rounded-md bg-muted/50">
+              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-trades">850+</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Trades</p>
+            </div>
+            <div className="text-center p-2 rounded-md bg-muted/50">
+              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-users">2,500+</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Active Users</p>
+            </div>
+            <div className="text-center p-2 rounded-md bg-muted/50">
+              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-value">AED 12M+</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Trade Value</p>
+            </div>
+            <div className="text-center p-2 rounded-md bg-muted/50">
+              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-satisfaction">98%</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Satisfaction</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="px-1">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          <Link href="/terms" data-testid="sidebar-link-terms"><span className="underline">Terms</span></Link>
+          {" · "}
+          <Link href="/privacy" data-testid="sidebar-link-privacy"><span className="underline">Privacy</span></Link>
+          {" · "}
+          <Link href="/help" data-testid="sidebar-link-help"><span className="underline">Help</span></Link>
+          {" · "}
+          <Link href="/faq" data-testid="sidebar-link-faq"><span className="underline">FAQ</span></Link>
+          {" · "}
+          <Link href="/how-it-works" data-testid="sidebar-link-how"><span className="underline">How It Works</span></Link>
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-1">BarterGram 2026</p>
+      </div>
+    </div>
+  );
+}
+
 export function FeedPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -477,46 +640,54 @@ export function FeedPage() {
   });
 
   return (
-    <div className="max-w-lg mx-auto pb-8">
-      <StoriesRow />
-      <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
+    <div className="max-w-6xl mx-auto px-4 pb-8">
+      <div className="flex gap-8">
+        <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
+          <StoriesRow />
+          <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
-      <div className="mt-2 space-y-4 sm:space-y-6">
-        {isLoading ? (
-          <>
-            {[...Array(3)].map((_, i) => (
-              <FeedCardSkeleton key={i} />
-            ))}
-          </>
-        ) : !posts || posts.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 text-center">
-              <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-                <Plus className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2" data-testid="text-empty-title">No posts yet</h3>
-              <p className="text-muted-foreground mb-4" data-testid="text-empty-description">
-                Be the first to share what you have to barter
-              </p>
-              {user ? (
-                <Link href="/create-listing">
-                  <Button data-testid="button-create-first-post">Create a Post</Button>
-                </Link>
-              ) : (
-                <div className="flex gap-3 justify-center">
-                  <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
-                    Sign In
-                  </Button>
-                  <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
-                    Get Started
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          posts.map((post) => <FeedCard key={post.id} post={post} />)
-        )}
+          <div className="mt-2 space-y-4 sm:space-y-6">
+            {isLoading ? (
+              <>
+                {[...Array(3)].map((_, i) => (
+                  <FeedCardSkeleton key={i} />
+                ))}
+              </>
+            ) : !posts || posts.length === 0 ? (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
+                    <Plus className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2" data-testid="text-empty-title">No posts yet</h3>
+                  <p className="text-muted-foreground mb-4" data-testid="text-empty-description">
+                    Be the first to share what you have to barter
+                  </p>
+                  {user ? (
+                    <Link href="/create-listing">
+                      <Button data-testid="button-create-first-post">Create a Post</Button>
+                    </Link>
+                  ) : (
+                    <div className="flex gap-3 justify-center">
+                      <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
+                        Sign In
+                      </Button>
+                      <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
+                        Get Started
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              posts.map((post) => <FeedCard key={post.id} post={post} />)
+            )}
+          </div>
+        </div>
+
+        <aside className="hidden lg:block w-72 xl:w-80 flex-shrink-0 pt-4 sticky top-16 z-50 self-start h-[calc(100vh-5rem)] overflow-y-auto" data-testid="feed-sidebar">
+          <FeedSidebar posts={posts} />
+        </aside>
       </div>
     </div>
   );
