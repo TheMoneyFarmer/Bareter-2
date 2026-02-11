@@ -12,6 +12,8 @@ import {
   wishlists,
   posts,
   postLikes,
+  postComments,
+  postBookmarks,
   type User,
   type InsertUser,
   type Listing,
@@ -33,6 +35,9 @@ import {
   type Post,
   type InsertPost,
   type PostWithUser,
+  type PostComment,
+  type PostCommentWithUser,
+  type PostBookmark,
   type ListingWithUser,
   type DealWithUsers,
   type MessageWithSender,
@@ -110,6 +115,18 @@ export interface IStorage {
   likePost(postId: string, userId: string): Promise<void>;
   unlikePost(postId: string, userId: string): Promise<void>;
   isPostLiked(postId: string, userId: string): Promise<boolean>;
+
+  // Post Comments
+  getCommentsByPost(postId: string): Promise<PostCommentWithUser[]>;
+  getCommentCount(postId: string): Promise<number>;
+  createComment(postId: string, userId: string, content: string): Promise<PostComment>;
+  deleteComment(id: string, userId: string): Promise<void>;
+
+  // Post Bookmarks
+  isPostBookmarked(postId: string, userId: string): Promise<boolean>;
+  bookmarkPost(postId: string, userId: string): Promise<PostBookmark>;
+  unbookmarkPost(postId: string, userId: string): Promise<void>;
+  getBookmarkedPosts(userId: string): Promise<PostWithUser[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -573,6 +590,81 @@ export class DatabaseStorage implements IStorage {
       .from(postLikes)
       .where(and(eq(postLikes.postId, postId), eq(postLikes.userId, userId)));
     return !!existing;
+  }
+
+  // Post Comments
+  async getCommentsByPost(postId: string): Promise<PostCommentWithUser[]> {
+    const result = await db
+      .select()
+      .from(postComments)
+      .leftJoin(users, eq(postComments.userId, users.id))
+      .where(eq(postComments.postId, postId))
+      .orderBy(desc(postComments.createdAt));
+
+    return result.map(({ post_comments: comment, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...comment, user: safeUser };
+    });
+  }
+
+  async getCommentCount(postId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(postComments)
+      .where(eq(postComments.postId, postId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  async createComment(postId: string, userId: string, content: string): Promise<PostComment> {
+    const [comment] = await db
+      .insert(postComments)
+      .values({ postId, userId, content })
+      .returning();
+    return comment;
+  }
+
+  async deleteComment(id: string, userId: string): Promise<void> {
+    await db
+      .delete(postComments)
+      .where(and(eq(postComments.id, id), eq(postComments.userId, userId)));
+  }
+
+  // Post Bookmarks
+  async isPostBookmarked(postId: string, userId: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(postBookmarks)
+      .where(and(eq(postBookmarks.postId, postId), eq(postBookmarks.userId, userId)));
+    return !!existing;
+  }
+
+  async bookmarkPost(postId: string, userId: string): Promise<PostBookmark> {
+    const [bookmark] = await db
+      .insert(postBookmarks)
+      .values({ postId, userId })
+      .returning();
+    return bookmark;
+  }
+
+  async unbookmarkPost(postId: string, userId: string): Promise<void> {
+    await db
+      .delete(postBookmarks)
+      .where(and(eq(postBookmarks.postId, postId), eq(postBookmarks.userId, userId)));
+  }
+
+  async getBookmarkedPosts(userId: string): Promise<PostWithUser[]> {
+    const result = await db
+      .select()
+      .from(postBookmarks)
+      .innerJoin(posts, eq(postBookmarks.postId, posts.id))
+      .leftJoin(users, eq(posts.userId, users.id))
+      .where(eq(postBookmarks.userId, userId))
+      .orderBy(desc(postBookmarks.createdAt));
+
+    return result.map(({ posts: post, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...post, user: safeUser };
+    });
   }
 }
 

@@ -1725,18 +1725,19 @@ export async function registerRoutes(
       const offset = parseInt(req.query.offset as string) || 0;
       const postsData = await storage.getPosts({ category, limit, offset });
 
-      // If user is logged in, check which posts they liked
-      if (req.session.userId) {
-        const postsWithLikes = await Promise.all(
-          postsData.map(async (post) => {
+      // Enrich posts with comment counts and user-specific state
+      const enrichedPosts = await Promise.all(
+        postsData.map(async (post) => {
+          const commentCount = await storage.getCommentCount(post.id);
+          if (req.session.userId) {
             const liked = await storage.isPostLiked(post.id, req.session.userId!);
-            return { ...post, liked };
-          })
-        );
-        return res.json(postsWithLikes);
-      }
-
-      res.json(postsData);
+            const bookmarked = await storage.isPostBookmarked(post.id, req.session.userId!);
+            return { ...post, liked, bookmarked, commentCount };
+          }
+          return { ...post, commentCount };
+        })
+      );
+      res.json(enrichedPosts);
     } catch (error) {
       console.error("Get posts error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1805,6 +1806,79 @@ export async function registerRoutes(
       }
     } catch (error) {
       console.error("Like post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get comments for a post
+  app.get("/api/posts/:id/comments", async (req, res) => {
+    try {
+      const comments = await storage.getCommentsByPost(param(req.params.id));
+      res.json(comments);
+    } catch (error) {
+      console.error("Get comments error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Add comment to a post
+  app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || content.trim().length === 0) {
+        return res.status(400).json({ message: "Comment content is required" });
+      }
+      const comment = await storage.createComment(
+        param(req.params.id),
+        req.session.userId!,
+        content.trim()
+      );
+      const user = await storage.getUser(req.session.userId!);
+      const { password, ...safeUser } = user!;
+      res.status(201).json({ ...comment, user: safeUser });
+    } catch (error) {
+      console.error("Create comment error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete comment
+  app.delete("/api/posts/:postId/comments/:commentId", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteComment(param(req.params.commentId), req.session.userId!);
+      res.json({ message: "Comment deleted" });
+    } catch (error) {
+      console.error("Delete comment error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Bookmark/save a post
+  app.post("/api/posts/:id/bookmark", requireAuth, async (req, res) => {
+    try {
+      const postId = param(req.params.id);
+      const userId = req.session.userId!;
+      const isBookmarked = await storage.isPostBookmarked(postId, userId);
+      if (isBookmarked) {
+        await storage.unbookmarkPost(postId, userId);
+        res.json({ bookmarked: false });
+      } else {
+        await storage.bookmarkPost(postId, userId);
+        res.json({ bookmarked: true });
+      }
+    } catch (error) {
+      console.error("Bookmark post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get bookmarked posts
+  app.get("/api/bookmarks", requireAuth, async (req, res) => {
+    try {
+      const posts = await storage.getBookmarkedPosts(req.session.userId!);
+      res.json(posts);
+    } catch (error) {
+      console.error("Get bookmarks error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

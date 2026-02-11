@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -36,8 +37,14 @@ import {
   Eye,
   Bookmark,
   MoreHorizontal,
+  Phone,
+  Mail,
+  Send,
+  ExternalLink,
+  Copy,
+  X,
 } from "lucide-react";
-import type { PostWithUser, PostCategoryDetails } from "@shared/schema";
+import type { PostWithUser, PostCategoryDetails, PostCommentWithUser } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
 
 function timeAgo(date: Date | string | null | undefined): string {
@@ -217,6 +224,165 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
   );
 }
 
+function CommentsSection({ postId, commentCount: initialCount }: { postId: string; commentCount: number }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [commentText, setCommentText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: comments, isLoading } = useQuery<PostCommentWithUser[]>({
+    queryKey: ["/api/posts", postId, "comments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/posts/${postId}/comments`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch comments");
+      return res.json();
+    },
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await apiRequest("POST", `/api/posts/${postId}/comments`, { content });
+      return res.json();
+    },
+    onSuccess: () => {
+      setCommentText("");
+      queryClient.invalidateQueries({ queryKey: ["/api/posts", postId, "comments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add comment", variant: "destructive" });
+    },
+  });
+
+  const handleSubmitComment = () => {
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in to comment" });
+      return;
+    }
+    if (!commentText.trim()) return;
+    addCommentMutation.mutate(commentText.trim());
+  };
+
+  return (
+    <div className="space-y-2">
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ) : comments && comments.length > 0 ? (
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {comments.map((comment) => (
+            <div key={comment.id} className="flex items-start gap-2" data-testid={`comment-${comment.id}`}>
+              <Avatar className="h-6 w-6 flex-shrink-0">
+                <AvatarImage src={comment.user?.avatarUrl || undefined} />
+                <AvatarFallback className="text-[10px]">
+                  {comment.user?.fullName?.charAt(0) || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">
+                  <span className="font-semibold mr-1">{comment.user?.fullName?.split(" ")[0]}</span>
+                  {comment.content}
+                </p>
+                <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Add a comment..."
+          className="text-sm border-0 border-b rounded-none focus-visible:ring-0 px-0"
+          onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+          data-testid={`input-comment-${postId}`}
+        />
+        {commentText.trim() && (
+          <button
+            onClick={handleSubmitComment}
+            disabled={addCommentMutation.isPending}
+            className="text-primary font-semibold text-sm flex-shrink-0"
+            data-testid={`button-submit-comment-${postId}`}
+          >
+            Post
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BarterExchangeSection({ post, onPropose }: { post: PostWithUser; onPropose: () => void }) {
+  const [showAllWants, setShowAllWants] = useState(false);
+  const offerItems = post.offerItems || [];
+  const wantItems = post.wantItems || [];
+
+  if (offerItems.length === 0 && wantItems.length === 0) return null;
+
+  const visibleWants = showAllWants ? wantItems : wantItems.slice(0, 3);
+
+  return (
+    <div className="space-y-2 rounded-md bg-muted/30 p-2.5" data-testid={`barter-exchange-${post.id}`}>
+      {offerItems.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            {post.postType === "request" ? "Looking For" : "Offering"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {offerItems.map((item, i) => (
+              <Badge key={`offer-${i}`} variant="default" className="text-xs bg-green-600 text-white no-default-hover-elevate no-default-active-elevate gap-1">
+                <PackagePlus className="h-3 w-3" />
+                {item.name}
+                {item.value > 0 && <span className="opacity-75">AED {formatValue(item.value)}</span>}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {wantItems.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+            Willing to trade for
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleWants.map((item, i) => (
+              <Badge key={`want-${i}`} variant="outline" className="text-xs gap-1">
+                <Search className="h-3 w-3" />
+                {item.name}
+                {item.value > 0 && <span className="opacity-75">~AED {formatValue(item.value)}</span>}
+              </Badge>
+            ))}
+            {wantItems.length > 3 && !showAllWants && (
+              <button
+                onClick={() => setShowAllWants(true)}
+                className="text-xs text-primary font-medium"
+                data-testid={`button-show-more-wants-${post.id}`}
+              >
+                +{wantItems.length - 3} more
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onPropose}
+        className="w-full gap-1.5 mt-1"
+        data-testid={`button-propose-different-${post.id}`}
+      >
+        <ArrowRightLeft className="h-3.5 w-3.5" />
+        Propose a Different Barter
+      </Button>
+    </div>
+  );
+}
+
 function FeedCard({ post }: { post: PostWithUser }) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -225,6 +391,9 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const [expanded, setExpanded] = useState(false);
   const [liked, setLiked] = useState(post.liked ?? false);
   const [likeCount, setLikeCount] = useState(post.likeCount ?? 0);
+  const [bookmarked, setBookmarked] = useState(post.bookmarked ?? false);
+  const [showComments, setShowComments] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   const likeMutation = useMutation({
     mutationFn: async () => {
@@ -244,12 +413,92 @@ function FeedCard({ post }: { post: PostWithUser }) {
     },
   });
 
+  const bookmarkMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/posts/${post.id}/bookmark`);
+    },
+    onMutate: () => {
+      setBookmarked((prev) => !prev);
+    },
+    onError: () => {
+      setBookmarked((prev) => !prev);
+      toast({ title: "Error", description: "Failed to update bookmark", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClientHook.invalidateQueries({ queryKey: ["/api/posts"] });
+    },
+  });
+
   const handleLike = () => {
     if (!user) {
       toast({ title: "Sign in required", description: "Please sign in to like posts" });
       return;
     }
     likeMutation.mutate();
+  };
+
+  const handleBookmark = () => {
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in to save posts" });
+      return;
+    }
+    bookmarkMutation.mutate();
+  };
+
+  const handleShare = async () => {
+    const postUrl = `${window.location.origin}/posts/${post.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: post.title || "BarterGram Post",
+          text: post.caption || "Check out this barter opportunity!",
+          url: postUrl,
+        });
+      } catch {
+        // User cancelled share
+      }
+    } else {
+      setShowShareMenu((prev) => !prev);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    const postUrl = `${window.location.origin}/posts/${post.id}`;
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      toast({ title: "Link copied", description: "Post link copied to clipboard" });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy link", variant: "destructive" });
+    }
+    setShowShareMenu(false);
+  };
+
+  const handleContact = (type: "call" | "email" | "message") => {
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in to contact this trader" });
+      navigate("/login");
+      return;
+    }
+    const poster = post.user;
+    if (type === "call") {
+      if (poster?.phone && poster?.showPhone !== false) {
+        window.open(`tel:${poster.phone}`, "_self");
+      } else {
+        toast({ title: "Not available", description: "This trader hasn't shared their phone number" });
+      }
+    } else if (type === "email") {
+      if (poster?.email && poster?.showEmail !== false) {
+        window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${post.title || "BarterGram"}`, "_self");
+      } else {
+        toast({ title: "Not available", description: "This trader hasn't shared their email address" });
+      }
+    } else if (type === "message") {
+      if (poster?.allowDirectMessages === false) {
+        toast({ title: "Not available", description: "This trader has disabled direct messages" });
+      } else {
+        toast({ title: "Coming soon", description: "Direct messaging will be available soon" });
+      }
+    }
   };
 
   const handleProposeBarter = () => {
@@ -277,6 +526,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const caption = post.caption || "";
   const shouldTruncate = caption.length > 120;
   const displayCaption = expanded || !shouldTruncate ? caption : caption.slice(0, 120);
+  const commentCount = post.commentCount ?? 0;
 
   return (
     <Card className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md" data-testid={`card-post-${post.id}`}>
@@ -300,6 +550,9 @@ function FeedCard({ post }: { post: PostWithUser }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {post.user?.businessName && (
+                    <span className="truncate">{post.user.businessName}</span>
+                  )}
                   {post.location && (
                     <span className="flex items-center gap-0.5">
                       <MapPin className="h-3 w-3" />
@@ -372,29 +625,105 @@ function FeedCard({ post }: { post: PostWithUser }) {
               >
                 <Heart className={`h-6 w-6 transition-colors ${liked ? "fill-destructive text-destructive" : "text-foreground"}`} />
               </button>
-              <button className="flex items-center" data-testid={`button-comment-${post.id}`}>
-                <MessageCircle className="h-6 w-6 text-foreground" />
+              <button
+                onClick={() => setShowComments((prev) => !prev)}
+                className="flex items-center gap-1"
+                data-testid={`button-comment-${post.id}`}
+              >
+                <MessageCircle className={`h-6 w-6 transition-colors ${showComments ? "text-primary" : "text-foreground"}`} />
               </button>
-              <button className="flex items-center" data-testid={`button-share-${post.id}`}>
-                <Share2 className="h-6 w-6 text-foreground" />
+              <div className="relative">
+                <button
+                  onClick={handleShare}
+                  className="flex items-center"
+                  data-testid={`button-share-${post.id}`}
+                >
+                  <Share2 className="h-6 w-6 text-foreground" />
+                </button>
+                {showShareMenu && (
+                  <div className="absolute top-8 left-0 z-50 bg-background border rounded-md shadow-lg p-1 min-w-[160px]" data-testid={`share-menu-${post.id}`}>
+                    <button
+                      onClick={handleCopyLink}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover-elevate rounded-sm"
+                      data-testid={`button-copy-link-${post.id}`}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy Link
+                    </button>
+                    <button
+                      onClick={() => {
+                        window.open(`https://wa.me/?text=${encodeURIComponent(`Check out this barter: ${window.location.origin}/posts/${post.id}`)}`, "_blank");
+                        setShowShareMenu(false);
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover-elevate rounded-sm"
+                      data-testid={`button-share-whatsapp-${post.id}`}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      WhatsApp
+                    </button>
+                    <button
+                      onClick={() => setShowShareMenu(false)}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover-elevate rounded-sm text-muted-foreground"
+                      data-testid={`button-close-share-${post.id}`}
+                    >
+                      <X className="h-4 w-4" />
+                      Close
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => handleContact("call")}
+                data-testid={`button-call-${post.id}`}
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => handleContact("email")}
+                data-testid={`button-email-${post.id}`}
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => handleContact("message")}
+                data-testid={`button-message-${post.id}`}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+              <button
+                onClick={handleBookmark}
+                className="flex items-center"
+                data-testid={`button-bookmark-${post.id}`}
+              >
+                <Bookmark className={`h-6 w-6 transition-colors ${bookmarked ? "fill-foreground text-foreground" : "text-foreground"}`} />
               </button>
             </div>
-            <Button
-              size="sm"
-              onClick={handleProposeBarter}
-              className="gap-1.5"
-              data-testid={`button-propose-barter-${post.id}`}
-            >
-              <ArrowRightLeft className="h-4 w-4" />
-              Propose Barter
-            </Button>
           </div>
 
-          {likeCount > 0 && (
-            <p className="text-sm font-semibold mt-1.5" data-testid={`text-likes-${post.id}`}>
-              {likeCount.toLocaleString()} {likeCount === 1 ? "like" : "likes"}
-            </p>
-          )}
+          <div className="flex items-center gap-3 mt-1.5">
+            {likeCount > 0 && (
+              <p className="text-sm font-semibold" data-testid={`text-likes-${post.id}`}>
+                {likeCount.toLocaleString()} {likeCount === 1 ? "like" : "likes"}
+              </p>
+            )}
+            {commentCount > 0 && (
+              <button
+                onClick={() => setShowComments(true)}
+                className="text-sm text-muted-foreground"
+                data-testid={`button-view-comments-${post.id}`}
+              >
+                View {commentCount === 1 ? "1 comment" : `all ${commentCount} comments`}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="px-3 pb-3 pt-1 space-y-2">
@@ -420,22 +749,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
           <CategoryDetails details={post.categoryDetails} feedCategory={post.feedCategory} />
 
-          {(post.offerItems?.length || post.wantItems?.length) ? (
-            <div className="flex flex-wrap gap-1.5">
-              {post.offerItems?.slice(0, 3).map((item, i) => (
-                <Badge key={`offer-${i}`} variant="default" className="text-xs bg-green-600 text-white no-default-hover-elevate no-default-active-elevate gap-1">
-                  <PackagePlus className="h-3 w-3" />
-                  {item.name}
-                </Badge>
-              ))}
-              {post.wantItems?.slice(0, 3).map((item, i) => (
-                <Badge key={`want-${i}`} variant="outline" className="text-xs gap-1">
-                  <Search className="h-3 w-3" />
-                  {item.name}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
+          <BarterExchangeSection post={post} onPropose={handleProposeBarter} />
 
           {post.hashtags && post.hashtags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -445,6 +759,10 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 </span>
               ))}
             </div>
+          )}
+
+          {showComments && (
+            <CommentsSection postId={post.id} commentCount={commentCount} />
           )}
         </div>
       </CardContent>

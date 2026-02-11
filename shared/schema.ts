@@ -393,6 +393,23 @@ export const postLikes = pgTable("post_likes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Post comments table
+export const postComments = pgTable("post_comments", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Post bookmarks/saves table
+export const postBookmarks = pgTable("post_bookmarks", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -481,6 +498,16 @@ export const insertPostLikeSchema = createInsertSchema(postLikes).omit({
   createdAt: true,
 });
 
+export const insertPostCommentSchema = createInsertSchema(postComments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPostBookmarkSchema = createInsertSchema(postBookmarks).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -527,9 +554,17 @@ export type Post = typeof posts.$inferSelect;
 export type InsertPostLike = z.infer<typeof insertPostLikeSchema>;
 export type PostLike = typeof postLikes.$inferSelect;
 
+export type InsertPostComment = z.infer<typeof insertPostCommentSchema>;
+export type PostComment = typeof postComments.$inferSelect;
+
+export type InsertPostBookmark = z.infer<typeof insertPostBookmarkSchema>;
+export type PostBookmark = typeof postBookmarks.$inferSelect;
+
+export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
+
 // Extended types with relations
 export type ListingWithUser = Listing & { user: User };
 export type DealWithUsers = Deal & { seeker: User; provider: User };
 export type MessageWithSender = Message & { sender: User };
 export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
-export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean };
+export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean; bookmarked?: boolean; commentCount?: number };
