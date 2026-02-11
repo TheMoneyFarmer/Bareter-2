@@ -47,8 +47,7 @@ export function Header() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
   const navItems = [
-    { href: "/feed", label: t("nav.feed"), icon: Rss },
-    { href: "/browse", label: t("nav.browse"), icon: Search },
+    { href: "/feed", label: t("nav.browse"), icon: Search },
     { href: "/create-post", label: t("nav.createPost"), icon: PenSquare },
     { href: "/deals", label: t("nav.myDeals"), icon: Handshake },
   ];
