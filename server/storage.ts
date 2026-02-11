@@ -119,7 +119,7 @@ export interface IStorage {
   // Post Comments
   getCommentsByPost(postId: string): Promise<PostCommentWithUser[]>;
   getCommentCount(postId: string): Promise<number>;
-  createComment(postId: string, userId: string, content: string): Promise<PostComment>;
+  createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<PostComment>;
   deleteComment(id: string, userId: string): Promise<void>;
 
   // Post Bookmarks
@@ -615,10 +615,10 @@ export class DatabaseStorage implements IStorage {
     return Number(result[0]?.count ?? 0);
   }
 
-  async createComment(postId: string, userId: string, content: string): Promise<PostComment> {
+  async createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<PostComment> {
     const [comment] = await db
       .insert(postComments)
-      .values({ postId, userId, content })
+      .values({ postId, userId, content, offerItemName, offerItemValue })
       .returning();
     return comment;
   }

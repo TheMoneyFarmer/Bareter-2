@@ -393,12 +393,14 @@ export const postLikes = pgTable("post_likes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Post comments table
+// Post comments / barter proposals table
 export const postComments = pgTable("post_comments", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
-  content: text("content").notNull(),
+  content: text("content"),
+  offerItemName: varchar("offer_item_name", { length: 255 }).notNull(),
+  offerItemValue: decimal("offer_item_value", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

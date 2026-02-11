@@ -1824,14 +1824,19 @@ export async function registerRoutes(
   // Add comment to a post
   app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
     try {
-      const { content } = req.body;
-      if (!content || typeof content !== "string" || content.trim().length === 0) {
-        return res.status(400).json({ message: "Comment content is required" });
+      const { content, offerItemName, offerItemValue } = req.body;
+      if (!offerItemName || typeof offerItemName !== "string" || offerItemName.trim().length === 0) {
+        return res.status(400).json({ message: "Please specify what you want to offer" });
+      }
+      if (!offerItemValue || isNaN(Number(offerItemValue)) || Number(offerItemValue) <= 0) {
+        return res.status(400).json({ message: "Please provide a valid value for your offer" });
       }
       const comment = await storage.createComment(
         param(req.params.id),
         req.session.userId!,
-        content.trim()
+        content?.trim() || null,
+        offerItemName.trim(),
+        String(Number(offerItemValue).toFixed(2))
       );
       const user = await storage.getUser(req.session.userId!);
       const { password, ...safeUser } = user!;

@@ -227,8 +227,9 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
 function CommentsSection({ postId, commentCount: initialCount }: { postId: string; commentCount: number }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [commentText, setCommentText] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [offerName, setOfferName] = useState("");
+  const [offerValue, setOfferValue] = useState("");
+  const [message, setMessage] = useState("");
 
   const { data: comments, isLoading } = useQuery<PostCommentWithUser[]>({
     queryKey: ["/api/posts", postId, "comments"],
@@ -239,79 +240,135 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
     },
   });
 
-  const addCommentMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await apiRequest("POST", `/api/posts/${postId}/comments`, { content });
+  const addProposalMutation = useMutation({
+    mutationFn: async (data: { offerItemName: string; offerItemValue: string; content?: string }) => {
+      const res = await apiRequest("POST", `/api/posts/${postId}/comments`, data);
       return res.json();
     },
     onSuccess: () => {
-      setCommentText("");
+      setOfferName("");
+      setOfferValue("");
+      setMessage("");
       queryClient.invalidateQueries({ queryKey: ["/api/posts", postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      toast({ title: "Proposal sent", description: "Your barter proposal has been submitted" });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to add comment", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to submit proposal", variant: "destructive" });
     },
   });
 
-  const handleSubmitComment = () => {
+  const handleSubmitProposal = () => {
     if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to comment" });
+      toast({ title: "Sign in required", description: "Please sign in to propose a barter" });
       return;
     }
-    if (!commentText.trim()) return;
-    addCommentMutation.mutate(commentText.trim());
+    if (!offerName.trim()) {
+      toast({ title: "Missing info", description: "Please enter what you want to offer", variant: "destructive" });
+      return;
+    }
+    if (!offerValue || Number(offerValue) <= 0) {
+      toast({ title: "Missing info", description: "Please enter the value of your offer", variant: "destructive" });
+      return;
+    }
+    addProposalMutation.mutate({
+      offerItemName: offerName.trim(),
+      offerItemValue: offerValue,
+      content: message.trim() || undefined,
+    });
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        Barter Proposals
+      </p>
+
       {isLoading ? (
         <div className="space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
         </div>
       ) : comments && comments.length > 0 ? (
-        <div className="space-y-2 max-h-48 overflow-y-auto">
+        <div className="space-y-2 max-h-64 overflow-y-auto">
           {comments.map((comment) => (
-            <div key={comment.id} className="flex items-start gap-2" data-testid={`comment-${comment.id}`}>
-              <Avatar className="h-6 w-6 flex-shrink-0">
+            <div key={comment.id} className="flex items-start gap-2 p-2 rounded-md bg-muted/40" data-testid={`proposal-${comment.id}`}>
+              <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">
                 <AvatarImage src={comment.user?.avatarUrl || undefined} />
                 <AvatarFallback className="text-[10px]">
                   {comment.user?.fullName?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="text-sm">
-                  <span className="font-semibold mr-1">{comment.user?.fullName?.split(" ")[0]}</span>
-                  {comment.content}
-                </p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-semibold">{comment.user?.fullName?.split(" ")[0]}</span>
+                  {comment.offerItemName && (
+                    <Badge variant="default" className="text-[10px] gap-0.5 bg-green-600 text-white no-default-hover-elevate no-default-active-elevate">
+                      <ArrowRightLeft className="h-2.5 w-2.5" />
+                      {comment.offerItemName}
+                    </Badge>
+                  )}
+                  {comment.offerItemValue && (
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      AED {formatValue(comment.offerItemValue)}
+                    </span>
+                  )}
+                </div>
+                {comment.content && (
+                  <p className="text-sm text-muted-foreground mt-0.5">{comment.content}</p>
+                )}
                 <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
               </div>
             </div>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-muted-foreground">No proposals yet. Be the first to propose a barter!</p>
+      )}
 
-      <div className="flex items-center gap-2">
-        <Input
-          ref={inputRef}
-          value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Add a comment..."
-          className="text-sm border-0 border-b rounded-none focus-visible:ring-0 px-0"
-          onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
-          data-testid={`input-comment-${postId}`}
-        />
-        {commentText.trim() && (
-          <button
-            onClick={handleSubmitComment}
-            disabled={addCommentMutation.isPending}
-            className="text-primary font-semibold text-sm flex-shrink-0"
-            data-testid={`button-submit-comment-${postId}`}
+      <div className="space-y-2 pt-1 border-t">
+        <p className="text-xs font-medium">Propose what you want to offer in exchange</p>
+        <div className="flex items-center gap-2">
+          <Input
+            value={offerName}
+            onChange={(e) => setOfferName(e.target.value)}
+            placeholder="What are you offering? (e.g. Photography Package)"
+            className="text-sm flex-1"
+            data-testid={`input-offer-name-${postId}`}
+          />
+          <div className="relative flex-shrink-0 w-32">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
+            <Input
+              type="number"
+              value={offerValue}
+              onChange={(e) => setOfferValue(e.target.value)}
+              placeholder="Value"
+              className="text-sm pl-10"
+              min="1"
+              data-testid={`input-offer-value-${postId}`}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Add a message (optional)"
+            className="text-sm flex-1"
+            onKeyDown={(e) => e.key === "Enter" && handleSubmitProposal()}
+            data-testid={`input-proposal-message-${postId}`}
+          />
+          <Button
+            size="sm"
+            onClick={handleSubmitProposal}
+            disabled={addProposalMutation.isPending || !offerName.trim() || !offerValue}
+            className="gap-1"
+            data-testid={`button-submit-proposal-${postId}`}
           >
-            Post
-          </button>
-        )}
+            <Send className="h-3.5 w-3.5" />
+            Propose
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -720,7 +777,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 className="text-sm text-muted-foreground"
                 data-testid={`button-view-comments-${post.id}`}
               >
-                View {commentCount === 1 ? "1 comment" : `all ${commentCount} comments`}
+                {commentCount === 1 ? "1 barter proposal" : `${commentCount} barter proposals`}
               </button>
             )}
           </div>
