@@ -68,7 +68,18 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-1">
             <Link href="/feed">
               <Button
-                variant={isActive("/feed") || isActive("/browse") ? "secondary" : "ghost"}
+                variant={isActive("/feed") ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-2"
+                data-testid="nav-feed"
+              >
+                <Rss className="h-4 w-4" />
+                {t("nav.feed")}
+              </Button>
+            </Link>
+            <Link href="/browse">
+              <Button
+                variant={isActive("/browse") ? "secondary" : "ghost"}
                 size="sm"
                 className="gap-2"
                 data-testid="nav-browse-marketplace"
