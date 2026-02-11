@@ -20,7 +20,6 @@ import {
   Bath,
   Ruler,
   Car,
-  DoorOpen,
   Gauge,
   Gem,
   ArrowRightLeft,
@@ -35,6 +34,8 @@ import {
   Search,
   Sofa,
   Eye,
+  Bookmark,
+  MoreHorizontal,
 } from "lucide-react";
 import type { PostWithUser, PostCategoryDetails } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
@@ -90,7 +91,7 @@ function StoriesRow() {
   }, []);
 
   return (
-    <div className="flex gap-4 overflow-x-auto flex-nowrap py-4 px-1 scrollbar-hide" data-testid="stories-row">
+    <div className="flex gap-4 overflow-x-auto flex-nowrap py-4 px-1 scrollbar-hide border-b" data-testid="stories-row">
       {uniqueUsers.map((story) => (
         <button
           key={story.id}
@@ -146,14 +147,18 @@ function FeedCardSkeleton() {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <Skeleton className="w-full aspect-[4/3]" />
-        <div className="p-3 space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-full" />
-          <div className="flex items-center gap-2 pt-1">
-            <Skeleton className="h-6 w-6 rounded-full" />
+        <div className="flex items-center gap-3 p-3">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="space-y-1.5 flex-1">
+            <Skeleton className="h-4 w-32" />
             <Skeleton className="h-3 w-20" />
           </div>
+        </div>
+        <Skeleton className="w-full aspect-square" />
+        <div className="p-3 space-y-2">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
         </div>
       </CardContent>
     </Card>
@@ -202,7 +207,7 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
       {badges.map((b, i) => {
         const Icon = b.icon;
         return (
-          <Badge key={i} variant="secondary" className="gap-1">
+          <Badge key={i} variant="secondary" className="gap-1 text-xs">
             <Icon className="h-3 w-3" />
             {b.label}
           </Badge>
@@ -270,15 +275,60 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const declaredValue = post.declaredValue ? parseFloat(post.declaredValue as string) : 0;
   const isHighValue = declaredValue > 100000;
   const caption = post.caption || "";
-  const shouldTruncate = caption.length > 150;
-  const displayCaption = expanded || !shouldTruncate ? caption : caption.slice(0, 150);
+  const shouldTruncate = caption.length > 120;
+  const displayCaption = expanded || !shouldTruncate ? caption : caption.slice(0, 120);
 
   return (
-    <Card className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid={`card-post-${post.id}`}>
+    <Card className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md" data-testid={`card-post-${post.id}`}>
       <CardContent className="p-0">
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <Link href={`/users/${post.userId}`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={post.user?.avatarUrl || undefined} />
+                <AvatarFallback className="text-sm font-medium">
+                  {post.user?.fullName?.charAt(0) || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold truncate" data-testid={`text-username-${post.id}`}>
+                    {post.user?.fullName}
+                  </span>
+                  {post.user?.isVerified && (
+                    <Shield className="h-3.5 w-3.5 text-primary flex-shrink-0" data-testid={`badge-verified-${post.id}`} />
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {post.location && (
+                    <span className="flex items-center gap-0.5">
+                      <MapPin className="h-3 w-3" />
+                      {post.location}
+                    </span>
+                  )}
+                  <span>{timeAgo(post.createdAt)}</span>
+                </div>
+              </div>
+            </div>
+          </Link>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {post.postType === "request" ? (
+              <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600 dark:text-amber-400" data-testid={`badge-post-type-${post.id}`}>
+                <Search className="h-3 w-3" />
+                Looking For
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1 text-xs border-green-500/50 text-green-600 dark:text-green-400" data-testid={`badge-post-type-${post.id}`}>
+                <PackagePlus className="h-3 w-3" />
+                Offering
+              </Badge>
+            )}
+          </div>
+        </div>
+
         <div className="relative">
           {post.mediaUrls && post.mediaUrls.length > 0 ? (
-            <div className="w-full aspect-[4/3] bg-muted" data-testid={`media-${post.id}`}>
+            <div className="w-full aspect-square bg-muted" data-testid={`media-${post.id}`}>
               <img
                 src={post.mediaUrls[0]}
                 alt={post.title || "Post media"}
@@ -287,121 +337,115 @@ function FeedCard({ post }: { post: PostWithUser }) {
               />
             </div>
           ) : (
-            <div className="w-full aspect-[4/3] bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+            <div className="w-full aspect-square bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
               {post.postType === "request" ? (
-                <Search className="h-16 w-16 text-primary/30" />
+                <Search className="h-20 w-20 text-primary/20" />
               ) : (
-                <PackagePlus className="h-16 w-16 text-primary/30" />
+                <PackagePlus className="h-20 w-20 text-primary/20" />
               )}
             </div>
           )}
-          <div className="absolute top-2 left-2 flex gap-1">
-            {post.postType === "request" ? (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 bg-background/90 backdrop-blur-sm" data-testid={`badge-post-type-${post.id}`}>
-                <Search className="h-3 w-3" />
-                Looking For
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="text-[10px] gap-0.5 bg-background/90 backdrop-blur-sm" data-testid={`badge-post-type-${post.id}`}>
-                <PackagePlus className="h-3 w-3" />
-                Offering
-              </Badge>
-            )}
-            {isHighValue && (
-              <Badge variant="default" className="text-[10px]" data-testid={`badge-high-value-${post.id}`}>
-                <TrendingUp className="h-3 w-3 mr-0.5" />
+          {isHighValue && (
+            <div className="absolute top-3 left-3">
+              <Badge variant="default" className="text-xs gap-1" data-testid={`badge-high-value-${post.id}`}>
+                <TrendingUp className="h-3 w-3" />
                 High Value
               </Badge>
-            )}
-          </div>
-          <div className="absolute top-2 right-2 flex gap-1">
-            <button
-              className="h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center"
-              onClick={(e) => { e.stopPropagation(); handleLike(); }}
-              data-testid={`button-like-${post.id}`}
-            >
-              <Heart className={`h-4 w-4 ${liked ? "fill-destructive text-destructive" : "text-muted-foreground"}`} />
-            </button>
-          </div>
+            </div>
+          )}
           {declaredValue > 0 && (
-            <div className="absolute bottom-2 right-2">
-              <Badge variant="secondary" className="font-semibold bg-background/90 backdrop-blur-sm" data-testid={`badge-value-${post.id}`}>
+            <div className="absolute bottom-3 right-3">
+              <Badge variant="secondary" className="font-semibold bg-background/90 backdrop-blur-sm text-sm" data-testid={`badge-value-${post.id}`}>
                 AED {formatValue(post.declaredValue)}
               </Badge>
             </div>
           )}
         </div>
 
-        <div className="p-3 space-y-2">
+        <div className="px-3 pt-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleLike}
+                className="flex items-center gap-1"
+                data-testid={`button-like-${post.id}`}
+              >
+                <Heart className={`h-6 w-6 transition-colors ${liked ? "fill-destructive text-destructive" : "text-foreground"}`} />
+              </button>
+              <button className="flex items-center" data-testid={`button-comment-${post.id}`}>
+                <MessageCircle className="h-6 w-6 text-foreground" />
+              </button>
+              <button className="flex items-center" data-testid={`button-share-${post.id}`}>
+                <Share2 className="h-6 w-6 text-foreground" />
+              </button>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleProposeBarter}
+              className="gap-1.5"
+              data-testid={`button-propose-barter-${post.id}`}
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              Propose Barter
+            </Button>
+          </div>
+
+          {likeCount > 0 && (
+            <p className="text-sm font-semibold mt-1.5" data-testid={`text-likes-${post.id}`}>
+              {likeCount.toLocaleString()} {likeCount === 1 ? "like" : "likes"}
+            </p>
+          )}
+        </div>
+
+        <div className="px-3 pb-3 pt-1 space-y-2">
           {post.title && (
-            <h3 className="font-semibold text-sm line-clamp-1" data-testid={`text-title-${post.id}`}>{post.title}</h3>
+            <h3 className="font-semibold text-sm" data-testid={`text-title-${post.id}`}>{post.title}</h3>
           )}
 
           {caption && (
-            <p className="text-xs text-muted-foreground line-clamp-2" data-testid={`text-caption-${post.id}`}>
-              {caption}
+            <p className="text-sm" data-testid={`text-caption-${post.id}`}>
+              <span className="font-semibold mr-1">{post.user?.fullName?.split(" ")[0]}</span>
+              {displayCaption}
+              {shouldTruncate && !expanded && (
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="text-muted-foreground ml-1"
+                  data-testid={`button-expand-${post.id}`}
+                >
+                  ...more
+                </button>
+              )}
             </p>
           )}
 
           <CategoryDetails details={post.categoryDetails} feedCategory={post.feedCategory} />
 
-          {post.offerItems && post.offerItems.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {post.offerItems.slice(0, 2).map((item, i) => (
-                <Badge key={`offer-${i}`} variant="default" className="text-[10px] bg-green-600 text-white no-default-hover-elevate no-default-active-elevate">
+          {(post.offerItems?.length || post.wantItems?.length) ? (
+            <div className="flex flex-wrap gap-1.5">
+              {post.offerItems?.slice(0, 3).map((item, i) => (
+                <Badge key={`offer-${i}`} variant="default" className="text-xs bg-green-600 text-white no-default-hover-elevate no-default-active-elevate gap-1">
+                  <PackagePlus className="h-3 w-3" />
+                  {item.name}
+                </Badge>
+              ))}
+              {post.wantItems?.slice(0, 3).map((item, i) => (
+                <Badge key={`want-${i}`} variant="outline" className="text-xs gap-1">
+                  <Search className="h-3 w-3" />
                   {item.name}
                 </Badge>
               ))}
             </div>
-          )}
+          ) : null}
 
-          {post.wantItems && post.wantItems.length > 0 && (
+          {post.hashtags && post.hashtags.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {post.wantItems.slice(0, 2).map((item, i) => (
-                <Badge key={`want-${i}`} variant="outline" className="text-[10px]">
-                  Wants: {item.name}
-                </Badge>
+              {post.hashtags.slice(0, 5).map((tag, i) => (
+                <span key={i} className="text-xs text-primary font-medium">
+                  #{tag}
+                </span>
               ))}
             </div>
           )}
-
-          <div className="flex items-center justify-between gap-2 pt-1 border-t">
-            <Link href={`/users/${post.userId}`}>
-              <div className="flex items-center gap-2 min-w-0">
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={post.user?.avatarUrl || undefined} />
-                  <AvatarFallback className="text-[10px]">
-                    {post.user?.fullName?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-medium truncate" data-testid={`text-username-${post.id}`}>
-                      {post.user?.fullName}
-                    </span>
-                    {post.user?.isVerified && (
-                      <Shield className="h-3 w-3 text-primary flex-shrink-0" data-testid={`badge-verified-${post.id}`} />
-                    )}
-                  </div>
-                  {post.location && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                      <MapPin className="h-2.5 w-2.5" />
-                      {post.location}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </Link>
-            <Button
-              size="sm"
-              onClick={(e) => { e.stopPropagation(); handleProposeBarter(); }}
-              className="gap-1 text-xs flex-shrink-0"
-              data-testid={`button-propose-barter-${post.id}`}
-            >
-              <ArrowRightLeft className="h-3 w-3" />
-              Barter
-            </Button>
-          </div>
         </div>
       </CardContent>
     </Card>
@@ -433,17 +477,17 @@ export function FeedPage() {
   });
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 pb-8">
+    <div className="max-w-lg mx-auto pb-8">
       <StoriesRow />
       <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
-      <div className="mt-4">
+      <div className="mt-2 space-y-4 sm:space-y-6">
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {[...Array(12)].map((_, i) => (
+          <>
+            {[...Array(3)].map((_, i) => (
               <FeedCardSkeleton key={i} />
             ))}
-          </div>
+          </>
         ) : !posts || posts.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
@@ -471,9 +515,7 @@ export function FeedPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {posts.map((post) => <FeedCard key={post.id} post={post} />)}
-          </div>
+          posts.map((post) => <FeedCard key={post.id} post={post} />)
         )}
       </div>
     </div>
