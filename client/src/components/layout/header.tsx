@@ -66,32 +66,42 @@ export function Header() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {user ? (
-              navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
+            <Link href="/feed">
+              <Button
+                variant={isActive("/feed") || isActive("/browse") ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-2"
+                data-testid="nav-browse-marketplace"
+              >
+                <Search className="h-4 w-4" />
+                {t("nav.browseMarketplace")}
+              </Button>
+            </Link>
+            {user && (
+              <>
+                <Link href="/create-post">
                   <Button
-                    variant={isActive(item.href) ? "secondary" : "ghost"}
+                    variant={isActive("/create-post") ? "secondary" : "ghost"}
                     size="sm"
                     className="gap-2"
-                    data-testid={`nav-${item.href.replace("/", "")}`}
+                    data-testid="nav-create-post"
                   >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
+                    <PenSquare className="h-4 w-4" />
+                    {t("nav.createPost")}
                   </Button>
                 </Link>
-              ))
-            ) : (
-              <Link href="/browse-public">
-                <Button
-                  variant={isActive("/browse-public") ? "secondary" : "ghost"}
-                  size="sm"
-                  className="gap-2"
-                  data-testid="nav-browse-marketplace"
-                >
-                  <Search className="h-4 w-4" />
-                  {t("nav.browseMarketplace")}
-                </Button>
-              </Link>
+                <Link href="/deals">
+                  <Button
+                    variant={isActive("/deals") ? "secondary" : "ghost"}
+                    size="sm"
+                    className="gap-2"
+                    data-testid="nav-deals"
+                  >
+                    <Handshake className="h-4 w-4" />
+                    {t("nav.myDeals")}
+                  </Button>
+                </Link>
+              </>
             )}
           </nav>
         </div>

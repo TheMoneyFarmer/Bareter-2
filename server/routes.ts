@@ -1718,7 +1718,7 @@ export async function registerRoutes(
   // ========== Posts API ==========
 
   // Get feed posts with optional category filter
-  app.get("/api/posts", requireAuth, async (req, res) => {
+  app.get("/api/posts", async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
       const limit = parseInt(req.query.limit as string) || 20;
@@ -1744,7 +1744,7 @@ export async function registerRoutes(
   });
 
   // Get stories
-  app.get("/api/stories", requireAuth, async (req, res) => {
+  app.get("/api/stories", async (req, res) => {
     try {
       const stories = await storage.getStories();
       res.json(stories);
@@ -1755,7 +1755,7 @@ export async function registerRoutes(
   });
 
   // Get single post
-  app.get("/api/posts/:id", requireAuth, async (req, res) => {
+  app.get("/api/posts/:id", async (req, res) => {
     try {
       const post = await storage.getPost(param(req.params.id));
       if (!post) {

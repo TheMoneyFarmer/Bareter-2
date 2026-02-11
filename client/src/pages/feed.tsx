@@ -430,30 +430,7 @@ export function FeedPage() {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
-    enabled: !!user,
   });
-
-  if (!user) {
-    return (
-      <div className="container px-4 py-16 mx-auto max-w-md text-center">
-        <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-          <Heart className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2" data-testid="text-signin-required">Sign in to explore</h2>
-        <p className="text-muted-foreground mb-6">
-          Create an account or sign in to discover barter opportunities on BarterGram.
-        </p>
-        <div className="flex gap-3 justify-center">
-          <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
-            Sign In
-          </Button>
-          <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
-            Get Started
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 pb-8">
@@ -477,9 +454,20 @@ export function FeedPage() {
               <p className="text-muted-foreground mb-4" data-testid="text-empty-description">
                 Be the first to share what you have to barter
               </p>
-              <Link href="/create-listing">
-                <Button data-testid="button-create-first-post">Create a Post</Button>
-              </Link>
+              {user ? (
+                <Link href="/create-listing">
+                  <Button data-testid="button-create-first-post">Create a Post</Button>
+                </Link>
+              ) : (
+                <div className="flex gap-3 justify-center">
+                  <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
+                    Sign In
+                  </Button>
+                  <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
+                    Get Started
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (

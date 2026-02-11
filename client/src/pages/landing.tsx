@@ -93,7 +93,7 @@ export function LandingPage() {
                 </Button>
               </Link>
               {!user && (
-                <Link href="/browse-public">
+                <Link href="/feed">
                   <Button size="lg" variant="outline" data-testid="button-browse-public">
                     {t("landing.browseMarketplace")}
                   </Button>
