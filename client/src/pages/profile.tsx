@@ -37,6 +37,12 @@ import {
   AlertCircle,
   Globe,
   Users,
+  Award,
+  ThumbsUp,
+  Zap,
+  TrendingUp,
+  MessageCircle,
+  ExternalLink,
 } from "lucide-react";
 import { SiInstagram, SiTiktok, SiYoutube, SiLinkedin, SiX } from "react-icons/si";
 import { z } from "zod";
@@ -297,6 +303,39 @@ export function ProfilePage() {
     enabled: !!user,
   });
 
+  const { data: credibility } = useQuery<{
+    credibilityScore: number;
+    completedDeals: number;
+    totalEndorsements: number;
+    avgRating: number;
+    isVerified: boolean;
+  }>({
+    queryKey: ["/api/users", user?.id, "credibility"],
+    enabled: !!user,
+  });
+
+  const { data: endorsements } = useQuery<Array<{
+    id: string;
+    skill: string;
+    fromUserId: string;
+    fromUser?: { fullName: string; avatarUrl?: string };
+  }>>({
+    queryKey: ["/api/endorsements", user?.id],
+    enabled: !!user,
+  });
+
+  const { data: portfolioItems } = useQuery<Array<{
+    id: string;
+    title: string;
+    description?: string;
+    mediaUrl: string;
+    mediaType: string;
+    category?: string;
+  }>>({
+    queryKey: ["/api/portfolio", user?.id],
+    enabled: !!user,
+  });
+
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -547,6 +586,23 @@ export function ProfilePage() {
               })}
             </div>
           )}
+          {credibility && credibility.credibilityScore > 0 && (
+            <div className="flex items-center justify-center md:justify-start gap-2 mt-3">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                <Award className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-primary" data-testid="text-credibility-score">
+                  {credibility.credibilityScore}/100
+                </span>
+                <span className="text-xs text-muted-foreground">Credibility</span>
+              </div>
+              {credibility.completedDeals > 0 && (
+                <Badge variant="secondary" className="gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  {credibility.completedDeals} deals
+                </Badge>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-center md:justify-start gap-4 mt-4 flex-wrap">
             <div className="text-center">
               <div className="text-xl font-bold">{listings?.length || 0}</div>
@@ -567,6 +623,18 @@ export function ProfilePage() {
               </div>
               <div className="text-xs text-muted-foreground">Offers Value</div>
             </div>
+            {endorsements && endorsements.length > 0 && (
+              <>
+                <Separator orientation="vertical" className="h-10" />
+                <div className="text-center">
+                  <div className="text-xl font-bold flex items-center gap-1">
+                    {endorsements.length}
+                    <ThumbsUp className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="text-xs text-muted-foreground">Endorsements</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -584,6 +652,10 @@ export function ProfilePage() {
           <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
             <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
             <span className="truncate">Needs</span>
+          </TabsTrigger>
+          <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
+            <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Endorsements</span>
           </TabsTrigger>
           <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
             <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
@@ -869,6 +941,62 @@ export function ProfilePage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="endorsements">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ThumbsUp className="h-5 w-5 text-primary" />
+                Skill Endorsements
+              </CardTitle>
+              <CardDescription>
+                Endorsements from other traders who have worked with you
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {endorsements && endorsements.length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(
+                    endorsements.reduce<Record<string, typeof endorsements>>((acc, e) => {
+                      if (!acc[e.skill]) acc[e.skill] = [];
+                      acc[e.skill].push(e);
+                      return acc;
+                    }, {})
+                  ).map(([skill, skillEndorsements]) => (
+                    <div key={skill} className="p-3 rounded-md bg-muted" data-testid={`endorsement-skill-${skill}`}>
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Award className="h-4 w-4 text-primary" />
+                          <span className="font-medium">{skill}</span>
+                        </div>
+                        <Badge variant="secondary">{skillEndorsements.length} endorsement{skillEndorsements.length !== 1 ? "s" : ""}</Badge>
+                      </div>
+                      <div className="flex -space-x-2">
+                        {skillEndorsements.slice(0, 5).map((e) => (
+                          <Avatar key={e.id} className="h-7 w-7 border-2 border-background">
+                            <AvatarImage src={e.fromUser?.avatarUrl || undefined} />
+                            <AvatarFallback className="text-[8px]">{e.fromUser?.fullName?.charAt(0) || "U"}</AvatarFallback>
+                          </Avatar>
+                        ))}
+                        {skillEndorsements.length > 5 && (
+                          <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium">
+                            +{skillEndorsements.length - 5}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <ThumbsUp className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+                  <p className="text-muted-foreground text-sm">No endorsements yet</p>
+                  <p className="text-muted-foreground text-xs mt-1">Complete trades to receive endorsements from other users</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="portfolio">
           <Card>
             <CardHeader>
@@ -905,25 +1033,24 @@ export function ProfilePage() {
                     </>
                   )}
                 </Button>
-                {(user.portfolioImages || []).map((image, index) => (
-                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-muted group">
-                    <img
-                      src={image}
-                      alt={`Portfolio ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                      data-testid={`button-remove-portfolio-${index}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                {portfolioItems && portfolioItems.length > 0
+                  ? portfolioItems.map((item) => (
+                    <div key={item.id} className="relative aspect-square rounded-md overflow-hidden bg-muted group" data-testid={`portfolio-item-${item.id}`}>
+                      <img src={item.mediaUrl} alt={item.title} className="w-full h-full object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                        <p className="text-white text-xs font-medium truncate">{item.title}</p>
+                        {item.category && <Badge variant="secondary" className="text-[10px] mt-0.5">{item.category}</Badge>}
+                      </div>
+                    </div>
+                  ))
+                  : (user.portfolioImages || []).map((image, index) => (
+                    <div key={index} className="relative aspect-square rounded-md overflow-hidden bg-muted group">
+                      <img src={image} alt={`Portfolio ${index + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))
+                }
               </div>
-              {(user.portfolioImages || []).length === 0 && (
+              {(!portfolioItems || portfolioItems.length === 0) && (user.portfolioImages || []).length === 0 && (
                 <p className="text-muted-foreground text-sm text-center mt-4">
                   Add images to showcase your products and services
                 </p>

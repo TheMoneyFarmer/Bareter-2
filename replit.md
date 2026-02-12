@@ -2,7 +2,7 @@
 
 ## Overview
 
-BarterGram is a full-stack barter marketplace platform designed for UAE and GCC businesses to trade goods and services without cash. The platform enables verified businesses to create listings (offers and requests), propose trades, negotiate via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees.
+BarterGram is a full-stack barter marketplace platform for UAE and GCC businesses to trade goods and services without cash. It enables verified businesses to create listings, propose and negotiate trades via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees. The platform aims to facilitate a cashless economy for businesses, enhancing liquidity and fostering a collaborative business environment.
 
 ## User Preferences
 
@@ -10,199 +10,65 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript, using Vite as the build tool
-- **Routing**: Wouter for lightweight client-side routing
-- **State Management**: TanStack React Query for server state management and caching
-- **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with CSS variables for theming (light/dark mode support)
-- **Forms**: React Hook Form with Zod validation
+### Frontend
+- **Framework**: React 18 with TypeScript, using Vite.
+- **Routing**: Wouter.
+- **State Management**: TanStack React Query.
+- **UI Components**: shadcn/ui built on Radix UI.
+- **Styling**: Tailwind CSS with CSS variables (light/dark mode).
+- **Forms**: React Hook Form with Zod validation.
 
-### Backend Architecture
-- **Runtime**: Node.js with Express.js
-- **Language**: TypeScript with ES modules
-- **API Design**: RESTful JSON API endpoints under `/api/*`
-- **Session Management**: Express-session with in-memory store (MemoryStore)
-- **Authentication**: Custom email/password authentication with bcryptjs for password hashing
+### Backend
+- **Runtime**: Node.js with Express.js.
+- **Language**: TypeScript with ES modules.
+- **API Design**: RESTful JSON API.
+- **Session Management**: Express-session.
+- **Authentication**: Custom email/password with bcryptjs.
 
 ### Data Layer
-- **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema Location**: `shared/schema.ts` - shared between frontend and backend
-- **Migrations**: Drizzle Kit for database migrations (`./migrations` directory)
-- **Validation**: Zod schemas generated from Drizzle schemas using drizzle-zod
+- **ORM**: Drizzle ORM with PostgreSQL.
+- **Schema**: Shared between frontend and backend in `shared/schema.ts`.
+- **Migrations**: Drizzle Kit.
+- **Validation**: Zod schemas generated from Drizzle.
 
 ### Build System
-- **Development**: Vite dev server with HMR, proxied through Express
-- **Production**: esbuild bundles server code, Vite builds client to `dist/public`
-- **Path Aliases**: `@/*` maps to `client/src/*`, `@shared/*` maps to `shared/*`
+- **Development**: Vite dev server.
+- **Production**: esbuild for server, Vite for client.
+- **Path Aliases**: `@/*` for client, `@shared/*` for shared.
 
 ### Key Design Patterns
-- **Shared Types**: Schema definitions in `shared/` are imported by both client and server
-- **Storage Interface**: `server/storage.ts` abstracts all database operations behind an interface
-- **API Request Helper**: `client/src/lib/queryClient.ts` provides typed fetch wrappers
-- **Context Providers**: Auth, Theme, and I18n contexts wrap the application for global state
+- **Shared Types**: Schema definitions are shared across client and server.
+- **Storage Interface**: Abstracts database operations.
+- **API Request Helper**: Provides typed fetch wrappers.
+- **Context Providers**: For global state (Auth, Theme, I18n).
 
 ### Mobile-First Responsive Design
-- **Bottom Tab Navigation**: Instagram-style bottom nav (`client/src/components/layout/mobile-bottom-nav.tsx`) shows on mobile (< md breakpoint)
-  - Tabs: Feed, Browse, Create Post (auth-only), Deals (auth-only), Profile/Login
-  - Fixed at bottom with z-50, backdrop blur, safe-area-bottom support
-- **Header Mobile**: Language/theme toggles hidden on mobile, available in hamburger slide-out menu
-- **Hamburger Menu**: Expanded mobile menu with Profile, Dashboard, Saved, Referrals, Settings, Admin (if admin), Language/Theme toggles, Logout
-- **Footer**: Hidden on mobile (visible md+), replaced by bottom nav
-- **Main Content**: `pb-20 md:pb-0` padding to prevent content from hiding behind bottom nav
-- **Feed Cards**: Edge-to-edge on mobile (`px-0 sm:px-4`), compact action button gaps
-- **Category Tabs**: Sticky at `top-16` below header, horizontally scrollable with hidden scrollbar
-- **Browse Grid**: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` for responsive listing cards
-- **Profile Tabs**: Flex overflow-x-auto instead of grid-cols-5 for mobile scrollability
-- **WhatsApp Button**: Positioned at `bottom-20 md:bottom-6` to avoid overlapping bottom nav
-- **CSS Utilities**: `scrollbar-hide` and `safe-area-bottom` defined in `index.css`
+- Features Instagram-style bottom navigation, responsive headers, and adaptive content layouts.
+- Utilizes CSS utilities for scrollbar hiding and safe-area support.
 
 ### Internationalization (i18n)
-- **Languages**: English (LTR) and Arabic (RTL) supported
-- **Provider**: `client/src/lib/i18n.tsx` - I18nProvider context
-- **Storage**: Language preference persisted in localStorage
-- **RTL Support**: Document direction automatically switches based on language
-- **Translations**: Key-value pairs in `translations` object in i18n.tsx
+- Supports English (LTR) and Arabic (RTL) with language preference persisted in localStorage.
 
-### Onboarding Flow
-- **4-Step Wizard**: Basic Info → Offers → Needs → Profile Photo
-- **Progress Tracking**: `onboardingStep` and `onboardingCompleted` fields on User model
-- **Route**: `/onboarding` page
-
-### Instagram-Style Feed
-- **Route**: `/feed` - Primary discovery mechanism for barter opportunities
-- **Stories Row**: Horizontal scrollable avatars showing active story posts
-- **Category Tabs**: "All", "Services & Skills", "Space & Office", "Food & Hospitality", "Assets & Vehicles", "Big Ticket", "Other"
-- **Feed Cards**: Rich post cards with user info, media, category-specific details, offer/want tags, like toggle, "Propose Barter" CTA
-- **Category-Specific Details**:
-  - Real Estate: bedrooms, bathrooms, sqm, amenities, ownership status
-  - Vehicles: make, model, year, mileage, engine, transmission, condition
-  - Luxury Goods: brand, model, condition, material, box & papers
-- **API**: GET `/api/posts?category=X&limit=N&offset=N`, POST `/api/posts`, POST `/api/posts/:id/like`, GET `/api/stories`
-- **Seeded Data**: 23 posts across all categories including 4 real estate, 4 cars, 2 yachts, 1 luxury watch
-
-### Post Creation
-- **Route**: `/create-post` - Smart form with dynamic category-specific fields
-- **Dynamic Fields**: Real estate (bedrooms, bathrooms, sqm, amenities), vehicles (make, model, year, mileage, engine), luxury (brand, condition, material)
-- **Common Fields**: Title, caption, photos, feed category, sub-category, declared value (AED), offer/want items, hashtags, location
-- **Sub-Categories**: Context-dependent (Cars/Yachts for vehicles, House/Villa/Apartment for property, Watches/Jewelry for luxury)
-
-### Creator/Brand Signup
-- **Route**: `/register` - 3-step signup wizard
-- **Step 1**: Account type selection (Creator vs Brand) with visual cards
-- **Step 2**: Standard registration form (name, email, password, terms)
-- **Step 3**: Optional social media presence (Instagram, TikTok, YouTube, LinkedIn, X with username and follower count)
-- **User Fields**: `signupType` (creator/brand), `socialProfiles` (JSONB array of platform/username/followerCount)
-
-### Core Domain Models
-- **Users**: Profile data, verification status, what they offer/need, social profiles, signup type
-- **Posts**: Feed posts with categoryDetails JSONB (structured data for real estate/vehicles/luxury), declaredValue, offerItems, wantItems, hashtags
-- **PostLikes**: User-post like pairs for feed engagement
-- **Listings**: Offers or requests with categories, values in AED, locations
-  - **Exchange Preferences**: `wantedCategories` (array), `exchangeItems` (array with priority flag), `openToOffers` (boolean)
-  - Visual priority system with stars for priority items
-- **Deals**: Trade proposals with state machine (draft → proposed → accepted → in_progress → completed)
-  - **Deliverables Checklist**: Auto-populated checklist based on listing categories (stored as jsonb array of `{label, checked}`)
-  - **Deliverables Mapping**: `shared/deliverables.ts` defines per-category deliverable templates for all 18 categories
-  - Checklist shown in Propose Trade dialog (listing-detail.tsx) with toggleable checkboxes
-  - Checked items saved with deal and displayed on deal detail page
-- **Messages**: Real-time chat messages per deal
-- **Ratings**: Post-completion reviews
-- **Notifications**: In-app notification system
-- **Followers**: User following system for marketplace sellers
-- **Referrals**: Referral/invite system with `referralCode` and `referredBy` on users, `referrals` table tracking referrer/referred pairs and fee waivers
-  - **Referral Code Format**: `MARGIN-XXXX` auto-generated with user ID prefix + random characters
-  - **Fee Waiver**: Both referrer and referred user get 1 free deal fee waived
-  - **Routes**: `/referrals` page with stats, code display, copy/WhatsApp share, and apply code form
-  - **API**: `/api/referral/code`, `/api/referral/stats`, `/api/referral/apply`, `/api/referral/check-waiver`
-- **Wishlists**: Save/bookmark listings with heart icon toggle
-  - **Table**: `wishlists` with userId + listingId pairs
-  - **Routes**: `/saved` page showing all wishlisted listings with remove functionality
-  - **API**: `/api/wishlist`, `/api/wishlist/check/:listingId`, `POST/DELETE /api/wishlist/:listingId`
-  - **UI**: Heart icon on browse page cards (filled red when saved, gray outline when not)
-- **Category Templates**: Dynamic form fields in create-listing based on category selection
-  - **Fashion/Modeling**: Number of outfits, shoot duration
-  - **Hospitality**: Dates, room type, content deliverables
-  - **SaaS**: License duration, features included
-  - **Storage**: `categoryDetails` jsonb field on listings table
-- **WhatsApp Support**: Floating green button (bottom-right, z-50) opens chat with +971523133512
-
-### Sample Data
-- **Demo Endpoint**: `/api/demo/sample-deals` (POST, requires auth) creates sample barter scenarios
-- **Sample Scenarios**:
-  - Suit manufacturer ↔ Models (bespoke suits for modeling services)
-  - Hotel ↔ Influencer (free stays for reels + stories)
-  - Restaurant ↔ Food photographer (dining credits for professional photos)
-  - SaaS company ↔ Graphic designer (12-month license for full rebrand)
-  - Dentist ↔ Marketing agency (teeth whitening for ad campaign)
-
-### Professional Dashboard
-- **Route**: `/dashboard`
-- **Tabs**: Analytics, Followers, Deals Folder
-- **Features**:
-  - Analytics with charts (Recharts) for views over time and listings by category
-  - Followers management with follow/unfollow functionality
-  - Deals folder with contract PDF download for completed deals
-
-### Admin Dashboard
-- **Route**: `/admin` (protected - requires admin role)
-- **Role System**: Users table has `role` column (user, admin, super_admin) and `isBanned` status
-- **Sections**:
-  - **Dashboard**: Stats cards (Total Users, Active Deals, Monthly GMV, Fees Collected, Pending Verifications) + deals trend chart
-  - **Users**: Table with search, verify/unverify, make admin, ban user actions
-  - **Listings**: Table with search, view listing, delete listing actions
-  - **Deals**: Table with click-through to deal details including chat history and contract PDF
-  - **Analytics**: Deals per week (bar chart), top categories (pie chart), platform summary
-  - **Settings**: Platform configuration display
-- **Access**: Only visible to users with `isAdmin=true`, Admin badge in user menu
+### Core Features
+- **Onboarding Flow**: A 4-step wizard for user setup.
+- **Explore/Discover Hub**: `/browse` route with curated content, advanced search, filtering, and category browsing.
+- **Trust & Credibility System**: Credibility score, skill-based endorsements, and enhanced portfolio displays.
+- **Instagram-Style Feed**: `/feed` route for personalized content discovery, including stories and rich post cards with dynamic category-specific details.
+- **Post Creation**: `/create-post` with smart forms and dynamic fields based on category.
+- **Creator/Brand Signup**: 3-step wizard for account type selection and social media integration.
+- **Core Domain Models**: Comprehensive models for Users, Posts, Deals (with deliverable checklists), Messages, Ratings, Notifications, Followers, Referrals, and Wishlists.
+- **WhatsApp Support**: Integrated floating button for direct chat.
+- **Professional Dashboard**: `/dashboard` for analytics, follower management, and deal tracking.
+- **Admin Dashboard**: `/admin` for platform management, user/listing/deal moderation, and analytics, protected by role-based access.
 
 ## External Dependencies
 
-### Database
-- **PostgreSQL**: Primary database, connected via `DATABASE_URL` environment variable
-- **Connection**: Uses `pg` package with connection pooling
-
-### Authentication & Security
-- **bcryptjs**: Password hashing
-- **express-session**: Session management
-- **Session Secret**: Configured via `SESSION_SECRET` environment variable
-
-### Payment Processing
-- **Stripe**: Payment integration for success fees (12% of smaller deal value, min AED 100)
-- **Checkout Flow**: `/api/deals/:id/checkout` creates Stripe checkout session
-- **Webhook**: Stripe webhooks handled at `/api/webhooks/stripe` (raw body required)
-- **Fee Calculation**: 12% of smaller deal value, minimum AED 100
-
-### Identity Verification (Didit KYC/KYB)
-- **Provider**: Didit (https://didit.me) for identity verification
-- **KYC**: Know Your Customer verification for individuals (Emirates ID/Passport)
-- **KYB**: Know Your Business verification for businesses (Trade License)
-- **Session Flow**: `/api/verification/session` creates a Didit verification session
-- **Status Check**: `/api/verification/status` returns current verification status
-- **Webhook**: Didit webhooks handled at `/api/webhooks/didit` (raw body, HMAC-SHA256 signature)
-- **Trading Block**: Users must be verified (KYC or KYB approved) before creating listings or deals
-- **Required Environment Variables**:
-  - `DIDIT_API_KEY`: API key from Didit Business Console
-  - `DIDIT_WEBHOOK_SECRET`: Webhook secret for signature verification
-  - `DIDIT_KYC_WORKFLOW_ID`: Workflow ID for individual verification
-  - `DIDIT_KYB_WORKFLOW_ID`: Workflow ID for business verification
-
-### Email Services
-- **Nodemailer**: Email sending capability for notifications
-
-### AI Integration
-- **OpenAI**: AI-powered matching suggestions
-- **Google Generative AI**: Additional AI capabilities
-
-### File Handling
-- **Multer**: File upload handling for images and documents
-
-### Document Generation
-- **jsPDF**: PDF generation for barter contracts
-
-### Third-Party UI Libraries
-- **Radix UI**: Accessible component primitives (dialogs, dropdowns, tooltips, etc.)
-- **react-icons**: Icon library for social media icons
-- **embla-carousel**: Carousel component
-- **react-day-picker**: Date picker component
-- **recharts**: Charting library for admin analytics
+- **Database**: PostgreSQL (via `pg` package).
+- **Authentication & Security**: bcryptjs, express-session.
+- **Payment Processing**: Stripe for success fees and webhooks.
+- **Identity Verification**: Didit (KYC/KYB) for user and business verification, with webhook support.
+- **Email Services**: Nodemailer.
+- **AI Integration**: OpenAI and Google Generative AI for matching and other capabilities.
+- **File Handling**: Multer for uploads.
+- **Document Generation**: jsPDF for barter contracts.
+- **Third-Party UI Libraries**: Radix UI, react-icons, embla-carousel, react-day-picker, recharts.

@@ -15,7 +15,10 @@ import {
   insertMessageSchema,
   insertRatingSchema,
   insertPostSchema,
+  listings,
 } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import memorystore from "memorystore";
 import { WebhookHandlers } from "./webhookHandlers";
 
@@ -440,6 +443,16 @@ export async function registerRoutes(
       res.json(listings);
     } catch (error) {
       console.error("Get user listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/featured", async (req, res) => {
+    try {
+      const featured = await storage.getFeaturedListings();
+      res.json(featured);
+    } catch (error) {
+      console.error("Get featured listings error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1755,6 +1768,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/posts/trending", async (req, res) => {
+    try {
+      const trending = await storage.getTrendingPosts();
+      res.json(trending);
+    } catch (error) {
+      console.error("Get trending posts error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Get single post
   app.get("/api/posts/:id", async (req, res) => {
     try {
@@ -2259,6 +2282,380 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Create sample deals error:", error);
       res.status(500).json({ message: "Failed to create sample deals" });
+    }
+  });
+
+  // Endorsements routes
+  app.get("/api/endorsements/check/:toUserId/:skill", requireAuth, async (req, res) => {
+    try {
+      const hasEndorsed = await storage.hasEndorsed(
+        req.session.userId!,
+        param(req.params.toUserId),
+        param(req.params.skill)
+      );
+      res.json({ hasEndorsed });
+    } catch (error) {
+      console.error("Check endorsement error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/endorsements/:userId", async (req, res) => {
+    try {
+      const endorsements = await storage.getEndorsementsByUser(param(req.params.userId));
+      res.json(endorsements);
+    } catch (error) {
+      console.error("Get endorsements error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/endorsements", requireAuth, async (req, res) => {
+    try {
+      const { toUserId, skill } = req.body;
+      if (!toUserId || !skill) {
+        return res.status(400).json({ message: "toUserId and skill are required" });
+      }
+      if (toUserId === req.session.userId) {
+        return res.status(400).json({ message: "Cannot endorse yourself" });
+      }
+      const already = await storage.hasEndorsed(req.session.userId!, toUserId, skill);
+      if (already) {
+        return res.status(400).json({ message: "Already endorsed this skill" });
+      }
+      const endorsement = await storage.createEndorsement(req.session.userId!, toUserId, skill);
+      res.json(endorsement);
+    } catch (error) {
+      console.error("Create endorsement error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/endorsements", requireAuth, async (req, res) => {
+    try {
+      const { toUserId, skill } = req.body;
+      if (!toUserId || !skill) {
+        return res.status(400).json({ message: "toUserId and skill are required" });
+      }
+      await storage.deleteEndorsement(req.session.userId!, toUserId, skill);
+      res.json({ message: "Endorsement removed" });
+    } catch (error) {
+      console.error("Delete endorsement error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Saved Searches routes
+  app.get("/api/saved-searches", requireAuth, async (req, res) => {
+    try {
+      const searches = await storage.getSavedSearchesByUser(req.session.userId!);
+      res.json(searches);
+    } catch (error) {
+      console.error("Get saved searches error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/saved-searches", requireAuth, async (req, res) => {
+    try {
+      const { name, filters, notifyEnabled } = req.body;
+      if (!name || !filters) {
+        return res.status(400).json({ message: "name and filters are required" });
+      }
+      const savedSearch = await storage.createSavedSearch({
+        userId: req.session.userId!,
+        name,
+        filters,
+        notifyEnabled: notifyEnabled ?? true,
+      });
+      res.json(savedSearch);
+    } catch (error) {
+      console.error("Create saved search error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/saved-searches/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSavedSearch(param(req.params.id), req.session.userId!);
+      res.json({ message: "Saved search deleted" });
+    } catch (error) {
+      console.error("Delete saved search error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Deal Milestones routes
+  app.get("/api/deals/:dealId/milestones", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDeal(param(req.params.dealId));
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const milestones = await storage.getMilestonesByDeal(param(req.params.dealId));
+      res.json(milestones);
+    } catch (error) {
+      console.error("Get milestones error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/deals/:dealId/milestones", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDeal(param(req.params.dealId));
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const { title, description, sortOrder } = req.body;
+      if (!title) {
+        return res.status(400).json({ message: "title is required" });
+      }
+      const milestone = await storage.createMilestone({
+        dealId: param(req.params.dealId),
+        title,
+        description: description || null,
+        sortOrder: sortOrder ?? 0,
+      });
+      res.json(milestone);
+    } catch (error) {
+      console.error("Create milestone error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/deals/:dealId/milestones/:milestoneId/complete", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDeal(param(req.params.dealId));
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const milestone = await storage.completeMilestone(param(req.params.milestoneId), req.session.userId!);
+      if (!milestone) {
+        return res.status(404).json({ message: "Milestone not found" });
+      }
+      res.json(milestone);
+    } catch (error) {
+      console.error("Complete milestone error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/deals/:dealId/milestones/:milestoneId", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDeal(param(req.params.dealId));
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      await storage.deleteMilestone(param(req.params.milestoneId));
+      res.json({ message: "Milestone deleted" });
+    } catch (error) {
+      console.error("Delete milestone error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Portfolio Items routes
+  app.get("/api/portfolio/:userId", async (req, res) => {
+    try {
+      const items = await storage.getPortfolioByUser(param(req.params.userId));
+      res.json(items);
+    } catch (error) {
+      console.error("Get portfolio error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/portfolio", requireAuth, async (req, res) => {
+    try {
+      const { title, description, images, dealId, category, barterValue } = req.body;
+      if (!title) {
+        return res.status(400).json({ message: "title is required" });
+      }
+      const item = await storage.createPortfolioItem({
+        userId: req.session.userId!,
+        title,
+        description: description || null,
+        images: images || [],
+        dealId: dealId || null,
+        category: category || null,
+        barterValue: barterValue || null,
+      });
+      res.json(item);
+    } catch (error) {
+      console.error("Create portfolio item error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/portfolio/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deletePortfolioItem(param(req.params.id), req.session.userId!);
+      res.json({ message: "Portfolio item deleted" });
+    } catch (error) {
+      console.error("Delete portfolio item error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Quick Inquiries routes
+  app.get("/api/inquiries/sent", requireAuth, async (req, res) => {
+    try {
+      const inquiries = await storage.getInquiriesByUser(req.session.userId!);
+      res.json(inquiries);
+    } catch (error) {
+      console.error("Get sent inquiries error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inquiries/received", requireAuth, async (req, res) => {
+    try {
+      const inquiries = await storage.getInquiriesForUser(req.session.userId!);
+      res.json(inquiries);
+    } catch (error) {
+      console.error("Get received inquiries error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/inquiries", requireAuth, async (req, res) => {
+    try {
+      const { toUserId, listingId, postId, message } = req.body;
+      if (!toUserId) {
+        return res.status(400).json({ message: "toUserId is required" });
+      }
+      if (toUserId === req.session.userId) {
+        return res.status(400).json({ message: "Cannot send inquiry to yourself" });
+      }
+      const inquiry = await storage.createInquiry({
+        fromUserId: req.session.userId!,
+        toUserId,
+        listingId: listingId || null,
+        postId: postId || null,
+        message: message || "Is this still available?",
+      });
+      res.json(inquiry);
+    } catch (error) {
+      console.error("Create inquiry error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inquiries/:id/reply", requireAuth, async (req, res) => {
+    try {
+      const { reply } = req.body;
+      if (!reply) {
+        return res.status(400).json({ message: "reply is required" });
+      }
+      const inquiry = await storage.replyToInquiry(param(req.params.id), reply);
+      if (!inquiry) {
+        return res.status(404).json({ message: "Inquiry not found" });
+      }
+      if (inquiry.toUserId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized to reply to this inquiry" });
+      }
+      res.json(inquiry);
+    } catch (error) {
+      console.error("Reply to inquiry error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/inquiries/:id/read", requireAuth, async (req, res) => {
+    try {
+      await storage.markInquiryRead(param(req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark inquiry read error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Recommendations & Discovery routes
+  app.get("/api/recommendations/users", requireAuth, async (req, res) => {
+    try {
+      const recommended = await storage.getRecommendedUsers(req.session.userId!);
+      res.json(recommended.map(({ password, ...u }) => u));
+    } catch (error) {
+      console.error("Get recommendations error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/explore/stats", async (req, res) => {
+    try {
+      const result = await db
+        .select()
+        .from(listings)
+        .where(eq(listings.isActive, true));
+
+      const categoryMap = new Map<string, number>();
+      result.forEach((listing) => {
+        const cats = (listing.categories as string[]) || [];
+        cats.forEach((cat) => {
+          categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+        });
+      });
+
+      const stats = Array.from(categoryMap.entries()).map(([category, count]) => ({
+        category,
+        count,
+      }));
+
+      res.json(stats);
+    } catch (error) {
+      console.error("Get explore stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Credibility Score route
+  app.get("/api/users/:userId/credibility", async (req, res) => {
+    try {
+      const userId = param(req.params.userId);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const endorsementCount = await storage.getEndorsementCount(userId);
+      const ratings = await storage.getRatingsByUser(userId);
+      const ratingAvg = ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
+        : 0;
+
+      const completedDeals = user.totalCompletedDeals || 0;
+      const credibilityScore = Math.min(
+        100,
+        (completedDeals * 10) +
+        (user.isVerified ? 20 : 0) +
+        (ratingAvg * 8) +
+        (endorsementCount * 3)
+      );
+
+      res.json({
+        credibilityScore: Math.round(credibilityScore),
+        completionRate: user.completionRate || "0",
+        avgResponseTime: user.avgResponseTime || 0,
+        totalCompletedDeals: completedDeals,
+        endorsementCount,
+        ratingAvg: Math.round(ratingAvg * 100) / 100,
+      });
+    } catch (error) {
+      console.error("Get credibility error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

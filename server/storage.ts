@@ -14,6 +14,11 @@ import {
   postLikes,
   postComments,
   postBookmarks,
+  endorsements,
+  savedSearches,
+  dealMilestones,
+  portfolioItems,
+  quickInquiries,
   type User,
   type InsertUser,
   type Listing,
@@ -41,6 +46,19 @@ import {
   type ListingWithUser,
   type DealWithUsers,
   type MessageWithSender,
+  type Endorsement,
+  type InsertEndorsement,
+  type EndorsementWithUser,
+  type SavedSearch,
+  type InsertSavedSearch,
+  type SavedSearchFilters,
+  type DealMilestone,
+  type InsertDealMilestone,
+  type PortfolioItem,
+  type InsertPortfolioItem,
+  type QuickInquiry,
+  type InsertQuickInquiry,
+  type QuickInquiryWithUsers,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 
@@ -127,6 +145,44 @@ export interface IStorage {
   bookmarkPost(postId: string, userId: string): Promise<PostBookmark>;
   unbookmarkPost(postId: string, userId: string): Promise<void>;
   getBookmarkedPosts(userId: string): Promise<PostWithUser[]>;
+
+  // Endorsements
+  getEndorsementsByUser(userId: string): Promise<EndorsementWithUser[]>;
+  getEndorsementCount(userId: string): Promise<number>;
+  createEndorsement(fromUserId: string, toUserId: string, skill: string): Promise<Endorsement>;
+  deleteEndorsement(fromUserId: string, toUserId: string, skill: string): Promise<void>;
+  hasEndorsed(fromUserId: string, toUserId: string, skill: string): Promise<boolean>;
+
+  // Saved Searches
+  getSavedSearchesByUser(userId: string): Promise<SavedSearch[]>;
+  createSavedSearch(search: InsertSavedSearch): Promise<SavedSearch>;
+  deleteSavedSearch(id: string, userId: string): Promise<void>;
+  updateSavedSearch(id: string, data: Partial<SavedSearch>): Promise<SavedSearch | undefined>;
+
+  // Deal Milestones
+  getMilestonesByDeal(dealId: string): Promise<DealMilestone[]>;
+  createMilestone(milestone: InsertDealMilestone): Promise<DealMilestone>;
+  completeMilestone(id: string, userId: string): Promise<DealMilestone | undefined>;
+  deleteMilestone(id: string): Promise<void>;
+
+  // Portfolio Items
+  getPortfolioByUser(userId: string): Promise<PortfolioItem[]>;
+  createPortfolioItem(item: InsertPortfolioItem): Promise<PortfolioItem>;
+  deletePortfolioItem(id: string, userId: string): Promise<void>;
+
+  // Quick Inquiries
+  getInquiriesByUser(userId: string): Promise<QuickInquiryWithUsers[]>;
+  getInquiriesForUser(userId: string): Promise<QuickInquiryWithUsers[]>;
+  createInquiry(inquiry: InsertQuickInquiry): Promise<QuickInquiry>;
+  replyToInquiry(id: string, reply: string): Promise<QuickInquiry | undefined>;
+  markInquiryRead(id: string): Promise<void>;
+
+  // Recommendations
+  getRecommendedUsers(userId: string): Promise<User[]>;
+
+  // Trending/Featured
+  getFeaturedListings(): Promise<ListingWithUser[]>;
+  getTrendingPosts(): Promise<PostWithUser[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -660,6 +716,277 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(users, eq(posts.userId, users.id))
       .where(eq(postBookmarks.userId, userId))
       .orderBy(desc(postBookmarks.createdAt));
+
+    return result.map(({ posts: post, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...post, user: safeUser };
+    });
+  }
+
+  // Endorsements
+  async getEndorsementsByUser(userId: string): Promise<EndorsementWithUser[]> {
+    const result = await db
+      .select()
+      .from(endorsements)
+      .leftJoin(users, eq(endorsements.fromUserId, users.id))
+      .where(eq(endorsements.toUserId, userId))
+      .orderBy(desc(endorsements.createdAt));
+
+    return result.map(({ endorsements: endorsement, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...endorsement, fromUser: safeUser };
+    });
+  }
+
+  async getEndorsementCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(endorsements)
+      .where(eq(endorsements.toUserId, userId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  async createEndorsement(fromUserId: string, toUserId: string, skill: string): Promise<Endorsement> {
+    const [endorsement] = await db
+      .insert(endorsements)
+      .values({ fromUserId, toUserId, skill })
+      .returning();
+    return endorsement;
+  }
+
+  async deleteEndorsement(fromUserId: string, toUserId: string, skill: string): Promise<void> {
+    await db
+      .delete(endorsements)
+      .where(and(
+        eq(endorsements.fromUserId, fromUserId),
+        eq(endorsements.toUserId, toUserId),
+        eq(endorsements.skill, skill)
+      ));
+  }
+
+  async hasEndorsed(fromUserId: string, toUserId: string, skill: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(endorsements)
+      .where(and(
+        eq(endorsements.fromUserId, fromUserId),
+        eq(endorsements.toUserId, toUserId),
+        eq(endorsements.skill, skill)
+      ));
+    return !!existing;
+  }
+
+  // Saved Searches
+  async getSavedSearchesByUser(userId: string): Promise<SavedSearch[]> {
+    return db
+      .select()
+      .from(savedSearches)
+      .where(eq(savedSearches.userId, userId))
+      .orderBy(desc(savedSearches.createdAt));
+  }
+
+  async createSavedSearch(search: InsertSavedSearch): Promise<SavedSearch> {
+    const [savedSearch] = await db
+      .insert(savedSearches)
+      .values(search)
+      .returning();
+    return savedSearch;
+  }
+
+  async deleteSavedSearch(id: string, userId: string): Promise<void> {
+    await db
+      .delete(savedSearches)
+      .where(and(eq(savedSearches.id, id), eq(savedSearches.userId, userId)));
+  }
+
+  async updateSavedSearch(id: string, data: Partial<SavedSearch>): Promise<SavedSearch | undefined> {
+    const [savedSearch] = await db
+      .update(savedSearches)
+      .set(data)
+      .where(eq(savedSearches.id, id))
+      .returning();
+    return savedSearch;
+  }
+
+  // Deal Milestones
+  async getMilestonesByDeal(dealId: string): Promise<DealMilestone[]> {
+    return db
+      .select()
+      .from(dealMilestones)
+      .where(eq(dealMilestones.dealId, dealId))
+      .orderBy(dealMilestones.sortOrder);
+  }
+
+  async createMilestone(milestone: InsertDealMilestone): Promise<DealMilestone> {
+    const [created] = await db
+      .insert(dealMilestones)
+      .values(milestone)
+      .returning();
+    return created;
+  }
+
+  async completeMilestone(id: string, userId: string): Promise<DealMilestone | undefined> {
+    const [milestone] = await db
+      .update(dealMilestones)
+      .set({ isCompleted: true, completedAt: new Date(), completedBy: userId })
+      .where(eq(dealMilestones.id, id))
+      .returning();
+    return milestone;
+  }
+
+  async deleteMilestone(id: string): Promise<void> {
+    await db.delete(dealMilestones).where(eq(dealMilestones.id, id));
+  }
+
+  // Portfolio Items
+  async getPortfolioByUser(userId: string): Promise<PortfolioItem[]> {
+    return db
+      .select()
+      .from(portfolioItems)
+      .where(eq(portfolioItems.userId, userId))
+      .orderBy(desc(portfolioItems.createdAt));
+  }
+
+  async createPortfolioItem(item: InsertPortfolioItem): Promise<PortfolioItem> {
+    const [created] = await db
+      .insert(portfolioItems)
+      .values(item)
+      .returning();
+    return created;
+  }
+
+  async deletePortfolioItem(id: string, userId: string): Promise<void> {
+    await db
+      .delete(portfolioItems)
+      .where(and(eq(portfolioItems.id, id), eq(portfolioItems.userId, userId)));
+  }
+
+  // Quick Inquiries
+  async getInquiriesByUser(userId: string): Promise<QuickInquiryWithUsers[]> {
+    const result = await db
+      .select()
+      .from(quickInquiries)
+      .where(eq(quickInquiries.fromUserId, userId))
+      .orderBy(desc(quickInquiries.createdAt));
+
+    const inquiriesWithUsers = await Promise.all(
+      result.map(async (inquiry) => {
+        const [fromUser] = await db.select().from(users).where(eq(users.id, inquiry.fromUserId));
+        const [toUser] = await db.select().from(users).where(eq(users.id, inquiry.toUserId));
+        const { password: p1, ...safeFromUser } = fromUser!;
+        const { password: p2, ...safeToUser } = toUser!;
+        return { ...inquiry, fromUser: safeFromUser, toUser: safeToUser };
+      })
+    );
+
+    return inquiriesWithUsers;
+  }
+
+  async getInquiriesForUser(userId: string): Promise<QuickInquiryWithUsers[]> {
+    const result = await db
+      .select()
+      .from(quickInquiries)
+      .where(eq(quickInquiries.toUserId, userId))
+      .orderBy(desc(quickInquiries.createdAt));
+
+    const inquiriesWithUsers = await Promise.all(
+      result.map(async (inquiry) => {
+        const [fromUser] = await db.select().from(users).where(eq(users.id, inquiry.fromUserId));
+        const [toUser] = await db.select().from(users).where(eq(users.id, inquiry.toUserId));
+        const { password: p1, ...safeFromUser } = fromUser!;
+        const { password: p2, ...safeToUser } = toUser!;
+        return { ...inquiry, fromUser: safeFromUser, toUser: safeToUser };
+      })
+    );
+
+    return inquiriesWithUsers;
+  }
+
+  async createInquiry(inquiry: InsertQuickInquiry): Promise<QuickInquiry> {
+    const [created] = await db
+      .insert(quickInquiries)
+      .values(inquiry)
+      .returning();
+    return created;
+  }
+
+  async replyToInquiry(id: string, reply: string): Promise<QuickInquiry | undefined> {
+    const [inquiry] = await db
+      .update(quickInquiries)
+      .set({ reply })
+      .where(eq(quickInquiries.id, id))
+      .returning();
+    return inquiry;
+  }
+
+  async markInquiryRead(id: string): Promise<void> {
+    await db
+      .update(quickInquiries)
+      .set({ isRead: true })
+      .where(eq(quickInquiries.id, id));
+  }
+
+  // Recommendations
+  async getRecommendedUsers(userId: string): Promise<User[]> {
+    const currentUser = await this.getUser(userId);
+    if (!currentUser) return [];
+
+    const allUsers = await db
+      .select()
+      .from(users)
+      .where(sql`${users.id} != ${userId}`)
+      .limit(100);
+
+    const myOffers = (currentUser.whatIOffer || []).map((item: any) => item.name?.toLowerCase());
+    const myNeeds = (currentUser.whatINeed || []).map((item: any) => item.name?.toLowerCase());
+
+    const recommended = allUsers.filter((user) => {
+      const theirOffers = (user.whatIOffer as any[] || []).map((item: any) => item.name?.toLowerCase());
+      const theirNeeds = (user.whatINeed as any[] || []).map((item: any) => item.name?.toLowerCase());
+
+      const theyOfferWhatINeed = myNeeds.some((need: string) =>
+        theirOffers.some((offer: string) => offer && need && offer.includes(need))
+      );
+      const theyNeedWhatIOffer = myOffers.some((offer: string) =>
+        theirNeeds.some((need: string) => need && offer && need.includes(offer))
+      );
+
+      return theyOfferWhatINeed || theyNeedWhatIOffer;
+    });
+
+    return recommended.slice(0, 10);
+  }
+
+  // Trending/Featured
+  async getFeaturedListings(): Promise<ListingWithUser[]> {
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(and(
+        eq(listings.isFeatured, true),
+        eq(listings.isActive, true),
+        or(
+          sql`${listings.featuredUntil} IS NULL`,
+          sql`${listings.featuredUntil} > NOW()`
+        )
+      ))
+      .orderBy(desc(listings.createdAt));
+
+    return result.map(({ listings: listing, users: user }) => ({
+      ...listing,
+      user: user!,
+    }));
+  }
+
+  async getTrendingPosts(): Promise<PostWithUser[]> {
+    const result = await db
+      .select()
+      .from(posts)
+      .leftJoin(users, eq(posts.userId, users.id))
+      .where(and(eq(posts.isActive, true), eq(posts.isStory, false)))
+      .orderBy(desc(posts.likeCount))
+      .limit(10);
 
     return result.map(({ posts: post, users: user }) => {
       const { password, ...safeUser } = user!;

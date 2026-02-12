@@ -238,6 +238,13 @@ export const users = pgTable("users", {
   // Signup & Social
   signupType: text("signup_type").default("creator"),
   socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
+
+  // Trust & Credibility
+  avgResponseTime: integer("avg_response_time").default(0),
+  completionRate: decimal("completion_rate", { precision: 5, scale: 2 }).default("0"),
+  credibilityScore: integer("credibility_score").default(0),
+  totalCompletedDeals: integer("total_completed_deals").default(0),
+  lastActiveAt: timestamp("last_active_at"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -247,6 +254,35 @@ export const users = pgTable("users", {
 export type ExchangeItem = {
   name: string;
   isPriority: boolean;
+};
+
+// Service tier for Fiverr-style packages
+export type ServiceTier = {
+  name: string;
+  description: string;
+  value: number;
+  deliverables: string[];
+};
+
+// Item condition options
+export const ITEM_CONDITIONS = [
+  "new",
+  "like_new",
+  "excellent",
+  "good",
+  "fair",
+  "refurbished",
+] as const;
+
+// Saved search filters type
+export type SavedSearchFilters = {
+  query?: string;
+  categories?: string[];
+  location?: string;
+  condition?: string;
+  minValue?: number;
+  maxValue?: number;
+  type?: string;
 };
 
 // Listings table
@@ -268,6 +304,10 @@ export const listings = pgTable("listings", {
   exchangeItems: jsonb("exchange_items").$type<ExchangeItem[]>().default([]),
   openToOffers: boolean("open_to_offers").default(true),
   categoryDetails: jsonb("category_details").$type<Record<string, string | number>>(),
+  condition: text("condition").default("like_new"),
+  serviceTiers: jsonb("service_tiers").$type<ServiceTier[]>(),
+  isFeatured: boolean("is_featured").default(false),
+  featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -378,6 +418,11 @@ export const posts = pgTable("posts", {
   categoryDetails: jsonb("category_details").$type<PostCategoryDetails>(),
   marketValuation: text("market_valuation"),
   location: text("location"),
+  condition: text("condition"),
+  videoUrl: text("video_url"),
+  taggedUserIds: jsonb("tagged_user_ids").$type<string[]>().default([]),
+  isFeatured: boolean("is_featured").default(false),
+  featuredUntil: timestamp("featured_until"),
   isStory: boolean("is_story").default(false),
   expiresAt: timestamp("expires_at"),
   likeCount: integer("like_count").default(0),
@@ -409,6 +454,65 @@ export const postBookmarks = pgTable("post_bookmarks", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Endorsements table - peer endorsements for skills/specialties
+export const endorsements = pgTable("endorsements", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: varchar("from_user_id", { length: 36 }).notNull().references(() => users.id),
+  toUserId: varchar("to_user_id", { length: 36 }).notNull().references(() => users.id),
+  skill: text("skill").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Saved searches table
+export const savedSearches = pgTable("saved_searches", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  name: text("name").notNull(),
+  filters: jsonb("filters").$type<SavedSearchFilters>().notNull(),
+  notifyEnabled: boolean("notify_enabled").default(true),
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Deal milestones table - Fiverr-style order milestones
+export const dealMilestones = pgTable("deal_milestones", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  dealId: varchar("deal_id", { length: 36 }).notNull().references(() => deals.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Portfolio items table - showcase completed barters
+export const portfolioItems = pgTable("portfolio_items", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  images: jsonb("images").$type<string[]>().default([]),
+  dealId: varchar("deal_id", { length: 36 }).references(() => deals.id),
+  category: text("category"),
+  barterValue: decimal("barter_value", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Quick inquiries - "Is this still available?" messages
+export const quickInquiries = pgTable("quick_inquiries", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: varchar("from_user_id", { length: 36 }).notNull().references(() => users.id),
+  toUserId: varchar("to_user_id", { length: 36 }).notNull().references(() => users.id),
+  listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
+  postId: varchar("post_id", { length: 36 }).references(() => posts.id),
+  message: text("message").notNull().default("Is this still available?"),
+  reply: text("reply"),
+  isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -510,6 +614,37 @@ export const insertPostBookmarkSchema = createInsertSchema(postBookmarks).omit({
   createdAt: true,
 });
 
+export const insertEndorsementSchema = createInsertSchema(endorsements).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSavedSearchSchema = createInsertSchema(savedSearches).omit({
+  id: true,
+  createdAt: true,
+  lastNotifiedAt: true,
+});
+
+export const insertDealMilestoneSchema = createInsertSchema(dealMilestones).omit({
+  id: true,
+  createdAt: true,
+  isCompleted: true,
+  completedAt: true,
+  completedBy: true,
+});
+
+export const insertPortfolioItemSchema = createInsertSchema(portfolioItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertQuickInquirySchema = createInsertSchema(quickInquiries).omit({
+  id: true,
+  createdAt: true,
+  isRead: true,
+  reply: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -562,6 +697,21 @@ export type PostComment = typeof postComments.$inferSelect;
 export type InsertPostBookmark = z.infer<typeof insertPostBookmarkSchema>;
 export type PostBookmark = typeof postBookmarks.$inferSelect;
 
+export type InsertEndorsement = z.infer<typeof insertEndorsementSchema>;
+export type Endorsement = typeof endorsements.$inferSelect;
+
+export type InsertSavedSearch = z.infer<typeof insertSavedSearchSchema>;
+export type SavedSearch = typeof savedSearches.$inferSelect;
+
+export type InsertDealMilestone = z.infer<typeof insertDealMilestoneSchema>;
+export type DealMilestone = typeof dealMilestones.$inferSelect;
+
+export type InsertPortfolioItem = z.infer<typeof insertPortfolioItemSchema>;
+export type PortfolioItem = typeof portfolioItems.$inferSelect;
+
+export type InsertQuickInquiry = z.infer<typeof insertQuickInquirySchema>;
+export type QuickInquiry = typeof quickInquiries.$inferSelect;
+
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 
 // Extended types with relations
@@ -570,3 +720,5 @@ export type DealWithUsers = Deal & { seeker: User; provider: User };
 export type MessageWithSender = Message & { sender: User };
 export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
 export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean; bookmarked?: boolean; commentCount?: number };
+export type EndorsementWithUser = Endorsement & { fromUser: Omit<User, "password"> };
+export type QuickInquiryWithUsers = QuickInquiry & { fromUser: Omit<User, "password">; toUser: Omit<User, "password"> };

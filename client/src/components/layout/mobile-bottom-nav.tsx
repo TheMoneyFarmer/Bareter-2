@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import {
   Rss,
-  Search,
+  Compass,
   PlusSquare,
   Handshake,
   User,
@@ -19,7 +19,7 @@ export function MobileBottomNav() {
 
   const tabs = [
     { href: "/feed", label: t("nav.feed"), icon: Rss, requiresAuth: false, id: "feed" },
-    { href: "/browse", label: t("nav.browse"), icon: Search, requiresAuth: false, id: "browse" },
+    { href: "/browse", label: t("nav.browse"), icon: Compass, requiresAuth: false, id: "browse" },
     { href: "/create-post", label: t("nav.createPost"), icon: PlusSquare, requiresAuth: true, id: "create-post" },
     { href: "/deals", label: t("nav.myDeals"), icon: Handshake, requiresAuth: true, id: "deals" },
     { href: user ? "/profile" : "/login", label: user ? t("nav.profile") : t("nav.login"), icon: user ? User : LogIn, requiresAuth: false, id: user ? "profile" : "login" },

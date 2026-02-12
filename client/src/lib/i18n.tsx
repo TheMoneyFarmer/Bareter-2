@@ -18,8 +18,8 @@ const translations: Record<Language, Record<string, string>> = {
     "app.vatCompliant": "VAT Registered | UAE Federal Tax Authority Compliant",
 
     "nav.home": "Home",
-    "nav.browse": "Browse",
-    "nav.browseMarketplace": "Browse Marketplace",
+    "nav.browse": "Explore",
+    "nav.browseMarketplace": "Explore Marketplace",
     "nav.createListing": "Create Listing",
     "nav.myDeals": "My Deals",
     "nav.listings": "Listings",
@@ -342,7 +342,7 @@ const translations: Record<Language, Record<string, string>> = {
     "app.vatCompliant": "مسجل في ضريبة القيمة المضافة | متوافق مع الهيئة الاتحادية للضرائب",
 
     "nav.home": "الرئيسية",
-    "nav.browse": "تصفح",
+    "nav.browse": "استكشف",
     "nav.browseMarketplace": "تصفح السوق",
     "nav.createListing": "إنشاء إعلان",
     "nav.myDeals": "صفقاتي",
