@@ -43,7 +43,7 @@ import {
   Sparkles,
   CheckCircle,
   ClipboardList,
-  ThumbsUp,
+  Heart,
   Send,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
@@ -270,7 +270,7 @@ export function ListingDetailPage() {
                     onClick={() => listingLikeMutation.mutate()}
                     data-testid="button-header-like"
                   >
-                    <ThumbsUp className={`h-5 w-5 ${listing.isLiked ? "fill-primary text-primary" : ""}`} />
+                    <Heart className={`h-5 w-5 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
                   </Button>
                 )}
                 <ShareMenu
@@ -420,13 +420,13 @@ export function ListingDetailPage() {
                 onClick={() => listingLikeMutation.mutate()}
                 data-testid="button-like-listing"
               >
-                <ThumbsUp className={`h-4 w-4 ${listing.isLiked ? "fill-primary text-primary" : ""}`} />
+                <Heart className={`h-4 w-4 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
                 <span>{listing.likeCount || 0} likes</span>
               </Button>
             )}
             {!user && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <ThumbsUp className="h-4 w-4" />
+                <Heart className="h-4 w-4" />
                 <span>{listing.likeCount || 0} likes</span>
               </div>
             )}

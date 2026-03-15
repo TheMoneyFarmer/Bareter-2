@@ -53,7 +53,6 @@ import {
   Lightbulb,
   Palette,
   Music,
-  ThumbsUp,
   MessageSquare,
   Handshake,
 } from "lucide-react";
@@ -132,6 +131,9 @@ export function BrowsePage() {
     },
   });
 
+  const optimisticToggleLike = (old: ListingWithUser[] | undefined, listingId: string) =>
+    old?.map(l => l.id === listingId ? { ...l, isLiked: !l.isLiked, likeCount: l.isLiked ? Math.max(0, (l.likeCount || 0) - 1) : (l.likeCount || 0) + 1 } : l);
+
   const listingLikeMutation = useMutation({
     mutationFn: async (listingId: string) => {
       const res = await apiRequest("POST", `/api/listings/${listingId}/like`);
@@ -139,18 +141,21 @@ export function BrowsePage() {
     },
     onMutate: async (listingId: string) => {
       await queryClient.cancelQueries({ queryKey: ["/api/listings"] });
-      const previous = queryClient.getQueryData<any[]>(["/api/listings"]);
-      queryClient.setQueryData<any[]>(["/api/listings"], (old) =>
-        old?.map(l => l.id === listingId ? { ...l, isLiked: !l.isLiked, likeCount: l.isLiked ? Math.max(0, (l.likeCount || 0) - 1) : (l.likeCount || 0) + 1 } : l)
-      );
-      return { previous };
+      await queryClient.cancelQueries({ queryKey: ["/api/listings/featured"] });
+      const previousAll = queryClient.getQueryData<ListingWithUser[]>(["/api/listings"]);
+      const previousFeatured = queryClient.getQueryData<ListingWithUser[]>(["/api/listings/featured"]);
+      queryClient.setQueryData<ListingWithUser[]>(["/api/listings"], (old) => optimisticToggleLike(old, listingId));
+      queryClient.setQueryData<ListingWithUser[]>(["/api/listings/featured"], (old) => optimisticToggleLike(old, listingId));
+      return { previousAll, previousFeatured };
     },
     onError: (error: any, _listingId, context) => {
-      if (context?.previous) queryClient.setQueryData(["/api/listings"], context.previous);
+      if (context?.previousAll) queryClient.setQueryData(["/api/listings"], context.previousAll);
+      if (context?.previousFeatured) queryClient.setQueryData(["/api/listings/featured"], context.previousFeatured);
       toast({ title: "Error", description: error.message || "Could not update like", variant: "destructive" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
     },
   });
 
@@ -365,13 +370,13 @@ export function BrowsePage() {
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); listingLikeMutation.mutate(listing.id); }}
                   data-testid={`button-like-listing-${listing.id}`}
                 >
-                  <ThumbsUp className={`h-3.5 w-3.5 ${listing.isLiked ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                  <Heart className={`h-3.5 w-3.5 ${listing.isLiked ? "fill-destructive text-destructive" : "text-muted-foreground"}`} />
                   <span>{listing.likeCount || 0}</span>
                 </Button>
               )}
               {!user && (
                 <div className="flex items-center gap-1 text-xs text-muted-foreground px-2">
-                  <ThumbsUp className="h-3.5 w-3.5" />
+                  <Heart className="h-3.5 w-3.5" />
                   <span>{listing.likeCount || 0}</span>
                 </div>
               )}

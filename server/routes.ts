@@ -460,7 +460,15 @@ export async function registerRoutes(
   app.get("/api/listings/featured", async (req, res) => {
     try {
       const featured = await storage.getFeaturedListings();
-      res.json(featured);
+      const userId = req.session?.userId;
+      const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
+      const commentCounts = await storage.getListingCommentCounts();
+      const enriched = featured.map(l => ({
+        ...l,
+        isLiked: likedIds.has(l.id),
+        commentCount: commentCounts.get(l.id) || 0,
+      }));
+      res.json(enriched);
     } catch (error) {
       console.error("Get featured listings error:", error);
       res.status(500).json({ message: "Internal server error" });
