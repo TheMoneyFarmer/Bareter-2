@@ -38,8 +38,6 @@ import {
   ArrowLeft,
   Loader2,
   MessageSquare,
-  Share2,
-  Heart,
   ExternalLink,
   ArrowLeftRight,
   Sparkles,
@@ -58,7 +56,8 @@ export function ListingDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
-  const [proposeOpen, setProposeOpen] = useState(false);
+  const searchParams = new URLSearchParams(window.location.search);
+  const [proposeOpen, setProposeOpen] = useState(searchParams.get("propose") === "true");
   const [counterOffer, setCounterOffer] = useState("");
   const [counterValue, setCounterValue] = useState("");
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
@@ -263,12 +262,24 @@ export function ListingDetailPage() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-2xl md:text-3xl font-bold">{listing.title}</h1>
               <div className="flex gap-2">
-                <Button variant="ghost" size="icon" data-testid="button-share">
-                  <Share2 className="h-5 w-5" />
-                </Button>
-                <Button variant="ghost" size="icon" data-testid="button-save">
-                  <Heart className="h-5 w-5" />
-                </Button>
+                {user && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={listingLikeMutation.isPending}
+                    onClick={() => listingLikeMutation.mutate()}
+                    data-testid="button-header-like"
+                  >
+                    <ThumbsUp className={`h-5 w-5 ${listing.isLiked ? "fill-primary text-primary" : ""}`} />
+                  </Button>
+                )}
+                <ShareMenu
+                  url={window.location.href}
+                  title={listing.title}
+                  size="icon"
+                  variant="ghost"
+                  data-testid="button-header-share"
+                />
               </div>
             </div>
 
@@ -409,7 +420,7 @@ export function ListingDetailPage() {
                 onClick={() => listingLikeMutation.mutate()}
                 data-testid="button-like-listing"
               >
-                <ThumbsUp className={`h-4 w-4 ${(listing as any).isLiked ? "fill-primary text-primary" : ""}`} />
+                <ThumbsUp className={`h-4 w-4 ${listing.isLiked ? "fill-primary text-primary" : ""}`} />
                 <span>{listing.likeCount || 0} likes</span>
               </Button>
             )}
@@ -421,7 +432,7 @@ export function ListingDetailPage() {
             )}
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <MessageSquare className="h-4 w-4" />
-              <span>{(listing as any).commentCount || 0} proposals</span>
+              <span>{listing.commentCount || 0} proposals</span>
             </div>
             <ShareMenu
               url={window.location.href}

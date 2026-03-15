@@ -635,7 +635,7 @@ export function AdminPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{l.viewCount || 0}</TableCell>
                     <TableCell className="text-muted-foreground" data-testid={`text-likes-${l.id}`}>{l.likeCount || 0}</TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-comments-${l.id}`}>{(l as any).commentCount || 0}</TableCell>
+                    <TableCell className="text-muted-foreground" data-testid={`text-comments-${l.id}`}>{l.commentCount || 0}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

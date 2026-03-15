@@ -365,7 +365,7 @@ export function BrowsePage() {
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); listingLikeMutation.mutate(listing.id); }}
                   data-testid={`button-like-listing-${listing.id}`}
                 >
-                  <ThumbsUp className={`h-3.5 w-3.5 ${(listing as any).isLiked ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+                  <ThumbsUp className={`h-3.5 w-3.5 ${listing.isLiked ? "fill-primary text-primary" : "text-muted-foreground"}`} />
                   <span>{listing.likeCount || 0}</span>
                 </Button>
               )}
@@ -378,7 +378,7 @@ export function BrowsePage() {
               <Link href={`/listings/${listing.id}#comments`}>
                 <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" onClick={(e) => e.stopPropagation()} data-testid={`button-comments-listing-${listing.id}`}>
                   <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">{(listing as any).commentCount || 0}</span>
+                  <span className="text-muted-foreground">{listing.commentCount || 0}</span>
                 </Button>
               </Link>
               <ShareMenu
@@ -390,7 +390,7 @@ export function BrowsePage() {
               />
             </div>
             {user && listing.userId !== user.id && (
-              <Link href={`/listings/${listing.id}`}>
+              <Link href={`/listings/${listing.id}?propose=true`}>
                 <Button
                   size="sm"
                   className="h-7 px-2 gap-1 text-xs"

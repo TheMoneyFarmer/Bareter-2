@@ -755,7 +755,7 @@ export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> }
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
 
 // Extended types with relations
-export type ListingWithUser = Listing & { user: User };
+export type ListingWithUser = Listing & { user: User; isLiked?: boolean; commentCount?: number };
 export type DealWithUsers = Deal & { seeker: User; provider: User };
 export type MessageWithSender = Message & { sender: User };
 export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
