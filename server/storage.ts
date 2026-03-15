@@ -19,6 +19,8 @@ import {
   dealMilestones,
   portfolioItems,
   quickInquiries,
+  listingLikes,
+  listingComments,
   type User,
   type InsertUser,
   type Listing,
@@ -59,6 +61,9 @@ import {
   type QuickInquiry,
   type InsertQuickInquiry,
   type QuickInquiryWithUsers,
+  type ListingLike,
+  type ListingComment,
+  type ListingCommentWithUser,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 
@@ -176,6 +181,17 @@ export interface IStorage {
   createInquiry(inquiry: InsertQuickInquiry): Promise<QuickInquiry>;
   replyToInquiry(id: string, reply: string): Promise<QuickInquiry | undefined>;
   markInquiryRead(id: string): Promise<void>;
+
+  // Listing Likes
+  likeListingItem(listingId: string, userId: string): Promise<void>;
+  unlikeListingItem(listingId: string, userId: string): Promise<void>;
+  isListingLiked(listingId: string, userId: string): Promise<boolean>;
+  getListingLikeCount(listingId: string): Promise<number>;
+
+  // Listing Comments
+  getListingComments(listingId: string): Promise<ListingCommentWithUser[]>;
+  getListingCommentCount(listingId: string): Promise<number>;
+  createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<ListingComment>;
 
   // Recommendations
   getRecommendedUsers(userId: string): Promise<User[]>;
@@ -992,6 +1008,64 @@ export class DatabaseStorage implements IStorage {
       const { password, ...safeUser } = user!;
       return { ...post, user: safeUser };
     });
+  }
+
+  // Listing Likes
+  async likeListingItem(listingId: string, userId: string): Promise<void> {
+    await db.insert(listingLikes).values({ listingId, userId });
+    await db.update(listings).set({ likeCount: sql`${listings.likeCount} + 1` }).where(eq(listings.id, listingId));
+  }
+
+  async unlikeListingItem(listingId: string, userId: string): Promise<void> {
+    await db.delete(listingLikes).where(and(eq(listingLikes.listingId, listingId), eq(listingLikes.userId, userId)));
+    await db.update(listings).set({ likeCount: sql`GREATEST(${listings.likeCount} - 1, 0)` }).where(eq(listings.id, listingId));
+  }
+
+  async isListingLiked(listingId: string, userId: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(listingLikes)
+      .where(and(eq(listingLikes.listingId, listingId), eq(listingLikes.userId, userId)));
+    return !!existing;
+  }
+
+  async getListingLikeCount(listingId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(listingLikes)
+      .where(eq(listingLikes.listingId, listingId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  // Listing Comments
+  async getListingComments(listingId: string): Promise<ListingCommentWithUser[]> {
+    const result = await db
+      .select()
+      .from(listingComments)
+      .leftJoin(users, eq(listingComments.userId, users.id))
+      .where(eq(listingComments.listingId, listingId))
+      .orderBy(desc(listingComments.createdAt));
+
+    return result.map(({ listing_comments: comment, users: user }) => {
+      const { password, ...safeUser } = user!;
+      return { ...comment, user: safeUser };
+    });
+  }
+
+  async getListingCommentCount(listingId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(listingComments)
+      .where(eq(listingComments.listingId, listingId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  async createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<ListingComment> {
+    const [comment] = await db
+      .insert(listingComments)
+      .values({ listingId, userId, content, offerItemName, offerItemValue })
+      .returning();
+    return comment;
   }
 }
 

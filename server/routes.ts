@@ -524,6 +524,65 @@ export async function registerRoutes(
     }
   });
 
+  // Listing Likes
+  app.post("/api/listings/:id/like", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const userId = req.session.userId!;
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+      const alreadyLiked = await storage.isListingLiked(listingId, userId);
+      if (alreadyLiked) {
+        await storage.unlikeListingItem(listingId, userId);
+        const count = await storage.getListingLikeCount(listingId);
+        return res.json({ liked: false, likeCount: count });
+      }
+      await storage.likeListingItem(listingId, userId);
+      const count = await storage.getListingLikeCount(listingId);
+      res.json({ liked: true, likeCount: count });
+    } catch (error) {
+      console.error("Listing like error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Listing Comments
+  app.get("/api/listings/:id/comments", async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const comments = await storage.getListingComments(listingId);
+      res.json(comments);
+    } catch (error) {
+      console.error("Get listing comments error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/listings/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const userId = req.session.userId!;
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+      const schema = z.object({
+        offerItemName: z.string().min(1, "Offer item name is required"),
+        offerItemValue: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Value must be a positive number"),
+        content: z.string().nullable().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const comment = await storage.createListingComment(listingId, userId, parsed.content || null, parsed.offerItemName, parsed.offerItemValue);
+      res.json(comment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Create listing comment error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Dashboard routes
   app.get("/api/dashboard/analytics", requireAuth, async (req, res) => {
     try {

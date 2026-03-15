@@ -53,6 +53,9 @@ import {
   Lightbulb,
   Palette,
   Music,
+  ThumbsUp,
+  Share2,
+  MessageSquare,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
 
@@ -125,6 +128,19 @@ export function BrowsePage() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const listingLikeMutation = useMutation({
+    mutationFn: async (listingId: string) => {
+      const res = await apiRequest("POST", `/api/listings/${listingId}/like`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Could not update like", variant: "destructive" });
     },
   });
 
@@ -328,7 +344,50 @@ export function BrowsePage() {
               </div>
             </div>
           </CardContent>
-          <CardFooter className="p-4 pt-0 border-t flex-wrap gap-2">
+          <div className="px-4 py-2 border-t flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {user && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 gap-1 text-xs"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); listingLikeMutation.mutate(listing.id); }}
+                  data-testid={`button-like-listing-${listing.id}`}
+                >
+                  <ThumbsUp className={`h-3.5 w-3.5 ${(listing.likeCount || 0) > 0 ? "text-primary" : "text-muted-foreground"}`} />
+                  <span>{listing.likeCount || 0}</span>
+                </Button>
+              )}
+              {!user && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground px-2">
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                  <span>{listing.likeCount || 0}</span>
+                </div>
+              )}
+              <Link href={`/listings/${listing.id}#comments`}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" onClick={(e) => e.stopPropagation()} data-testid={`button-comments-listing-${listing.id}`}>
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Proposals</span>
+                </Button>
+              </Link>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 gap-1 text-xs"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigator.clipboard.writeText(`${window.location.origin}/listings/${listing.id}`)
+                  .then(() => toast({ title: "Link copied", description: "Listing link copied to clipboard." }))
+                  .catch(() => toast({ title: "Error", description: "Could not copy link", variant: "destructive" }));
+              }}
+              data-testid={`button-share-listing-${listing.id}`}
+            >
+              <Share2 className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </div>
+          <CardFooter className="p-4 pt-0 flex-wrap gap-2">
             <div className="flex items-center gap-2 w-full">
               <Avatar className="h-8 w-8">
                 <AvatarImage src={listing.user?.avatarUrl || undefined} />

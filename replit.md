@@ -60,6 +60,7 @@ Preferred communication style: Simple, everyday language.
 - **WhatsApp Support**: Integrated floating button for direct chat.
 - **Professional Dashboard**: `/dashboard` for analytics, follower management, and deal tracking.
 - **Admin Dashboard**: `/admin` for platform management, user/listing/deal moderation, and analytics, protected by role-based access.
+- **Listing Social Engagement**: Like/unlike listings with counts, barter proposal comments (offer name + value + message), share-to-clipboard on listing cards and detail pages. DB tables: `listing_likes` (unique per user/listing), `listing_comments`.
 
 ## External Dependencies
 

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { DeliverableItem } from "./deliverables";
@@ -306,6 +306,7 @@ export const listings = pgTable("listings", {
   categoryDetails: jsonb("category_details").$type<Record<string, string | number>>(),
   condition: text("condition").default("like_new"),
   serviceTiers: jsonb("service_tiers").$type<ServiceTier[]>(),
+  likeCount: integer("like_count").default(0),
   isFeatured: boolean("is_featured").default(false),
   featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -516,6 +517,27 @@ export const quickInquiries = pgTable("quick_inquiries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Listing likes table
+export const listingLikes = pgTable("listing_likes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("listing_likes_unique").on(table.listingId, table.userId),
+]);
+
+// Listing comments / barter proposals table
+export const listingComments = pgTable("listing_comments", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  content: text("content"),
+  offerItemName: varchar("offer_item_name", { length: 255 }).notNull(),
+  offerItemValue: decimal("offer_item_value", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -542,6 +564,7 @@ export const insertListingSchema = createInsertSchema(listings).omit({
   createdAt: true,
   updatedAt: true,
   viewCount: true,
+  likeCount: true,
 });
 
 export const insertDealSchema = createInsertSchema(deals).omit({
@@ -645,6 +668,16 @@ export const insertQuickInquirySchema = createInsertSchema(quickInquiries).omit(
   reply: true,
 });
 
+export const insertListingLikeSchema = createInsertSchema(listingLikes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertListingCommentSchema = createInsertSchema(listingComments).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Auth schemas
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -712,7 +745,14 @@ export type PortfolioItem = typeof portfolioItems.$inferSelect;
 export type InsertQuickInquiry = z.infer<typeof insertQuickInquirySchema>;
 export type QuickInquiry = typeof quickInquiries.$inferSelect;
 
+export type InsertListingLike = z.infer<typeof insertListingLikeSchema>;
+export type ListingLike = typeof listingLikes.$inferSelect;
+
+export type InsertListingComment = z.infer<typeof insertListingCommentSchema>;
+export type ListingComment = typeof listingComments.$inferSelect;
+
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
+export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
 
 // Extended types with relations
 export type ListingWithUser = Listing & { user: User };
