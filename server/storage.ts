@@ -193,6 +193,10 @@ export interface IStorage {
   getListingCommentCount(listingId: string): Promise<number>;
   createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<ListingComment>;
 
+  // Bulk engagement helpers
+  getUserLikedListingIds(userId: string): Promise<Set<string>>;
+  getListingCommentCounts(): Promise<Map<string, number>>;
+
   // Recommendations
   getRecommendedUsers(userId: string): Promise<User[]>;
 
@@ -1066,6 +1070,24 @@ export class DatabaseStorage implements IStorage {
       .values({ listingId, userId, content, offerItemName, offerItemValue })
       .returning();
     return comment;
+  }
+
+  async getUserLikedListingIds(userId: string): Promise<Set<string>> {
+    const rows = await db
+      .select({ listingId: listingLikes.listingId })
+      .from(listingLikes)
+      .where(eq(listingLikes.userId, userId));
+    return new Set(rows.map(r => r.listingId));
+  }
+
+  async getListingCommentCounts(): Promise<Map<string, number>> {
+    const rows = await db
+      .select({ listingId: listingComments.listingId, count: sql<number>`count(*)` })
+      .from(listingComments)
+      .groupBy(listingComments.listingId);
+    const map = new Map<string, number>();
+    for (const r of rows) map.set(r.listingId, Number(r.count));
+    return map;
   }
 }
 

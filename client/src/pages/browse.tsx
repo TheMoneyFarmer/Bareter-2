@@ -54,10 +54,11 @@ import {
   Palette,
   Music,
   ThumbsUp,
-  Share2,
   MessageSquare,
+  Handshake,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
+import { ShareMenu } from "@/components/share-menu";
 
 type ExploreTab = "discover" | "search";
 
@@ -136,11 +137,20 @@ export function BrowsePage() {
       const res = await apiRequest("POST", `/api/listings/${listingId}/like`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+    onMutate: async (listingId: string) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/listings"] });
+      const previous = queryClient.getQueryData<any[]>(["/api/listings"]);
+      queryClient.setQueryData<any[]>(["/api/listings"], (old) =>
+        old?.map(l => l.id === listingId ? { ...l, isLiked: !l.isLiked, likeCount: l.isLiked ? Math.max(0, (l.likeCount || 0) - 1) : (l.likeCount || 0) + 1 } : l)
+      );
+      return { previous };
     },
-    onError: (error: any) => {
+    onError: (error: any, _listingId, context) => {
+      if (context?.previous) queryClient.setQueryData(["/api/listings"], context.previous);
       toast({ title: "Error", description: error.message || "Could not update like", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
     },
   });
 
@@ -345,16 +355,17 @@ export function BrowsePage() {
             </div>
           </CardContent>
           <div className="px-4 py-2 border-t flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {user && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 gap-1 text-xs"
+                  disabled={listingLikeMutation.isPending}
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); listingLikeMutation.mutate(listing.id); }}
                   data-testid={`button-like-listing-${listing.id}`}
                 >
-                  <ThumbsUp className={`h-3.5 w-3.5 ${(listing.likeCount || 0) > 0 ? "text-primary" : "text-muted-foreground"}`} />
+                  <ThumbsUp className={`h-3.5 w-3.5 ${(listing as any).isLiked ? "fill-primary text-primary" : "text-muted-foreground"}`} />
                   <span>{listing.likeCount || 0}</span>
                 </Button>
               )}
@@ -367,25 +378,30 @@ export function BrowsePage() {
               <Link href={`/listings/${listing.id}#comments`}>
                 <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" onClick={(e) => e.stopPropagation()} data-testid={`button-comments-listing-${listing.id}`}>
                   <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Proposals</span>
+                  <span className="text-muted-foreground">{(listing as any).commentCount || 0}</span>
                 </Button>
               </Link>
+              <ShareMenu
+                url={`${window.location.origin}/listings/${listing.id}`}
+                title={listing.title}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                data-testid={`button-share-listing-${listing.id}`}
+              />
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 gap-1 text-xs"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigator.clipboard.writeText(`${window.location.origin}/listings/${listing.id}`)
-                  .then(() => toast({ title: "Link copied", description: "Listing link copied to clipboard." }))
-                  .catch(() => toast({ title: "Error", description: "Could not copy link", variant: "destructive" }));
-              }}
-              data-testid={`button-share-listing-${listing.id}`}
-            >
-              <Share2 className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
+            {user && listing.userId !== user.id && (
+              <Link href={`/listings/${listing.id}`}>
+                <Button
+                  size="sm"
+                  className="h-7 px-2 gap-1 text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`button-propose-barter-${listing.id}`}
+                >
+                  <Handshake className="h-3.5 w-3.5" />
+                  Propose Barter
+                </Button>
+              </Link>
+            )}
           </div>
           <CardFooter className="p-4 pt-0 flex-wrap gap-2">
             <div className="flex items-center gap-2 w-full">

@@ -591,6 +591,8 @@ export function AdminPage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Views</TableHead>
+                  <TableHead>Likes</TableHead>
+                  <TableHead>Proposals</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -632,6 +634,8 @@ export function AdminPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{l.viewCount || 0}</TableCell>
+                    <TableCell className="text-muted-foreground" data-testid={`text-likes-${l.id}`}>{l.likeCount || 0}</TableCell>
+                    <TableCell className="text-muted-foreground" data-testid={`text-comments-${l.id}`}>{(l as any).commentCount || 0}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

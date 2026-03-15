@@ -430,7 +430,17 @@ export async function registerRoutes(
         }
       }
 
-      res.json(listings);
+      const userId = req.session?.userId;
+      const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
+      const commentCounts = await storage.getListingCommentCounts();
+
+      const enriched = listings.map(l => ({
+        ...l,
+        isLiked: likedIds.has(l.id),
+        commentCount: commentCounts.get(l.id) || 0,
+      }));
+
+      res.json(enriched);
     } catch (error) {
       console.error("Get listings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -464,7 +474,12 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Listing not found" });
       }
       await storage.incrementListingViews(param(req.params.id));
-      res.json(listing);
+
+      const userId = req.session?.userId;
+      const isLiked = userId ? await storage.isListingLiked(listing.id, userId) : false;
+      const commentCount = await storage.getListingCommentCount(listing.id);
+
+      res.json({ ...listing, isLiked, commentCount });
     } catch (error) {
       console.error("Get listing error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1469,7 +1484,12 @@ export async function registerRoutes(
   app.get("/api/admin/listings", requireAdmin, async (req, res) => {
     try {
       const listings = await storage.getListings();
-      res.json(listings);
+      const commentCounts = await storage.getListingCommentCounts();
+      const enriched = listings.map(l => ({
+        ...l,
+        commentCount: commentCounts.get(l.id) || 0,
+      }));
+      res.json(enriched);
     } catch (error) {
       console.error("Admin get listings error:", error);
       res.status(500).json({ message: "Internal server error" });

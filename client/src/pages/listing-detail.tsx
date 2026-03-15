@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deliverables";
+import { ShareMenu } from "@/components/share-menu";
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -130,11 +131,24 @@ export function ListingDetailPage() {
       const res = await apiRequest("POST", `/api/listings/${id}/like`);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["/api/listings", id] });
+      const previous = queryClient.getQueryData<any>(["/api/listings", id]);
+      if (previous) {
+        queryClient.setQueryData(["/api/listings", id], {
+          ...previous,
+          isLiked: !previous.isLiked,
+          likeCount: previous.isLiked ? Math.max(0, (previous.likeCount || 0) - 1) : (previous.likeCount || 0) + 1,
+        });
+      }
+      return { previous };
     },
-    onError: (error: any) => {
+    onError: (error: any, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["/api/listings", id], context.previous);
       toast({ title: "Error", description: error.message || "Could not update like", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
     },
   });
 
@@ -391,10 +405,11 @@ export function ListingDetailPage() {
                 variant="ghost"
                 size="sm"
                 className="gap-2"
+                disabled={listingLikeMutation.isPending}
                 onClick={() => listingLikeMutation.mutate()}
                 data-testid="button-like-listing"
               >
-                <ThumbsUp className={`h-4 w-4 ${(listing.likeCount || 0) > 0 ? "text-primary" : ""}`} />
+                <ThumbsUp className={`h-4 w-4 ${(listing as any).isLiked ? "fill-primary text-primary" : ""}`} />
                 <span>{listing.likeCount || 0} likes</span>
               </Button>
             )}
@@ -404,20 +419,16 @@ export function ListingDetailPage() {
                 <span>{listing.likeCount || 0} likes</span>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href)
-                  .then(() => toast({ title: "Link copied", description: "Listing link copied to clipboard." }))
-                  .catch(() => toast({ title: "Error", description: "Could not copy link", variant: "destructive" }));
-              }}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <MessageSquare className="h-4 w-4" />
+              <span>{(listing as any).commentCount || 0} proposals</span>
+            </div>
+            <ShareMenu
+              url={window.location.href}
+              title={listing.title}
+              showLabel
               data-testid="button-share-listing"
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
+            />
           </div>
 
           <Card id="comments" data-testid="listing-comments-section">
