@@ -34,6 +34,8 @@ import { ReferralsPage } from "@/pages/referrals";
 import { FeedPage } from "@/pages/feed";
 import { CreatePostPage } from "@/pages/create-post";
 import { InboxPage } from "@/pages/inbox";
+import { ForgotPasswordPage } from "@/pages/forgot-password";
+import { ResetPasswordPage } from "@/pages/reset-password";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import NotFound from "@/pages/not-found";
@@ -67,6 +69,8 @@ function Router() {
       <Route path="/feed" component={FeedPage} />
       <Route path="/create-post" component={CreatePostPage} />
       <Route path="/inbox" component={InboxPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route component={NotFound} />
     </Switch>
   );

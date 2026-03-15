@@ -202,6 +202,83 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email.toLowerCase().trim());
+
+      if (user) {
+        const crypto = await import("crypto");
+        const token = crypto.randomBytes(32).toString("hex");
+        const expires = new Date(Date.now() + 60 * 60 * 1000);
+
+        await storage.updateUser(user.id, {
+          passwordResetToken: token,
+          passwordResetExpires: expires,
+        });
+
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const baseUrl = `${protocol}://${host}`;
+
+        const { sendPasswordResetEmail } = await import("./emailService");
+        await sendPasswordResetEmail(user.email, token, baseUrl);
+      }
+
+      res.json({ message: "If an account exists for that email, a reset link has been sent." });
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ message: "Failed to process request" });
+    }
+  });
+
+  app.get("/api/auth/reset-password/validate", async (req, res) => {
+    const { token } = req.query;
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ valid: false, message: "Token is required" });
+    }
+    const user = await storage.getUserByPasswordResetToken(token);
+    if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
+      return res.status(400).json({ valid: false, message: "Reset link is invalid or has expired" });
+    }
+    res.json({ valid: true });
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ message: "Token and password are required" });
+      }
+      if (typeof password !== "string" || password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      const user = await storage.getUserByPasswordResetToken(token);
+      if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
+        return res.status(400).json({ message: "Reset link is invalid or has expired" });
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      await storage.updateUser(user.id, {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      });
+
+      res.json({ message: "Password updated successfully" });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy((err) => {
       if (err) {
