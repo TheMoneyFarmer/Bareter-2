@@ -30,6 +30,7 @@ import {
   Languages,
   Rss,
   PenSquare,
+  MessageSquare,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 
@@ -43,8 +44,14 @@ export function Header() {
     queryKey: ["/api/notifications"],
     enabled: !!user,
   });
+  const { data: inboxData } = useQuery<{ count: number }>({
+    queryKey: ["/api/inbox-unread-count"],
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
+  const inboxUnread = inboxData?.count || 0;
 
   const navItems = [
     { href: "/feed", label: t("nav.browse"), icon: Search },
@@ -144,6 +151,24 @@ export function Header() {
 
           {user ? (
             <>
+              <Link href="/inbox">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  data-testid="button-inbox"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {inboxUnread > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                    >
+                      {inboxUnread > 9 ? "9+" : inboxUnread}
+                    </Badge>
+                  )}
+                </Button>
+              </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

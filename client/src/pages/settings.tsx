@@ -495,6 +495,99 @@ export function SettingsPage() {
               </Form>
             </CardContent>
           </Card>
+
+          {user?.accountType === "business" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Trade License Verification
+                </CardTitle>
+                <CardDescription>
+                  Business accounts must upload a valid UAE trade license before creating listings or accepting deals. 
+                  Data is handled per PDPL guidelines.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3 p-3 rounded-lg border">
+                  <div>
+                    <p className="text-sm font-medium">KYB Status</p>
+                    <Badge
+                      variant={
+                        user?.kybStatus === "APPROVED" ? "default" :
+                        user?.kybStatus === "PENDING_REVIEW" ? "secondary" : "outline"
+                      }
+                      className="mt-1"
+                    >
+                      {user?.kybStatus === "APPROVED" ? "Verified" :
+                       user?.kybStatus === "PENDING_REVIEW" ? "Pending Review" :
+                       "Not Uploaded"}
+                    </Badge>
+                  </div>
+                  {user?.businessLicenseUrl && (
+                    <a
+                      href={user.businessLicenseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto"
+                    >
+                      <Button variant="outline" size="sm">
+                        View Document
+                      </Button>
+                    </a>
+                  )}
+                </div>
+
+                {user?.kybStatus !== "APPROVED" && (
+                  <div>
+                    <Label htmlFor="license-upload">Upload Trade License (PDF or Image)</Label>
+                    <p className="text-xs text-muted-foreground mb-2 mt-1">
+                      Upload a valid DED-issued trade license. Our team will review and verify it.
+                    </p>
+                    <input
+                      id="license-upload"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      data-testid="input-license-upload"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("type", "business_license");
+                        try {
+                          const res = await fetch("/api/upload", {
+                            method: "POST",
+                            body: formData,
+                            credentials: "include",
+                          });
+                          if (res.ok) {
+                            window.location.reload();
+                          }
+                        } catch {}
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => document.getElementById("license-upload")?.click()}
+                      data-testid="button-upload-license"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Choose File to Upload
+                    </Button>
+                  </div>
+                )}
+
+                {user?.kybStatus === "APPROVED" && (
+                  <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-4 w-4" />
+                    Your trade license has been verified. You can create listings and accept deals.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="notifications">

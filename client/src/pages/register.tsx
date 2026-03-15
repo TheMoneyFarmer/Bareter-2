@@ -440,7 +440,14 @@ export function RegisterPage() {
                   </FormControl>
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-normal">
-                      {t("footer.terms")} & {t("footer.privacy")}
+                      I agree to the{" "}
+                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                        Terms of Service
+                      </a>
+                      {" "}and{" "}
+                      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                        Privacy Policy
+                      </a>
                     </FormLabel>
                     <FormMessage />
                   </div>

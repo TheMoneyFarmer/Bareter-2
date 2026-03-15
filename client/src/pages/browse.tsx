@@ -55,6 +55,7 @@ import {
   Music,
   MessageSquare,
   Handshake,
+  AlertTriangle,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
@@ -338,7 +339,15 @@ export function BrowsePage() {
                 </div>
               )}
               <div className="flex items-center justify-between flex-wrap gap-1">
-                <span className="text-lg font-bold text-primary">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-lg font-bold text-primary">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
+                  {(listing as any).valueFlagged && (
+                    <Badge variant="outline" className="gap-1 text-[10px] border-amber-500/60 text-amber-600 dark:text-amber-400" data-testid={`badge-value-flagged-${listing.id}`}>
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      Value query
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {user && listing.userId !== user.id && (
                     <Button

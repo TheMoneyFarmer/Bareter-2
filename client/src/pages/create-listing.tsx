@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -242,6 +242,23 @@ export function CreateListingPage() {
   const tags = form.watch("tags") || [];
   const images = form.watch("images") || [];
   const openToOffers = form.watch("openToOffers");
+  const retailValueWatch = form.watch("retailValue");
+
+  const { data: marketAverages } = useQuery<Record<string, number>>({
+    queryKey: ["/api/market-average", selectedCategories],
+    queryFn: async () => {
+      if (!selectedCategories || selectedCategories.length === 0) return {};
+      const cats = selectedCategories.join(",");
+      const res = await fetch(`/api/market-average?categories=${encodeURIComponent(cats)}`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: (selectedCategories || []).length > 0,
+  });
+
+  const marketAvgValue = marketAverages ? Object.values(marketAverages).reduce((sum, v) => sum + v, 0) / Math.max(Object.values(marketAverages).length, 1) : null;
+  const enteredValue = parseFloat(retailValueWatch);
+  const isLowValue = marketAvgValue && !isNaN(enteredValue) && enteredValue > 0 && enteredValue < marketAvgValue * 0.3;
 
   const priorityItems = exchangeItems.filter((item) => item.isPriority);
   const otherItems = exchangeItems.filter((item) => !item.isPriority);
@@ -703,6 +720,12 @@ export function CreateListingPage() {
                     <FormDescription>
                       The approximate retail/market value of what you're offering or requesting
                     </FormDescription>
+                    {marketAvgValue && !isNaN(enteredValue) && enteredValue > 0 && (
+                      <p className={`text-xs mt-1 flex items-center gap-1 ${isLowValue ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                        {isLowValue ? "⚠" : "ℹ"} Market average for this category: AED {marketAvgValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        {isLowValue && " — your value seems significantly below the typical range"}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

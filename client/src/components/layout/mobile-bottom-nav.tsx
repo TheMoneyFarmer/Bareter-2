@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { useQuery } from "@tanstack/react-query";
 import {
   Rss,
   Compass,
@@ -8,6 +9,7 @@ import {
   Handshake,
   User,
   LogIn,
+  MessageSquare,
 } from "lucide-react";
 
 export function MobileBottomNav() {
@@ -15,13 +17,20 @@ export function MobileBottomNav() {
   const { t } = useI18n();
   const [location] = useLocation();
 
+  const { data: inboxData } = useQuery<{ count: number }>({
+    queryKey: ["/api/inbox-unread-count"],
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+  const inboxUnread = inboxData?.count || 0;
+
   const isActive = (path: string) => location === path;
 
   const tabs = [
     { href: "/feed", label: t("nav.feed"), icon: Rss, requiresAuth: false, id: "feed" },
     { href: "/browse", label: t("nav.browse"), icon: Compass, requiresAuth: false, id: "browse" },
     { href: "/create-post", label: t("nav.createPost"), icon: PlusSquare, requiresAuth: true, id: "create-post" },
-    { href: "/deals", label: t("nav.myDeals"), icon: Handshake, requiresAuth: true, id: "deals" },
+    { href: "/inbox", label: "Inbox", icon: MessageSquare, requiresAuth: true, id: "inbox", badge: inboxUnread },
     { href: user ? "/profile" : "/login", label: user ? t("nav.profile") : t("nav.login"), icon: user ? User : LogIn, requiresAuth: false, id: user ? "profile" : "login" },
   ];
 
@@ -44,7 +53,14 @@ export function MobileBottomNav() {
               }`}
               data-testid={`mobile-tab-${tab.id}`}
             >
-              <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
+              <div className="relative">
+                <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
+                {"badge" in tab && tab.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                    {tab.badge > 9 ? "9+" : tab.badge}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium leading-tight truncate">
                 {tab.label}
               </span>

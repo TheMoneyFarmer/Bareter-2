@@ -45,10 +45,13 @@ import {
   ClipboardList,
   Heart,
   Send,
+  AlertTriangle,
+  Flag,
 } from "lucide-react";
 import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deliverables";
 import { ShareMenu } from "@/components/share-menu";
+import { ReportModal } from "@/components/report-modal";
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,6 +63,7 @@ export function ListingDetailPage() {
   const [proposeOpen, setProposeOpen] = useState(searchParams.get("propose") === "true");
   const [counterOffer, setCounterOffer] = useState("");
   const [counterValue, setCounterValue] = useState("");
+  const [showReport, setShowReport] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
@@ -280,6 +284,17 @@ export function ListingDetailPage() {
                   variant="ghost"
                   data-testid="button-header-share"
                 />
+                {user && listing.userId !== user.id && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowReport(true)}
+                    data-testid="button-report-listing"
+                    title="Report this listing"
+                  >
+                    <Flag className="h-5 w-5 text-muted-foreground" />
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -300,8 +315,16 @@ export function ListingDetailPage() {
               </div>
             </div>
 
-            <div className="text-3xl font-bold text-primary mb-6">
-              AED {parseFloat(listing.retailValue as string).toLocaleString()}
+            <div className="flex items-center gap-3 mb-6 flex-wrap">
+              <div className="text-3xl font-bold text-primary">
+                AED {parseFloat(listing.retailValue as string).toLocaleString()}
+              </div>
+              {(listing as any).valueFlagged && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs text-amber-700 dark:text-amber-300 font-medium">Value may be outside typical market range</span>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2 mb-6">
@@ -672,6 +695,17 @@ export function ListingDetailPage() {
                     )}
                   </div>
                 </ScrollArea>
+                {counterValue && listing && (parseFloat(listing.retailValue as string) + parseFloat(counterValue)) > 5000 && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 mx-6 mb-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High-value trade (AED 5,000+)</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                        Verify the other party's business badge, use BarterGram's contract feature, and keep all communication on-platform.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setProposeOpen(false)}>
                     Cancel
@@ -719,6 +753,13 @@ export function ListingDetailPage() {
           )}
         </div>
       </div>
+
+      <ReportModal
+        open={showReport}
+        onOpenChange={setShowReport}
+        targetType="listing"
+        targetId={listing?.id ?? 0}
+      />
     </div>
   );
 }

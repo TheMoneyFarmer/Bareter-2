@@ -43,9 +43,12 @@ import {
   ExternalLink,
   Copy,
   X,
+  Flag,
+  ShieldAlert,
 } from "lucide-react";
 import type { PostWithUser, PostCategoryDetails, PostCommentWithUser } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
+import { ReportModal } from "@/components/report-modal";
 
 function timeAgo(date: Date | string | null | undefined): string {
   if (!date) return "";
@@ -451,6 +454,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const [bookmarked, setBookmarked] = useState(post.bookmarked ?? false);
   const [showComments, setShowComments] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const likeMutation = useMutation({
     mutationFn: async () => {
@@ -586,6 +590,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const commentCount = post.commentCount ?? 0;
 
   return (
+    <>
     <Card className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md" data-testid={`card-post-${post.id}`}>
       <CardContent className="p-0">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
@@ -622,6 +627,16 @@ function FeedCard({ post }: { post: PostWithUser }) {
             </div>
           </Link>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {user && (
+              <button
+                onClick={() => setShowReport(true)}
+                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                data-testid={`button-report-post-${post.id}`}
+                title="Report this post"
+              >
+                <Flag className="h-3.5 w-3.5" />
+              </button>
+            )}
             {post.postType === "request" ? (
               <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600 dark:text-amber-400" data-testid={`badge-post-type-${post.id}`}>
                 <Search className="h-3 w-3" />
@@ -824,6 +839,14 @@ function FeedCard({ post }: { post: PostWithUser }) {
         </div>
       </CardContent>
     </Card>
+
+    <ReportModal
+      open={showReport}
+      onOpenChange={setShowReport}
+      targetType="post"
+      targetId={post.id}
+    />
+    </>
   );
 }
 
@@ -990,6 +1013,37 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
   );
 }
 
+function SafetyBanner() {
+  const [dismissed, setDismissed] = useState(() => {
+    return localStorage.getItem("safety_banner_dismissed") === "true";
+  });
+
+  if (dismissed) return null;
+
+  return (
+    <div className="mx-auto max-w-xl lg:max-w-none mb-3 mx-0 sm:mx-4 lg:mx-0">
+      <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+        <ShieldAlert className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Trade safely on BarterGram</p>
+          <ul className="mt-1 space-y-0.5 text-[11px] text-blue-700 dark:text-blue-400">
+            <li>• Always verify the business badge before trading</li>
+            <li>• Keep all negotiations inside the platform</li>
+            <li>• Report suspicious listings or requests</li>
+          </ul>
+        </div>
+        <button
+          onClick={() => { localStorage.setItem("safety_banner_dismissed", "true"); setDismissed(true); }}
+          className="text-blue-500 hover:text-blue-700 flex-shrink-0"
+          data-testid="button-dismiss-safety-banner"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function FeedPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -1019,6 +1073,7 @@ export function FeedPage() {
       <div className="flex gap-8">
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
+          <SafetyBanner />
           <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
           <div className="mt-2 space-y-4 sm:space-y-6">

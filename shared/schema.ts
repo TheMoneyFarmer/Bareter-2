@@ -180,6 +180,7 @@ export const users = pgTable("users", {
   isBanned: boolean("is_banned").default(false),
   bannedAt: timestamp("banned_at"),
   bannedReason: text("banned_reason"),
+  isPaused: boolean("is_paused").default(false),
   businessName: text("business_name"),
   businessLicenseUrl: text("business_license_url"),
   verificationDocUrl: text("verification_doc_url"),
@@ -307,6 +308,8 @@ export const listings = pgTable("listings", {
   condition: text("condition").default("like_new"),
   serviceTiers: jsonb("service_tiers").$type<ServiceTier[]>(),
   likeCount: integer("like_count").default(0),
+  valueFlagged: boolean("value_flagged").default(false),
+  imageFlagged: boolean("image_flagged").default(false),
   isFeatured: boolean("is_featured").default(false),
   featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -347,6 +350,7 @@ export const messages = pgTable("messages", {
   senderId: varchar("sender_id", { length: 36 }).notNull().references(() => users.id),
   content: text("content").notNull(),
   isRead: boolean("is_read").default(false),
+  isOffPlatform: boolean("is_off_platform").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -535,6 +539,28 @@ export const listingComments = pgTable("listing_comments", {
   content: text("content"),
   offerItemName: varchar("offer_item_name", { length: 255 }).notNull(),
   offerItemValue: decimal("offer_item_value", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Reports table (scam/abuse reports)
+export const reports = pgTable("reports", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  reporterId: varchar("reporter_id", { length: 36 }).notNull().references(() => users.id),
+  targetType: text("target_type").notNull(), // "listing", "post", "deal", "user"
+  targetId: varchar("target_id", { length: 36 }).notNull(),
+  reason: text("reason").notNull(), // "scam", "fake_item", "misleading_value", "spam", "other"
+  notes: text("notes"),
+  status: text("status").notNull().default("pending"), // "pending", "dismissed", "actioned"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Image scans table
+export const imageScans = pgTable("image_scans", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  imageUrl: text("image_url").notNull(),
+  listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
+  flagged: boolean("flagged").default(false),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -750,6 +776,21 @@ export type ListingLike = typeof listingLikes.$inferSelect;
 
 export type InsertListingComment = z.infer<typeof insertListingCommentSchema>;
 export type ListingComment = typeof listingComments.$inferSelect;
+
+export const insertReportSchema = createInsertSchema(reports).omit({
+  id: true,
+  createdAt: true,
+  status: true,
+});
+export type InsertReport = z.infer<typeof insertReportSchema>;
+export type Report = typeof reports.$inferSelect;
+
+export const insertImageScanSchema = createInsertSchema(imageScans).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertImageScan = z.infer<typeof insertImageScanSchema>;
+export type ImageScan = typeof imageScans.$inferSelect;
 
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };

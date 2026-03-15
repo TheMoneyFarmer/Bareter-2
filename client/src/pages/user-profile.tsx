@@ -23,6 +23,7 @@ import {
   ArrowLeftRight,
   ExternalLink,
   Handshake,
+  MessageCircle,
 } from "lucide-react";
 import { SiInstagram, SiLinkedin, SiX } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
@@ -209,10 +210,18 @@ export function UserProfilePage() {
               {!isOwnProfile && currentUser && (
                 <>
                   <Separator className="my-4" />
-                  <Button className="w-full gap-2" data-testid="button-propose-trade-profile">
-                    <Handshake className="h-4 w-4" />
-                    Propose a Trade
-                  </Button>
+                  <div className="space-y-2">
+                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile">
+                      <Handshake className="h-4 w-4" />
+                      Propose a Trade
+                    </Button>
+                    <Link href={`/inbox?userId=${profileData.id}`}>
+                      <Button variant="outline" className="w-full gap-2" data-testid="button-message-user">
+                        <MessageCircle className="h-4 w-4" />
+                        Send Message
+                      </Button>
+                    </Link>
+                  </div>
                 </>
               )}
 

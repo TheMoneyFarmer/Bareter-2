@@ -75,6 +75,11 @@ import {
   XCircle,
   AlertCircle,
   Ban,
+  Flag,
+  Pause,
+  Play,
+  AlertTriangle,
+  FileCheck,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -92,7 +97,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags";
 
 type AnalyticsData = {
   totalUsers: number;
@@ -235,6 +240,8 @@ export function AdminPage() {
     { id: "users" as const, label: "Users", icon: Users },
     { id: "listings" as const, label: "Listings", icon: Package },
     { id: "deals" as const, label: "Deals", icon: Handshake },
+    { id: "reports" as const, label: "Reports", icon: Flag },
+    { id: "flags" as const, label: "Flags", icon: AlertTriangle },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -600,11 +607,25 @@ export function AdminPage() {
                 {filteredListings?.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={l.type === "offer" ? "default" : "secondary"} className="shrink-0">
-                          {l.type === "offer" ? "Offer" : "Request"}
-                        </Badge>
-                        <span className="font-medium line-clamp-1">{l.title}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={l.type === "offer" ? "default" : "secondary"} className="shrink-0">
+                            {l.type === "offer" ? "Offer" : "Request"}
+                          </Badge>
+                          <span className="font-medium line-clamp-1">{l.title}</span>
+                        </div>
+                        <div className="flex gap-1 flex-wrap">
+                          {(l as any).valueFlagged && (
+                            <Badge variant="outline" className="text-[10px] gap-1 border-amber-500/60 text-amber-600">
+                              <AlertTriangle className="h-2.5 w-2.5" />Value flagged
+                            </Badge>
+                          )}
+                          {(l as any).imageFlagged && (
+                            <Badge variant="outline" className="text-[10px] gap-1 border-red-500/60 text-red-600">
+                              <AlertTriangle className="h-2.5 w-2.5" />Image flagged
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -927,6 +948,235 @@ export function AdminPage() {
     </div>
   );
 
+  const { data: reportsData = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/reports"],
+    enabled: activeSection === "reports",
+  });
+
+  const { data: flagsData } = useQuery<{ rapidPosters: any[]; reportedUsers: any[]; newAccountsWithDeals: any[] }>({
+    queryKey: ["/api/admin/behavioral-flags"],
+    enabled: activeSection === "flags",
+  });
+
+  const updateReportStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/admin/reports/${id}/status`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/reports"] }),
+  });
+
+  const pauseAccount = useMutation({
+    mutationFn: ({ id, isPaused }: { id: string; isPaused: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/pause`, { isPaused }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/behavioral-flags"] });
+      toast({ title: "Account status updated" });
+    },
+  });
+
+  const kybApproval = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/kyb`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "KYB status updated" });
+    },
+  });
+
+  const renderReports = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Reports</h2>
+        <p className="text-muted-foreground">User-submitted reports for review</p>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reportsData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    No reports submitted yet
+                  </TableCell>
+                </TableRow>
+              ) : (
+                reportsData.map((report: any) => (
+                  <TableRow key={report.id} data-testid={`row-report-${report.id}`}>
+                    <TableCell>
+                      <Badge variant="outline">{report.targetType}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{report.reason.replace("_", " ")}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+                      {report.notes || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        report.status === "pending" ? "secondary" :
+                        report.status === "actioned" ? "default" : "outline"
+                      }>
+                        {report.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(report.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateReportStatus.mutate({ id: report.id, status: "dismissed" })}
+                          data-testid={`button-dismiss-report-${report.id}`}
+                        >
+                          Dismiss
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => updateReportStatus.mutate({ id: report.id, status: "actioned" })}
+                          data-testid={`button-action-report-${report.id}`}
+                        >
+                          Action
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderFlags = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Behavioral Flags</h2>
+        <p className="text-muted-foreground">Accounts with suspicious patterns</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Rapid Posters (5+ listings in 24h)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!flagsData?.rapidPosters?.length ? (
+            <p className="text-sm text-muted-foreground">No rapid posters detected</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>Listings (24h)</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flagsData.rapidPosters.map((r: any) => (
+                  <TableRow key={r.userId}>
+                    <TableCell className="font-mono text-xs">{r.userId}</TableCell>
+                    <TableCell><Badge variant="destructive">{r.listingsIn24h}</Badge></TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => pauseAccount.mutate({ id: r.userId, isPaused: true })}>
+                        <Pause className="h-3 w-3 mr-1" />Pause
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Frequently Reported Users (3+ reports)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!flagsData?.reportedUsers?.length ? (
+            <p className="text-sm text-muted-foreground">No heavily reported users</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>Report Count</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flagsData.reportedUsers.map((r: any) => (
+                  <TableRow key={r.userId}>
+                    <TableCell className="font-mono text-xs">{r.userId}</TableCell>
+                    <TableCell><Badge variant="destructive">{r.reportCount}</Badge></TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => pauseAccount.mutate({ id: r.userId, isPaused: true })}>
+                        <Pause className="h-3 w-3 mr-1" />Pause
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">New Accounts (last 7 days)</CardTitle>
+          <CardDescription>Recently created accounts to watch</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!flagsData?.newAccountsWithDeals?.length ? (
+            <p className="text-sm text-muted-foreground">No new accounts this period</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name / Email</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flagsData.newAccountsWithDeals.map((u: any) => (
+                  <TableRow key={u.userId}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-sm">{u.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{u.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{new Date(u.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => pauseAccount.mutate({ id: u.userId, isPaused: true })}>
+                        <Pause className="h-3 w-3 mr-1" />Pause
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
@@ -937,6 +1187,10 @@ export function AdminPage() {
         return renderListings();
       case "deals":
         return renderDeals();
+      case "reports":
+        return renderReports();
+      case "flags":
+        return renderFlags();
       case "analytics":
         return renderAnalytics();
       case "settings":

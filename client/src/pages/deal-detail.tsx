@@ -146,11 +146,19 @@ export function DealDetailPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const OFF_PLATFORM_RE = /whatsapp|telegram|phone|transfer|outside|signal|wechat|direct\s*pay/i;
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim()) {
-      sendMessageMutation.mutate(message.trim());
+    if (!message.trim()) return;
+    if (OFF_PLATFORM_RE.test(message.trim())) {
+      toast({
+        title: "Stay safe — keep trades on BarterGram",
+        description: "Your message may contain references to external platforms. Trading outside the app removes your buyer & seller protections.",
+        variant: "destructive",
+      });
     }
+    sendMessageMutation.mutate(message.trim());
   };
 
   if (isLoading) {

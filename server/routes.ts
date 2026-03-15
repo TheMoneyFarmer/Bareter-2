@@ -15,10 +15,14 @@ import {
   insertMessageSchema,
   insertRatingSchema,
   insertPostSchema,
+  insertReportSchema,
   listings,
+  reports,
+  quickInquiries,
+  users,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
 import memorystore from "memorystore";
 import { WebhookHandlers } from "./webhookHandlers";
 
@@ -252,6 +256,11 @@ export async function registerRoutes(
           const portfolioImages = [...(user.portfolioImages || []), fileUrl];
           await storage.updateUser(req.session.userId!, { portfolioImages });
         }
+      } else if (uploadType === "business_license") {
+        await storage.updateUser(req.session.userId!, {
+          businessLicenseUrl: fileUrl,
+          kybStatus: "PENDING_REVIEW",
+        });
       }
 
       res.json({ url: fileUrl, type: uploadType });
@@ -501,6 +510,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
+      // Pause gate
+      if (listingUser.isPaused) {
+        return res.status(403).json({ message: "Your account has been paused. Please contact support.", isPaused: true });
+      }
+
+      // Business license gate
+      if (listingUser.accountType === "business" && listingUser.kybStatus !== "APPROVED") {
+        return res.status(403).json({ 
+          message: "Business accounts must have a verified trade license before creating listings.",
+          requiresTradeLicense: true
+        });
+      }
+
       const { isUserVerified } = await import("./diditClient");
       const userVerified = isUserVerified(
         listingUser.accountType || "individual",
@@ -515,12 +537,29 @@ export async function registerRoutes(
         });
       }
 
+      const { isValueFlagged } = await import("./marketValues");
+      const rawCategories = req.body.categories || [];
+      const retailVal = parseFloat(req.body.retailValue) || 0;
+      const valueFlagged = isValueFlagged(retailVal, rawCategories);
+
       const data = insertListingSchema.parse({
         ...req.body,
         userId: req.session.userId,
+        valueFlagged,
       });
       const listing = await storage.createListing(data);
       res.json(listing);
+
+      const imageUrls: string[] = data.images || [];
+      if (imageUrls.length > 0) {
+        import("./visionClient").then(({ scanListingImages }) => {
+          scanListingImages(imageUrls, listing.id).then((flagged) => {
+            if (flagged) {
+              storage.updateListing(listing.id, { imageFlagged: true }).catch(() => {});
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -972,6 +1011,20 @@ export async function registerRoutes(
       const isSeeker = deal.seekerId === req.session.userId;
       const isProvider = deal.providerId === req.session.userId;
 
+      // Pause gate for accepting deals
+      if (data.state === "accepted") {
+        const acceptingUser = await storage.getUser(req.session.userId!);
+        if (acceptingUser?.isPaused) {
+          return res.status(403).json({ message: "Your account has been paused. Please contact support.", isPaused: true });
+        }
+        if (acceptingUser?.accountType === "business" && acceptingUser.kybStatus !== "APPROVED") {
+          return res.status(403).json({ 
+            message: "Business accounts must have a verified trade license before accepting deals.",
+            requiresTradeLicense: true
+          });
+        }
+      }
+
       // Validate state transitions
       if (data.state && data.state !== deal.state) {
         const allowed = allowedStateTransitions[deal.state];
@@ -1051,10 +1104,15 @@ export async function registerRoutes(
 
       const data = createMessageSchema.parse(req.body);
 
+      // Detect off-platform communication attempts
+      const offPlatformKeywords = /whatsapp|telegram|phone|transfer|outside|signal|wechat|direct\s*pay/i;
+      const isOffPlatform = offPlatformKeywords.test(data.content);
+
       const message = await storage.createMessage({
         dealId: param(req.params.id),
         senderId: req.session.userId!,
         content: data.content,
+        isOffPlatform,
       });
 
       // Notify the other party
@@ -2704,6 +2762,238 @@ export async function registerRoutes(
       res.json(stats);
     } catch (error) {
       console.error("Get explore stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Business License Routes ==========
+  app.patch("/api/admin/users/:id/kyb", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status } = req.body; // "APPROVED" or "REJECTED"
+      if (!["APPROVED", "REJECTED"].includes(status)) {
+        return res.status(400).json({ message: "Status must be APPROVED or REJECTED" });
+      }
+      const updated = await storage.updateUser(param(req.params.id), { kybStatus: status });
+      res.json(updated);
+    } catch (error) {
+      console.error("KYB update error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Pause / Unpause Account ==========
+  app.patch("/api/admin/users/:id/pause", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { isPaused } = req.body;
+      const updated = await storage.updateUser(param(req.params.id), { isPaused: !!isPaused });
+      res.json(updated);
+    } catch (error) {
+      console.error("Pause account error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Reports API ==========
+  app.post("/api/reports", requireAuth, async (req, res) => {
+    try {
+      const data = insertReportSchema.parse({
+        ...req.body,
+        reporterId: req.session.userId,
+      });
+      const [report] = await db.insert(reports).values(data).returning();
+      res.json(report);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Create report error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/reports", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const allReports = await db.select().from(reports).orderBy(desc(reports.createdAt));
+      res.json(allReports);
+    } catch (error) {
+      console.error("Get reports error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/reports/:id/status", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!["pending", "dismissed", "actioned"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const [updated] = await db.update(reports)
+        .set({ status })
+        .where(eq(reports.id, param(req.params.id)))
+        .returning();
+      res.json(updated);
+    } catch (error) {
+      console.error("Update report status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Behavioral Flags ==========
+  app.get("/api/admin/behavioral-flags", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      // Users with >5 listings in last 24h
+      const rapidPosters = await db
+        .select({ userId: listings.userId, count: count() })
+        .from(listings)
+        .where(gte(listings.createdAt, twentyFourHoursAgo))
+        .groupBy(listings.userId)
+        .having(sqlOperator`count(*) > 5`);
+
+      // Users with reports against them (>3 reports)
+      const reportedUsers = await db
+        .select({ userId: reports.targetId, count: count() })
+        .from(reports)
+        .where(eq(reports.targetType, "user"))
+        .groupBy(reports.targetId)
+        .having(sqlOperator`count(*) >= 3`);
+
+      // New accounts (<7 days old) that already have accepted deals
+      const newAccountsWithDeals = await db
+        .select({ id: users.id, email: users.email, fullName: users.fullName, createdAt: users.createdAt })
+        .from(users)
+        .where(gte(users.createdAt, sevenDaysAgo));
+
+      res.json({
+        rapidPosters: rapidPosters.map(r => ({ userId: r.userId, listingsIn24h: Number(r.count) })),
+        reportedUsers: reportedUsers.map(r => ({ userId: r.userId, reportCount: Number(r.count) })),
+        newAccountsWithDeals: newAccountsWithDeals.map(u => ({ 
+          userId: u.id, email: u.email, fullName: u.fullName, createdAt: u.createdAt 
+        })),
+      });
+    } catch (error) {
+      console.error("Behavioral flags error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Inbox (Direct Messaging) ==========
+  app.get("/api/inbox-unread-count", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const [result] = await db.select({ count: count() }).from(quickInquiries)
+        .where(and(eq(quickInquiries.toUserId, userId), eq(quickInquiries.isRead, false)));
+      res.json({ count: Number(result?.count || 0) });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inbox", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const allInquiries = await db.select().from(quickInquiries)
+        .where(sqlOperator`(${quickInquiries.fromUserId} = ${userId} OR ${quickInquiries.toUserId} = ${userId})`)
+        .orderBy(desc(quickInquiries.createdAt));
+
+      // Group by conversation partner
+      const conversations: Record<string, typeof allInquiries[0] & { otherUserId: string; unreadCount: number }> = {};
+      for (const inq of allInquiries) {
+        const otherUserId = inq.fromUserId === userId ? inq.toUserId : inq.fromUserId;
+        if (!conversations[otherUserId]) {
+          const unreadCount = allInquiries.filter(
+            i => i.fromUserId === otherUserId && i.toUserId === userId && !i.isRead
+          ).length;
+          conversations[otherUserId] = { ...inq, otherUserId, unreadCount };
+        }
+      }
+
+      // Enrich with user info
+      const enriched = await Promise.all(
+        Object.values(conversations).map(async (conv) => {
+          const otherUser = await storage.getUser(conv.otherUserId);
+          return { ...conv, otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified } : null };
+        })
+      );
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Get inbox error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/inbox/:userId", requireAuth, async (req, res) => {
+    try {
+      const myId = req.session.userId!;
+      const otherId = param(req.params.userId);
+
+      const thread = await db.select().from(quickInquiries)
+        .where(sqlOperator`(
+          (${quickInquiries.fromUserId} = ${myId} AND ${quickInquiries.toUserId} = ${otherId}) OR
+          (${quickInquiries.fromUserId} = ${otherId} AND ${quickInquiries.toUserId} = ${myId})
+        )`)
+        .orderBy(quickInquiries.createdAt);
+
+      // Mark messages as read
+      await db.update(quickInquiries)
+        .set({ isRead: true })
+        .where(and(eq(quickInquiries.fromUserId, otherId), eq(quickInquiries.toUserId, myId)));
+
+      const otherUser = await storage.getUser(otherId);
+      res.json({ 
+        messages: thread, 
+        otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified } : null
+      });
+    } catch (error) {
+      console.error("Get thread error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  const inboxMessageSchema = z.object({
+    message: z.string().min(1).max(2000),
+    listingId: z.string().optional(),
+  });
+
+  app.post("/api/inbox/:userId", requireAuth, async (req, res) => {
+    try {
+      const fromUserId = req.session.userId!;
+      const toUserId = param(req.params.userId);
+
+      if (fromUserId === toUserId) {
+        return res.status(400).json({ message: "Cannot message yourself" });
+      }
+
+      const data = inboxMessageSchema.parse(req.body);
+      const [inq] = await db.insert(quickInquiries).values({
+        fromUserId,
+        toUserId,
+        message: data.message,
+        listingId: data.listingId || null,
+        isRead: false,
+      }).returning();
+
+      res.json(inq);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Send inbox message error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Market Average API ==========
+  app.get("/api/market-average", async (req, res) => {
+    try {
+      const { getMarketAverage } = await import("./marketValues");
+      const categories = (req.query.categories as string || "").split(",").filter(Boolean);
+      const avg = getMarketAverage(categories);
+      res.json({ average: avg });
+    } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
   });

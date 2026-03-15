@@ -33,6 +33,7 @@ import { SavedListingsPage } from "@/pages/saved-listings";
 import { ReferralsPage } from "@/pages/referrals";
 import { FeedPage } from "@/pages/feed";
 import { CreatePostPage } from "@/pages/create-post";
+import { InboxPage } from "@/pages/inbox";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import NotFound from "@/pages/not-found";
@@ -65,6 +66,7 @@ function Router() {
       <Route path="/referrals" component={ReferralsPage} />
       <Route path="/feed" component={FeedPage} />
       <Route path="/create-post" component={CreatePostPage} />
+      <Route path="/inbox" component={InboxPage} />
       <Route component={NotFound} />
     </Switch>
   );
