@@ -700,5 +700,25 @@ export async function seedDatabase() {
     .returning();
 
   console.log(`Created ${samplePosts.length} sample posts`);
+
+  seedAiModeration(samplePosts.slice(0, 5).map((p) => ({ id: p.id, title: p.title, caption: p.caption, categories: [] }))).catch(() => {});
+
   console.log("Database seeding completed!");
+}
+
+async function seedAiModeration(testPosts: { id: string; title: string; caption: string | null; categories: string[] }[]) {
+  try {
+    const { moderateAndLog } = await import("./agents/moderationAgent");
+    console.log(`Running AI moderation on ${testPosts.length} seed posts...`);
+    for (const post of testPosts) {
+      await moderateAndLog("post", post.id, {
+        title: post.title,
+        description: post.caption || undefined,
+        categories: post.categories,
+      });
+    }
+    console.log("AI moderation seeding completed");
+  } catch (err) {
+    console.log("AI moderation seeding skipped (service unavailable)");
+  }
 }

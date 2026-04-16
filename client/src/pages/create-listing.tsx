@@ -767,6 +767,7 @@ export function CreateListingPage() {
             description={descriptionWatch || ""}
             category={(selectedCategories || [])[0] || ""}
             condition={form.watch("condition") || undefined}
+            declaredValue={retailValueWatch ? parseFloat(String(retailValueWatch)) : undefined}
           />
 
           <Card>

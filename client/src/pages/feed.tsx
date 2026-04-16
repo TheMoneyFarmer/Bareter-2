@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import AiMatchCards from "@/components/ai-match-cards";
 import {
   Heart,
   MessageCircle,
@@ -1074,6 +1075,7 @@ export function FeedPage() {
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
           <SafetyBanner />
+          <AiMatchCards />
           <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
           <div className="mt-2 space-y-4 sm:space-y-6">

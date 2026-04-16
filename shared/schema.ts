@@ -311,6 +311,7 @@ export const listings = pgTable("listings", {
   valueFlagged: boolean("value_flagged").default(false),
   imageFlagged: boolean("image_flagged").default(false),
   moderationStatus: text("moderation_status").default("pending"), // "pending", "approved", "flagged", "rejected"
+  aiMatchScore: decimal("ai_match_score", { precision: 5, scale: 2 }),
   isFeatured: boolean("is_featured").default(false),
   featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").defaultNow(),

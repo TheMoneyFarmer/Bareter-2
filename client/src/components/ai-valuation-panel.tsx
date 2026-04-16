@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Sparkles, Loader2, TrendingUp, AlertTriangle, UserCheck } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ValuationAdvice {
   estimatedRange: { min: number; max: number };
@@ -18,10 +20,15 @@ interface Props {
   description: string;
   category: string;
   condition?: string;
+  declaredValue?: number;
 }
 
-export default function AiValuationPanel({ title, description, category, condition }: Props) {
+const HIGH_VALUE_THRESHOLD = 50000;
+
+export default function AiValuationPanel({ title, description, category, condition, declaredValue }: Props) {
   const [advice, setAdvice] = useState<ValuationAdvice | null>(null);
+  const { toast } = useToast();
+  const autoTriggered = useRef(false);
 
   const valuationMutation = useMutation({
     mutationFn: async () => {
@@ -30,13 +37,39 @@ export default function AiValuationPanel({ title, description, category, conditi
         description,
         category,
         condition,
+        declaredValue,
       });
       return res.json();
     },
-    onSuccess: (data) => setAdvice(data),
+    onSuccess: (data: ValuationAdvice) => setAdvice(data),
   });
 
   const canRequest = title.length >= 3 && description.length >= 10 && category;
+
+  useEffect(() => {
+    if (
+      canRequest &&
+      declaredValue &&
+      declaredValue >= HIGH_VALUE_THRESHOLD &&
+      !advice &&
+      !valuationMutation.isPending &&
+      !autoTriggered.current
+    ) {
+      autoTriggered.current = true;
+      valuationMutation.mutate();
+      toast({
+        title: "High-Value Item Detected",
+        description: `Items over AED ${HIGH_VALUE_THRESHOLD.toLocaleString()} are automatically analyzed by our AI valuation agent.`,
+      });
+    }
+  }, [declaredValue, canRequest]);
+
+  const handleEscalate = () => {
+    toast({
+      title: "Valuation Review Requested",
+      description: "A human expert will review the valuation for this item and get back to you.",
+    });
+  };
 
   if (!canRequest) return null;
 
@@ -46,6 +79,10 @@ export default function AiValuationPanel({ title, description, category, conditi
         <div className="flex items-center gap-2 text-sm font-medium">
           <Sparkles className="h-4 w-4 text-amber-500" />
           <span>AI Valuation Assistant</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+            <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+            AI Assisted
+          </Badge>
         </div>
         {!advice && (
           <Button
@@ -69,22 +106,22 @@ export default function AiValuationPanel({ title, description, category, conditi
 
       {advice && (
         <div className="space-y-3 text-sm">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="rounded-md bg-green-500/10 px-3 py-2 text-center">
               <div className="text-xs text-muted-foreground">Fair Value</div>
-              <div className="font-bold text-green-600 dark:text-green-400">
+              <div className="font-bold text-green-600 dark:text-green-400" data-testid="text-ai-fair-value">
                 AED {advice.fairValue.toLocaleString()}
               </div>
             </div>
             <div className="rounded-md bg-blue-500/10 px-3 py-2 text-center">
               <div className="text-xs text-muted-foreground">Range</div>
-              <div className="font-semibold text-blue-600 dark:text-blue-400">
+              <div className="font-semibold text-blue-600 dark:text-blue-400" data-testid="text-ai-value-range">
                 {advice.estimatedRange.min.toLocaleString()} - {advice.estimatedRange.max.toLocaleString()}
               </div>
             </div>
             <div className="rounded-md bg-muted px-3 py-2 text-center">
               <div className="text-xs text-muted-foreground">Confidence</div>
-              <div className="font-semibold">{Math.round(advice.confidence * 100)}%</div>
+              <div className="font-semibold" data-testid="text-ai-confidence">{Math.round(advice.confidence * 100)}%</div>
             </div>
           </div>
 
@@ -111,17 +148,31 @@ export default function AiValuationPanel({ title, description, category, conditi
             </div>
           )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={() => {
-              setAdvice(null);
-              valuationMutation.reset();
-            }}
-          >
-            Refresh estimate
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              data-testid="btn-ai-valuation-refresh"
+              onClick={() => {
+                setAdvice(null);
+                autoTriggered.current = false;
+                valuationMutation.reset();
+              }}
+            >
+              Refresh estimate
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              data-testid="btn-ai-valuation-escalate"
+              onClick={handleEscalate}
+            >
+              <UserCheck className="h-3 w-3 mr-1" />
+              Escalate to Human
+            </Button>
+          </div>
         </div>
       )}
     </div>

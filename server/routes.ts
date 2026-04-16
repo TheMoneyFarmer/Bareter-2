@@ -627,20 +627,13 @@ export async function registerRoutes(
       const listing = await storage.createListing(data);
       res.json(listing);
 
-      // AI moderation (async, non-blocking)
       import("./agents/moderationAgent").then(({ moderateAndLog }) => {
         moderateAndLog("listing", listing.id, {
           title: listing.title,
           description: listing.description,
           value: parseFloat(listing.retailValue as string),
           categories: listing.categories as string[],
-        }).then((result) => {
-          if (result.action !== "approved") {
-            storage.updateListing(listing.id, { moderationStatus: result.action }).catch(() => {});
-          } else {
-            storage.updateListing(listing.id, { moderationStatus: "approved" }).catch(() => {});
-          }
-        }).catch(() => {});
+        }, req.session.userId).catch(() => {});
       }).catch(() => {});
 
       const imageUrls: string[] = data.images || [];
@@ -2043,9 +2036,17 @@ export async function registerRoutes(
       });
       const post = await storage.createPost(validated);
       res.status(201).json(post);
-    } catch (error: any) {
-      if (error.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid post data", errors: error.errors });
+
+      import("./agents/moderationAgent").then(({ moderateAndLog }) => {
+        moderateAndLog("post", post.id, {
+          title: post.title,
+          description: post.caption || undefined,
+          categories: [post.feedCategory, post.subCategory].filter(Boolean) as string[],
+        }, req.session.userId).catch(() => {});
+      }).catch(() => {});
+    } catch (error) {
+      if (error instanceof Error && error.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid post data", errors: (error as Record<string, unknown>).errors });
       }
       console.error("Create post error:", error);
       res.status(500).json({ message: "Internal server error" });

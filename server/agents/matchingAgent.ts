@@ -1,7 +1,12 @@
 import { jsonCompletion, type ChatMessage } from "./llm";
 import { db } from "../db";
 import { agentInteractions } from "@shared/schema";
-import type { User, Listing, Post } from "@shared/schema";
+import type { User, Listing } from "@shared/schema";
+
+interface OfferNeedItem {
+  name: string;
+  value: number;
+}
 
 export interface MatchResult {
   listingId: string;
@@ -31,8 +36,8 @@ export async function findMatches(
   if (listings.length === 0) return [];
 
   const userProfile = `User profile:
-- Offers: ${(user.whatIOffer || []).map((i: any) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
-- Needs: ${(user.whatINeed || []).map((i: any) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
+- Offers: ${(user.whatIOffer as OfferNeedItem[] || []).map((i) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
+- Needs: ${(user.whatINeed as OfferNeedItem[] || []).map((i) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
 - Location: ${user.location || "Not specified"}
 - Preferred categories: ${(user.preferredCategories || []).join(", ") || "Any"}`;
 

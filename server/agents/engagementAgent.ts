@@ -1,7 +1,12 @@
 import { jsonCompletion, type ChatMessage } from "./llm";
 import { db } from "../db";
 import { agentInteractions } from "@shared/schema";
-import type { User, Post } from "@shared/schema";
+import type { User } from "@shared/schema";
+
+interface OfferNeedItem {
+  name: string;
+  value: number;
+}
 
 export interface EngagementSuggestion {
   type: "listing_idea" | "profile_tip" | "trade_suggestion" | "trending_alert";
@@ -29,8 +34,8 @@ export async function getEngagementSuggestions(
   recentActivity?: { postsCount: number; dealsCount: number; lastActive?: Date }
 ): Promise<EngagementSuggestion[]> {
   const profile = `User profile:
-- Offers: ${(user.whatIOffer || []).map((i: any) => i.name).join(", ") || "None listed"}
-- Needs: ${(user.whatINeed || []).map((i: any) => i.name).join(", ") || "None listed"}
+- Offers: ${(user.whatIOffer as OfferNeedItem[] || []).map((i) => i.name).join(", ") || "None listed"}
+- Needs: ${(user.whatINeed as OfferNeedItem[] || []).map((i) => i.name).join(", ") || "None listed"}
 - Location: ${user.location || "Not specified"}
 - Credibility score: ${user.credibilityScore || 0}
 - Completed deals: ${user.totalCompletedDeals || 0}

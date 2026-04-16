@@ -2,9 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Send, Bot, User, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { X, Send, Bot, User, Loader2, Sparkles, AlertTriangle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -13,6 +15,7 @@ interface ChatMessage {
 
 export default function AiSupportChat() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: "Hi! I'm BarterBot, your trading assistant. How can I help you today?" },
@@ -28,7 +31,7 @@ export default function AiSupportChat() {
       });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: { response: string }) => {
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     },
     onError: () => {
@@ -45,6 +48,17 @@ export default function AiSupportChat() {
     setMessages((prev) => [...prev, { role: "user", content: msg }]);
     setInput("");
     sendMutation.mutate(msg);
+  };
+
+  const handleEscalate = () => {
+    toast({
+      title: "Escalation Requested",
+      description: "A human support agent will review your conversation and get back to you soon.",
+    });
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "I've escalated your request to our human support team. They'll review our conversation and reach out to you shortly. Is there anything else I can help with in the meantime?" },
+    ]);
   };
 
   useEffect(() => {
@@ -74,6 +88,10 @@ export default function AiSupportChat() {
         <div className="flex items-center gap-2">
           <Bot className="h-5 w-5" />
           <span className="font-semibold text-sm">BarterBot Support</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary-foreground/20 text-primary-foreground">
+            <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+            AI Assisted
+          </Badge>
         </div>
         <Button
           data-testid="btn-ai-support-close"
@@ -126,7 +144,19 @@ export default function AiSupportChat() {
         )}
       </div>
 
-      <div className="border-t p-3">
+      <div className="border-t p-3 space-y-2">
+        {messages.length > 3 && (
+          <Button
+            data-testid="btn-ai-escalate-human"
+            variant="outline"
+            size="sm"
+            className="w-full text-xs h-7"
+            onClick={handleEscalate}
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Escalate to Human
+          </Button>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();

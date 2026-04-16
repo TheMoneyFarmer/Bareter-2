@@ -1,6 +1,8 @@
 import { jsonCompletion, type ChatMessage } from "./llm";
 import { db } from "../db";
-import { moderationLogs } from "@shared/schema";
+import { moderationLogs, listings, posts, notifications } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { storage } from "../storage";
 
 export interface ModerationResult {
   action: "approved" | "flagged" | "rejected";
@@ -48,7 +50,7 @@ export async function moderateContent(
   ];
 
   try {
-    const { data, tokensUsed } = await jsonCompletion<ModerationResult>(messages, {
+    const { data } = await jsonCompletion<ModerationResult>(messages, {
       temperature: 0.1,
       maxTokens: 256,
     });
@@ -73,7 +75,8 @@ export async function moderateContent(
 export async function moderateAndLog(
   contentType: "listing" | "post" | "message",
   targetId: string,
-  content: { title?: string; description?: string; text?: string; value?: number; categories?: string[] }
+  content: { title?: string; description?: string; text?: string; value?: number; categories?: string[] },
+  userId?: string
 ): Promise<ModerationResult> {
   const result = await moderateContent(contentType, content);
 
@@ -84,10 +87,56 @@ export async function moderateAndLog(
       action: result.action,
       reason: result.reason,
       confidence: result.confidence.toString(),
-      rawResponse: result as any,
+      rawResponse: JSON.parse(JSON.stringify(result)),
     });
   } catch (err) {
     console.error("Failed to log moderation result:", err);
+  }
+
+  if (contentType === "listing") {
+    try {
+      await db.update(listings).set({ moderationStatus: result.action }).where(eq(listings.id, targetId));
+      if (result.action === "flagged" || result.action === "rejected") {
+        await db.update(listings).set({ isActive: false }).where(eq(listings.id, targetId));
+        if (userId) {
+          await storage.createNotification({
+            userId,
+            type: "system",
+            title: result.action === "rejected" ? "Listing Rejected" : "Listing Under Review",
+            message: result.action === "rejected"
+              ? `Your listing has been rejected: ${result.reason}`
+              : `Your listing has been flagged for review: ${result.reason}`,
+          });
+        }
+      } else if (result.action === "approved") {
+        await db.update(listings).set({ isActive: true }).where(eq(listings.id, targetId));
+      }
+    } catch (err) {
+      console.error("Failed to update listing moderation status:", err);
+    }
+  }
+
+  if (contentType === "post") {
+    try {
+      await db.update(posts).set({ moderationStatus: result.action }).where(eq(posts.id, targetId));
+      if (result.action === "flagged" || result.action === "rejected") {
+        await db.update(posts).set({ isActive: false }).where(eq(posts.id, targetId));
+        if (userId) {
+          await storage.createNotification({
+            userId,
+            type: "system",
+            title: result.action === "rejected" ? "Post Rejected" : "Post Under Review",
+            message: result.action === "rejected"
+              ? `Your post has been rejected: ${result.reason}`
+              : `Your post has been flagged for review: ${result.reason}`,
+          });
+        }
+      } else if (result.action === "approved") {
+        await db.update(posts).set({ isActive: true }).where(eq(posts.id, targetId));
+      }
+    } catch (err) {
+      console.error("Failed to update post moderation status:", err);
+    }
   }
 
   return result;
