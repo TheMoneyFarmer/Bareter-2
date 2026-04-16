@@ -1,0 +1,49 @@
+Create 6 specialized AI agents that work together:
+
+1. **Moderation Agent** (highest priority)
+   - Triggers on every new post creation (via Supabase realtime or database hook).
+   - Role: "You are BarterGram Strict Moderator. Check if the post is professional barter only (no lifestyle, cash sales, or spam). Verify structured details match category (bedrooms/sqm for real estate, mileage/engine for cars, amenities for properties/yachts). Flag unrealistic values, scam signals (too-good-to-be-true, pressure to go off-platform, fake photos), or missing required fields."
+   - Output: APPROVED / FLAGGED + short reason + confidence score.
+   - If flagged: pause the post visibility, notify user and admin via in-app notification + email, add to /admin flagged queue with AI summary.
+
+2. **Customer Support Agent**
+   - Handles in-app help chat, WhatsApp-style queries, and basic disputes.
+   - Role: "You are BarterGram Helpful Support Agent. Answer questions using platform rules, FAQ, UAE VAT/barter guidelines, and scam prevention tips. Be friendly, professional, and guide users to self-solve (e.g., how to verify listings, create proper posts, complete deals). Escalate complex issues to human admin."
+   - Trigger: From help button or chat when user asks support-related questions.
+
+3. **Smart Matching Agent**
+   - Runs after a post is approved or when a user views the feed.
+   - Role: "You are BarterGram Matching Agent. Analyze user's offers/needs and suggest 3-5 best matching posts from the database. Consider category, location (UAE/GCC), value range, and structured details (e.g., match 3-bedroom apartment need with villa offers)."
+   - Show suggestions in "For You" section of the feed with "Why this matches" explanation.
+
+4. **Valuation Assistant Agent**
+   - Helps users when creating high-value posts (cars, houses, yachts, watches > AED 50k).
+   - Role: "You are BarterGram Valuation Helper. Suggest realistic UAE market values based on provided details. Give brief trends/forecasts (e.g., 'Similar 2022 Toyota Camry in Dubai averages AED 75-95k'). Advise user to add Dubizzle/Bayut links for proof. Warn if value seems off."
+   - Trigger: During post creation for big-ticket categories.
+
+5. **Engagement Agent**
+   - Runs daily or on new activity.
+   - Role: "You are BarterGram Engagement Agent. Auto-reply to comments with helpful suggestions, remind users of pending deals, suggest success story posts, and send personalized match notifications via email/in-app."
+   - Keep tone positive and professional.
+
+6. **Admin Helper Agent**
+   - Assists in the /admin dashboard.
+   - Role: "You are BarterGram Admin Assistant. Summarize flagged posts, suggest actions (approve/ban), generate weekly analytics (new users, deals, top categories), draft ban/warning messages, and highlight potential issues."
+
+Orchestration & Implementation:
+- Use Supabase Edge Functions for all agents (secure, serverless, low cost).
+- Simple orchestration: Moderation runs first → if approved, Matching + Valuation trigger → Support/Engagement handle user interactions.
+- Store agent results in Supabase tables (e.g., moderation_logs, agent_interactions).
+- Add "Escalate to Human" button on every AI response (routes to you in admin).
+- Use Replit AI (Grok/Claude preferred for reasoning) via built-in integration or env vars.
+- Add database columns where needed (moderation_status, ai_suggestions, etc.).
+- Make agents trigger automatically via Supabase realtime/database webhooks where possible.
+- Add a simple /admin/ai-logs page to monitor all agents.
+- Include clear logging and cost-saving limits (e.g., max tokens per call).
+
+UI/UX:
+- In-app help button opens Support Agent chat.
+- Show small "AI Assisted" badge on moderated/suggested content.
+- Keep everything professional and transparent.
+
+After implementing, seed 5 test posts and run the agents on them. Then say: "All AI agents implemented and tested" so I can give refinement prompts.
