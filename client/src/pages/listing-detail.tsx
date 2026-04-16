@@ -40,6 +40,7 @@ import {
   MessageSquare,
   ExternalLink,
   ArrowLeftRight,
+  ArrowRightLeft,
   Sparkles,
   CheckCircle,
   ClipboardList,
@@ -52,6 +53,7 @@ import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deliverables";
 import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
+import { timeAgo, formatValue } from "@/lib/utils";
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -468,86 +470,112 @@ export function ListingDetailPage() {
           <Card id="comments" data-testid="listing-comments-section">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
+                <ArrowRightLeft className="h-5 w-5" />
                 Barter Proposals ({listingComments?.length || 0})
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {user && !isOwnListing && (
-                <div className="space-y-3 p-4 rounded-lg border bg-muted/30">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">What you offer</Label>
-                      <Input
-                        placeholder="e.g. Website design"
-                        value={commentOfferName}
-                        onChange={(e) => setCommentOfferName(e.target.value)}
-                        data-testid="input-comment-offer-name"
-                      />
+            <CardContent className="space-y-3">
+              {listingComments && listingComments.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {listingComments.map((comment) => (
+                    <div key={comment.id} className="flex items-start gap-2 p-2 rounded-md bg-muted/40" data-testid={`comment-${comment.id}`}>
+                      <Link href={`/users/${comment.userId}`}>
+                        <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">
+                          <AvatarImage src={comment.user?.avatarUrl || undefined} />
+                          <AvatarFallback className="text-[10px]">{comment.user?.fullName?.charAt(0) || "U"}</AvatarFallback>
+                        </Avatar>
+                      </Link>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Link href={`/users/${comment.userId}`}>
+                            <span className="text-sm font-semibold hover:underline">{comment.user?.fullName?.split(" ")[0]}</span>
+                          </Link>
+                          {comment.user?.isVerified && <Shield className="h-3 w-3 text-primary flex-shrink-0" />}
+                          <Badge variant="default" className="text-[10px] gap-0.5 bg-green-600 text-white no-default-hover-elevate no-default-active-elevate">
+                            <ArrowRightLeft className="h-2.5 w-2.5" />
+                            {comment.offerItemName}
+                          </Badge>
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            AED {formatValue(comment.offerItemValue)}
+                          </span>
+                        </div>
+                        {comment.content && (
+                          <p className="text-sm text-muted-foreground mt-0.5">{comment.content}</p>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-xs">Estimated value (AED)</Label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No proposals yet. Be the first to propose a barter!</p>
+              )}
+
+              {!user && (
+                <div className="pt-2 border-t text-center">
+                  <Link href="/login" className="text-sm text-primary hover:underline">Sign in to propose a barter</Link>
+                </div>
+              )}
+
+              {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED") && (
+                <div className="pt-2 border-t" data-testid="proposal-verify-prompt">
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    <Shield className="h-3.5 w-3.5 inline mr-1 text-primary" />
+                    <Link href="/profile" className="text-primary hover:underline">Verify your identity</Link> to propose a barter
+                  </p>
+                </div>
+              )}
+
+              {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED") && (
+                <div className="space-y-2 pt-2 border-t">
+                  <p className="text-xs font-medium">Propose what you want to offer in exchange</p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={commentOfferName}
+                      onChange={(e) => setCommentOfferName(e.target.value)}
+                      placeholder="What are you offering? (e.g. Photography Package)"
+                      className="text-sm flex-1"
+                      data-testid="input-comment-offer-name"
+                    />
+                    <div className="relative flex-shrink-0 w-32">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
                       <Input
                         type="number"
-                        placeholder="0"
                         value={commentOfferValue}
                         onChange={(e) => setCommentOfferValue(e.target.value)}
+                        placeholder="Value"
+                        className="text-sm pl-10"
+                        min="1"
                         data-testid="input-comment-offer-value"
                       />
                     </div>
                   </div>
-                  <Textarea
-                    placeholder="Add a message (optional)"
-                    value={commentMessage}
-                    onChange={(e) => setCommentMessage(e.target.value)}
-                    rows={2}
-                    data-testid="input-comment-message"
-                  />
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    disabled={!commentOfferName || !commentOfferValue || createCommentMutation.isPending}
-                    onClick={handleSubmitComment}
-                    data-testid="button-submit-comment"
-                  >
-                    {createCommentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Post Proposal
-                  </Button>
-                </div>
-              )}
-
-              {listingComments?.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No barter proposals yet. Be the first to propose!</p>
-              )}
-
-              {listingComments?.map((comment) => (
-                <div key={comment.id} className="flex gap-3 py-3 border-b last:border-0" data-testid={`comment-${comment.id}`}>
-                  <Link href={`/users/${comment.userId}`}>
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={comment.user?.avatarUrl || undefined} />
-                      <AvatarFallback className="text-xs">{comment.user?.fullName?.charAt(0) || "U"}</AvatarFallback>
-                    </Avatar>
-                  </Link>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Link href={`/users/${comment.userId}`}>
-                        <span className="text-sm font-medium hover:underline">{comment.user?.fullName}</span>
-                      </Link>
-                      {comment.user?.isVerified && <Shield className="h-3 w-3 text-primary" />}
-                      <span className="text-xs text-muted-foreground">
-                        {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="secondary" className="text-xs">
-                        <ArrowLeftRight className="h-3 w-3 mr-1" />
-                        {comment.offerItemName} — AED {parseFloat(comment.offerItemValue).toLocaleString()}
-                      </Badge>
-                    </div>
-                    {comment.content && <p className="text-sm text-muted-foreground">{comment.content}</p>}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={commentMessage}
+                      onChange={(e) => setCommentMessage(e.target.value)}
+                      placeholder="Add a message (optional)"
+                      className="text-sm flex-1"
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+                      data-testid="input-comment-message"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleSubmitComment}
+                      disabled={createCommentMutation.isPending || !commentOfferName.trim() || !commentOfferValue}
+                      className="gap-1"
+                      data-testid="button-submit-comment"
+                    >
+                      {createCommentMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Propose
+                    </Button>
                   </div>
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
         </div>

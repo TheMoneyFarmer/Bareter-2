@@ -27,6 +27,7 @@ import {
   Sparkles,
   X,
   ArrowLeftRight,
+  ArrowRightLeft,
   Star,
   Heart,
   TrendingUp,
@@ -56,7 +57,13 @@ import {
   MessageSquare,
   Handshake,
   AlertTriangle,
+  Send,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { timeAgo, formatValue } from "@/lib/utils";
+import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
@@ -75,6 +82,55 @@ export function BrowsePage() {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [valueRange, setValueRange] = useState([0, 100000]);
   const [sortBy, setSortBy] = useState<string>("newest");
+
+  const [openProposalForms, setOpenProposalForms] = useState<Record<string, boolean>>({});
+  const [proposalOfferName, setProposalOfferName] = useState<Record<string, string>>({});
+  const [proposalOfferValue, setProposalOfferValue] = useState<Record<string, string>>({});
+  const [proposalMessage, setProposalMessage] = useState<Record<string, string>>({});
+
+  const toggleProposalForm = (listingId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in to propose a barter" });
+      return;
+    }
+    setOpenProposalForms((prev) => ({ ...prev, [listingId]: !prev[listingId] }));
+  };
+
+  const listingCommentMutation = useMutation({
+    mutationFn: async ({ listingId, offerItemName, offerItemValue, content }: { listingId: string; offerItemName: string; offerItemValue: string; content?: string }) => {
+      const res = await apiRequest("POST", `/api/listings/${listingId}/comments`, { offerItemName, offerItemValue, content });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      setProposalOfferName((prev) => ({ ...prev, [variables.listingId]: "" }));
+      setProposalOfferValue((prev) => ({ ...prev, [variables.listingId]: "" }));
+      setProposalMessage((prev) => ({ ...prev, [variables.listingId]: "" }));
+      setOpenProposalForms((prev) => ({ ...prev, [variables.listingId]: false }));
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      toast({ title: "Proposal sent!", description: "Your barter proposal has been posted." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to submit proposal", variant: "destructive" });
+    },
+  });
+
+  const handleSubmitProposal = (listingId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const name = proposalOfferName[listingId]?.trim();
+    const value = proposalOfferValue[listingId];
+    if (!name) {
+      toast({ title: "Missing info", description: "Please enter what you want to offer", variant: "destructive" });
+      return;
+    }
+    if (!value || Number(value) <= 0) {
+      toast({ title: "Missing info", description: "Please enter the value of your offer", variant: "destructive" });
+      return;
+    }
+    listingCommentMutation.mutate({ listingId, offerItemName: name, offerItemValue: value, content: proposalMessage[listingId]?.trim() || undefined });
+  };
 
   const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings"],
@@ -389,12 +445,16 @@ export function BrowsePage() {
                   <span>{listing.likeCount || 0}</span>
                 </div>
               )}
-              <Link href={`/listings/${listing.id}#comments`}>
-                <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-xs" onClick={(e) => e.stopPropagation()} data-testid={`button-comments-listing-${listing.id}`}>
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">{listing.commentCount || 0}</span>
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 px-2 gap-1 text-xs ${openProposalForms[listing.id] ? "text-primary" : "text-muted-foreground"}`}
+                onClick={(e) => toggleProposalForm(listing.id, e)}
+                data-testid={`button-comments-listing-${listing.id}`}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span>{listing.commentCount || 0}</span>
+              </Button>
               <ShareMenu
                 url={`${window.location.origin}/listings/${listing.id}`}
                 title={listing.title}
@@ -404,19 +464,82 @@ export function BrowsePage() {
               />
             </div>
             {user && listing.userId !== user.id && (
-              <Link href={`/listings/${listing.id}?propose=true`}>
-                <Button
-                  size="sm"
-                  className="h-7 px-2 gap-1 text-xs"
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid={`button-propose-barter-${listing.id}`}
-                >
-                  <Handshake className="h-3.5 w-3.5" />
-                  Propose Barter
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                variant={openProposalForms[listing.id] ? "default" : "outline"}
+                className="h-7 px-2 gap-1 text-xs"
+                onClick={(e) => toggleProposalForm(listing.id, e)}
+                data-testid={`button-propose-barter-${listing.id}`}
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                {openProposalForms[listing.id] ? "Close" : "Propose Barter"}
+                {openProposalForms[listing.id] ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
             )}
           </div>
+
+          {openProposalForms[listing.id] && user && listing.userId !== user.id && (
+            <div className="px-4 pb-3 space-y-2 border-t bg-muted/20" onClick={(e) => e.stopPropagation()}>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-3">Propose what you offer in exchange</p>
+              {(user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED") ? (
+                <p className="text-xs text-muted-foreground py-1">
+                  <Shield className="h-3.5 w-3.5 inline mr-1 text-primary" />
+                  <Link href="/profile" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>Verify your identity</Link> to propose a barter
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={proposalOfferName[listing.id] || ""}
+                      onChange={(e) => { e.stopPropagation(); setProposalOfferName((prev) => ({ ...prev, [listing.id]: e.target.value })); }}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="What are you offering? (e.g. Logo Design)"
+                      className="text-sm flex-1 h-8"
+                      data-testid={`input-proposal-name-${listing.id}`}
+                    />
+                    <div className="relative flex-shrink-0 w-28">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
+                      <Input
+                        type="number"
+                        value={proposalOfferValue[listing.id] || ""}
+                        onChange={(e) => { e.stopPropagation(); setProposalOfferValue((prev) => ({ ...prev, [listing.id]: e.target.value })); }}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder="Value"
+                        className="text-sm pl-10 h-8"
+                        min="1"
+                        data-testid={`input-proposal-value-${listing.id}`}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={proposalMessage[listing.id] || ""}
+                      onChange={(e) => { e.stopPropagation(); setProposalMessage((prev) => ({ ...prev, [listing.id]: e.target.value })); }}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="Add a message (optional)"
+                      className="text-sm flex-1 h-8"
+                      data-testid={`input-proposal-message-${listing.id}`}
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 gap-1"
+                      onClick={(e) => handleSubmitProposal(listing.id, e)}
+                      disabled={listingCommentMutation.isPending || !proposalOfferName[listing.id]?.trim() || !proposalOfferValue[listing.id]}
+                      data-testid={`button-submit-proposal-${listing.id}`}
+                    >
+                      {listingCommentMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Propose
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <CardFooter className="p-4 pt-0 flex-wrap gap-2">
             <div className="flex items-center gap-2 w-full">
               <Avatar className="h-8 w-8">
