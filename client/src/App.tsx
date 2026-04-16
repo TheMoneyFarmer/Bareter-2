@@ -38,6 +38,7 @@ import { ForgotPasswordPage } from "@/pages/forgot-password";
 import { ResetPasswordPage } from "@/pages/reset-password";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
+import AiSupportChat from "@/components/ai-support-chat";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -95,6 +96,7 @@ function App() {
               </div>
               <Toaster />
               <WhatsAppButton />
+              <AiSupportChat />
             </TooltipProvider>
           </AuthProvider>
         </I18nProvider>

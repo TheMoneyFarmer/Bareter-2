@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CATEGORIES, LOCATIONS, ExchangeItem } from "@shared/schema";
+import AiValuationPanel from "@/components/ai-valuation-panel";
 import {
   Package,
   ShoppingCart,
@@ -243,6 +244,8 @@ export function CreateListingPage() {
   const images = form.watch("images") || [];
   const openToOffers = form.watch("openToOffers");
   const retailValueWatch = form.watch("retailValue");
+  const titleWatch = form.watch("title");
+  const descriptionWatch = form.watch("description");
 
   const { data: marketAverages } = useQuery<Record<string, number>>({
     queryKey: ["/api/market-average", selectedCategories],
@@ -758,6 +761,13 @@ export function CreateListingPage() {
               />
             </CardContent>
           </Card>
+
+          <AiValuationPanel
+            title={titleWatch || ""}
+            description={descriptionWatch || ""}
+            category={(selectedCategories || [])[0] || ""}
+            condition={form.watch("condition") || undefined}
+          />
 
           <Card>
             <CardHeader>

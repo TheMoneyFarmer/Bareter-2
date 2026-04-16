@@ -310,6 +310,7 @@ export const listings = pgTable("listings", {
   likeCount: integer("like_count").default(0),
   valueFlagged: boolean("value_flagged").default(false),
   imageFlagged: boolean("image_flagged").default(false),
+  moderationStatus: text("moderation_status").default("pending"), // "pending", "approved", "flagged", "rejected"
   isFeatured: boolean("is_featured").default(false),
   featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -431,6 +432,7 @@ export const posts = pgTable("posts", {
   isStory: boolean("is_story").default(false),
   expiresAt: timestamp("expires_at"),
   likeCount: integer("like_count").default(0),
+  moderationStatus: text("moderation_status").default("pending"), // "pending", "approved", "flagged", "rejected"
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -561,6 +563,34 @@ export const imageScans = pgTable("image_scans", {
   listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
   flagged: boolean("flagged").default(false),
   reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI Agent tables
+
+// Moderation logs - tracks AI moderation decisions
+export const moderationLogs = pgTable("moderation_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  targetType: text("target_type").notNull(), // "listing", "post", "message"
+  targetId: varchar("target_id", { length: 36 }).notNull(),
+  action: text("action").notNull(), // "approved", "flagged", "rejected"
+  reason: text("reason"),
+  confidence: decimal("confidence", { precision: 5, scale: 2 }),
+  rawResponse: jsonb("raw_response"),
+  reviewedByAdmin: boolean("reviewed_by_admin").default(false),
+  adminUserId: varchar("admin_user_id", { length: 36 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Agent interactions - tracks all AI agent conversations
+export const agentInteractions = pgTable("agent_interactions", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  agentType: text("agent_type").notNull(), // "moderation", "support", "matching", "valuation", "engagement", "admin"
+  userMessage: text("user_message"),
+  agentResponse: text("agent_response"),
+  metadata: jsonb("metadata"),
+  tokensUsed: integer("tokens_used").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -791,6 +821,23 @@ export const insertImageScanSchema = createInsertSchema(imageScans).omit({
 });
 export type InsertImageScan = z.infer<typeof insertImageScanSchema>;
 export type ImageScan = typeof imageScans.$inferSelect;
+
+export const insertModerationLogSchema = createInsertSchema(moderationLogs).omit({
+  id: true,
+  createdAt: true,
+  reviewedByAdmin: true,
+  adminUserId: true,
+});
+export type InsertModerationLog = z.infer<typeof insertModerationLogSchema>;
+export type ModerationLog = typeof moderationLogs.$inferSelect;
+
+export const insertAgentInteractionSchema = createInsertSchema(agentInteractions).omit({
+  id: true,
+  createdAt: true,
+  tokensUsed: true,
+});
+export type InsertAgentInteraction = z.infer<typeof insertAgentInteractionSchema>;
+export type AgentInteraction = typeof agentInteractions.$inferSelect;
 
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };

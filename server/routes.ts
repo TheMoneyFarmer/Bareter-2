@@ -627,6 +627,22 @@ export async function registerRoutes(
       const listing = await storage.createListing(data);
       res.json(listing);
 
+      // AI moderation (async, non-blocking)
+      import("./agents/moderationAgent").then(({ moderateAndLog }) => {
+        moderateAndLog("listing", listing.id, {
+          title: listing.title,
+          description: listing.description,
+          value: parseFloat(listing.retailValue as string),
+          categories: listing.categories as string[],
+        }).then((result) => {
+          if (result.action !== "approved") {
+            storage.updateListing(listing.id, { moderationStatus: result.action }).catch(() => {});
+          } else {
+            storage.updateListing(listing.id, { moderationStatus: "approved" }).catch(() => {});
+          }
+        }).catch(() => {});
+      }).catch(() => {});
+
       const imageUrls: string[] = data.images || [];
       if (imageUrls.length > 0) {
         import("./visionClient").then(({ scanListingImages }) => {
@@ -3110,6 +3126,160 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get credibility error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== AI Agent Routes ==========
+
+  // Support chat
+  app.post("/api/ai/support", requireAuth, async (req, res) => {
+    try {
+      const { message, history } = req.body;
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      const { getSupportResponse } = await import("./agents/supportAgent");
+      const conversationHistory = (history || []).map((m: any) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content as string,
+      }));
+      const result = await getSupportResponse(message, conversationHistory, req.session.userId);
+      res.json({ response: result.response });
+    } catch (error) {
+      console.error("AI support error:", error);
+      res.status(500).json({ message: "AI support unavailable" });
+    }
+  });
+
+  // Valuation advice
+  app.post("/api/ai/valuation", requireAuth, async (req, res) => {
+    try {
+      const { title, description, category, condition } = req.body;
+      if (!title || !description || !category) {
+        return res.status(400).json({ message: "Title, description, and category are required" });
+      }
+      const { getValuation } = await import("./agents/valuationAgent");
+      const advice = await getValuation(title, description, category, condition, req.session.userId);
+      res.json(advice);
+    } catch (error) {
+      console.error("AI valuation error:", error);
+      res.status(500).json({ message: "Valuation service unavailable" });
+    }
+  });
+
+  // Smart matching
+  app.get("/api/ai/matches", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const allListings = await storage.getListings();
+      const otherListings = allListings
+        .filter((l) => l.userId !== user.id && l.isActive)
+        .map((l) => ({
+          id: l.id,
+          title: l.title,
+          description: l.description,
+          categories: l.categories,
+          retailValue: l.retailValue,
+          location: l.location,
+          type: l.type,
+          wantedCategories: l.wantedCategories,
+        }));
+      const { findMatches } = await import("./agents/matchingAgent");
+      const matches = await findMatches(user, otherListings);
+      const enriched = await Promise.all(
+        matches.map(async (m) => {
+          const listing = allListings.find((l) => l.id === m.listingId);
+          return { ...m, listing: listing || null };
+        })
+      );
+      res.json(enriched);
+    } catch (error) {
+      console.error("AI matching error:", error);
+      res.status(500).json({ message: "Matching service unavailable" });
+    }
+  });
+
+  // Engagement suggestions
+  app.get("/api/ai/engagement", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const userPosts = await storage.getPosts({ userId: user.id, limit: 10 });
+      const userDeals = await storage.getDealsByUser(user.id);
+      const { getEngagementSuggestions } = await import("./agents/engagementAgent");
+      const suggestions = await getEngagementSuggestions(user, {
+        postsCount: userPosts.length,
+        dealsCount: userDeals.length,
+        lastActive: user.lastActiveAt || undefined,
+      });
+      res.json(suggestions);
+    } catch (error) {
+      console.error("AI engagement error:", error);
+      res.status(500).json({ message: "Engagement service unavailable" });
+    }
+  });
+
+  // Admin insights
+  app.get("/api/ai/admin/insights", requireAdmin, async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const allListings = await storage.getListings();
+      const allDeals = await storage.getAllDeals();
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const { getAdminInsights } = await import("./agents/adminAgent");
+      const insights = await getAdminInsights({
+        totalUsers: allUsers.length,
+        activeUsers: allUsers.filter((u) => u.lastActiveAt && new Date(u.lastActiveAt) > oneWeekAgo).length,
+        totalListings: allListings.length,
+        totalDeals: allDeals.length,
+        completedDeals: allDeals.filter((d) => d.state === "completed").length,
+        pendingReports: 0,
+        flaggedListings: allListings.filter((l) => l.valueFlagged || l.imageFlagged).length,
+        recentSignups: allUsers.filter((u) => u.createdAt && new Date(u.createdAt) > oneWeekAgo).length,
+      }, req.session.userId);
+      res.json(insights);
+    } catch (error) {
+      console.error("AI admin insights error:", error);
+      res.status(500).json({ message: "Admin intelligence unavailable" });
+    }
+  });
+
+  // Admin ask agent
+  app.post("/api/ai/admin/ask", requireAdmin, async (req, res) => {
+    try {
+      const { question } = req.body;
+      if (!question) return res.status(400).json({ message: "Question is required" });
+      const allUsers = await storage.getAllUsers();
+      const allDeals = await storage.getAllDeals();
+      const context = `Platform: ${allUsers.length} users, ${allDeals.length} deals, ${allDeals.filter(d => d.state === "completed").length} completed`;
+      const { askAdminAgent } = await import("./agents/adminAgent");
+      const result = await askAdminAgent(question, context, req.session.userId);
+      res.json({ response: result.response });
+    } catch (error) {
+      console.error("AI admin ask error:", error);
+      res.status(500).json({ message: "Admin agent unavailable" });
+    }
+  });
+
+  // AI Logs for admin
+  app.get("/api/ai/logs", requireAdmin, async (req, res) => {
+    try {
+      const { moderationLogs, agentInteractions } = await import("@shared/schema");
+      const modLogs = await db
+        .select()
+        .from(moderationLogs)
+        .orderBy(desc(moderationLogs.createdAt))
+        .limit(50);
+      const interactions = await db
+        .select()
+        .from(agentInteractions)
+        .orderBy(desc(agentInteractions.createdAt))
+        .limit(50);
+      res.json({ moderationLogs: modLogs, agentInteractions: interactions });
+    } catch (error) {
+      console.error("AI logs error:", error);
+      res.status(500).json({ message: "Failed to fetch AI logs" });
     }
   });
 

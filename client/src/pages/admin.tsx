@@ -80,6 +80,7 @@ import {
   Play,
   AlertTriangle,
   FileCheck,
+  Bot,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -97,7 +98,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs";
 
 type AnalyticsData = {
   totalUsers: number;
@@ -242,6 +243,7 @@ export function AdminPage() {
     { id: "deals" as const, label: "Deals", icon: Handshake },
     { id: "reports" as const, label: "Reports", icon: Flag },
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
+    { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -1177,6 +1179,134 @@ export function AdminPage() {
     </div>
   );
 
+  const { data: aiLogs } = useQuery<{
+    moderationLogs: any[];
+    agentInteractions: any[];
+  }>({
+    queryKey: ["/api/ai/logs"],
+    enabled: activeSection === "ai-logs" && !!user?.isAdmin,
+  });
+
+  const renderAiLogs = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">AI Agent Logs</h2>
+        <p className="text-muted-foreground">Monitor AI agent activity and moderation decisions</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Total Interactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{aiLogs?.agentInteractions?.length || 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Moderation Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{aiLogs?.moderationLogs?.length || 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Flagged Content</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-500">
+              {aiLogs?.moderationLogs?.filter((l: any) => l.action === "flagged").length || 0}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Moderation Logs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(aiLogs?.moderationLogs?.length || 0) === 0 ? (
+            <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs yet</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {aiLogs?.moderationLogs?.map((log: any) => (
+                  <TableRow key={log.id}>
+                    <TableCell>
+                      <Badge variant="outline">{log.targetType}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}
+                      >
+                        {log.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
+                    <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Agent Interactions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(aiLogs?.agentInteractions?.length || 0) === 0 ? (
+            <p className="text-muted-foreground text-sm py-4 text-center">No agent interactions yet</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>User Message</TableHead>
+                  <TableHead>Response</TableHead>
+                  <TableHead>Tokens</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {aiLogs?.agentInteractions?.map((interaction: any) => (
+                  <TableRow key={interaction.id}>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{interaction.agentType}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[150px] truncate text-sm">{interaction.userMessage}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-sm">{interaction.agentResponse?.substring(0, 80)}</TableCell>
+                    <TableCell className="text-sm">{interaction.tokensUsed || 0}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {interaction.createdAt ? new Date(interaction.createdAt).toLocaleDateString() : "N/A"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
@@ -1191,6 +1321,8 @@ export function AdminPage() {
         return renderReports();
       case "flags":
         return renderFlags();
+      case "ai-logs":
+        return renderAiLogs();
       case "analytics":
         return renderAnalytics();
       case "settings":
