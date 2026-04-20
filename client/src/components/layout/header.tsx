@@ -72,7 +72,7 @@ export function Header() {
   const locationPillLabel = activeLocation.worldwide
     ? "Worldwide"
     : userCity
-      ? `${userCity}, ${userCountry}`
+      ? `${userCity}, ${countryEntry?.name || userCountry}`
       : countryEntry?.name || userCountry;
 
   const { data: notifications } = useQuery<Notification[]>({
