@@ -3283,8 +3283,8 @@ export async function registerRoutes(
       const userCity = worldwide ? "" : (overrideCity || user.city || "");
       const otherListings = allListings
         .filter((l) => l.userId !== user.id && l.isActive)
-        .filter((l) => !userCountry || !l.country || (l.country || "").toUpperCase() === userCountry)
-        .filter((l) => !userCity || !l.city || l.city === userCity)
+        .filter((l) => !userCountry || (l.country || "").toUpperCase() === userCountry)
+        .filter((l) => !userCity || (l.city || "") === userCity)
         .map((l) => ({
           id: l.id,
           title: l.title,

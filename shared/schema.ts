@@ -813,8 +813,8 @@ export const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  country: z.string().length(2).optional(),
-  city: z.string().optional(),
+  country: z.string().length(2, "Please select a country"),
+  city: z.string().min(1, "Please select a city"),
 });
 
 // Types
