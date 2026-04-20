@@ -44,6 +44,7 @@ import {
   MessageCircle,
   ExternalLink,
 } from "lucide-react";
+import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { SiInstagram, SiTiktok, SiYoutube, SiLinkedin, SiX } from "react-icons/si";
 import { z } from "zod";
 

@@ -92,26 +92,7 @@ export async function lookupGeo(req: any): Promise<GeoLookupResult> {
     };
   }
 
-  // Try ip-api.com (free, no key)
-  try {
-    const res = await fetchWithTimeout(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,city`, 2500);
-    if (res) {
-      const data: any = await res.json();
-      if (data?.status === "success" && data?.countryCode) {
-        const country = normalizeCountry(data.countryCode);
-        return {
-          country,
-          countryName: data.country || getCountryByCode(country)?.name || country,
-          city: pickCity(country, data.city),
-          source: "ip-api",
-        };
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  // Fallback ipapi.co
+  // Try ipapi.co (HTTPS, no key required)
   try {
     const res = await fetchWithTimeout(`https://ipapi.co/${ip}/json/`, 2500);
     if (res) {

@@ -379,9 +379,7 @@ export function BrowsePublicPage() {
                         <span className="text-sm font-medium truncate">
                           {listing.user.fullName}
                         </span>
-                        {listing.user.isVerified && (
-                          <Shield className="h-3 w-3 text-primary flex-shrink-0" />
-                        )}
+                        <VerifiedBadge isVerified={listing.user.isVerified} size="xs" testId="badge-verified" />
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="h-3 w-3" />

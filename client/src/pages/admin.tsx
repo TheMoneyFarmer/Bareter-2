@@ -82,6 +82,7 @@ import {
   FileCheck,
   Bot,
 } from "lucide-react";
+import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { Link, useLocation } from "wouter";
 import {
   LineChart,
@@ -486,7 +487,7 @@ export function AdminPage() {
                             <Ban className="h-3 w-3" />
                             Banned
                           </Badge>
-                        ) : u.isVerified ? (
+                        ) : (isUserVerified(u.kycStatus, u.kybStatus) || u.isVerified) ? (
                           <Badge className="gap-1">
                             <ShieldCheck className="h-3 w-3" />
                             Verified

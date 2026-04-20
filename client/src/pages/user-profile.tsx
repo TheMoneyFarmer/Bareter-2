@@ -126,9 +126,7 @@ export function UserProfilePage() {
                 </Avatar>
                 <div className="flex items-center gap-2 mb-1">
                   <h1 className="text-xl font-bold" data-testid="text-profile-name">{profileData.fullName}</h1>
-                  {profileData.isVerified && (
-                    <Shield className="h-5 w-5 text-primary" />
-                  )}
+                  <VerifiedBadge isVerified={profileData.isVerified} kycStatus={(profileData as any).kycStatus} kybStatus={(profileData as any).kybStatus} size="md" />
                 </div>
                 {profileData.businessName && (
                   <p className="text-muted-foreground flex items-center gap-1" data-testid="text-business-name">

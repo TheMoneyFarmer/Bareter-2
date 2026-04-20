@@ -245,7 +245,7 @@ export function BrowsePage() {
     }
     if (selectedLocation !== "all" && listing.location !== selectedLocation) return false;
     if (selectedCondition !== "all" && listing.condition !== selectedCondition) return false;
-    if (verifiedOnly && !listing.user?.isVerified) return false;
+    if (verifiedOnly && !(listing.user?.kycStatus === "APPROVED" || listing.user?.kybStatus === "APPROVED" || listing.user?.isVerified)) return false;
     const value = parseFloat(listing.retailValue as string);
     if (value < valueRange[0] || value > valueRange[1]) return false;
     return true;
