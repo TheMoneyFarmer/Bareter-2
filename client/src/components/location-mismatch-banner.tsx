@@ -15,6 +15,8 @@ interface GeoLookup {
   source: string;
 }
 
+const SESSION_DISMISS_KEY = "loc_mismatch_dismissed";
+
 export function LocationMismatchBanner() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -29,15 +31,13 @@ export function LocationMismatchBanner() {
   useEffect(() => {
     if (!user || user.locationPrompted) return;
     if (!geo) return;
+    if (typeof window !== "undefined" && sessionStorage.getItem(SESSION_DISMISS_KEY) === "1") return;
     const userCountry = (user.country || "AE").toUpperCase();
     if (geo.country && geo.country !== userCountry) {
       setOpen(true);
-    } else {
-      // Mark prompted silently if it matches
-      apiRequest("POST", "/api/users/me/location-prompted", {})
-        .then(() => queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }))
-        .catch(() => {});
     }
+    // Note: do NOT mark locationPrompted on country match — we still want to
+    // prompt the user later if their detected country changes (travel, VPN off, etc.).
   }, [user, geo]);
 
   const switchMutation = useMutation({
@@ -45,7 +45,6 @@ export function LocationMismatchBanner() {
       await apiRequest("PATCH", "/api/users/profile", {
         country: geo!.country,
         city: geo!.city || undefined,
-        locationPrompted: true,
       });
     },
     onSuccess: () => {
@@ -53,11 +52,12 @@ export function LocationMismatchBanner() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/matches"] });
       setOpen(false);
     },
   });
 
-  const dismissMutation = useMutation({
+  const dontAskAgainMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", "/api/users/me/location-prompted", {});
     },
@@ -66,6 +66,11 @@ export function LocationMismatchBanner() {
       setOpen(false);
     },
   });
+
+  const dismissForSession = () => {
+    try { sessionStorage.setItem(SESSION_DISMISS_KEY, "1"); } catch {}
+    setOpen(false);
+  };
 
   if (!geo || !user) return null;
 
@@ -83,21 +88,30 @@ export function LocationMismatchBanner() {
             <strong>{geo.countryName}</strong> to discover local barters?
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => dontAskAgainMutation.mutate()}
+            disabled={dontAskAgainMutation.isPending}
+            data-testid="button-dont-ask-again"
+            className="sm:mr-auto"
+          >
+            Don't ask again
+          </Button>
           <Button
             variant="outline"
-            onClick={() => dismissMutation.mutate()}
-            disabled={dismissMutation.isPending}
+            onClick={dismissForSession}
             data-testid="button-keep-location"
           >
-            Keep {currentName}
+            No, keep {currentName}
           </Button>
           <Button
             onClick={() => switchMutation.mutate()}
             disabled={switchMutation.isPending}
             data-testid="button-switch-location"
           >
-            Switch to {geo.countryName}
+            Yes, switch
           </Button>
         </DialogFooter>
       </DialogContent>

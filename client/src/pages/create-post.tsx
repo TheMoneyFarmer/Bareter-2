@@ -133,6 +133,8 @@ type FormValues = {
   declaredValue: string;
   hashtags: string;
   location: string;
+  country: string;
+  city: string;
   marketValuation: string;
 };
 
@@ -164,6 +166,8 @@ export function CreatePostPage() {
       declaredValue: "",
       hashtags: "",
       location: user?.location || "",
+      country: user?.country || "AE",
+      city: user?.city || "",
       marketValuation: "",
     },
   });
@@ -222,6 +226,8 @@ export function CreatePostPage() {
         wantItems,
         hashtags: hashtagsArray,
         location: data.location || undefined,
+        country: data.country || undefined,
+        city: data.city || data.location || undefined,
         marketValuation: data.marketValuation || undefined,
         categoryDetails:
           Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,

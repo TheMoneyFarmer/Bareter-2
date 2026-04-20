@@ -15,8 +15,8 @@ export interface EngagementSuggestion {
   actionUrl?: string;
 }
 
-const SYSTEM_PROMPT = `You are an engagement advisor for BarterGram, a UAE barter marketplace.
-Based on user activity and profile, suggest actions to improve their trading success.
+const SYSTEM_PROMPT = `You are an engagement advisor for BarterGram, a worldwide barter marketplace.
+Based on user activity, profile, and current location, suggest actions to improve their trading success.
 
 Types of suggestions:
 - listing_idea: suggest new listings based on their offers/needs
@@ -27,16 +27,17 @@ Types of suggestions:
 Respond with JSON array:
 [{"type": "listing_idea"|"profile_tip"|"trade_suggestion"|"trending_alert", "title": "short title", "message": "actionable suggestion"}]
 
-Return 2-3 relevant suggestions. Be specific to the UAE/GCC market. Keep messages under 100 words.`;
+Return 2-3 relevant suggestions. Tailor advice to the user's local market. Keep messages under 100 words.`;
 
 export async function getEngagementSuggestions(
-  user: Pick<User, "id" | "whatIOffer" | "whatINeed" | "location" | "credibilityScore" | "totalCompletedDeals" | "bio">,
+  user: Pick<User, "id" | "whatIOffer" | "whatINeed" | "location" | "country" | "city" | "credibilityScore" | "totalCompletedDeals" | "bio">,
   recentActivity?: { postsCount: number; dealsCount: number; lastActive?: Date }
 ): Promise<EngagementSuggestion[]> {
+  const locationLabel = [user.city, user.country, user.location].filter(Boolean).join(", ") || "Not specified";
   const profile = `User profile:
 - Offers: ${(user.whatIOffer as OfferNeedItem[] || []).map((i) => i.name).join(", ") || "None listed"}
 - Needs: ${(user.whatINeed as OfferNeedItem[] || []).map((i) => i.name).join(", ") || "None listed"}
-- Location: ${user.location || "Not specified"}
+- Location: ${locationLabel}
 - Credibility score: ${user.credibilityScore || 0}
 - Completed deals: ${user.totalCompletedDeals || 0}
 - Bio: ${user.bio || "Not set"}

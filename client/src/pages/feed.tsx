@@ -12,6 +12,7 @@ import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
+import { VerifiedBadge } from "@/components/verified-badge";
 import {
   Heart,
   MessageCircle,
@@ -608,9 +609,14 @@ function FeedCard({ post }: { post: PostWithUser }) {
                   <span className="text-sm font-semibold truncate" data-testid={`text-username-${post.id}`}>
                     {post.user?.fullName}
                   </span>
-                  {post.user?.isVerified && (
-                    <Shield className="h-3.5 w-3.5 text-primary flex-shrink-0" data-testid={`badge-verified-${post.id}`} />
-                  )}
+                  <VerifiedBadge
+                    kycStatus={post.user?.kycStatus}
+                    kybStatus={post.user?.kybStatus}
+                    accountType={post.user?.accountType}
+                    isVerified={post.user?.isVerified}
+                    size="sm"
+                    testId={`badge-verified-${post.id}`}
+                  />
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {post.user?.businessName && (
@@ -1050,15 +1056,12 @@ export function FeedPage() {
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
 
-  const postsQueryKey =
-    activeCategory === "All"
-      ? ["/api/posts", { limit: "20", offset: "0" }]
-      : ["/api/posts", { category: activeCategory, limit: "20", offset: "0" }];
+  const userCountry = user?.country || "AE";
+  const params = new URLSearchParams({ limit: "20", offset: "0", country: userCountry });
+  if (activeCategory !== "All") params.set("category", activeCategory);
 
-  const queryUrl =
-    activeCategory === "All"
-      ? "/api/posts?limit=20&offset=0"
-      : `/api/posts?category=${encodeURIComponent(activeCategory)}&limit=20&offset=0`;
+  const postsQueryKey = ["/api/posts", { category: activeCategory, country: userCountry, limit: "20", offset: "0" }];
+  const queryUrl = `/api/posts?${params.toString()}`;
 
   const { data: posts, isLoading } = useQuery<PostWithUser[]>({
     queryKey: postsQueryKey,

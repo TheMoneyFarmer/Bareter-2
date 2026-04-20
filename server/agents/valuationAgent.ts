@@ -11,11 +11,12 @@ export interface ValuationAdvice {
   marketComparison: string;
 }
 
-const SYSTEM_PROMPT = `You are a valuation advisor for BarterGram, a UAE barter marketplace.
-Help users price their items/services for barter by estimating fair market value in AED.
+const SYSTEM_PROMPT = `You are a valuation advisor for BarterGram, a worldwide barter marketplace.
+Help users price their items/services for barter by estimating fair market value in their local currency
+(default AED if not specified).
 
 Consider:
-- UAE/GCC market prices
+- Local market prices in the user's country/city
 - Item condition and age
 - Service rates in the region
 - Barter premium (items may trade at 10-20% above cash value in barter)
@@ -31,20 +32,24 @@ Respond with JSON:
   "marketComparison": "how this compares to market average"
 }
 
-All values in AED. Be realistic and specific to the UAE market.`;
+Be realistic and specific to the user's local market.`;
 
 export async function getValuation(
   title: string,
   description: string,
   category: string,
   condition?: string,
-  userId?: string
+  userId?: string,
+  geo?: { country?: string | null; city?: string | null },
 ): Promise<ValuationAdvice> {
+  const localeNote = geo?.country
+    ? `Local market: ${[geo.city, geo.country].filter(Boolean).join(", ")}.`
+    : "Local market: UAE (default).";
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Value this item/service for barter:\nTitle: ${title}\nDescription: ${description}\nCategory: ${category}${condition ? `\nCondition: ${condition}` : ""}`,
+      content: `Value this item/service for barter:\n${localeNote}\nTitle: ${title}\nDescription: ${description}\nCategory: ${category}${condition ? `\nCondition: ${condition}` : ""}`,
     },
   ];
 

@@ -530,13 +530,13 @@ export async function registerRoutes(
       if (country && country !== "all") {
         const code = country.toUpperCase();
         listings = listings.filter((l) => {
-          const lc = (l as any).country || (l.user as any)?.country;
-          return !lc || lc === code; // Show items without a country too (legacy)
+          const lc = l.country || l.user?.country;
+          return !lc || lc.toUpperCase() === code; // Show items without a country too (legacy)
         });
       }
       if (city && city !== "all") {
         listings = listings.filter((l) => {
-          const lc = (l as any).city || (l as any).location;
+          const lc = l.city || l.location;
           return !lc || lc === city;
         });
       }
@@ -544,8 +544,8 @@ export async function registerRoutes(
       if (verified === "true") {
         listings = listings.filter((l) =>
           l.user?.isVerified ||
-          (l.user as any)?.kycStatus === "APPROVED" ||
-          (l.user as any)?.kybStatus === "APPROVED"
+          l.user?.kycStatus === "APPROVED" ||
+          l.user?.kybStatus === "APPROVED"
         );
       }
 
@@ -1931,6 +1931,9 @@ export async function registerRoutes(
     fullName: z.string().optional(),
     businessName: z.string().optional(),
     location: z.string().optional(),
+    country: z.string().length(2).optional(),
+    city: z.string().optional(),
+    locationPrompted: z.boolean().optional(),
     bio: z.string().optional(),
     whatIOffer: z.array(z.object({
       name: z.string(),
@@ -2017,7 +2020,7 @@ export async function registerRoutes(
       const country = (req.query.country as string | undefined)?.toUpperCase();
       const city = req.query.city as string | undefined;
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
-      const filtered = allPosts.filter((p: any) => {
+      const filtered = allPosts.filter((p) => {
         if (country && p.country && p.country.toUpperCase() !== country) return false;
         if (city && p.city && p.city !== city) return false;
         return true;
@@ -3215,7 +3218,11 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Title, description, and category are required" });
       }
       const { getValuation } = await import("./agents/valuationAgent");
-      const advice = await getValuation(title, description, category, condition, req.session.userId);
+      const sessionUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
+      const advice = await getValuation(title, description, category, condition, req.session.userId, {
+        country: sessionUser?.country,
+        city: sessionUser?.city,
+      });
       res.json(advice);
     } catch (error) {
       console.error("AI valuation error:", error);
