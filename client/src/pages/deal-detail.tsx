@@ -440,7 +440,7 @@ export function DealDetailPage() {
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">{otherParty?.fullName}</span>
-                    <VerifiedBadge isVerified={otherParty?.isVerified} size="xs" testId="badge-verified" />
+                    <VerifiedBadge isVerified={otherParty?.isVerified} kycStatus={otherParty?.kycStatus} kybStatus={otherParty?.kybStatus} accountType={otherParty?.accountType} size="xs" testId="badge-verified" />
                   </div>
                   {otherParty?.businessName && (
                     <p className="text-sm text-muted-foreground">{otherParty.businessName}</p>

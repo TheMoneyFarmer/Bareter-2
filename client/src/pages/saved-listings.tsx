@@ -180,7 +180,7 @@ export function SavedListingsPage() {
                         <span className="text-sm font-medium truncate">
                           {listing.user?.fullName}
                         </span>
-                        <VerifiedBadge isVerified={listing.user?.isVerified} size="xs" testId="badge-verified" />
+                        <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
                       </div>
                       {listing.location && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">

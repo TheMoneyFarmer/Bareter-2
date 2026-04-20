@@ -559,7 +559,7 @@ export function BrowsePage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
                   <span className="text-sm font-medium truncate">{listing.user?.fullName}</span>
-                  <VerifiedBadge isVerified={listing.user?.isVerified} size="xs" testId="badge-verified" />
+                  <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {listing.location && <span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{listing.location}</span>}
@@ -771,7 +771,7 @@ export function BrowsePage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1">
                               <span className="font-medium truncate">{recUser.fullName}</span>
-                              <VerifiedBadge isVerified={recUser.isVerified} size="xs" testId="badge-verified" />
+                              <VerifiedBadge isVerified={recUser.isVerified} kycStatus={recUser.kycStatus} kybStatus={recUser.kybStatus} accountType={recUser.accountType} size="xs" testId="badge-verified" />
                             </div>
                             {recUser.businessName && <p className="text-xs text-muted-foreground truncate">{recUser.businessName}</p>}
                             <div className="flex items-center gap-2 mt-1">

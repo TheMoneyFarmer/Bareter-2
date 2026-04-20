@@ -491,7 +491,7 @@ export function ListingDetailPage() {
                           <Link href={`/users/${comment.userId}`}>
                             <span className="text-sm font-semibold hover:underline">{comment.user?.fullName?.split(" ")[0]}</span>
                           </Link>
-                          <VerifiedBadge isVerified={comment.user?.isVerified} size="xs" testId="badge-verified" />
+                          <VerifiedBadge isVerified={comment.user?.isVerified} kycStatus={comment.user?.kycStatus} kybStatus={comment.user?.kybStatus} accountType={comment.user?.accountType} size="xs" testId="badge-verified" />
                           <Badge variant="default" className="text-[10px] gap-0.5 bg-green-600 text-white no-default-hover-elevate no-default-active-elevate">
                             <ArrowRightLeft className="h-2.5 w-2.5" />
                             {comment.offerItemName}
@@ -597,7 +597,7 @@ export function ListingDetailPage() {
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">{listing.user?.fullName}</span>
-                    <VerifiedBadge isVerified={listing.user?.isVerified} size="xs" testId="badge-verified" />
+                    <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
                   </div>
                   {listing.user?.businessName && (
                     <p className="text-sm text-muted-foreground">{listing.user.businessName}</p>

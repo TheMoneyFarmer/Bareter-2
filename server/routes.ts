@@ -144,6 +144,9 @@ export async function registerRoutes(
         email: data.email,
         password: hashedPassword,
         fullName: data.fullName,
+        country: data.country || "AE",
+        city: data.city || null,
+        location: data.city || null,
         signupType: req.body.signupType || "creator",
         socialProfiles: req.body.socialProfiles || [],
       });
@@ -550,14 +553,14 @@ export async function registerRoutes(
       if (country && country !== "all") {
         const code = country.toUpperCase();
         listings = listings.filter((l) => {
-          const lc = l.country || l.user?.country;
-          return !lc || lc.toUpperCase() === code; // Show items without a country too (legacy)
+          const lc = (l.country || l.user?.country || "").toUpperCase();
+          return lc === code;
         });
       }
       if (city && city !== "all") {
         listings = listings.filter((l) => {
-          const lc = l.city || l.location;
-          return !lc || lc === city;
+          const lc = l.city || l.location || "";
+          return lc === city;
         });
       }
 
@@ -2051,8 +2054,13 @@ export async function registerRoutes(
         : queryCityPosts || (queryCountryPosts ? undefined : sessionUserPosts?.city || undefined);
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
       const filtered = allPosts.filter((p) => {
-        if (country && p.country && p.country.toUpperCase() !== country) return false;
-        if (city && p.city && p.city !== city) return false;
+        if (country) {
+          const pc = (p.country || "").toUpperCase();
+          if (pc !== country) return false;
+        }
+        if (city) {
+          if ((p.city || "") !== city) return false;
+        }
         return true;
       });
       const postsData = filtered.slice(0, limit);

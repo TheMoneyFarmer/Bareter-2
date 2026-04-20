@@ -7,6 +7,8 @@ interface RegisterData {
   email: string;
   password: string;
   fullName: string;
+  country?: string;
+  city?: string;
   signupType?: string;
   socialProfiles?: SocialProfile[];
 }

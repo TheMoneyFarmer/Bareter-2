@@ -25,6 +25,9 @@ type ConversationEntry = {
     fullName: string;
     avatarUrl: string | null;
     isVerified: boolean;
+    kycStatus?: string | null;
+    kybStatus?: string | null;
+    accountType?: string | null;
   } | null;
 };
 
@@ -45,6 +48,9 @@ type ThreadData = {
     fullName: string;
     avatarUrl: string | null;
     isVerified: boolean;
+    kycStatus?: string | null;
+    kybStatus?: string | null;
+    accountType?: string | null;
   } | null;
 };
 
@@ -171,7 +177,7 @@ export function InboxPage() {
                       <span className={`text-sm truncate ${conv.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
                         {conv.otherUser?.fullName || "Unknown User"}
                       </span>
-                      <VerifiedBadge isVerified={conv.otherUser?.isVerified} size="xs" testId="badge-verified" />
+                      <VerifiedBadge isVerified={conv.otherUser?.isVerified} kycStatus={conv.otherUser?.kycStatus} kybStatus={conv.otherUser?.kybStatus} accountType={conv.otherUser?.accountType} size="xs" testId="badge-verified" />
                     </div>
                     <p className={`text-xs truncate ${conv.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                       {conv.fromUserId === user.id ? "You: " : ""}{conv.message}
@@ -213,7 +219,7 @@ export function InboxPage() {
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold text-sm">{thread?.otherUser?.fullName || "Loading..."}</span>
-                    <VerifiedBadge isVerified={thread?.otherUser?.isVerified} size="xs" testId="badge-verified" />
+                    <VerifiedBadge isVerified={thread?.otherUser?.isVerified} kycStatus={thread?.otherUser?.kycStatus} kybStatus={thread?.otherUser?.kybStatus} accountType={thread?.otherUser?.accountType} size="xs" testId="badge-verified" />
                   </div>
                 </div>
                 <div className="ml-auto">

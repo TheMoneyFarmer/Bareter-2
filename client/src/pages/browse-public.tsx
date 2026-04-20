@@ -37,6 +37,9 @@ interface StaticListing {
     businessName: string | null;
     isVerified: boolean;
     initials: string;
+    kycStatus?: string | null;
+    kybStatus?: string | null;
+    accountType?: string | null;
   };
 }
 
@@ -379,7 +382,7 @@ export function BrowsePublicPage() {
                         <span className="text-sm font-medium truncate">
                           {listing.user.fullName}
                         </span>
-                        <VerifiedBadge isVerified={listing.user.isVerified} size="xs" testId="badge-verified" />
+                        <VerifiedBadge isVerified={listing.user.isVerified} kycStatus={listing.user.kycStatus} kybStatus={listing.user.kybStatus} accountType={listing.user.accountType} size="xs" testId="badge-verified" />
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="h-3 w-3" />
