@@ -27,6 +27,7 @@ import {
   ArrowUpRight,
   ArrowDownRight
 } from "lucide-react";
+import { VerifiedBadge } from "@/components/verified-badge";
 import {
   AreaChart,
   Area,

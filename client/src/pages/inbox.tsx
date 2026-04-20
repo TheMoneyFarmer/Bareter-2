@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShieldCheck, Send, MessageSquare, ArrowLeft } from "lucide-react";
+import { VerifiedBadge } from "@/components/verified-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { formatDistanceToNow } from "date-fns";
@@ -170,9 +171,7 @@ export function InboxPage() {
                       <span className={`text-sm truncate ${conv.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
                         {conv.otherUser?.fullName || "Unknown User"}
                       </span>
-                      {conv.otherUser?.isVerified && (
-                        <ShieldCheck className="h-3 w-3 text-primary flex-shrink-0" />
-                      )}
+                      <VerifiedBadge isVerified={conv.otherUser?.isVerified} size="xs" testId="badge-verified" />
                     </div>
                     <p className={`text-xs truncate ${conv.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                       {conv.fromUserId === user.id ? "You: " : ""}{conv.message}
@@ -214,7 +213,7 @@ export function InboxPage() {
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold text-sm">{thread?.otherUser?.fullName || "Loading..."}</span>
-                    {thread?.otherUser?.isVerified && <ShieldCheck className="h-3 w-3 text-primary" />}
+                    <VerifiedBadge isVerified={thread?.otherUser?.isVerified} size="xs" testId="badge-verified" />
                   </div>
                 </div>
                 <div className="ml-auto">

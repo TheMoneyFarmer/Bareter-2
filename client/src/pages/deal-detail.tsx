@@ -41,6 +41,7 @@ import {
   CreditCard,
   Star,
 } from "lucide-react";
+import { VerifiedBadge } from "@/components/verified-badge";
 
 const stateConfig: Record<string, { label: string; color: string; step: number }> = {
   draft: { label: "Draft", color: "bg-gray-500", step: 0 },
@@ -439,9 +440,7 @@ export function DealDetailPage() {
                 <div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">{otherParty?.fullName}</span>
-                    {otherParty?.isVerified && (
-                      <Shield className="h-4 w-4 text-primary" />
-                    )}
+                    <VerifiedBadge isVerified={otherParty?.isVerified} size="xs" testId="badge-verified" />
                   </div>
                   {otherParty?.businessName && (
                     <p className="text-sm text-muted-foreground">{otherParty.businessName}</p>

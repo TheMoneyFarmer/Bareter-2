@@ -895,7 +895,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold truncate" data-testid="sidebar-username">{user.fullName}</span>
-                    {user.isVerified && <Shield className="h-3.5 w-3.5 text-primary flex-shrink-0" />}
+                    <VerifiedBadge isVerified={user.isVerified} size="xs" testId="badge-verified" />
                   </div>
                   <span className="text-xs text-muted-foreground">{user.businessName || user.email}</span>
                 </div>
@@ -965,7 +965,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1">
                         <span className="text-sm font-medium truncate">{p.user?.fullName}</span>
-                        {p.user?.isVerified && <Shield className="h-3 w-3 text-primary flex-shrink-0" />}
+                        <VerifiedBadge isVerified={p.user?.isVerified} size="xs" testId="badge-verified" />
                       </div>
                       <span className="text-xs text-muted-foreground truncate block">
                         {p.user?.businessName || p.location || "UAE"}

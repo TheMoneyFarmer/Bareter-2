@@ -72,19 +72,40 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (user) {
       setStep(user.onboardingStep || 1);
-      setFormData({
-        fullName: user.fullName || "",
-        businessName: user.businessName || "",
-        location: user.location || "",
-        country: user.country || "AE",
-        city: user.city || "",
-        bio: user.bio || "",
-        whatIOffer: (user.whatIOffer as OfferNeedItem[]) || [],
-        whatINeed: (user.whatINeed as OfferNeedItem[]) || [],
-        avatarUrl: user.avatarUrl || "",
-        portfolioImages: (user.portfolioImages as string[]) || [],
-      });
+      setFormData((prev) => ({
+        fullName: user.fullName || prev.fullName,
+        businessName: user.businessName || prev.businessName,
+        location: user.location || prev.location,
+        country: user.country || prev.country || "AE",
+        city: user.city || prev.city || "",
+        bio: user.bio || prev.bio,
+        whatIOffer: (user.whatIOffer as OfferNeedItem[]) || prev.whatIOffer,
+        whatINeed: (user.whatINeed as OfferNeedItem[]) || prev.whatINeed,
+        avatarUrl: user.avatarUrl || prev.avatarUrl,
+        portfolioImages: (user.portfolioImages as string[]) || prev.portfolioImages,
+      }));
     }
+  }, [user]);
+
+  // IP-based preselect when user has no saved country yet
+  useEffect(() => {
+    if (!user) return;
+    if (user.country) return;
+    let cancelled = false;
+    fetch("/api/geo/lookup", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((geo) => {
+        if (cancelled || !geo?.country) return;
+        setFormData((prev) => ({
+          ...prev,
+          country: prev.country && prev.country !== "AE" ? prev.country : geo.country,
+          city: prev.city || geo.city || "",
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   if (isLoading) {

@@ -7,6 +7,7 @@ import { Sparkles, ArrowRight, Star, UserCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useActiveLocation, locationParams } from "@/lib/active-location";
 
 interface MatchItem {
   listingId: string;
@@ -27,8 +28,16 @@ export default function AiMatchCards() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const activeLocation = useActiveLocation();
+  const matchParams = new URLSearchParams(locationParams(activeLocation));
+  const matchQs = matchParams.toString();
   const { data: matches, isLoading } = useQuery<MatchItem[]>({
-    queryKey: ["/api/ai/matches"],
+    queryKey: ["/api/ai/matches", { country: activeLocation.country, city: activeLocation.city, worldwide: activeLocation.worldwide }],
+    queryFn: async () => {
+      const res = await fetch(`/api/ai/matches${matchQs ? `?${matchQs}` : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch matches");
+      return res.json();
+    },
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
     retry: 1,

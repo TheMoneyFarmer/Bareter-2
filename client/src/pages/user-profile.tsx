@@ -25,6 +25,7 @@ import {
   Handshake,
   MessageCircle,
 } from "lucide-react";
+import { VerifiedBadge } from "@/components/verified-badge";
 import { SiInstagram, SiLinkedin, SiX } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
 import type { Listing, Rating, User } from "@shared/schema";

@@ -16,6 +16,7 @@ import {
   Sparkles,
   ArrowRight,
 } from "lucide-react";
+import { VerifiedBadge } from "@/components/verified-badge";
 import { Input } from "@/components/ui/input";
 
 interface StaticListing {

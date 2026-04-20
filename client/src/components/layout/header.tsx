@@ -188,7 +188,7 @@ export function Header() {
             <Button
               variant="outline"
               size="sm"
-              className="hidden sm:inline-flex gap-1.5 h-9 max-w-[180px]"
+              className="inline-flex gap-1.5 h-9 max-w-[160px] sm:max-w-[180px]"
               onClick={() => setLocationPickerOpen(true)}
               data-testid="button-header-location"
               title="Change location"
@@ -201,7 +201,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="hidden sm:inline-flex gap-1.5 h-9"
+              className="inline-flex gap-1.5 h-9 max-w-[160px]"
               onClick={() => setLocationPickerOpen(true)}
               data-testid="button-header-location-guest"
               title="Browse a country"
