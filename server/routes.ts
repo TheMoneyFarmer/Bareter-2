@@ -526,8 +526,17 @@ export async function registerRoutes(
       }
 
       const worldwide = req.query.worldwide === "true";
-      const country = worldwide ? undefined : (req.query.country as string | undefined);
-      const city = worldwide ? undefined : (req.query.city as string | undefined);
+      const sessionUser = req.session?.userId
+        ? await storage.getUser(req.session.userId)
+        : null;
+      const queryCountry = req.query.country as string | undefined;
+      const queryCity = req.query.city as string | undefined;
+      const country = worldwide
+        ? undefined
+        : queryCountry || sessionUser?.country || undefined;
+      const city = worldwide
+        ? undefined
+        : queryCity || (queryCountry ? undefined : sessionUser?.city || undefined);
       if (country && country !== "all") {
         const code = country.toUpperCase();
         listings = listings.filter((l) => {
@@ -2019,8 +2028,17 @@ export async function registerRoutes(
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
       const worldwide = req.query.worldwide === "true";
-      const country = worldwide ? undefined : (req.query.country as string | undefined)?.toUpperCase();
-      const city = worldwide ? undefined : (req.query.city as string | undefined);
+      const sessionUserPosts = req.session?.userId
+        ? await storage.getUser(req.session.userId)
+        : null;
+      const queryCountryPosts = (req.query.country as string | undefined)?.toUpperCase();
+      const queryCityPosts = req.query.city as string | undefined;
+      const country = worldwide
+        ? undefined
+        : queryCountryPosts || sessionUserPosts?.country?.toUpperCase() || undefined;
+      const city = worldwide
+        ? undefined
+        : queryCityPosts || (queryCountryPosts ? undefined : sessionUserPosts?.city || undefined);
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
       const filtered = allPosts.filter((p) => {
         if (country && p.country && p.country.toUpperCase() !== country) return false;

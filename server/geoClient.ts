@@ -21,25 +21,40 @@ function pickCity(country: string, city: string | null | undefined): string | nu
   return city;
 }
 
+function unwrapMappedIpv6(ip: string): string {
+  // ::ffff:1.2.3.4  or  ::ffff:0102:0304  → 1.2.3.4
+  if (ip.startsWith("::ffff:")) return ip.slice(7);
+  return ip;
+}
+
 export function getClientIp(req: any): string | null {
   const forwarded = req.headers?.["x-forwarded-for"];
+  let raw: string | null = null;
   if (typeof forwarded === "string" && forwarded.length > 0) {
-    return forwarded.split(",")[0].trim();
+    raw = forwarded.split(",")[0].trim();
+  } else {
+    const real = req.headers?.["x-real-ip"];
+    if (typeof real === "string") raw = real;
+    else raw = req.ip || req.socket?.remoteAddress || null;
   }
-  const real = req.headers?.["x-real-ip"];
-  if (typeof real === "string") return real;
-  return req.ip || req.socket?.remoteAddress || null;
+  return raw ? unwrapMappedIpv6(raw) : null;
 }
 
 function isPrivateIp(ip: string): boolean {
-  return (
-    ip === "::1" ||
-    ip === "127.0.0.1" ||
-    ip.startsWith("10.") ||
-    ip.startsWith("192.168.") ||
-    ip.startsWith("172.") ||
-    ip.startsWith("::ffff:")
-  );
+  if (ip === "::1" || ip === "127.0.0.1" || ip === "0.0.0.0") return true;
+  // IPv4 ranges
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  // 172.16.0.0 - 172.31.255.255
+  const m = /^172\.(\d+)\./.exec(ip);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 16 && n <= 31) return true;
+  }
+  // Link-local IPv4
+  if (ip.startsWith("169.254.")) return true;
+  // IPv6 private/link-local
+  if (ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80:")) return true;
+  return false;
 }
 
 async function fetchWithTimeout(url: string, ms: number): Promise<Response | null> {

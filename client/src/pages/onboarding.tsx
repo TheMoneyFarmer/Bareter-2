@@ -87,10 +87,12 @@ export default function OnboardingPage() {
     }
   }, [user]);
 
-  // IP-based preselect when user has no saved country yet
+  // IP-based preselect when user is new (default AE + no city/locationPrompted yet)
   useEffect(() => {
     if (!user) return;
-    if (user.country) return;
+    const userHasPickedLocation =
+      !!user.city || (user.country && user.country !== "AE") || user.locationPrompted;
+    if (userHasPickedLocation) return;
     let cancelled = false;
     fetch("/api/geo/lookup", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
