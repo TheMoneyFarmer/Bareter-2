@@ -409,7 +409,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <VerifiedBadge isVerified={f.follower.isVerified} kycStatus={(f.follower as any).kycStatus} kybStatus={(f.follower as any).kybStatus} size="sm" />
+                        <VerifiedBadge isVerified={f.follower.isVerified} kycStatus={f.follower.kycStatus} kybStatus={f.follower.kybStatus} accountType={f.follower.accountType} size="sm" />
                         <Button
                           variant="ghost"
                           size="sm"

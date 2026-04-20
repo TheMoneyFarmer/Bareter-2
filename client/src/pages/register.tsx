@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { registerSchema } from "@shared/schema";
+import { registerSchema, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import type { SocialProfile } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Handshake,
   Loader2,
@@ -124,9 +125,35 @@ export function RegisterPage() {
       password: "",
       confirmPassword: "",
       fullName: "",
+      country: "AE",
+      city: "",
       acceptTerms: false,
     },
   });
+
+  // IP-based country/city preselect when register form loads
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/geo/lookup", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((geo) => {
+        if (cancelled || !geo?.country) return;
+        if (!form.getValues("country") || form.getValues("country") === "AE") {
+          form.setValue("country", geo.country);
+        }
+        if (!form.getValues("city") && geo.city) {
+          form.setValue("city", geo.city);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedCountry = form.watch("country") || "AE";
+  const cityOptions = getCitiesForCountry(selectedCountry);
 
   const buildSocialProfiles = (): SocialProfile[] => {
     const profiles: SocialProfile[] = [];
@@ -183,6 +210,8 @@ export function RegisterPage() {
         email: formValues.email,
         password: formValues.password,
         fullName: formValues.fullName,
+        country: formValues.country,
+        city: formValues.city,
         signupType: signupType || undefined,
         socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
       });
@@ -425,6 +454,53 @@ export function RegisterPage() {
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Country</FormLabel>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("city", ""); }} value={field.value || "AE"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-country">
+                          <SelectValue placeholder="Country" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-72">
+                        {COUNTRIES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-city">
+                          <SelectValue placeholder="City" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-72">
+                        {cityOptions.map((city) => (
+                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}

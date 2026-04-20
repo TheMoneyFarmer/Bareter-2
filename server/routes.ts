@@ -291,8 +291,18 @@ export async function registerRoutes(
   // Geo lookup endpoint - returns detected country/city for the requesting client
   app.get("/api/geo/lookup", async (req, res) => {
     try {
+      // Per-session cache so we don't hit external geo providers on every load.
+      const sess = req.session as any;
+      const cached = sess?.geoLookup;
+      const TTL_MS = 60 * 60 * 1000; // 1 hour
+      if (cached && cached.expiresAt && cached.expiresAt > Date.now()) {
+        return res.json({ ...cached.value, cached: true });
+      }
       const { lookupGeo } = await import("./geoClient");
       const result = await lookupGeo(req);
+      if (sess) {
+        sess.geoLookup = { value: result, expiresAt: Date.now() + TTL_MS };
+      }
       res.json(result);
     } catch (error) {
       console.error("Geo lookup error:", error);
