@@ -525,8 +525,9 @@ export async function registerRoutes(
         listings = listings.filter((l) => l.location === location);
       }
 
-      const country = req.query.country as string | undefined;
-      const city = req.query.city as string | undefined;
+      const worldwide = req.query.worldwide === "true";
+      const country = worldwide ? undefined : (req.query.country as string | undefined);
+      const city = worldwide ? undefined : (req.query.city as string | undefined);
       if (country && country !== "all") {
         const code = country.toUpperCase();
         listings = listings.filter((l) => {
@@ -2017,8 +2018,9 @@ export async function registerRoutes(
       const category = req.query.category as string | undefined;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
-      const country = (req.query.country as string | undefined)?.toUpperCase();
-      const city = req.query.city as string | undefined;
+      const worldwide = req.query.worldwide === "true";
+      const country = worldwide ? undefined : (req.query.country as string | undefined)?.toUpperCase();
+      const city = worldwide ? undefined : (req.query.city as string | undefined);
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
       const filtered = allPosts.filter((p) => {
         if (country && p.country && p.country.toUpperCase() !== country) return false;
@@ -3236,7 +3238,8 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "User not found" });
       const allListings = await storage.getListings();
-      const userCountry = (user.country || "").toUpperCase();
+      const worldwide = req.query.worldwide === "true";
+      const userCountry = worldwide ? "" : (user.country || "").toUpperCase();
       const otherListings = allListings
         .filter((l) => l.userId !== user.id && l.isActive)
         .filter((l) => !userCountry || !l.country || (l.country || "").toUpperCase() === userCountry)

@@ -6,6 +6,7 @@ interface VerifiedBadgeProps {
   kycStatus?: string | null;
   kybStatus?: string | null;
   accountType?: string | null;
+  isVerified?: boolean | null;
   size?: "xs" | "sm" | "md" | "lg";
   className?: string;
   testId?: string;
@@ -29,11 +30,12 @@ export function VerifiedBadge({
   kycStatus,
   kybStatus,
   accountType,
+  isVerified,
   size = "sm",
   className,
   testId,
 }: VerifiedBadgeProps) {
-  if (!isUserVerified(kycStatus, kybStatus)) return null;
+  if (!isUserVerified(kycStatus, kybStatus) && !isVerified) return null;
 
   const isBusiness = kybStatus === "APPROVED" || accountType === "business";
   const label = isBusiness ? "Verified business" : "Verified identity";

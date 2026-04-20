@@ -15,6 +15,7 @@ import { CATEGORIES, LOCATIONS, ITEM_CONDITIONS, type ListingWithUser, type Post
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useActiveLocation, locationParams } from "@/lib/active-location";
 import {
   Search,
   Filter,
@@ -132,8 +133,16 @@ export function BrowsePage() {
     listingCommentMutation.mutate({ listingId, offerItemName: name, offerItemValue: value, content: proposalMessage[listingId]?.trim() || undefined });
   };
 
+  const activeLocation = useActiveLocation();
+  const listingsParams = new URLSearchParams(locationParams(activeLocation));
+  const listingsQs = listingsParams.toString();
   const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings"],
+    queryKey: ["/api/listings", { country: activeLocation.country, city: activeLocation.city, worldwide: activeLocation.worldwide }],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch listings");
+      return res.json();
+    },
   });
 
   const { data: trendingPosts } = useQuery<PostWithUser[]>({

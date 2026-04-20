@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { useActiveLocation, locationParams } from "@/lib/active-location";
 import {
   Heart,
   MessageCircle,
@@ -1056,11 +1057,19 @@ export function FeedPage() {
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
 
-  const userCountry = user?.country || "AE";
-  const params = new URLSearchParams({ limit: "20", offset: "0", country: userCountry });
+  const activeLocation = useActiveLocation();
+  const params = new URLSearchParams({ limit: "20", offset: "0" });
+  Object.entries(locationParams(activeLocation)).forEach(([k, v]) => params.set(k, v));
   if (activeCategory !== "All") params.set("category", activeCategory);
 
-  const postsQueryKey = ["/api/posts", { category: activeCategory, country: userCountry, limit: "20", offset: "0" }];
+  const postsQueryKey = ["/api/posts", {
+    category: activeCategory,
+    country: activeLocation.country,
+    city: activeLocation.city,
+    worldwide: activeLocation.worldwide,
+    limit: "20",
+    offset: "0",
+  }];
   const queryUrl = `/api/posts?${params.toString()}`;
 
   const { data: posts, isLoading } = useQuery<PostWithUser[]>({

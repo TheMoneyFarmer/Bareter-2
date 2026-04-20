@@ -7,13 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { COUNTRIES, getCitiesForCountry, getCountryByCode } from "@shared/schema";
 import { Globe, MapPin, Search } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface LocationPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialCountry?: string | null;
   initialCity?: string | null;
+  initialWorldwide?: boolean;
   onSave: (country: string, city: string) => void;
+  onWorldwideChange?: (worldwide: boolean) => void;
   title?: string;
   description?: string;
 }
@@ -23,21 +26,25 @@ export function LocationPicker({
   onOpenChange,
   initialCountry,
   initialCity,
+  initialWorldwide = false,
   onSave,
+  onWorldwideChange,
   title = "Choose your location",
   description = "Pick where you want to barter. You can change this any time.",
 }: LocationPickerProps) {
   const [country, setCountry] = useState<string>(initialCountry || "AE");
   const [city, setCity] = useState<string>(initialCity || "");
   const [search, setSearch] = useState("");
+  const [worldwide, setWorldwide] = useState<boolean>(initialWorldwide);
 
   useEffect(() => {
     if (open) {
       setCountry(initialCountry || "AE");
       setCity(initialCity || "");
       setSearch("");
+      setWorldwide(initialWorldwide);
     }
-  }, [open, initialCountry, initialCity]);
+  }, [open, initialCountry, initialCity, initialWorldwide]);
 
   const filteredCountries = useMemo(() => {
     if (!search) return COUNTRIES;
@@ -48,8 +55,11 @@ export function LocationPicker({
   const cities = getCitiesForCountry(country);
 
   const handleSave = () => {
-    const finalCity = city || cities[0] || "";
-    onSave(country, finalCity);
+    if (onWorldwideChange) onWorldwideChange(worldwide);
+    if (!worldwide) {
+      const finalCity = city || cities[0] || "";
+      onSave(country, finalCity);
+    }
     onOpenChange(false);
   };
 
@@ -64,7 +74,18 @@ export function LocationPicker({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div>
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Show worldwide</p>
+              <p className="text-xs text-muted-foreground">See barters from every country.</p>
+            </div>
+            <Switch
+              checked={worldwide}
+              onCheckedChange={setWorldwide}
+              data-testid="switch-worldwide"
+            />
+          </div>
+          <div className={worldwide ? "opacity-50 pointer-events-none" : ""}>
             <Label className="text-xs">Country</Label>
             <div className="relative mt-1">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />

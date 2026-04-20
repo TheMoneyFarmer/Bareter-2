@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LocationPicker } from "@/components/location-picker";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { useActiveLocation } from "@/lib/active-location";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,7 @@ export function Header() {
   const [location] = useLocation();
   const { toast } = useToast();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const activeLocation = useActiveLocation();
 
   const updateLocationMutation = useMutation({
     mutationFn: async ({ country, city }: { country: string; city: string }) => {
@@ -60,15 +62,18 @@ export function Header() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/matches"] });
     },
   });
 
-  const userCountry = user?.country || "AE";
-  const userCity = user?.city;
+  const userCountry = activeLocation.country || user?.country || "AE";
+  const userCity = activeLocation.city ?? user?.city ?? null;
   const countryEntry = getCountryByCode(userCountry);
-  const locationPillLabel = userCity
-    ? `${userCity}, ${userCountry}`
-    : countryEntry?.name || userCountry;
+  const locationPillLabel = activeLocation.worldwide
+    ? "Worldwide"
+    : userCity
+      ? `${userCity}, ${userCountry}`
+      : countryEntry?.name || userCountry;
 
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -482,14 +487,20 @@ export function Header() {
         onOpenChange={setLocationPickerOpen}
         initialCountry={userCountry}
         initialCity={userCity}
+        initialWorldwide={activeLocation.worldwide}
+        onWorldwideChange={(ww) => {
+          activeLocation.setWorldwide(ww);
+          queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/ai/matches"] });
+        }}
         onSave={(country, city) => {
+          activeLocation.setLocation(country, city);
           if (user) {
             updateLocationMutation.mutate({ country, city });
           } else {
-            try {
-              localStorage.setItem("guest_location", JSON.stringify({ country, city }));
-              window.location.reload();
-            } catch {}
+            queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
           }
         }}
       />
