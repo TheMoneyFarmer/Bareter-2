@@ -422,8 +422,16 @@ export async function registerRoutes(
         }
       }
 
+      // Keep legacy `location` field in sync with city when caller updates city
+      // but doesn't explicitly provide a `location` value.
+      const syncedLocation =
+        data.location === undefined && data.city !== undefined
+          ? data.city || null
+          : data.location;
+
       const updatedUser = await storage.updateUser(req.session.userId!, {
         ...data,
+        ...(syncedLocation !== undefined ? { location: syncedLocation } : {}),
         profileCompleted,
       });
       if (!updatedUser) {
@@ -2053,13 +2061,15 @@ export async function registerRoutes(
         ? undefined
         : queryCityPosts || (queryCountryPosts ? undefined : sessionUserPosts?.city || undefined);
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
+      // Legacy-tolerant filter: posts without country/city are kept (legacy/seed
+      // data may have only `location` set). Strict country/city match is applied
+      // when those fields exist.
       const filtered = allPosts.filter((p) => {
-        if (country) {
-          const pc = (p.country || "").toUpperCase();
-          if (pc !== country) return false;
+        if (country && p.country) {
+          if (p.country.toUpperCase() !== country) return false;
         }
-        if (city) {
-          if ((p.city || "") !== city) return false;
+        if (city && p.city) {
+          if (p.city !== city) return false;
         }
         return true;
       });
@@ -3104,7 +3114,7 @@ export async function registerRoutes(
       const enriched = await Promise.all(
         Object.values(conversations).map(async (conv) => {
           const otherUser = await storage.getUser(conv.otherUserId);
-          return { ...conv, otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified } : null };
+          return { ...conv, otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified, kycStatus: otherUser.kycStatus, kybStatus: otherUser.kybStatus, accountType: otherUser.accountType } : null };
         })
       );
 
@@ -3135,7 +3145,7 @@ export async function registerRoutes(
       const otherUser = await storage.getUser(otherId);
       res.json({ 
         messages: thread, 
-        otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified } : null
+        otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified, kycStatus: otherUser.kycStatus, kybStatus: otherUser.kybStatus, accountType: otherUser.accountType } : null
       });
     } catch (error) {
       console.error("Get thread error:", error);

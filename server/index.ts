@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase } from "./seed";
+import { seedDatabase, backfillLocationFields } from "./seed";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 const app = express();
@@ -67,6 +67,14 @@ app.use((req, res, next) => {
     await seedDatabase();
   } catch (error) {
     console.error("Failed to seed database:", error);
+  }
+
+  // Backfill country/city/location for legacy rows so location filters and
+  // worldwide-toggle behavior work correctly across pre-expansion data.
+  try {
+    await backfillLocationFields();
+  } catch (error) {
+    console.error("Failed to backfill location fields:", error);
   }
 
   // Register object storage routes

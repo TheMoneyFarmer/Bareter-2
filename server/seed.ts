@@ -1,7 +1,35 @@
 import { db } from "./db";
 import { users, listings, deals, ratings, posts } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, isNull, and } from "drizzle-orm";
+
+// One-time backfill: ensure existing rows have country/city populated so the
+// strict location filters and worldwide-toggle behavior treat them correctly.
+// - Default country is "AE" (legacy data was UAE-only).
+// - city is derived from the legacy `location` field when present.
+// - listings/posts inherit city from location, country from owning user.
+export async function backfillLocationFields() {
+  try {
+    await db.execute(sql`UPDATE users SET country = 'AE' WHERE country IS NULL`);
+    await db.execute(sql`UPDATE users SET city = location WHERE city IS NULL AND location IS NOT NULL`);
+    await db.execute(sql`UPDATE listings SET city = location WHERE city IS NULL AND location IS NOT NULL`);
+    await db.execute(sql`
+      UPDATE listings AS l
+      SET country = COALESCE(u.country, 'AE')
+      FROM users AS u
+      WHERE l.user_id = u.id AND l.country IS NULL
+    `);
+    await db.execute(sql`UPDATE posts SET city = location WHERE city IS NULL AND location IS NOT NULL`);
+    await db.execute(sql`
+      UPDATE posts AS p
+      SET country = COALESCE(u.country, 'AE')
+      FROM users AS u
+      WHERE p.user_id = u.id AND p.country IS NULL
+    `);
+  } catch (err) {
+    console.error("Location backfill error:", err);
+  }
+}
 
 export async function seedDatabase() {
   console.log("Checking if seed data exists...");
