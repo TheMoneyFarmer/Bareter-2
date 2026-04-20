@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CATEGORIES, LOCATIONS } from "@shared/schema";
+import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   Settings,
   Bell,
@@ -46,6 +46,8 @@ const accountSettingsSchema = z.object({
   website: z.string().url().optional().or(z.literal("")),
   businessName: z.string().optional(),
   location: z.string().optional(),
+  country: z.string().length(2).optional(),
+  city: z.string().optional(),
   timezone: z.string(),
   currency: z.string(),
   language: z.string(),
@@ -146,6 +148,8 @@ export function SettingsPage() {
       website: user?.website || "",
       businessName: user?.businessName || "",
       location: user?.location || "",
+      country: user?.country || "AE",
+      city: user?.city || "",
       timezone: user?.timezone || "Asia/Dubai",
       currency: user?.currency || "AED",
       language: user?.language || "en",
@@ -384,25 +388,61 @@ export function SettingsPage() {
                     />
                     <FormField
                       control={accountForm.control}
-                      name="location"
+                      name="country"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Location</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <FormLabel>Country</FormLabel>
+                          <Select
+                            onValueChange={(v) => {
+                              field.onChange(v);
+                              accountForm.setValue("city", "");
+                              accountForm.setValue("location", "");
+                            }}
+                            value={field.value || "AE"}
+                          >
                             <FormControl>
-                              <SelectTrigger data-testid="select-location">
-                                <SelectValue placeholder="Select your location" />
+                              <SelectTrigger data-testid="select-country">
+                                <SelectValue placeholder="Select country" />
                               </SelectTrigger>
                             </FormControl>
-                            <SelectContent>
-                              {LOCATIONS.map(loc => (
-                                <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                            <SelectContent className="max-h-72">
+                              {COUNTRIES.map((c) => (
+                                <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
                         </FormItem>
                       )}
+                    />
+                    <FormField
+                      control={accountForm.control}
+                      name="city"
+                      render={({ field }) => {
+                        const countryCode = accountForm.watch("country") || "AE";
+                        const cities = getCitiesForCountry(countryCode);
+                        return (
+                          <FormItem>
+                            <FormLabel>City</FormLabel>
+                            <Select
+                              onValueChange={(v) => { field.onChange(v); accountForm.setValue("location", v); }}
+                              value={field.value || ""}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-city">
+                                  <SelectValue placeholder="Select city" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {cities.map((c) => (
+                                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                   </div>
 

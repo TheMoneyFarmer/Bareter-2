@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { CATEGORIES, LOCATIONS, ExchangeItem } from "@shared/schema";
+import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry, ExchangeItem } from "@shared/schema";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import {
   Package,
@@ -50,6 +50,8 @@ const createListingSchema = z.object({
     message: "Enter a valid value greater than 0",
   }),
   location: z.string().min(1, "Select a location"),
+  country: z.string().length(2).optional(),
+  city: z.string().optional(),
   tags: z.array(z.string()).optional(),
   images: z.array(z.string()).min(3, "Please upload at least 3 images"),
   wantedCategories: z.array(z.string()).optional(),
@@ -80,6 +82,8 @@ export function CreateListingPage() {
       categories: [],
       retailValue: "",
       location: user?.location || "",
+      country: user?.country || "AE",
+      city: user?.city || "",
       tags: [],
       images: [],
       wantedCategories: [],
@@ -734,31 +738,66 @@ export function CreateListingPage() {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="location"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Location</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-location">
-                          <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <SelectValue placeholder="Select location" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {LOCATIONS.map((location) => (
-                          <SelectItem key={location} value={location}>
-                            {location}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="country"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Country</FormLabel>
+                      <Select
+                        onValueChange={(v) => {
+                          field.onChange(v);
+                          form.setValue("city", "");
+                          form.setValue("location", "");
+                        }}
+                        value={field.value || "AE"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-country">
+                            <SelectValue placeholder="Country" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="max-h-72">
+                          {COUNTRIES.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="location"
+                  render={({ field }) => {
+                    const countryCode = form.watch("country") || "AE";
+                    const cities = getCitiesForCountry(countryCode);
+                    return (
+                      <FormItem>
+                        <FormLabel>City</FormLabel>
+                        <Select
+                          onValueChange={(v) => { field.onChange(v); form.setValue("city", v); }}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-location">
+                              <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                              <SelectValue placeholder="Select city" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {cities.map((city) => (
+                              <SelectItem key={city} value={city}>{city}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
 

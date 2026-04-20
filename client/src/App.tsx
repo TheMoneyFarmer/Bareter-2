@@ -39,6 +39,7 @@ import { ResetPasswordPage } from "@/pages/reset-password";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import AiSupportChat from "@/components/ai-support-chat";
+import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -97,6 +98,7 @@ function App() {
               <Toaster />
               <WhatsAppButton />
               <AiSupportChat />
+              <LocationMismatchBanner />
             </TooltipProvider>
           </AuthProvider>
         </I18nProvider>

@@ -1,4 +1,14 @@
-# BarterGram - UAE Barter Marketplace
+# BarterGram - Worldwide Barter Marketplace
+
+## Worldwide Location Expansion
+- `shared/schema.ts` exposes `COUNTRIES` (~38 countries with cities), helpers `getCountryByCode`, `getCitiesForCountry`.
+- Users have `country`, `city`, `locationPrompted`; listings & posts have `country`, `city`. Legacy `location` column kept.
+- `server/geoClient.ts` does IP geolocation via ip-api.com + ipapi.co fallback (Cloudflare/Vercel header hints, default AE).
+- Routes: `GET /api/geo/lookup`, `POST /api/users/me/location-prompted`.
+- `/api/listings` and `/api/posts` accept `country`/`city` query params; `/api/ai/matches` filters listings by user country.
+- UI: `LocationPicker` dialog (header pill), `LocationMismatchBanner` (auto popup if IP country ≠ profile country), country/city selects in onboarding, settings, create-listing.
+- `VerifiedBadge` — blue badge for verified KYC (individual) or KYB-approved (business), used in header avatar.
+
 
 ## Overview
 

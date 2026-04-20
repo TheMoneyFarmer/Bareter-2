@@ -288,6 +288,29 @@ export async function registerRoutes(
     });
   });
 
+  // Geo lookup endpoint - returns detected country/city for the requesting client
+  app.get("/api/geo/lookup", async (req, res) => {
+    try {
+      const { lookupGeo } = await import("./geoClient");
+      const result = await lookupGeo(req);
+      res.json(result);
+    } catch (error) {
+      console.error("Geo lookup error:", error);
+      res.json({ country: "AE", countryName: "United Arab Emirates", city: "Dubai", source: "fallback" });
+    }
+  });
+
+  // Mark the location-prompt as shown so the user does not see the popup again
+  app.post("/api/users/me/location-prompted", requireAuth, async (req, res) => {
+    try {
+      await storage.updateUser(req.session.userId!, { locationPrompted: true });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Mark location prompted error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -358,6 +381,9 @@ export async function registerRoutes(
     fullName: z.string().min(2).optional(),
     bio: z.string().optional(),
     location: z.string().optional(),
+    country: z.string().length(2).optional(),
+    city: z.string().optional(),
+    locationPrompted: z.boolean().optional(),
     businessName: z.string().optional(),
     avatarUrl: z.string().optional(),
     whatIOffer: z.array(offerNeedItemSchema).optional(),
@@ -406,6 +432,7 @@ export async function registerRoutes(
     try {
       const allowedFields = [
         "fullName", "email", "phone", "website", "businessName", "location",
+        "country", "city", "locationPrompted",
         "timezone", "currency", "language",
         "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
         "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
@@ -498,8 +525,28 @@ export async function registerRoutes(
         listings = listings.filter((l) => l.location === location);
       }
 
+      const country = req.query.country as string | undefined;
+      const city = req.query.city as string | undefined;
+      if (country && country !== "all") {
+        const code = country.toUpperCase();
+        listings = listings.filter((l) => {
+          const lc = (l as any).country || (l.user as any)?.country;
+          return !lc || lc === code; // Show items without a country too (legacy)
+        });
+      }
+      if (city && city !== "all") {
+        listings = listings.filter((l) => {
+          const lc = (l as any).city || (l as any).location;
+          return !lc || lc === city;
+        });
+      }
+
       if (verified === "true") {
-        listings = listings.filter((l) => l.user?.isVerified);
+        listings = listings.filter((l) =>
+          l.user?.isVerified ||
+          (l.user as any)?.kycStatus === "APPROVED" ||
+          (l.user as any)?.kybStatus === "APPROVED"
+        );
       }
 
       if (minValue && typeof minValue === "string") {
@@ -1967,7 +2014,15 @@ export async function registerRoutes(
       const category = req.query.category as string | undefined;
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
-      const postsData = await storage.getPosts({ category, limit, offset });
+      const country = (req.query.country as string | undefined)?.toUpperCase();
+      const city = req.query.city as string | undefined;
+      const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
+      const filtered = allPosts.filter((p: any) => {
+        if (country && p.country && p.country.toUpperCase() !== country) return false;
+        if (city && p.city && p.city !== city) return false;
+        return true;
+      });
+      const postsData = filtered.slice(0, limit);
 
       // Enrich posts with comment counts and user-specific state
       const enrichedPosts = await Promise.all(
@@ -3174,8 +3229,10 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "User not found" });
       const allListings = await storage.getListings();
+      const userCountry = (user.country || "").toUpperCase();
       const otherListings = allListings
         .filter((l) => l.userId !== user.id && l.isActive)
+        .filter((l) => !userCountry || !l.country || (l.country || "").toUpperCase() === userCountry)
         .map((l) => ({
           id: l.id,
           title: l.title,
@@ -3183,6 +3240,8 @@ export async function registerRoutes(
           categories: l.categories,
           retailValue: l.retailValue,
           location: l.location,
+          country: l.country,
+          city: l.city,
           type: l.type,
           wantedCategories: l.wantedCategories,
         }));

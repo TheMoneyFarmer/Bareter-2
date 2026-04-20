@@ -113,7 +113,7 @@ export type LuxuryGoodsDetails = {
 
 export type PostCategoryDetails = RealEstateDetails & VehicleDetails & LuxuryGoodsDetails;
 
-// Locations (UAE/GCC focus)
+// Locations (legacy UAE/GCC list - kept for backward compatibility)
 export const LOCATIONS = [
   "Dubai",
   "Abu Dhabi",
@@ -129,6 +129,67 @@ export const LOCATIONS = [
   "Manama",
   "Muscat",
 ] as const;
+
+// Worldwide countries with major cities (Marketplace-style global coverage)
+export type CountryEntry = {
+  code: string; // ISO-2 code
+  name: string;
+  flag: string; // emoji is NOT allowed in UI; we keep code only — UI uses lucide icons
+  cities: string[];
+};
+
+export const COUNTRIES: CountryEntry[] = [
+  { code: "AE", name: "United Arab Emirates", flag: "AE", cities: ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain", "Al Ain"] },
+  { code: "SA", name: "Saudi Arabia", flag: "SA", cities: ["Riyadh", "Jeddah", "Mecca", "Medina", "Dammam", "Khobar"] },
+  { code: "QA", name: "Qatar", flag: "QA", cities: ["Doha", "Al Rayyan", "Al Wakrah"] },
+  { code: "KW", name: "Kuwait", flag: "KW", cities: ["Kuwait City", "Hawalli", "Salmiya"] },
+  { code: "BH", name: "Bahrain", flag: "BH", cities: ["Manama", "Muharraq", "Riffa"] },
+  { code: "OM", name: "Oman", flag: "OM", cities: ["Muscat", "Salalah", "Sohar"] },
+  { code: "EG", name: "Egypt", flag: "EG", cities: ["Cairo", "Alexandria", "Giza"] },
+  { code: "JO", name: "Jordan", flag: "JO", cities: ["Amman", "Zarqa", "Irbid"] },
+  { code: "LB", name: "Lebanon", flag: "LB", cities: ["Beirut", "Tripoli", "Sidon"] },
+  { code: "TR", name: "Turkey", flag: "TR", cities: ["Istanbul", "Ankara", "Izmir", "Antalya"] },
+  { code: "GB", name: "United Kingdom", flag: "GB", cities: ["London", "Manchester", "Birmingham", "Edinburgh", "Glasgow"] },
+  { code: "US", name: "United States", flag: "US", cities: ["New York", "Los Angeles", "Chicago", "Houston", "Miami", "San Francisco", "Seattle", "Boston", "Austin", "Dallas"] },
+  { code: "CA", name: "Canada", flag: "CA", cities: ["Toronto", "Vancouver", "Montreal", "Calgary", "Ottawa"] },
+  { code: "AU", name: "Australia", flag: "AU", cities: ["Sydney", "Melbourne", "Brisbane", "Perth"] },
+  { code: "DE", name: "Germany", flag: "DE", cities: ["Berlin", "Munich", "Hamburg", "Frankfurt", "Cologne"] },
+  { code: "FR", name: "France", flag: "FR", cities: ["Paris", "Lyon", "Marseille", "Nice"] },
+  { code: "ES", name: "Spain", flag: "ES", cities: ["Madrid", "Barcelona", "Valencia", "Seville"] },
+  { code: "IT", name: "Italy", flag: "IT", cities: ["Rome", "Milan", "Naples", "Florence"] },
+  { code: "NL", name: "Netherlands", flag: "NL", cities: ["Amsterdam", "Rotterdam", "The Hague"] },
+  { code: "CH", name: "Switzerland", flag: "CH", cities: ["Zurich", "Geneva", "Basel", "Bern"] },
+  { code: "SE", name: "Sweden", flag: "SE", cities: ["Stockholm", "Gothenburg", "Malmo"] },
+  { code: "IN", name: "India", flag: "IN", cities: ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"] },
+  { code: "PK", name: "Pakistan", flag: "PK", cities: ["Karachi", "Lahore", "Islamabad"] },
+  { code: "SG", name: "Singapore", flag: "SG", cities: ["Singapore"] },
+  { code: "MY", name: "Malaysia", flag: "MY", cities: ["Kuala Lumpur", "Penang", "Johor Bahru"] },
+  { code: "ID", name: "Indonesia", flag: "ID", cities: ["Jakarta", "Surabaya", "Bandung", "Bali"] },
+  { code: "TH", name: "Thailand", flag: "TH", cities: ["Bangkok", "Chiang Mai", "Phuket"] },
+  { code: "PH", name: "Philippines", flag: "PH", cities: ["Manila", "Cebu", "Davao"] },
+  { code: "VN", name: "Vietnam", flag: "VN", cities: ["Ho Chi Minh City", "Hanoi", "Da Nang"] },
+  { code: "JP", name: "Japan", flag: "JP", cities: ["Tokyo", "Osaka", "Kyoto", "Yokohama"] },
+  { code: "KR", name: "South Korea", flag: "KR", cities: ["Seoul", "Busan", "Incheon"] },
+  { code: "CN", name: "China", flag: "CN", cities: ["Beijing", "Shanghai", "Guangzhou", "Shenzhen", "Hong Kong"] },
+  { code: "ZA", name: "South Africa", flag: "ZA", cities: ["Johannesburg", "Cape Town", "Durban"] },
+  { code: "NG", name: "Nigeria", flag: "NG", cities: ["Lagos", "Abuja", "Kano"] },
+  { code: "KE", name: "Kenya", flag: "KE", cities: ["Nairobi", "Mombasa"] },
+  { code: "MA", name: "Morocco", flag: "MA", cities: ["Casablanca", "Rabat", "Marrakech"] },
+  { code: "BR", name: "Brazil", flag: "BR", cities: ["Sao Paulo", "Rio de Janeiro", "Brasilia"] },
+  { code: "MX", name: "Mexico", flag: "MX", cities: ["Mexico City", "Guadalajara", "Monterrey"] },
+  { code: "AR", name: "Argentina", flag: "AR", cities: ["Buenos Aires", "Cordoba", "Rosario"] },
+];
+
+export function getCountryByCode(code: string | null | undefined): CountryEntry | undefined {
+  if (!code) return undefined;
+  return COUNTRIES.find((c) => c.code === code.toUpperCase());
+}
+
+export function getCitiesForCountry(code: string | null | undefined): string[] {
+  return getCountryByCode(code)?.cities || [];
+}
+
+export const DEFAULT_COUNTRY_CODE = "AE";
 
 // Deal states
 export const DEAL_STATES = [
@@ -173,6 +234,9 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   bio: text("bio"),
   location: text("location"),
+  country: text("country").default("AE"), // ISO-2 country code
+  city: text("city"),
+  locationPrompted: boolean("location_prompted").default(false),
   avatarUrl: text("avatar_url"),
   isVerified: boolean("is_verified").default(false),
   isAdmin: boolean("is_admin").default(false),
@@ -297,6 +361,8 @@ export const listings = pgTable("listings", {
   retailValue: decimal("retail_value", { precision: 12, scale: 2 }).notNull(),
   images: jsonb("images").$type<string[]>().default([]),
   location: text("location"),
+  country: text("country"),
+  city: text("city"),
   tags: jsonb("tags").$type<string[]>().default([]),
   isActive: boolean("is_active").default(true),
   viewCount: integer("view_count").default(0),
@@ -425,6 +491,8 @@ export const posts = pgTable("posts", {
   categoryDetails: jsonb("category_details").$type<PostCategoryDetails>(),
   marketValuation: text("market_valuation"),
   location: text("location"),
+  country: text("country"),
+  city: text("city"),
   condition: text("condition"),
   videoUrl: text("video_url"),
   taggedUserIds: jsonb("tagged_user_ids").$type<string[]>().default([]),

@@ -30,20 +30,23 @@ Respond with JSON array of matches:
 Return up to 5 best matches, sorted by score descending. Only include matches with score > 0.3.`;
 
 export async function findMatches(
-  user: Pick<User, "id" | "whatIOffer" | "whatINeed" | "location" | "preferredCategories">,
-  listings: Pick<Listing, "id" | "title" | "description" | "categories" | "retailValue" | "location" | "type" | "wantedCategories">[]
+  user: Pick<User, "id" | "whatIOffer" | "whatINeed" | "location" | "country" | "city" | "preferredCategories">,
+  listings: Pick<Listing, "id" | "title" | "description" | "categories" | "retailValue" | "location" | "country" | "city" | "type" | "wantedCategories">[]
 ): Promise<MatchResult[]> {
   if (listings.length === 0) return [];
+
+  const userLocationLabel = [user.city, user.country, user.location].filter(Boolean).join(", ") || "Not specified";
 
   const userProfile = `User profile:
 - Offers: ${(user.whatIOffer as OfferNeedItem[] || []).map((i) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
 - Needs: ${(user.whatINeed as OfferNeedItem[] || []).map((i) => `${i.name} (AED ${i.value})`).join(", ") || "Not specified"}
-- Location: ${user.location || "Not specified"}
+- Location: ${userLocationLabel}
 - Preferred categories: ${(user.preferredCategories || []).join(", ") || "Any"}`;
 
-  const listingSummaries = listings.slice(0, 20).map((l) =>
-    `ID:${l.id} | ${l.title} | ${l.type} | AED ${l.retailValue} | ${(l.categories || []).join(",")} | ${l.location || "N/A"} | Wants: ${(l.wantedCategories || []).join(",") || "open"}`
-  ).join("\n");
+  const listingSummaries = listings.slice(0, 20).map((l) => {
+    const loc = [l.city, l.country, l.location].filter(Boolean).join(", ") || "N/A";
+    return `ID:${l.id} | ${l.title} | ${l.type} | AED ${l.retailValue} | ${(l.categories || []).join(",")} | ${loc} | Wants: ${(l.wantedCategories || []).join(",") || "open"}`;
+  }).join("\n");
 
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },

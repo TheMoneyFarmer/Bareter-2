@@ -1,6 +1,13 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LocationPicker } from "@/components/location-picker";
+import { VerifiedBadge } from "@/components/verified-badge";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { getCountryByCode } from "@shared/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +38,8 @@ import {
   Rss,
   PenSquare,
   MessageSquare,
+  Globe,
+  MapPin,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 
@@ -39,6 +48,27 @@ export function Header() {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useI18n();
   const [location] = useLocation();
+  const { toast } = useToast();
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+
+  const updateLocationMutation = useMutation({
+    mutationFn: async ({ country, city }: { country: string; city: string }) => {
+      await apiRequest("PATCH", "/api/users/profile", { country, city, locationPrompted: true });
+    },
+    onSuccess: () => {
+      toast({ title: "Location updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+    },
+  });
+
+  const userCountry = user?.country || "AE";
+  const userCity = user?.city;
+  const countryEntry = getCountryByCode(userCountry);
+  const locationPillLabel = userCity
+    ? `${userCity}, ${userCountry}`
+    : countryEntry?.name || userCountry;
 
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -149,6 +179,33 @@ export function Header() {
             </Button>
           </div>
 
+          {user && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden sm:inline-flex gap-1.5 h-9 max-w-[180px]"
+              onClick={() => setLocationPickerOpen(true)}
+              data-testid="button-header-location"
+              title="Change location"
+            >
+              <MapPin className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs font-medium">{locationPillLabel}</span>
+            </Button>
+          )}
+          {!user && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden sm:inline-flex gap-1.5 h-9"
+              onClick={() => setLocationPickerOpen(true)}
+              data-testid="button-header-location-guest"
+              title="Browse a country"
+            >
+              <Globe className="h-4 w-4" />
+              <span className="text-xs">{locationPillLabel}</span>
+            </Button>
+          )}
+
           {user ? (
             <>
               <Link href="/inbox">
@@ -232,11 +289,15 @@ export function Header() {
                         {user.fullName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    {user.isVerified && (
-                      <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
-                        <Shield className="h-2.5 w-2.5 text-primary-foreground" />
-                      </div>
-                    )}
+                    <span className="absolute -bottom-0.5 -right-0.5">
+                      <VerifiedBadge
+                        kycStatus={user.kycStatus}
+                        kybStatus={user.kybStatus}
+                        accountType={user.accountType}
+                        size="md"
+                        testId="header-user-verified"
+                      />
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -415,6 +476,23 @@ export function Header() {
           )}
         </div>
       </div>
+
+      <LocationPicker
+        open={locationPickerOpen}
+        onOpenChange={setLocationPickerOpen}
+        initialCountry={userCountry}
+        initialCity={userCity}
+        onSave={(country, city) => {
+          if (user) {
+            updateLocationMutation.mutate({ country, city });
+          } else {
+            try {
+              localStorage.setItem("guest_location", JSON.stringify({ country, city }));
+              window.location.reload();
+            } catch {}
+          }
+        }}
+      />
     </header>
   );
 }

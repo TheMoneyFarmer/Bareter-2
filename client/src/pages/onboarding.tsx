@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { LOCATIONS } from "@shared/schema";
+import { LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import { Check, ChevronLeft, ChevronRight, MapPin, Briefcase, Package, Camera, Plus, Trash2 } from "lucide-react";
 import type { OfferNeedItem } from "@shared/schema";
 
@@ -34,6 +34,8 @@ export default function OnboardingPage() {
     fullName: "",
     businessName: "",
     location: "",
+    country: "AE",
+    city: "",
     bio: "",
     whatIOffer: [] as OfferNeedItem[],
     whatINeed: [] as OfferNeedItem[],
@@ -74,6 +76,8 @@ export default function OnboardingPage() {
         fullName: user.fullName || "",
         businessName: user.businessName || "",
         location: user.location || "",
+        country: user.country || "AE",
+        city: user.city || "",
         bio: user.bio || "",
         whatIOffer: (user.whatIOffer as OfferNeedItem[]) || [],
         whatINeed: (user.whatINeed as OfferNeedItem[]) || [],
@@ -202,26 +206,46 @@ export default function OnboardingPage() {
                     data-testid="input-businessname"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location">{t("listing.location")}</Label>
-                  <Select
-                    value={formData.location}
-                    onValueChange={(value) => setFormData({ ...formData, location: value })}
-                  >
-                    <SelectTrigger data-testid="select-location">
-                      <SelectValue placeholder="Select location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LOCATIONS.map((loc) => (
-                        <SelectItem key={loc} value={loc}>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4" />
-                            {loc}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Select
+                      value={formData.country}
+                      onValueChange={(value) => setFormData({ ...formData, country: value, city: "", location: "" })}
+                    >
+                      <SelectTrigger data-testid="select-country">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {COUNTRIES.map((c) => (
+                          <SelectItem key={c.code} value={c.code} data-testid={`option-onb-country-${c.code}`}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Select
+                      value={formData.city || formData.location}
+                      onValueChange={(value) => setFormData({ ...formData, city: value, location: value })}
+                    >
+                      <SelectTrigger data-testid="select-city">
+                        <SelectValue placeholder="Select city" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getCitiesForCountry(formData.country).map((city) => (
+                          <SelectItem key={city} value={city}>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-4 h-4" />
+                              {city}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bio">Bio</Label>
