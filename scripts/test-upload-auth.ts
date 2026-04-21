@@ -1,8 +1,49 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { setTimeout as wait } from "node:timers/promises";
+import { createServer } from "node:net";
 
-const TEST_PORT = Number(process.env.TEST_PORT ?? 5151);
+const EXPLICIT_PORT = process.env.TEST_PORT ? Number(process.env.TEST_PORT) : null;
 const READY_TIMEOUT_MS = 60_000;
+let TEST_PORT = EXPLICIT_PORT ?? 5151;
+
+async function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once("error", () => resolve(false));
+    srv.once("listening", () => srv.close(() => resolve(true)));
+    srv.listen(port, "0.0.0.0");
+  });
+}
+
+async function pickFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once("error", reject);
+    srv.listen(0, "0.0.0.0", () => {
+      const addr = srv.address();
+      if (addr && typeof addr === "object") {
+        const port = addr.port;
+        srv.close(() => resolve(port));
+      } else {
+        srv.close(() => reject(new Error("could not determine port")));
+      }
+    });
+  });
+}
+
+async function resolveTestPort(): Promise<number> {
+  if (EXPLICIT_PORT !== null) {
+    const free = await isPortFree(EXPLICIT_PORT);
+    if (!free) {
+      console.error(
+        `[FAIL] TEST_PORT=${EXPLICIT_PORT} is already in use. Free it (e.g. \`fuser -k ${EXPLICIT_PORT}/tcp\`) or unset TEST_PORT to auto-pick a free port.`,
+      );
+      process.exit(1);
+    }
+    return EXPLICIT_PORT;
+  }
+  return pickFreePort();
+}
 const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL ?? "admin@bareter.com";
 const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD ?? "password123";
 
@@ -20,6 +61,7 @@ function record(name: string, ok: boolean, detail?: string) {
 async function waitForReady(child: ChildProcessWithoutNullStreams): Promise<boolean> {
   const startedAt = Date.now();
   let ready = false;
+  let fatal = false;
 
   const onData = (chunk: Buffer) => {
     const text = chunk.toString();
@@ -28,9 +70,15 @@ async function waitForReady(child: ChildProcessWithoutNullStreams): Promise<bool
   };
 
   child.stdout.on("data", onData);
-  child.stderr.on("data", (chunk) => process.stderr.write(`[server-err] ${chunk}`));
+  child.stderr.on("data", (chunk) => {
+    const text = chunk.toString();
+    process.stderr.write(`[server-err] ${text}`);
+    // Fail fast on port conflict instead of waiting the full READY_TIMEOUT_MS
+    if (text.includes("EADDRINUSE")) fatal = true;
+  });
+  child.once("exit", () => { fatal = true; });
 
-  while (!ready && Date.now() - startedAt < READY_TIMEOUT_MS) {
+  while (!ready && !fatal && Date.now() - startedAt < READY_TIMEOUT_MS) {
     await wait(250);
   }
   return ready;
@@ -192,6 +240,10 @@ async function runTests(baseUrl: string) {
 }
 
 async function main() {
+  TEST_PORT = await resolveTestPort();
+  console.log(
+    `[INFO] using port ${TEST_PORT}${EXPLICIT_PORT === null ? " (auto-picked)" : " (TEST_PORT env override)"}`,
+  );
   console.log(`[test] booting server on port ${TEST_PORT}`);
   const child = spawn("npx", ["tsx", "server/index.ts"], {
     env: { ...process.env, PORT: String(TEST_PORT), NODE_ENV: "development" },
