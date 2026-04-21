@@ -71,6 +71,8 @@ export function registerWaitlistRoutes(
       referralCode: entry.referralCode,
       name: entry.name,
       country: entry.country,
+      position: entry.position,
+      referralCount: entry.referralCount ?? 0,
     });
   });
 
@@ -89,12 +91,14 @@ export function registerWaitlistRoutes(
 
       const existing = await storage.getWaitlistEntryByEmail(body.email);
       if (existing) {
+        const totalCount = await storage.getWaitlistCount();
         return res.json({
           ok: true,
           alreadyOnList: true,
           position: existing.position,
           referralCode: existing.referralCode,
           referralCount: existing.referralCount ?? 0,
+          totalCount,
         });
       }
 
@@ -122,12 +126,14 @@ export function registerWaitlistRoutes(
         .then(() => storage.markWaitlistConfirmed(entry.email).catch(() => {}))
         .catch((err) => console.error("[waitlist] email failed:", err));
 
+      const totalCount = await storage.getWaitlistCount();
       res.json({
         ok: true,
         alreadyOnList: false,
         position: entry.position,
         referralCode: entry.referralCode,
         referralCount: 0,
+        totalCount,
       });
     } catch (err) {
       if (err instanceof z.ZodError) {

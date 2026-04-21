@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +25,6 @@ const STEPS = [
 
 export default function OnboardingPage() {
   const { user, isLoading, refetch } = useAuth();
-  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { t } = useI18n();
   const { toast } = useToast();
   const [, setLocation] = useLocation();

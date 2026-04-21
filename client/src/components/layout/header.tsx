@@ -316,7 +316,7 @@ export function Header() {
                         {user.fullName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <FounderBadge show={(user as any).founderBadge} />
+                    <FounderBadge show={!!user.founderBadge} />
                     <div className="flex flex-col">
                       <span className="font-medium text-sm">{user.fullName}</span>
                       <span className="text-xs text-muted-foreground truncate">
