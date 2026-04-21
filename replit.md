@@ -1,5 +1,13 @@
 # BarterGram - Worldwide Barter Marketplace
 
+## Brand Identity
+- Master logo SVGs in `attached_assets/brand/`: `logo-icon.svg` (white handshake on teal #14b8a6 rounded square), `logo-icon-white.svg`, `logo-icon-black.svg`, plus horizontal lockups `logo-full-color.svg`, `logo-white.svg`, `logo-black.svg`. Each has a matching PNG export.
+- Social cards: `og-image.svg/png` (1200x630) and `social-square.svg/png` (1080x1080) with dark teal gradient background.
+- Served from `client/public/`: `favicon.ico` (multi-size 16/32/48), `favicon-16/32/192/512.png`, `apple-touch-icon.png` (180), `og-image.png`, `social-square.png`, `manifest.json` (BarterGram name, 192/512 icons + maskable apple-touch).
+- `client/index.html` wires multi-size favicons, apple-touch-icon, og:image (1200x630) + twitter:image, theme-color #14b8a6, apple-mobile-web-app-title.
+- Header still uses inline Lucide `Handshake` in teal rounded box (matches brand mark exactly).
+- Regenerate PNGs: edit the SVGs then run the `magick -background none ...` commands documented in the task plan (`.local/tasks/task-9.md`).
+
 ## Worldwide Location Expansion
 - `shared/schema.ts` exposes `COUNTRIES` (~38 countries with cities), helpers `getCountryByCode`, `getCitiesForCountry`.
 - Users have `country`, `city`, `locationPrompted`; listings & posts have `country`, `city`. Legacy `location` column kept.

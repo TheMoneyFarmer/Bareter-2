@@ -35,3 +35,51 @@ id = "DIP6k7VkJ1ylyPIusX6wP"
 uri = "file://attached_assets/brand/concept-3-globe-trade.png"
 type = "image"
 title = "Concept 3: Globe + Trade"
+
+[[outputs]]
+id = "Zmdvt1wr9H48qrl2poGJ6"
+uri = "file://attached_assets/brand/logo-full-color.png"
+type = "image"
+title = "Logo — Full color lockup"
+
+[[outputs]]
+id = "2X4uENBXm2iZ80st-o1p5"
+uri = "file://attached_assets/brand/logo-white.png"
+type = "image"
+title = "Logo — White (for dark backgrounds)"
+
+[[outputs]]
+id = "lQpjq0J5A0SIG4IdWoRoU"
+uri = "file://attached_assets/brand/logo-black.png"
+type = "image"
+title = "Logo — Black (for light backgrounds)"
+
+[[outputs]]
+id = "SV_BhCfFxInI3ddh2OWqw"
+uri = "file://attached_assets/brand/logo-icon.png"
+type = "image"
+title = "Icon mark (1024)"
+
+[[outputs]]
+id = "pE70h2S906NxM-PE6hj76"
+uri = "file://attached_assets/brand/favicon.ico"
+type = "unspecified"
+title = "favicon.ico (16/32/48 multi-size)"
+
+[[outputs]]
+id = "PCf-PEBlVNS_qxcv2bqy-"
+uri = "file://attached_assets/brand/apple-touch-icon.png"
+type = "image"
+title = "Apple touch icon (180)"
+
+[[outputs]]
+id = "PPBwoIZBKQwhSwrT7uJBc"
+uri = "file://attached_assets/brand/og-image.png"
+type = "image"
+title = "Open Graph image (1200×630)"
+
+[[outputs]]
+id = "vnIeJ6ZiNsdaXjRP_BQNY"
+uri = "file://attached_assets/brand/social-square.png"
+type = "image"
+title = "Social square (1080×1080)"
