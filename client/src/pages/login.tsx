@@ -8,7 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
+import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { loginSchema } from "@shared/schema";
 import { Handshake, Loader2, Eye, EyeOff } from "lucide-react";
@@ -17,10 +19,18 @@ import { z } from "zod";
 type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { toast } = useToast();
   const { t } = useI18n();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (waitlistMode.enabled && !user) {
+      openWaitlist();
+      navigate("/");
+    }
+  }, [waitlistMode.enabled, user, openWaitlist, navigate]);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });

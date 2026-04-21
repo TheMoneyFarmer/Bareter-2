@@ -81,6 +81,7 @@ import {
   AlertTriangle,
   FileCheck,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { Link, useLocation } from "wouter";
@@ -99,7 +100,25 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist";
+
+type WaitlistEntryRow = {
+  id: number;
+  email: string;
+  name: string | null;
+  country: string | null;
+  city: string | null;
+  accountType: string | null;
+  businessName: string | null;
+  referralCode: string;
+  referredByCode: string | null;
+  referralCount: number | null;
+  position: number;
+  source: string | null;
+  confirmedAt: string | null;
+  convertedUserId: string | null;
+  createdAt: string | null;
+};
 
 type AnalyticsData = {
   totalUsers: number;
@@ -245,6 +264,7 @@ export function AdminPage() {
     { id: "reports" as const, label: "Reports", icon: Flag },
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
+    { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -1219,6 +1239,8 @@ export function AdminPage() {
   );
   const totalTokens = (aiLogs?.agentInteractions || []).reduce((sum, i) => sum + (i.tokensUsed || 0), 0);
 
+  const renderWaitlist = () => <WaitlistAdminSection />;
+
   const renderAiLogs = () => (
     <div className="space-y-6">
       <div>
@@ -1395,6 +1417,8 @@ export function AdminPage() {
         return renderFlags();
       case "ai-logs":
         return renderAiLogs();
+      case "waitlist":
+        return renderWaitlist();
       case "analytics":
         return renderAnalytics();
       case "settings":
@@ -1632,3 +1656,162 @@ export function AdminPage() {
     </div>
   );
 }
+
+function WaitlistAdminSection() {
+  const { data, isLoading } = useQuery<{
+    entries: WaitlistEntryRow[];
+    total: number;
+    stats: { byCountry: Array<{ country: string; count: number }>; byDay: Array<{ day: string; count: number }> };
+  }>({
+    queryKey: ["/api/admin/waitlist"],
+  });
+  const entries = data?.entries || [];
+  const total = data?.total ?? entries.length;
+  const confirmed = entries.filter((e) => !!e.confirmedAt).length;
+  const converted = entries.filter((e) => !!e.convertedUserId).length;
+  const topReferrers = [...entries]
+    .filter((e) => (e.referralCount || 0) > 0)
+    .sort((a, b) => (b.referralCount || 0) - (a.referralCount || 0))
+    .slice(0, 5);
+  const [search, setSearch] = useState("");
+  const filtered = entries.filter((e) =>
+    !search ||
+    e.email.toLowerCase().includes(search.toLowerCase()) ||
+    (e.name || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.referralCode || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Waitlist</h2>
+          <p className="text-muted-foreground">Manage early access signups and Founder Badge recipients</p>
+        </div>
+        <Button asChild data-testid="button-export-waitlist-csv">
+          <a href="/api/admin/waitlist/export.csv" download>
+            Export CSV
+          </a>
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Total Signups</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold" data-testid="text-waitlist-total">{total}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Confirmed</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold" data-testid="text-waitlist-confirmed">{confirmed}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Converted</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold" data-testid="text-waitlist-converted">{converted}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Top Referrer</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-sm font-medium truncate" data-testid="text-waitlist-top-referrer">
+              {topReferrers[0]?.email || "—"}
+            </div>
+            <div className="text-xs text-muted-foreground">{topReferrers[0]?.referralCount ?? 0} referrals</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-lg">Entries</CardTitle>
+            <Input
+              placeholder="Search email, name, or code…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-xs"
+              data-testid="input-waitlist-search"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-muted-foreground text-sm py-4 text-center">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-4 text-center">No waitlist entries found</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pos</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Referral Code</TableHead>
+                  <TableHead>Referrals</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Joined</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((entry) => (
+                  <TableRow key={entry.id} data-testid={`row-waitlist-${entry.id}`}>
+                    <TableCell className="font-mono text-sm">#{entry.position}</TableCell>
+                    <TableCell className="text-sm">{entry.email}</TableCell>
+                    <TableCell className="text-sm">{entry.name || "—"}</TableCell>
+                    <TableCell className="text-sm">
+                      {entry.city || entry.country ? `${entry.city || ""}${entry.city && entry.country ? ", " : ""}${entry.country || ""}` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{entry.accountType || "—"}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{entry.referralCode}</TableCell>
+                    <TableCell className="text-sm">{entry.referralCount || 0}</TableCell>
+                    <TableCell>
+                      {entry.convertedUserId ? (
+                        <Badge variant="default">Converted</Badge>
+                      ) : entry.confirmedAt ? (
+                        <Badge variant="secondary">Confirmed</Badge>
+                      ) : (
+                        <Badge variant="outline">Pending</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {topReferrers.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Top Referrers</CardTitle></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Referrals</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topReferrers.map((r) => (
+                  <TableRow key={r.referralCode} data-testid={`row-referrer-${r.referralCode}`}>
+                    <TableCell className="text-sm">{r.email}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.referralCode}</TableCell>
+                    <TableCell className="text-sm font-semibold">{r.referralCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+

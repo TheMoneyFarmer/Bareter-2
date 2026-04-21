@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { useWaitlist } from "@/lib/waitlist";
 import { useQuery } from "@tanstack/react-query";
 import {
   Rss,
@@ -15,6 +16,7 @@ import {
 export function MobileBottomNav() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const [location] = useLocation();
 
   const { data: inboxData } = useQuery<{ count: number }>({
@@ -44,15 +46,10 @@ export function MobileBottomNav() {
       <div className="flex items-center justify-around h-14 px-1 safe-area-bottom">
         {visibleTabs.map((tab) => {
           const active = isActive(tab.href);
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-[3.5rem] py-1 px-2 ${
-                active ? "text-primary" : "text-muted-foreground"
-              }`}
-              data-testid={`mobile-tab-${tab.id}`}
-            >
+          const isLoginTab = tab.id === "login";
+          const intercept = isLoginTab && waitlistMode.enabled;
+          const inner = (
+            <>
               <div className="relative">
                 <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
                 {"badge" in tab && typeof tab.badge === "number" && tab.badge > 0 && (
@@ -62,8 +59,34 @@ export function MobileBottomNav() {
                 )}
               </div>
               <span className="text-[10px] font-medium leading-tight truncate">
-                {tab.label}
+                {intercept ? "Join" : tab.label}
               </span>
+            </>
+          );
+          const cls = `flex flex-col items-center justify-center gap-0.5 min-w-[3.5rem] py-1 px-2 ${
+            active ? "text-primary" : "text-muted-foreground"
+          }`;
+          if (intercept) {
+            return (
+              <button
+                key={tab.href}
+                type="button"
+                onClick={openWaitlist}
+                className={cls}
+                data-testid={`mobile-tab-${tab.id}`}
+              >
+                {inner}
+              </button>
+            );
+          }
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={cls}
+              data-testid={`mobile-tab-${tab.id}`}
+            >
+              {inner}
             </Link>
           );
         })}

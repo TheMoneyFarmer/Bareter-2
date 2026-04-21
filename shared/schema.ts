@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb, uniqueIndex, serial, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { DeliverableItem } from "./deliverables";
@@ -310,10 +310,40 @@ export const users = pgTable("users", {
   credibilityScore: integer("credibility_score").default(0),
   totalCompletedDeals: integer("total_completed_deals").default(0),
   lastActiveAt: timestamp("last_active_at"),
-  
+
+  // Founder Badge (granted at signup if email matches a waitlist entry)
+  founderBadge: boolean("founder_badge").default(false),
+  founderBadgeAt: timestamp("founder_badge_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Waitlist entries (pre-launch email collection)
+export const waitlistEntries = pgTable("waitlist_entries", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  name: text("name"),
+  country: text("country"),
+  city: text("city"),
+  accountType: text("account_type"),
+  businessName: text("business_name"),
+  categoriesOfInterest: jsonb("categories_of_interest").$type<string[]>().default([]),
+  source: text("source"),
+  referralCode: varchar("referral_code", { length: 16 }).notNull().unique(),
+  referredByCode: varchar("referred_by_code", { length: 16 }),
+  referralCount: integer("referral_count").default(0),
+  position: integer("position").notNull(),
+  founderBadgeReserved: boolean("founder_badge_reserved").default(true),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  confirmedAt: timestamp("confirmed_at"),
+  convertedUserId: varchar("converted_user_id", { length: 36 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  refCodeIdx: index("waitlist_referral_code_idx").on(table.referralCode),
+  refByIdx: index("waitlist_referred_by_idx").on(table.referredByCode),
+}));
 
 // Exchange preference item with optional priority
 export type ExchangeItem = {
@@ -909,6 +939,32 @@ export const insertAgentInteractionSchema = createInsertSchema(agentInteractions
 });
 export type InsertAgentInteraction = z.infer<typeof insertAgentInteractionSchema>;
 export type AgentInteraction = typeof agentInteractions.$inferSelect;
+
+// Waitlist
+export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)
+  .omit({
+    id: true,
+    position: true,
+    referralCode: true,
+    referralCount: true,
+    founderBadgeReserved: true,
+    confirmedAt: true,
+    convertedUserId: true,
+    createdAt: true,
+  })
+  .extend({
+    email: z.string().email("Please enter a valid email address").transform((v) => v.trim().toLowerCase()),
+    name: z.string().max(120).optional().nullable(),
+    country: z.string().length(2).optional().nullable(),
+    city: z.string().max(120).optional().nullable(),
+    accountType: z.enum(["individual", "business"]).optional().nullable(),
+    businessName: z.string().max(160).optional().nullable(),
+    categoriesOfInterest: z.array(z.string().max(80)).max(10).optional(),
+    source: z.string().max(200).optional().nullable(),
+    referredByCode: z.string().max(16).optional().nullable(),
+  });
+export type InsertWaitlistEntry = z.infer<typeof insertWaitlistEntrySchema>;
+export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
 
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };

@@ -172,6 +172,54 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
   }
 }
 
+export async function sendWaitlistWelcomeEmail(
+  toEmail: string,
+  opts: { name?: string | null; referralCode: string; position: number; baseUrl: string }
+): Promise<void> {
+  const refUrl = `${opts.baseUrl}/?ref=${opts.referralCode}`;
+  const greeting = opts.name ? `Hi ${opts.name},` : "Hi there,";
+
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Waitlist confirmation for ${toEmail} (#${opts.position}) — share link: ${refUrl}`);
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; background: #136c68; border-radius: 12px; width: 52px; height: 52px; margin-bottom: 12px;">
+        <span style="color: white; font-size: 24px;">🤝</span>
+      </div>
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 20px; color: #111; margin-bottom: 8px;">You're on the list! 🎉</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      ${greeting} thanks for joining the ${APP_NAME} waitlist. You're <strong>#${opts.position}</strong> in line, and as an early supporter you'll receive a <strong>Founder Badge</strong> on your profile when ${APP_NAME} launches.
+    </p>
+    <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 16px; margin: 20px 0;">
+      <p style="margin: 0 0 6px; color: #115e59; font-size: 13px; font-weight: 600;">Skip the line</p>
+      <p style="margin: 0; color: #134e4a; font-size: 13px; line-height: 1.5;">Every friend who joins through your link moves you up the queue.</p>
+      <a href="${refUrl}" style="display: inline-block; margin-top: 10px; color: #136c68; font-weight: 600; text-decoration: none; word-break: break-all; font-size: 13px;">${refUrl}</a>
+    </div>
+    <a href="${opts.baseUrl}/" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Visit ${APP_NAME}
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYou're on the ${APP_NAME} waitlist — position #${opts.position}.\n\nAs an early supporter you'll get a Founder Badge on your profile at launch.\n\nSkip the line — share your invite link:\n${refUrl}\n\n— ${APP_NAME}`;
+
+  await sendMail({
+    to: toEmail,
+    subject: `You're on the ${APP_NAME} waitlist`,
+    html,
+    text,
+  });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

@@ -64,8 +64,12 @@ import {
   type ListingLike,
   type ListingComment,
   type ListingCommentWithUser,
+  waitlistEntries,
+  type WaitlistEntry,
+  type InsertWaitlistEntry,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
+import crypto from "crypto";
 
 export interface IStorage {
   // Users
@@ -204,6 +208,17 @@ export interface IStorage {
   // Trending/Featured
   getFeaturedListings(): Promise<ListingWithUser[]>;
   getTrendingPosts(): Promise<PostWithUser[]>;
+
+  // Waitlist
+  createWaitlistEntry(input: InsertWaitlistEntry & { ipAddress?: string | null; userAgent?: string | null }): Promise<WaitlistEntry>;
+  getWaitlistEntryByEmail(email: string): Promise<WaitlistEntry | undefined>;
+  getWaitlistEntryByReferralCode(code: string): Promise<WaitlistEntry | undefined>;
+  listWaitlistEntries(opts?: { limit?: number; offset?: number; country?: string; search?: string }): Promise<WaitlistEntry[]>;
+  getWaitlistCount(): Promise<number>;
+  getWaitlistStatsByCountry(): Promise<{ country: string | null; count: number }[]>;
+  getWaitlistSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
+  markWaitlistConfirmed(email: string): Promise<void>;
+  convertWaitlistEntryToUser(email: string, userId: string): Promise<WaitlistEntry | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1094,6 +1109,129 @@ export class DatabaseStorage implements IStorage {
     const map = new Map<string, number>();
     for (const r of rows) map.set(r.listingId, Number(r.count));
     return map;
+  }
+
+  // Waitlist
+  private generateReferralCode(): string {
+    return crypto.randomBytes(6).toString("base64url").slice(0, 8).toUpperCase();
+  }
+
+  async createWaitlistEntry(input: InsertWaitlistEntry & { ipAddress?: string | null; userAgent?: string | null }): Promise<WaitlistEntry> {
+    let code = this.generateReferralCode();
+    for (let i = 0; i < 5; i++) {
+      const existing = await this.getWaitlistEntryByReferralCode(code);
+      if (!existing) break;
+      code = this.generateReferralCode();
+    }
+
+    const [{ next }] = await db.execute<{ next: number }>(
+      sql`SELECT COALESCE(MAX(position), 0) + 1 AS next FROM waitlist_entries`
+    ).then((r: any) => [r.rows ? r.rows[0] : r[0]]) as any;
+    const nextPosition = Number(next ?? 1);
+
+    const [entry] = await db
+      .insert(waitlistEntries)
+      .values({
+        email: input.email,
+        name: input.name ?? null,
+        country: input.country ?? null,
+        city: input.city ?? null,
+        accountType: input.accountType ?? null,
+        businessName: input.businessName ?? null,
+        categoriesOfInterest: input.categoriesOfInterest ?? [],
+        source: input.source ?? null,
+        referredByCode: input.referredByCode ?? null,
+        referralCode: code,
+        position: nextPosition,
+        ipAddress: input.ipAddress ?? null,
+        userAgent: input.userAgent ?? null,
+      })
+      .returning();
+
+    if (input.referredByCode) {
+      await db
+        .update(waitlistEntries)
+        .set({ referralCount: sql`COALESCE(${waitlistEntries.referralCount}, 0) + 1` })
+        .where(eq(waitlistEntries.referralCode, input.referredByCode));
+    }
+
+    return entry;
+  }
+
+  async getWaitlistEntryByEmail(email: string): Promise<WaitlistEntry | undefined> {
+    const [row] = await db
+      .select()
+      .from(waitlistEntries)
+      .where(eq(waitlistEntries.email, email.trim().toLowerCase()));
+    return row;
+  }
+
+  async getWaitlistEntryByReferralCode(code: string): Promise<WaitlistEntry | undefined> {
+    const [row] = await db
+      .select()
+      .from(waitlistEntries)
+      .where(eq(waitlistEntries.referralCode, code));
+    return row;
+  }
+
+  async listWaitlistEntries(opts: { limit?: number; offset?: number; country?: string; search?: string } = {}): Promise<WaitlistEntry[]> {
+    const limit = Math.min(opts.limit ?? 100, 50000);
+    const offset = opts.offset ?? 0;
+    const conds: any[] = [];
+    if (opts.country) conds.push(eq(waitlistEntries.country, opts.country));
+    if (opts.search) {
+      const q = `%${opts.search.toLowerCase()}%`;
+      conds.push(sql`(LOWER(${waitlistEntries.email}) LIKE ${q} OR LOWER(COALESCE(${waitlistEntries.name}, '')) LIKE ${q})`);
+    }
+    const where = conds.length ? and(...conds) : undefined;
+    const q = db.select().from(waitlistEntries);
+    const rows = where
+      ? await q.where(where).orderBy(desc(waitlistEntries.referralCount), waitlistEntries.position).limit(limit).offset(offset)
+      : await q.orderBy(desc(waitlistEntries.referralCount), waitlistEntries.position).limit(limit).offset(offset);
+    return rows;
+  }
+
+  async getWaitlistCount(): Promise<number> {
+    const [row] = await db.select({ c: sql<number>`count(*)` }).from(waitlistEntries);
+    return Number(row?.c ?? 0);
+  }
+
+  async getWaitlistStatsByCountry(): Promise<{ country: string | null; count: number }[]> {
+    const rows = await db
+      .select({ country: waitlistEntries.country, count: sql<number>`count(*)` })
+      .from(waitlistEntries)
+      .groupBy(waitlistEntries.country);
+    return rows.map(r => ({ country: r.country, count: Number(r.count) }));
+  }
+
+  async getWaitlistSignupsByDay(days: number): Promise<{ date: string; count: number }[]> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db.execute<any>(sql`
+      SELECT TO_CHAR(DATE_TRUNC('day', created_at), 'YYYY-MM-DD') AS date,
+             COUNT(*)::int AS count
+      FROM waitlist_entries
+      WHERE created_at >= ${since}
+      GROUP BY 1
+      ORDER BY 1
+    `);
+    const list = (rows as any).rows ?? rows;
+    return list.map((r: any) => ({ date: r.date, count: Number(r.count) }));
+  }
+
+  async markWaitlistConfirmed(email: string): Promise<void> {
+    await db
+      .update(waitlistEntries)
+      .set({ confirmedAt: new Date() })
+      .where(eq(waitlistEntries.email, email.trim().toLowerCase()));
+  }
+
+  async convertWaitlistEntryToUser(email: string, userId: string): Promise<WaitlistEntry | undefined> {
+    const [row] = await db
+      .update(waitlistEntries)
+      .set({ convertedUserId: userId })
+      .where(eq(waitlistEntries.email, email.trim().toLowerCase()))
+      .returning();
+    return row;
   }
 }
 

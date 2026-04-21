@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
+import { WaitlistProvider } from "@/lib/waitlist";
 import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
@@ -85,20 +86,22 @@ function App() {
         <I18nProvider>
           <AuthProvider>
             <TooltipProvider>
-              <div className="min-h-screen flex flex-col bg-background">
-                <Header />
-                <main className="flex-1 pb-20 md:pb-0">
-                  <Router />
-                </main>
-                <div className="hidden md:block">
-                  <Footer />
+              <WaitlistProvider>
+                <div className="min-h-screen flex flex-col bg-background">
+                  <Header />
+                  <main className="flex-1 pb-20 md:pb-0">
+                    <Router />
+                  </main>
+                  <div className="hidden md:block">
+                    <Footer />
+                  </div>
+                  <MobileBottomNav />
                 </div>
-                <MobileBottomNav />
-              </div>
-              <Toaster />
-              <WhatsAppButton />
-              <AiSupportChat />
-              <LocationMismatchBanner />
+                <Toaster />
+                <WhatsAppButton />
+                <AiSupportChat />
+                <LocationMismatchBanner />
+              </WaitlistProvider>
             </TooltipProvider>
           </AuthProvider>
         </I18nProvider>

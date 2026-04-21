@@ -9,6 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { registerSchema, COUNTRIES, getCitiesForCountry } from "@shared/schema";
@@ -95,10 +96,18 @@ const SOCIAL_PLATFORMS = [
 ];
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, user } = useAuth();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { toast } = useToast();
   const { t } = useI18n();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (waitlistMode.enabled && !user) {
+      openWaitlist();
+      navigate("/");
+    }
+  }, [waitlistMode.enabled, user, openWaitlist, navigate]);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);

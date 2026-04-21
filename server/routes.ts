@@ -23,6 +23,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { isEmailConfigured } from "./emailService";
+import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
 import memorystore from "memorystore";
 import { WebhookHandlers } from "./webhookHandlers";
@@ -155,6 +156,11 @@ export async function registerRoutes(
       }
 
       const hashedPassword = await bcrypt.hash(data.password, 10);
+
+      // Auto-grant Founder Badge if email matches a waitlist entry
+      const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => undefined);
+      const founderBadge = !!waitlistEntry;
+
       const user = await storage.createUser({
         email: data.email,
         password: hashedPassword,
@@ -164,7 +170,14 @@ export async function registerRoutes(
         location: data.city || null,
         signupType: req.body.signupType || "creator",
         socialProfiles: req.body.socialProfiles || [],
-      });
+        ...(founderBadge ? { founderBadge: true, founderBadgeAt: new Date() } : {}),
+      } as any);
+
+      if (waitlistEntry) {
+        storage.convertWaitlistEntryToUser(data.email, user.id).catch((err) =>
+          console.error("[waitlist] convert failed:", err),
+        );
+      }
 
       req.session.userId = user.id;
       
@@ -3430,6 +3443,8 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to fetch AI logs" });
     }
   });
+
+  registerWaitlistRoutes(app, requireAdmin);
 
   return httpServer;
 }

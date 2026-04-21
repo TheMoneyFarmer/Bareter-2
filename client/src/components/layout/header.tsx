@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LocationPicker } from "@/components/location-picker";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { FounderBadge } from "@/components/founder-badge";
 import { useActiveLocation } from "@/lib/active-location";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +48,7 @@ import type { Notification } from "@shared/schema";
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useI18n();
   const [location] = useLocation();
@@ -313,6 +316,7 @@ export function Header() {
                         {user.fullName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
+                    <FounderBadge show={(user as any).founderBadge} />
                     <div className="flex flex-col">
                       <span className="font-medium text-sm">{user.fullName}</span>
                       <span className="text-xs text-muted-foreground truncate">
@@ -467,6 +471,16 @@ export function Header() {
                 </SheetContent>
               </Sheet>
             </>
+          ) : waitlistMode.enabled ? (
+            <div className="flex items-center gap-1 sm:gap-2">
+              <Button
+                size="sm"
+                onClick={openWaitlist}
+                data-testid="button-join-waitlist"
+              >
+                Join the waitlist
+              </Button>
+            </div>
           ) : (
             <div className="flex items-center gap-1 sm:gap-2">
               <Link href="/login">
