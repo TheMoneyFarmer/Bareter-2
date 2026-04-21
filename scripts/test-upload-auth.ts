@@ -67,6 +67,69 @@ async function runTests(baseUrl: string) {
     );
   }
 
+  // 1b) Other AI cost endpoints must also reject anonymous requests with 401.
+  {
+    const res = await fetch(`${baseUrl}/api/generate-image`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...PROXY_HEADERS },
+      body: JSON.stringify({ prompt: "anon test" }),
+    });
+    record(
+      "POST /api/generate-image without session returns 401",
+      res.status === 401,
+      `status=${res.status}`,
+    );
+  }
+  {
+    const res = await fetch(`${baseUrl}/api/conversations`, {
+      method: "GET",
+      headers: { ...PROXY_HEADERS },
+    });
+    record(
+      "GET /api/conversations without session returns 401",
+      res.status === 401,
+      `status=${res.status}`,
+    );
+  }
+  {
+    const res = await fetch(`${baseUrl}/api/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...PROXY_HEADERS },
+      body: JSON.stringify({ title: "anon" }),
+    });
+    record(
+      "POST /api/conversations without session returns 401",
+      res.status === 401,
+      `status=${res.status}`,
+    );
+  }
+  // The audio blueprint is mounted under `/voice` so its auth gate is
+  // independently observable (the chat blueprint registers identical
+  // `/api/conversations` paths and would otherwise shadow it).
+  {
+    const res = await fetch(`${baseUrl}/voice/api/conversations`, {
+      method: "GET",
+      headers: { ...PROXY_HEADERS },
+    });
+    record(
+      "GET /voice/api/conversations (audio) without session returns 401",
+      res.status === 401,
+      `status=${res.status}`,
+    );
+  }
+  {
+    const res = await fetch(`${baseUrl}/voice/api/conversations/1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...PROXY_HEADERS },
+      body: JSON.stringify({ audio: "" }),
+    });
+    record(
+      "POST /voice/api/conversations/:id/messages (audio) without session returns 401",
+      res.status === 401,
+      `status=${res.status}`,
+    );
+  }
+
   // 2) Log in as a seeded user, then request an upload URL with the cookie.
   let cookie: string | null = null;
   {

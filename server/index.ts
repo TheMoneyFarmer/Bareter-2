@@ -4,6 +4,9 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase, backfillLocationFields } from "./seed";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { registerImageRoutes } from "./replit_integrations/image";
+import { registerChatRoutes } from "./replit_integrations/chat";
+import { registerAudioRoutes } from "./replit_integrations/audio";
 
 const app = express();
 const httpServer = createServer(app);
@@ -92,6 +95,21 @@ app.use((req, res, next) => {
 
   // Register object storage routes (depend on session middleware above)
   registerObjectStorageRoutes(app);
+
+  // Register AI cost endpoints (chat, audio, image). These are gated by
+  // requireAuthBlueprint inside their handlers; the `test-upload-auth.ts`
+  // script asserts the 401 behavior on every push.
+  //
+  // Note: chat and audio blueprints both define identical `/api/conversations`
+  // paths. To keep both auth gates independently observable (so the
+  // post-merge test can prove neither has been silently un-gated), we
+  // mount the audio blueprint under `/voice` so its paths become
+  // `/voice/api/conversations*`. This avoids first-route shadowing.
+  registerImageRoutes(app);
+  registerChatRoutes(app);
+  const voiceApp = express();
+  registerAudioRoutes(voiceApp);
+  app.use("/voice", voiceApp);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
