@@ -399,9 +399,9 @@ export async function seedDatabase() {
 
   console.log("Created sample ratings");
 
-  const samplePosts = await db
-    .insert(posts)
-    .values([
+  // Cast: drizzle's per-row union narrowing struggles with the varying jsonb
+  // categoryDetails shape across rows; runtime values match the schema.
+  const samplePostValues: (typeof posts.$inferInsert)[] = [
       {
         userId: layla.id,
         title: "Palm Jumeirah 4-Bed Villa with Private Beach",
@@ -553,7 +553,7 @@ export async function seedDatabase() {
         wantItems: [{ name: "Downtown Apartment", value: 500000 }, { name: "Luxury Vehicle", value: 400000 }, { name: "Yacht Charter Package", value: 250000 }, { name: "Hotel Suite Nights (30+)", value: 200000 }, { name: "Fine Art Pieces", value: 150000 }],
         hashtags: ["patekphilippe", "nautilus", "luxurywatch", "timepiece"],
         location: "Dubai",
-        categoryDetails: { brand: "Patek Philippe", model: "Nautilus 5711/1A", year: 2021, condition: "Excellent", material: "Steel", features: "Blue gradient dial, integrated bracelet, date display", boxAndPapers: true, serialNumber: "PP-5711-UAE" },
+        categoryDetails: { brand: "Patek Philippe", model: "Nautilus 5711/1A", year: 2021, condition: "Excellent", material: "Steel", features: ["Blue gradient dial", "Integrated bracelet", "Date display"], boxAndPapers: true, serialNumber: "PP-5711-UAE" },
         likeCount: 56,
       },
       {
@@ -724,12 +724,16 @@ export async function seedDatabase() {
         location: "Sharjah",
         likeCount: 17,
       },
-    ])
+  ];
+
+  const samplePosts = await db
+    .insert(posts)
+    .values(samplePostValues)
     .returning();
 
   console.log(`Created ${samplePosts.length} sample posts`);
 
-  seedAiModeration(samplePosts.slice(0, 5).map((p) => ({ id: p.id, title: p.title, caption: p.caption, categories: [] }))).catch(() => {});
+  seedAiModeration(samplePosts.slice(0, 5).map((p) => ({ id: p.id, title: p.title ?? "Untitled", caption: p.caption, categories: [] }))).catch(() => {});
 
   console.log("Database seeding completed!");
 }

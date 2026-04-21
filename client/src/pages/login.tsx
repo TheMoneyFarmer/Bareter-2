@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,8 @@ export function LoginPage() {
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
+  const passwordResetEnabled = config?.passwordResetEnabled ?? false;
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -130,11 +133,13 @@ export function LoginPage() {
                   )}
                 />
 
-                <div className="flex justify-end -mt-2">
-                  <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
-                    {t("auth.forgotPassword") || "Forgot password?"}
-                  </Link>
-                </div>
+                {passwordResetEnabled && (
+                  <div className="flex justify-end -mt-2">
+                    <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
+                      {t("auth.forgotPassword") || "Forgot password?"}
+                    </Link>
+                  </div>
+                )}
 
                 <Button
                   type="submit"

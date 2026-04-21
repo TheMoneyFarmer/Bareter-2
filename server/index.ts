@@ -62,11 +62,20 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Seed the database with sample data
-  try {
-    await seedDatabase();
-  } catch (error) {
-    console.error("Failed to seed database:", error);
+  // Seed the database with sample data — development only.
+  // Production must never auto-populate fake users/listings.
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      await seedDatabase();
+    } catch (error) {
+      console.error("Failed to seed database:", error);
+    }
+  }
+
+  if (!process.env.DIDIT_WEBHOOK_SECRET) {
+    console.warn(
+      "[startup] DIDIT_WEBHOOK_SECRET is not set — KYC/KYB webhook signature verification will reject all callbacks. Set this secret before going live.",
+    );
   }
 
   // Backfill country/city/location for legacy rows so location filters and
@@ -77,10 +86,12 @@ app.use((req, res, next) => {
     console.error("Failed to backfill location fields:", error);
   }
 
-  // Register object storage routes
-  registerObjectStorageRoutes(app);
-  
+  // Register main routes first so the session middleware is initialized
+  // before the object-storage routes try to read req.session.
   await registerRoutes(httpServer, app);
+
+  // Register object storage routes (depend on session middleware above)
+  registerObjectStorageRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

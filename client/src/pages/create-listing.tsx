@@ -805,7 +805,6 @@ export function CreateListingPage() {
             title={titleWatch || ""}
             description={descriptionWatch || ""}
             category={(selectedCategories || [])[0] || ""}
-            condition={form.watch("condition") || undefined}
             declaredValue={retailValueWatch ? parseFloat(String(retailValueWatch)) : undefined}
           />
 

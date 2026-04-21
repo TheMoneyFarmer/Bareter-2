@@ -123,7 +123,7 @@ export function HelpPage() {
                 {category.articles.map((article) => (
                   <li key={article}>
                     <a
-                      href="#"
+                      href={`mailto:support@bartergram.com?subject=${encodeURIComponent(article)}`}
                       className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2 group"
                     >
                       <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />

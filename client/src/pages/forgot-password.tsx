@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,6 +22,8 @@ export function ForgotPasswordPage() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
+  const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
+  const passwordResetEnabled = config?.passwordResetEnabled ?? false;
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -53,7 +56,24 @@ export function ForgotPasswordPage() {
           <h1 className="text-2xl font-bold text-center">BarterGram</h1>
         </div>
 
-        {submitted ? (
+        {!passwordResetEnabled ? (
+          <Card>
+            <CardContent className="pt-8 pb-8 text-center">
+              <h2 className="text-xl font-semibold mb-2">Password reset by email is not available</h2>
+              <p className="text-muted-foreground text-sm mb-6">
+                Email delivery isn't configured for this environment yet. Please contact{" "}
+                <a href="mailto:support@bartergram.com" className="text-primary hover:underline">support@bartergram.com</a>{" "}
+                and we'll help you regain access to your account.
+              </p>
+              <Link href="/login">
+                <Button variant="outline" className="w-full gap-2" data-testid="button-back-to-login">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to sign in
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : submitted ? (
           <Card>
             <CardContent className="pt-8 pb-8 text-center">
               <div className="flex justify-center mb-4">

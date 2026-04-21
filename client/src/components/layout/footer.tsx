@@ -1,6 +1,5 @@
 import { Link } from "wouter";
 import { Handshake, Mail, MapPin, Phone } from "lucide-react";
-import { SiLinkedin, SiInstagram, SiX } from "react-icons/si";
 import { useI18n } from "@/lib/i18n";
 
 export function Footer() {
@@ -20,29 +19,6 @@ export function Footer() {
             <p className="text-sm text-muted-foreground leading-relaxed">
               {t("app.description")}
             </p>
-            <div className="flex items-center gap-3">
-              <a
-                href="#"
-                className="h-9 w-9 flex items-center justify-center rounded-lg bg-secondary hover-elevate"
-                data-testid="link-linkedin"
-              >
-                <SiLinkedin className="h-4 w-4" />
-              </a>
-              <a
-                href="#"
-                className="h-9 w-9 flex items-center justify-center rounded-lg bg-secondary hover-elevate"
-                data-testid="link-instagram"
-              >
-                <SiInstagram className="h-4 w-4" />
-              </a>
-              <a
-                href="#"
-                className="h-9 w-9 flex items-center justify-center rounded-lg bg-secondary hover-elevate"
-                data-testid="link-twitter"
-              >
-                <SiX className="h-4 w-4" />
-              </a>
-            </div>
           </div>
 
           <div className="space-y-4">

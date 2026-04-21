@@ -55,7 +55,7 @@ export function MobileBottomNav() {
             >
               <div className="relative">
                 <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
-                {"badge" in tab && tab.badge > 0 && (
+                {"badge" in tab && typeof tab.badge === "number" && tab.badge > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
                     {tab.badge > 9 ? "9+" : tab.badge}
                   </span>

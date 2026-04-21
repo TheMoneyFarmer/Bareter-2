@@ -1,5 +1,14 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+
+// Local auth gate for blueprint routes — kept here so the vendor scaffolding
+// stays self-contained but cannot be hit anonymously to drive cloud costs.
+function requireAuthLocal(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
 
 /**
  * Register object storage routes for file uploads.
@@ -35,7 +44,7 @@ export function registerObjectStorageRoutes(app: Express): void {
    * IMPORTANT: The client should NOT send the file to this endpoint.
    * Send JSON metadata only, then upload the file directly to uploadURL.
    */
-  app.post("/api/uploads/request-url", async (req, res) => {
+  app.post("/api/uploads/request-url", requireAuthLocal, async (req, res) => {
     try {
       const { name, size, contentType } = req.body;
 

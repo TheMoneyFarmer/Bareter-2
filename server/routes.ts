@@ -114,7 +114,21 @@ export async function registerRoutes(
   
   app.use(
     session({
-      secret: process.env.SESSION_SECRET || "margin-secret-key",
+      secret: (() => {
+        const s = process.env.SESSION_SECRET;
+        if (!s) {
+          if (process.env.NODE_ENV === "production") {
+            throw new Error(
+              "SESSION_SECRET is required in production. Refusing to boot with an insecure fallback.",
+            );
+          }
+          console.warn(
+            "[session] SESSION_SECRET is not set — using an insecure development fallback. Set SESSION_SECRET before deploying.",
+          );
+          return "dev-only-insecure-fallback-do-not-use-in-prod";
+        }
+        return s;
+      })(),
       resave: false,
       saveUninitialized: false,
       store: new MemoryStore({
@@ -322,6 +336,15 @@ export async function registerRoutes(
       console.error("Mark location prompted error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  // Public client config — what features are wired up in this environment.
+  app.get("/api/config", (_req, res) => {
+    res.json({
+      passwordResetEnabled: Boolean(
+        process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
+      ),
+    });
   });
 
   app.get("/api/auth/me", async (req, res) => {
@@ -2145,14 +2168,14 @@ export async function registerRoutes(
 
       import("./agents/moderationAgent").then(({ moderateAndLog }) => {
         moderateAndLog("post", post.id, {
-          title: post.title,
+          title: post.title ?? undefined,
           description: post.caption || undefined,
           categories: [post.feedCategory, post.subCategory].filter(Boolean) as string[],
         }, req.session.userId).catch(() => {});
       }).catch(() => {});
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid post data", errors: (error as Record<string, unknown>).errors });
+        return res.status(400).json({ message: "Invalid post data", errors: (error as unknown as Record<string, unknown>).errors });
       }
       console.error("Create post error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -2282,8 +2305,12 @@ export async function registerRoutes(
     }
   });
 
-  // Create sample barter scenario deals for the current user
-  app.post("/api/demo/sample-deals", requireAuth, async (req, res) => {
+  // Create sample barter scenario deals for the current user — admin-only,
+  // and disabled in production to prevent accidental data pollution.
+  app.post("/api/demo/sample-deals", requireAdmin, async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ message: "Sample data seeding is disabled in production." });
+    }
     try {
       const currentUser = await storage.getUser(req.session.userId!);
       if (!currentUser) {

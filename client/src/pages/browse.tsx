@@ -760,7 +760,7 @@ export function BrowsePage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {recommendedUsers.slice(0, 6).map((recUser: any) => (
-                  <Link key={recUser.id} href={`/profile/${recUser.id}`}>
+                  <Link key={recUser.id} href={`/users/${recUser.id}`}>
                     <Card className="hover-elevate cursor-pointer" data-testid={`card-recommended-${recUser.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
