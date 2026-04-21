@@ -25,14 +25,25 @@ function rateLimit(ip: string): boolean {
 }
 
 function clientIp(req: Request): string {
-  const fwd = (req.headers["x-forwarded-for"] as string) || "";
-  return fwd.split(",")[0].trim() || req.socket.remoteAddress || "unknown";
+  // req.ip respects the Express `trust proxy` setting configured in
+  // server/index.ts (one hop). It returns the left-most untrusted address
+  // from X-Forwarded-For, so an attacker can't spoof the rate-limit key by
+  // injecting their own X-Forwarded-For header from a direct client.
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-function baseUrlOf(req: Request): string {
-  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol;
-  const host = (req.headers["x-forwarded-host"] as string) || req.get("host") || "";
-  return `${proto}://${host}`;
+function baseUrlOf(_req: Request): string {
+  // Always build outbound links (e.g. waitlist welcome emails) from a
+  // server-trusted base URL, never from request headers like Host or
+  // X-Forwarded-Host. This prevents host-header poisoning where an attacker
+  // forges a Host header and the email links point at an attacker domain.
+  const configured = process.env.PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (replitDomain) return `https://${replitDomain}`;
+  const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (devDomain) return `https://${devDomain}`;
+  return "http://localhost:5000";
 }
 
 const submitSchema = insertWaitlistEntrySchema.extend({

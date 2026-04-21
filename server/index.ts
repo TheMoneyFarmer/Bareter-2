@@ -11,6 +11,12 @@ import { registerAudioRoutes } from "./replit_integrations/audio";
 const app = express();
 const httpServer = createServer(app);
 
+// Trust exactly one proxy hop (Replit's edge / production load balancer).
+// This must be set before any middleware that reads req.ip or req.protocol
+// so that rate-limiting and similar anti-abuse checks cannot be bypassed by
+// a forged X-Forwarded-For header from a direct client.
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
