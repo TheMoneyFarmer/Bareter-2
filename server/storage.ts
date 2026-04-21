@@ -1124,29 +1124,68 @@ export class DatabaseStorage implements IStorage {
       code = this.generateReferralCode();
     }
 
-    const [{ next }] = await db.execute<{ next: number }>(
-      sql`SELECT COALESCE(MAX(position), 0) + 1 AS next FROM waitlist_entries`
-    ).then((r: any) => [r.rows ? r.rows[0] : r[0]]) as any;
-    const nextPosition = Number(next ?? 1);
+    type PgUniqueViolation = Error & { code?: string; constraint?: string; detail?: string };
+    const isPgUniqueViolation = (e: unknown): e is PgUniqueViolation =>
+      typeof e === "object" && e !== null && (e as { code?: string }).code === "23505";
 
-    const [entry] = await db
-      .insert(waitlistEntries)
-      .values({
-        email: input.email,
-        name: input.name ?? null,
-        country: input.country ?? null,
-        city: input.city ?? null,
-        accountType: input.accountType ?? null,
-        businessName: input.businessName ?? null,
-        categoriesOfInterest: input.categoriesOfInterest ?? [],
-        source: input.source ?? null,
-        referredByCode: input.referredByCode ?? null,
-        referralCode: code,
-        position: nextPosition,
-        ipAddress: input.ipAddress ?? null,
-        userAgent: input.userAgent ?? null,
-      })
-      .returning();
+    const fetchNextPosition = async (): Promise<number> => {
+      const result = await db.execute<{ next: number }>(
+        sql`SELECT COALESCE(MAX(position), 0) + 1 AS next FROM waitlist_entries`
+      );
+      const rows = (result as unknown as { rows?: Array<{ next: number | string | null }> }).rows
+        ?? (result as unknown as Array<{ next: number | string | null }>);
+      const raw = rows && rows[0] ? rows[0].next : null;
+      return Number(raw ?? 1);
+    };
+
+    let entry: WaitlistEntry | undefined;
+    let lastError: unknown;
+    const MAX_ATTEMPTS = 25;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const nextPosition = await fetchNextPosition();
+      try {
+        const [inserted] = await db
+          .insert(waitlistEntries)
+          .values({
+            email: input.email,
+            name: input.name ?? null,
+            country: input.country ?? null,
+            city: input.city ?? null,
+            accountType: input.accountType ?? null,
+            businessName: input.businessName ?? null,
+            categoriesOfInterest: input.categoriesOfInterest ?? [],
+            source: input.source ?? null,
+            referredByCode: input.referredByCode ?? null,
+            referralCode: code,
+            position: nextPosition,
+            ipAddress: input.ipAddress ?? null,
+            userAgent: input.userAgent ?? null,
+          })
+          .returning();
+        entry = inserted;
+        break;
+      } catch (err: unknown) {
+        lastError = err;
+        if (!isPgUniqueViolation(err)) throw err;
+        const constraint = `${err.constraint ?? ""} ${err.detail ?? ""}`;
+        if (/position/i.test(constraint)) {
+          // Race on position — small jittered backoff, recompute and retry
+          await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
+          continue;
+        }
+        if (/referral_code/i.test(constraint)) {
+          code = this.generateReferralCode();
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!entry) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("Failed to allocate waitlist position after multiple attempts");
+    }
 
     if (input.referredByCode) {
       await db

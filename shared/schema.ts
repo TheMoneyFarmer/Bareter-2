@@ -343,6 +343,7 @@ export const waitlistEntries = pgTable("waitlist_entries", {
 }, (table) => ({
   refCodeIdx: index("waitlist_referral_code_idx").on(table.referralCode),
   refByIdx: index("waitlist_referred_by_idx").on(table.referredByCode),
+  positionUniqueIdx: uniqueIndex("waitlist_position_unique_idx").on(table.position),
 }));
 
 // Exchange preference item with optional priority
