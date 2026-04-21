@@ -4,7 +4,7 @@ uploads = []
 id = "Zmdvt1wr9H48qrl2poGJ6"
 uri = "file://attached_assets/brand/logo-full-color.png"
 type = "image"
-title = "Logo — Full color lockup"
+title = "Logo lockup — full color"
 
 [[outputs]]
 id = "2X4uENBXm2iZ80st-o1p5"
@@ -22,7 +22,7 @@ title = "Logo — Black (for light backgrounds)"
 id = "SV_BhCfFxInI3ddh2OWqw"
 uri = "file://attached_assets/brand/logo-icon.png"
 type = "image"
-title = "Icon mark (1024)"
+title = "Icon mark — deep teal #136c68 (matches header)"
 
 [[outputs]]
 id = "pE70h2S906NxM-PE6hj76"
@@ -34,13 +34,13 @@ title = "favicon.ico (16/32/48 multi-size)"
 id = "PCf-PEBlVNS_qxcv2bqy-"
 uri = "file://attached_assets/brand/apple-touch-icon.png"
 type = "image"
-title = "Apple touch icon (180)"
+title = "Apple touch icon"
 
 [[outputs]]
 id = "PPBwoIZBKQwhSwrT7uJBc"
 uri = "file://attached_assets/brand/og-image.png"
 type = "image"
-title = "Open Graph image (1200×630)"
+title = "Open Graph image"
 
 [[outputs]]
 id = "vnIeJ6ZiNsdaXjRP_BQNY"
