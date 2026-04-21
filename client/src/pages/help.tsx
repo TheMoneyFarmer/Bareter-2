@@ -149,7 +149,7 @@ export function HelpPage() {
             <p className="text-muted-foreground mb-4">
               Can't find what you're looking for? Our support team is here to help.
             </p>
-            <p className="font-medium mb-2">support@margin.ae</p>
+            <p className="font-medium mb-2">support@bareter.com</p>
             <p className="text-sm text-muted-foreground">
               Response time: Within 24 hours (business days)
             </p>

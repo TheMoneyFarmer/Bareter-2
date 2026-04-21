@@ -2321,7 +2321,7 @@ export async function registerRoutes(
 
       const sampleBusinesses = [
         {
-          email: `suit_manufacturer_${Date.now()}@demo.margin.ae`,
+          email: `suit_manufacturer_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Marco Bellini",
           bio: "Master tailor and bespoke suit manufacturer with over 20 years of experience in luxury menswear. Born in Milan, now based in Dubai, I bring Italian craftsmanship to the UAE market. Specializing in custom tailoring for executives, wedding suits, and formal wear collections. Every piece is hand-finished using the finest European fabrics.",
@@ -2338,7 +2338,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `luxury_hotel_${Date.now()}@demo.margin.ae`,
+          email: `luxury_hotel_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Layla Al-Farsi",
           bio: "General Manager of The Azure Resort & Spa, a boutique 5-star hotel on Dubai Marina. With 15 years in hospitality management, I oversee premium guest experiences including our award-winning spa, rooftop dining, and exclusive event spaces. Passionate about connecting with content creators who can showcase our unique property to the world.",
@@ -2355,7 +2355,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `influencer_${Date.now()}@demo.margin.ae`,
+          email: `influencer_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Sofia Reyes",
           bio: "Travel and lifestyle content creator with 500K+ followers across Instagram and TikTok. I specialize in creating authentic, engaging content for luxury hotels, restaurants, and lifestyle brands in the UAE and beyond. My audience is 70% women aged 25-40 with high purchasing power. Let's create something beautiful together.",
@@ -2371,7 +2371,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `restaurant_${Date.now()}@demo.margin.ae`,
+          email: `restaurant_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Chef Khalid Al-Rashid",
           bio: "Award-winning executive chef and owner of Saffron & Sage, a modern Arabic fusion restaurant in DIFC. Trained at Le Cordon Bleu Paris, I bring international techniques to traditional Gulf flavors. Our restaurant has been featured in Time Out Dubai and Michelin Guide. Looking to exchange premium dining experiences for creative services that can elevate our brand.",
@@ -2388,7 +2388,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `food_photographer_${Date.now()}@demo.margin.ae`,
+          email: `food_photographer_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Nina Chen",
           bio: "Professional food and lifestyle photographer based in Dubai with 8 years of experience. Clients include Zuma, La Petite Maison, and Four Seasons Hotels. I specialize in editorial food photography, restaurant interiors, and menu design shoots. My work has been published in Conde Nast Traveller and Food & Travel Magazine.",
@@ -2404,7 +2404,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `saas_company_${Date.now()}@demo.margin.ae`,
+          email: `saas_company_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "James Mitchell",
           bio: "Founder and CEO of CloudFlow Technologies, a fast-growing SaaS startup providing enterprise project management and CRM solutions. We serve 200+ businesses across the GCC with our all-in-one platform. Previously led product at two Y Combinator startups. Looking to exchange our premium software licenses for creative and design services to support our rebrand.",
@@ -2421,7 +2421,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `graphic_designer_${Date.now()}@demo.margin.ae`,
+          email: `graphic_designer_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Zara Ahmed",
           bio: "Senior brand designer and creative director with 12+ years of experience working with luxury and tech brands. My studio specializes in complete brand identity systems, packaging design, and digital experiences. Past clients include Emirates NBD, Careem, and Chalhoub Group. I believe great design is the foundation of every successful brand.",
@@ -2437,7 +2437,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `dentist_${Date.now()}@demo.margin.ae`,
+          email: `dentist_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Dr. Amira Hassan",
           bio: "Board-certified cosmetic dentist and founder of Pearl Smile Dental Clinic in JBR. Graduated from NYU College of Dentistry with specialization in aesthetic dentistry. We offer premium teeth whitening, veneers, and smile makeover services. Looking to trade our dental services for digital marketing expertise to grow our clinic's online presence.",
@@ -2454,7 +2454,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `marketing_agency_${Date.now()}@demo.margin.ae`,
+          email: `marketing_agency_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Ryan Thompson",
           bio: "Founder of Spark Digital Marketing, a performance-driven digital agency specializing in healthcare, wellness, and lifestyle brands. We manage AED 2M+ in annual ad spend across Google, Meta, and TikTok. Our data-driven approach has helped 50+ businesses achieve 3x+ ROAS. Open to bartering our services for health, wellness, and lifestyle experiences.",
@@ -2471,7 +2471,7 @@ export async function registerRoutes(
           profileCompleted: true,
         },
         {
-          email: `model_${Date.now()}@demo.margin.ae`,
+          email: `model_${Date.now()}@demo.bareter.com`,
           password: hashedPassword,
           fullName: "Alessandro Romano",
           bio: "Professional male model represented by Elite Model Management Dubai. Experienced in fashion, commercial, and editorial modeling with work published in GQ Middle East, Harper's Bazaar Arabia, and Vogue Man. Available for runway shows, lookbook shoots, and brand campaigns. Seeking premium tailoring and fashion partnerships.",

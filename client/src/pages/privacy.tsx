@@ -143,7 +143,7 @@ export function PrivacyPage() {
             <li><strong>Objection:</strong> Object to certain processing of your information</li>
           </ul>
           <p className="text-muted-foreground leading-relaxed mt-4">
-            To exercise these rights, please contact us at privacy@margin.ae.
+            To exercise these rights, please contact us at privacy@bareter.com.
           </p>
         </section>
 
@@ -192,7 +192,7 @@ export function PrivacyPage() {
           <div className="mt-4 text-muted-foreground">
             <p>Bareter - Data Protection</p>
             <p>Dubai, United Arab Emirates</p>
-            <p>Email: privacy@margin.ae</p>
+            <p>Email: privacy@bareter.com</p>
             <p>Phone: +971 4 123 4567</p>
           </div>
         </section>
