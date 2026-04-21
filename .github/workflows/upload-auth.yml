@@ -1,0 +1,71 @@
+name: Upload Auth Security Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  upload-auth:
+    name: Verify /api/uploads/request-url requires auth
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bareter_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/bareter_test
+      NODE_ENV: development
+      SESSION_SECRET: ci-test-session-secret-do-not-use-in-prod
+      TEST_PORT: "5151"
+      TEST_USER_EMAIL: admin@bareter.com
+      TEST_USER_PASSWORD: password123
+      # The Replit object-storage sidecar (127.0.0.1:1106) that signs upload
+      # URLs is not available in GitHub Actions. Run the script in auth-only
+      # mode so the third assertion validates the auth gate (status != 401/403)
+      # rather than requiring a fully signed uploadURL response.
+      UPLOAD_AUTH_TEST_MODE: auth-only
+      PRIVATE_OBJECT_DIR: /ci-not-used/private
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres ($i)..."
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2
+          exit 1
+
+      - name: Push database schema
+        run: npm run db:push -- --force
+
+      - name: Run upload auth security check
+        run: npx tsx scripts/test-upload-auth.ts
