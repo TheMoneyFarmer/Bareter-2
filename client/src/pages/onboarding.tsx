@@ -49,14 +49,9 @@ export default function OnboardingPage() {
   
   useEffect(() => {
     if (!isLoading && !user) {
-      if (waitlistMode.enabled) {
-        openWaitlist();
-        setLocation("/");
-      } else {
-        setLocation("/login");
-      }
+      setLocation("/login");
     }
-  }, [user, isLoading, setLocation, waitlistMode.enabled, openWaitlist]);
+  }, [user, isLoading, setLocation]);
 
   const onboardingMutation = useMutation({
     mutationFn: async (data: any) => {

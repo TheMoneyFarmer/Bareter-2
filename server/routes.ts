@@ -170,8 +170,9 @@ export async function registerRoutes(
         location: data.city || null,
         signupType: req.body.signupType || "creator",
         socialProfiles: req.body.socialProfiles || [],
-        ...(founderBadge ? { founderBadge: true, founderBadgeAt: new Date() } : {}),
-      } as any);
+        founderBadge,
+        founderBadgeAt: founderBadge ? new Date() : null,
+      });
 
       if (waitlistEntry) {
         storage.convertWaitlistEntryToUser(data.email, user.id).catch((err) =>
