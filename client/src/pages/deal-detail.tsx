@@ -42,6 +42,7 @@ import {
   Star,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { FounderBadge } from "@/components/founder-badge";
 
 const stateConfig: Record<string, { label: string; color: string; step: number }> = {
   draft: { label: "Draft", color: "bg-gray-500", step: 0 },
@@ -227,8 +228,9 @@ export function DealDetailPage() {
               {config.label}
             </Badge>
           </div>
-          <p className="text-muted-foreground">
-            Bartering with {otherParty?.fullName}
+          <p className="text-muted-foreground inline-flex items-center gap-2 flex-wrap">
+            <span>Bartering with {otherParty?.fullName}</span>
+            <FounderBadge show={!!otherParty?.founderBadge} />
           </p>
         </div>
 
@@ -346,7 +348,10 @@ export function DealDetailPage() {
 
           <Card className="flex flex-col h-[500px]">
             <CardHeader className="border-b flex-shrink-0">
-              <CardTitle className="text-lg">Chat</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+                <span>Chat with {otherParty?.fullName}</span>
+                <FounderBadge show={!!otherParty?.founderBadge} />
+              </CardTitle>
               <CardDescription>
                 Discuss the deal details with {otherParty?.fullName}
               </CardDescription>
@@ -441,6 +446,7 @@ export function DealDetailPage() {
                   <div className="flex items-center gap-1">
                     <span className="font-semibold">{otherParty?.fullName}</span>
                     <VerifiedBadge isVerified={otherParty?.isVerified} kycStatus={otherParty?.kycStatus} kybStatus={otherParty?.kybStatus} accountType={otherParty?.accountType} size="xs" testId="badge-verified" />
+                    <FounderBadge show={!!otherParty?.founderBadge} size="md" />
                   </div>
                   {otherParty?.businessName && (
                     <p className="text-sm text-muted-foreground">{otherParty.businessName}</p>

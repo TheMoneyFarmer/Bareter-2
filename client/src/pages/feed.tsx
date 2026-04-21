@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { FounderBadge } from "@/components/founder-badge";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 import {
   Heart,
@@ -618,6 +619,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
                     size="sm"
                     testId={`badge-verified-${post.id}`}
                   />
+                  <FounderBadge show={!!post.user?.founderBadge} />
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {post.user?.businessName && (
@@ -966,6 +968,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
                       <div className="flex items-center gap-1">
                         <span className="text-sm font-medium truncate">{p.user?.fullName}</span>
                         <VerifiedBadge isVerified={p.user?.isVerified} kycStatus={p.user?.kycStatus} kybStatus={p.user?.kybStatus} accountType={p.user?.accountType} size="xs" testId="badge-verified" />
+                        <FounderBadge show={!!p.user?.founderBadge} />
                       </div>
                       <span className="text-xs text-muted-foreground truncate block">
                         {p.user?.businessName || p.location || "UAE"}
