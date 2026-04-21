@@ -22,6 +22,7 @@ import {
   users,
 } from "@shared/schema";
 import { db } from "./db";
+import { isEmailConfigured } from "./emailService";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
 import memorystore from "memorystore";
 import { WebhookHandlers } from "./webhookHandlers";
@@ -339,11 +340,9 @@ export async function registerRoutes(
   });
 
   // Public client config — what features are wired up in this environment.
-  app.get("/api/config", (_req, res) => {
+  app.get("/api/config", async (_req, res) => {
     res.json({
-      passwordResetEnabled: Boolean(
-        process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
-      ),
+      passwordResetEnabled: await isEmailConfigured(),
     });
   });
 

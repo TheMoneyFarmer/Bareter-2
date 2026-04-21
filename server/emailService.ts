@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
+import { getUncachableResendClient, isResendReady } from "./resendClient";
 
-function createTransport() {
+function createSmtpTransport() {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || "587");
   const user = process.env.SMTP_USER;
@@ -18,26 +19,106 @@ function createTransport() {
   });
 }
 
-const FROM_EMAIL = process.env.FROM_EMAIL || process.env.SMTP_USER || "noreply@bartergram.ae";
 const APP_NAME = "BarterGram";
+const FALLBACK_FROM = "noreply@bartergram.ae";
+
+function smtpFromAddress() {
+  return process.env.FROM_EMAIL || process.env.SMTP_USER || FALLBACK_FROM;
+}
+
+function hasSmtpConfig(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
+  );
+}
+
+// Real readiness check: actually verifies a Resend connection with an API key
+// is available, or that full SMTP credentials are present.
+export async function isEmailConfigured(): Promise<boolean> {
+  if (hasSmtpConfig()) return true;
+  return await isResendReady();
+}
+
+interface MailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}
+
+async function sendViaResend(opts: MailOptions): Promise<boolean> {
+  const { client, fromEmail } = await getUncachableResendClient();
+  const from = `${APP_NAME} <${fromEmail || process.env.FROM_EMAIL || FALLBACK_FROM}>`;
+  const result = await client.emails.send({
+    from,
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+  if (result.error) {
+    console.error("[EMAIL] Resend error:", result.error);
+    return false;
+  }
+  return true;
+}
+
+async function sendViaSmtp(opts: MailOptions): Promise<boolean> {
+  const transport = createSmtpTransport();
+  if (!transport) return false;
+  await transport.sendMail({
+    from: `"${APP_NAME}" <${smtpFromAddress()}>`,
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+  return true;
+}
+
+async function sendMail(opts: MailOptions): Promise<boolean> {
+  let resendAttempted = false;
+  if (await isResendReady()) {
+    resendAttempted = true;
+    try {
+      const ok = await sendViaResend(opts);
+      if (ok) return true;
+    } catch (err) {
+      console.error("[EMAIL] Resend send failed:", err);
+    }
+    // Resend failed — fall through to SMTP if configured.
+  }
+  if (hasSmtpConfig()) {
+    try {
+      const ok = await sendViaSmtp(opts);
+      if (ok) {
+        if (resendAttempted) {
+          console.warn("[EMAIL] Delivered via SMTP after Resend failure.");
+        }
+        return true;
+      }
+    } catch (err) {
+      console.error("[EMAIL] SMTP send failed:", err);
+    }
+  }
+  return false;
+}
 
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
-  const transport = createTransport();
+  const isDev = process.env.NODE_ENV !== "production";
 
-  if (!transport) {
+  if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Password reset requested for ${toEmail}`);
-    console.log(`[EMAIL] Reset URL: ${resetUrl}`);
-    console.log(`[EMAIL] To send real emails, set SMTP_HOST, SMTP_USER, SMTP_PASS environment variables.`);
+    if (isDev) {
+      console.log(`[EMAIL] Reset URL: ${resetUrl}`);
+    }
+    console.log(`[EMAIL] To send real emails, connect Resend or set SMTP_HOST/SMTP_USER/SMTP_PASS.`);
     return;
   }
 
-  await transport.sendMail({
-    from: `"${APP_NAME}" <${FROM_EMAIL}>`,
-    to: toEmail,
-    subject: `Reset your ${APP_NAME} password`,
-    html: `
+  const html = `
       <!DOCTYPE html>
       <html>
       <head><meta charset="utf-8" /></head>
@@ -72,24 +153,32 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
         </div>
       </body>
       </html>
-    `,
-    text: `Reset your ${APP_NAME} password\n\nClick this link to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`,
+    `;
+  const text = `Reset your ${APP_NAME} password\n\nClick this link to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`;
+
+  const sent = await sendMail({
+    to: toEmail,
+    subject: `Reset your ${APP_NAME} password`,
+    html,
+    text,
   });
+
+  if (!sent) {
+    if (isDev) {
+      console.log(`[EMAIL] Send failed. Dev reset URL for ${toEmail}: ${resetUrl}`);
+    } else {
+      console.error(`[EMAIL] Password reset email send failed for ${toEmail} (token redacted).`);
+    }
+  }
 }
 
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
-  const transport = createTransport();
-
-  if (!transport) {
-    console.log(`[EMAIL] Welcome email for ${toEmail} (SMTP not configured — skipping)`);
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);
     return;
   }
 
-  await transport.sendMail({
-    from: `"${APP_NAME}" <${FROM_EMAIL}>`,
-    to: toEmail,
-    subject: `Welcome to ${APP_NAME}!`,
-    html: `
+  const html = `
       <!DOCTYPE html>
       <html>
       <head><meta charset="utf-8" /></head>
@@ -111,7 +200,13 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
         </div>
       </body>
       </html>
-    `,
-    text: `Welcome to ${APP_NAME}, ${fullName}! Your account is ready. Start browsing at https://bartergram.ae/browse`,
+    `;
+  const text = `Welcome to ${APP_NAME}, ${fullName}! Your account is ready. Start browsing at https://bartergram.ae/browse`;
+
+  await sendMail({
+    to: toEmail,
+    subject: `Welcome to ${APP_NAME}!`,
+    html,
+    text,
   });
 }
