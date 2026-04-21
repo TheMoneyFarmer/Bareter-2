@@ -386,6 +386,10 @@ export function DealDetailPage() {
                                 : "bg-muted"
                             }`}
                           >
+                            <div className={`flex items-center gap-1 mb-0.5 text-xs font-semibold ${isMe ? "text-primary-foreground/90" : "text-foreground"}`}>
+                              <span>{isMe ? "You" : msg.sender?.fullName}</span>
+                              <FounderBadge show={!!msg.sender?.founderBadge} />
+                            </div>
                             <p className="text-sm">{msg.content}</p>
                             <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                               {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}

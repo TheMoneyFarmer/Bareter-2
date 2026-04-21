@@ -120,9 +120,12 @@ function StoriesRow() {
               </AvatarFallback>
             </Avatar>
           </div>
-          <span className="text-xs text-muted-foreground truncate w-16 text-center">
-            {story.user?.fullName?.split(" ")[0] || "User"}
-          </span>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-xs text-muted-foreground truncate w-16 text-center">
+              {story.user?.fullName?.split(" ")[0] || "User"}
+            </span>
+            <FounderBadge show={!!story.user?.founderBadge} />
+          </div>
         </button>
       ))}
     </div>
@@ -309,6 +312,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-sm font-semibold">{comment.user?.fullName?.split(" ")[0]}</span>
+                  <FounderBadge show={!!comment.user?.founderBadge} />
                   {comment.offerItemName && (
                     <Badge variant="default" className="text-[10px] gap-0.5 bg-green-600 text-white no-default-hover-elevate no-default-active-elevate">
                       <ArrowRightLeft className="h-2.5 w-2.5" />
