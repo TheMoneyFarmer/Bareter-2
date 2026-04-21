@@ -143,7 +143,7 @@ export function ResetPasswordPage() {
               <Handshake className="h-6 w-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-center">BarterGram</h1>
+          <h1 className="text-2xl font-bold text-center">Bareter</h1>
         </div>
 
         <Card>

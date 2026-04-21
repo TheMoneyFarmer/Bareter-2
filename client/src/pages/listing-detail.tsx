@@ -728,7 +728,7 @@ export function ListingDetailPage() {
                     <div>
                       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High-value trade (AED 5,000+)</p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                        Verify the other party's business badge, use BarterGram's contract feature, and keep all communication on-platform.
+                        Verify the other party's business badge, use Bareter's contract feature, and keep all communication on-platform.
                       </p>
                     </div>
                   </div>

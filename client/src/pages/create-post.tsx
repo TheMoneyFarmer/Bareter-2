@@ -358,7 +358,7 @@ export function CreatePostPage() {
           Create Post
         </h1>
         <p className="text-muted-foreground">
-          Share what you want to barter on the BarterGram marketplace
+          Share what you want to barter on the Bareter marketplace
         </p>
       </div>
 

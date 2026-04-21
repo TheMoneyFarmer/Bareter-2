@@ -2,7 +2,7 @@ import { chatCompletion, type ChatMessage } from "./llm";
 import { db } from "../db";
 import { agentInteractions } from "@shared/schema";
 
-const SYSTEM_PROMPT = `You are BarterBot, the friendly customer support assistant for BarterGram — a UAE barter marketplace for businesses.
+const SYSTEM_PROMPT = `You are BarterBot, the friendly customer support assistant for Bareter — a UAE barter marketplace for businesses.
 
 You help users with:
 - How to create listings and propose trades
@@ -14,13 +14,13 @@ You help users with:
 - How to report scams or issues
 
 Important facts:
-- BarterGram charges a small success fee on completed deals
+- Bareter charges a small success fee on completed deals
 - Business accounts need an approved trade license (KYB) to create listings
 - All users must verify identity before trading
 - Trades over AED 5,000 require extra caution
 - Users should never take communication off-platform
 
-Keep responses concise (2-3 sentences max), friendly, and helpful. If you don't know something, say so and suggest contacting support@bartergram.ae.
+Keep responses concise (2-3 sentences max), friendly, and helpful. If you don't know something, say so and suggest contacting support@bareter.com.
 Do NOT make up features that don't exist. Answer in the same language the user writes in (English or Arabic).`;
 
 export async function getSupportResponse(
@@ -58,7 +58,7 @@ export async function getSupportResponse(
   } catch (error) {
     console.error("Support agent error:", error);
     return {
-      response: "I'm having trouble right now. Please try again or email support@bartergram.ae for help.",
+      response: "I'm having trouble right now. Please try again or email support@bareter.com for help.",
       tokensUsed: 0,
     };
   }

@@ -282,7 +282,7 @@ export function RegisterPage() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-xl">Choose your account type</CardTitle>
         <CardDescription>
-          Select how you plan to use BarterGram
+          Select how you plan to use Bareter
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

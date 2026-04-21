@@ -20,7 +20,7 @@
       <path d="M3 4h8"/>
     </g>
   </g>
-  <text x="540" y="720" text-anchor="middle" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="92" font-weight="700" fill="#ffffff" letter-spacing="-3">BarterGram</text>
+  <text x="540" y="720" text-anchor="middle" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="92" font-weight="700" fill="#ffffff" letter-spacing="-3">Bareter</text>
   <text x="540" y="780" text-anchor="middle" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="32" font-weight="500" fill="#5eead4">Worldwide Barter Marketplace</text>
   <text x="540" y="900" text-anchor="middle" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="26" font-weight="400" fill="#cbd5e1">Trade goods and services without cash.</text>
 </svg>

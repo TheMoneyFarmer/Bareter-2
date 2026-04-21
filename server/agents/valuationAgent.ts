@@ -11,7 +11,7 @@ export interface ValuationAdvice {
   marketComparison: string;
 }
 
-const SYSTEM_PROMPT = `You are a valuation advisor for BarterGram, a worldwide barter marketplace.
+const SYSTEM_PROMPT = `You are a valuation advisor for Bareter, a worldwide barter marketplace.
 Help users price their items/services for barter by estimating fair market value in their local currency
 (default AED if not specified).
 

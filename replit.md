@@ -1,9 +1,9 @@
-# BarterGram - Worldwide Barter Marketplace
+# Bareter - Worldwide Barter Marketplace
 
 ## Brand Identity
 - Master logo SVGs in `attached_assets/brand/`: `logo-icon.svg` (white Lucide handshake on deep-teal #136c68 rounded square — exact match of header `bg-primary` = `hsl(177 70% 25%)`), `logo-icon-white.svg`, `logo-icon-black.svg`, plus horizontal lockups `logo-full-color.svg`, `logo-white.svg`/`logo-full-white.svg`, `logo-black.svg`/`logo-full-black.svg`. Each has a matching PNG export at 2000x500 (lockups) and 1024x1024 (icon).
 - Social cards: `og-image.svg/png` (1200x630) and `social-square.svg/png` (1080x1080) with dark teal gradient background.
-- Served from `client/public/`: `favicon.ico` (multi-size 16/32/48), `favicon-16/32/192/512.png`, `apple-touch-icon.png` (180), `og-image.png`, `social-square.png`, `manifest.json` (BarterGram name, 192/512 icons + maskable apple-touch).
+- Served from `client/public/`: `favicon.ico` (multi-size 16/32/48), `favicon-16/32/192/512.png`, `apple-touch-icon.png` (180), `og-image.png`, `social-square.png`, `manifest.json` (Bareter name, 192/512 icons + maskable apple-touch).
 - `client/index.html` wires multi-size favicons, apple-touch-icon, og:image (1200x630) + twitter:image, theme-color #136c68, apple-mobile-web-app-title. `manifest.json` theme_color also #136c68.
 - Header still uses inline Lucide `Handshake` in teal rounded box (matches brand mark exactly).
 - Regenerate PNGs: edit the SVGs then run the `magick -background none ...` commands documented in the task plan (`.local/tasks/task-9.md`).
@@ -20,7 +20,7 @@
 
 ## Overview
 
-BarterGram is a full-stack barter marketplace platform for UAE and GCC businesses to trade goods and services without cash. It enables verified businesses to create listings, propose and negotiate trades via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees. The platform aims to facilitate a cashless economy for businesses, enhancing liquidity and fostering a collaborative business environment.
+Bareter is a full-stack barter marketplace platform for UAE and GCC businesses to trade goods and services without cash. It enables verified businesses to create listings, propose and negotiate trades via real-time chat, generate binding barter contracts, and complete transactions with integrated payment processing for success fees. The platform aims to facilitate a cashless economy for businesses, enhancing liquidity and fostering a collaborative business environment.
 
 ## User Preferences
 

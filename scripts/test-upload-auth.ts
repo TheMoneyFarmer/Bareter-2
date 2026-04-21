@@ -3,7 +3,7 @@ import { setTimeout as wait } from "node:timers/promises";
 
 const TEST_PORT = Number(process.env.TEST_PORT ?? 5151);
 const READY_TIMEOUT_MS = 60_000;
-const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL ?? "admin@bartergram.ae";
+const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL ?? "admin@bareter.com";
 const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD ?? "password123";
 
 type Result = { ok: boolean; name: string; detail?: string };

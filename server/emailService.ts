@@ -19,8 +19,8 @@ function createSmtpTransport() {
   });
 }
 
-const APP_NAME = "BarterGram";
-const FALLBACK_FROM = "noreply@bartergram.ae";
+const APP_NAME = "Bareter";
+const FALLBACK_FROM = "noreply@bareter.com";
 
 function smtpFromAddress() {
   return process.env.FROM_EMAIL || process.env.SMTP_USER || FALLBACK_FROM;
@@ -191,7 +191,7 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
           <p style="color: #6b7280; font-size: 14px;">
             Your account is ready. Start browsing listings and connect with UAE businesses to trade your products and services.
           </p>
-          <a href="https://bartergram.ae/browse" style="display: block; text-align: center; background: #1a1a2e; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0;">
+          <a href="https://bareter.com/browse" style="display: block; text-align: center; background: #1a1a2e; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0;">
             Explore Listings
           </a>
           <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">
@@ -201,7 +201,7 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
       </body>
       </html>
     `;
-  const text = `Welcome to ${APP_NAME}, ${fullName}! Your account is ready. Start browsing at https://bartergram.ae/browse`;
+  const text = `Welcome to ${APP_NAME}, ${fullName}! Your account is ready. Start browsing at https://bareter.com/browse`;
 
   await sendMail({
     to: toEmail,

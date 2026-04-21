@@ -60,7 +60,7 @@ export default function OnboardingPage() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       if (data.onboardingCompleted) {
-        toast({ title: "Welcome to BarterGram!", description: "Your profile is complete." });
+        toast({ title: "Welcome to Bareter!", description: "Your profile is complete." });
         setLocation("/");
       }
     },

@@ -52,7 +52,7 @@ export function UserProfilePage() {
       <div className="container px-4 py-16 mx-auto max-w-md text-center">
         <h2 className="text-2xl font-bold mb-2" data-testid="text-signin-required">Sign in to view profiles</h2>
         <p className="text-muted-foreground mb-6">
-          Create an account or sign in to view user profiles on BarterGram.
+          Create an account or sign in to view user profiles on Bareter.
         </p>
         <div className="flex gap-3 justify-center">
           <Link href="/login">

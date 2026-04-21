@@ -48,14 +48,14 @@ export async function seedDatabase() {
     .insert(users)
     .values([
       {
-        email: "admin@bartergram.ae",
+        email: "admin@bareter.com",
         password: hashedPassword,
         fullName: "Admin User",
-        bio: "Platform administrator managing BarterGram marketplace",
+        bio: "Platform administrator managing Bareter marketplace",
         location: "Dubai",
         isAdmin: true,
         isVerified: true,
-        businessName: "BarterGram Platform",
+        businessName: "Bareter Platform",
         whatIOffer: [{ name: "Platform Management", value: 0 }, { name: "Support Services", value: 0 }],
         whatINeed: [{ name: "Quality Partners", value: 0 }, { name: "Business Growth", value: 0 }],
         profileCompleted: true,

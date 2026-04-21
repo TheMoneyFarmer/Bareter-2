@@ -70,7 +70,7 @@ export function ReportModal({ open, onOpenChange, targetType, targetId }: Report
             Report {targetType}
           </DialogTitle>
           <DialogDescription>
-            Help keep BarterGram safe. Reports are reviewed by our trust & safety team.
+            Help keep Bareter safe. Reports are reviewed by our trust & safety team.
           </DialogDescription>
         </DialogHeader>
 
@@ -79,7 +79,7 @@ export function ReportModal({ open, onOpenChange, targetType, targetId }: Report
             <CheckCircle className="h-12 w-12 text-green-500" />
             <p className="font-semibold">Report submitted</p>
             <p className="text-sm text-muted-foreground text-center">
-              Thank you for helping keep BarterGram safe. Our team will review this report.
+              Thank you for helping keep Bareter safe. Our team will review this report.
             </p>
             <Button onClick={handleClose} data-testid="button-close-report">
               Close

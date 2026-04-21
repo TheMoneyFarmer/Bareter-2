@@ -8,7 +8,7 @@ export interface AdminInsight {
   recommendations: string[];
 }
 
-const SYSTEM_PROMPT = `You are an admin intelligence assistant for BarterGram, a UAE barter marketplace.
+const SYSTEM_PROMPT = `You are an admin intelligence assistant for Bareter, a UAE barter marketplace.
 Help admins understand platform health, identify issues, and make data-driven decisions.
 
 You can analyze:

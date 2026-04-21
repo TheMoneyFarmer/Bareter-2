@@ -514,7 +514,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: post.title || "BarterGram Post",
+          title: post.title || "Bareter Post",
           text: post.caption || "Check out this barter opportunity!",
           url: postUrl,
         });
@@ -552,7 +552,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
       }
     } else if (type === "email") {
       if (poster?.email && poster?.showEmail !== false) {
-        window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${post.title || "BarterGram"}`, "_self");
+        window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${post.title || "Bareter"}`, "_self");
       } else {
         toast({ title: "Not available", description: "This trader hasn't shared their email address" });
       }
@@ -910,7 +910,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
               <ArrowRightLeft className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">Join BarterGram</h3>
+              <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">Join Bareter</h3>
               <p className="text-xs text-muted-foreground mt-1">
                 Start trading goods & services with UAE businesses
               </p>
@@ -1015,7 +1015,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           {" · "}
           <Link href="/how-it-works" data-testid="sidebar-link-how"><span className="underline">How It Works</span></Link>
         </p>
-        <p className="text-[10px] text-muted-foreground mt-1">BarterGram 2026</p>
+        <p className="text-[10px] text-muted-foreground mt-1">Bareter 2026</p>
       </div>
     </div>
   );
@@ -1033,7 +1033,7 @@ function SafetyBanner() {
       <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
         <ShieldAlert className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Trade safely on BarterGram</p>
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Trade safely on Bareter</p>
           <ul className="mt-1 space-y-0.5 text-[11px] text-blue-700 dark:text-blue-400">
             <li>• Always verify the business badge before trading</li>
             <li>• Keep all negotiations inside the platform</li>

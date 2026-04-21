@@ -7,5 +7,5 @@
     <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/>
     <path d="M3 4h8"/>
   </g>
-  <text x="460" y="245" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="180" font-weight="700" fill="#0a0a0a" letter-spacing="-6">BarterGram</text>
+  <text x="460" y="245" font-family="DM Sans, Inter, system-ui, sans-serif" font-size="180" font-weight="700" fill="#0a0a0a" letter-spacing="-6">Bareter</text>
 </svg>

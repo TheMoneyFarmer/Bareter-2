@@ -154,7 +154,7 @@ export function DealDetailPage() {
     if (!message.trim()) return;
     if (OFF_PLATFORM_RE.test(message.trim())) {
       toast({
-        title: "Stay safe — keep trades on BarterGram",
+        title: "Stay safe — keep trades on Bareter",
         description: "Your message may contain references to external platforms. Trading outside the app removes your buyer & seller protections.",
         variant: "destructive",
       });

@@ -53,7 +53,7 @@ export function ForgotPasswordPage() {
               <Handshake className="h-6 w-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-center">BarterGram</h1>
+          <h1 className="text-2xl font-bold text-center">Bareter</h1>
         </div>
 
         {!passwordResetEnabled ? (
@@ -62,7 +62,7 @@ export function ForgotPasswordPage() {
               <h2 className="text-xl font-semibold mb-2">Password reset by email is not available</h2>
               <p className="text-muted-foreground text-sm mb-6">
                 Email delivery isn't configured for this environment yet. Please contact{" "}
-                <a href="mailto:support@bartergram.com" className="text-primary hover:underline">support@bartergram.com</a>{" "}
+                <a href="mailto:support@bareter.com" className="text-primary hover:underline">support@bareter.com</a>{" "}
                 and we'll help you regain access to your account.
               </p>
               <Link href="/login">

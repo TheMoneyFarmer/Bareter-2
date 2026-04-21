@@ -1,6 +1,6 @@
 {
-  "name": "BarterGram - Worldwide Barter Marketplace",
-  "short_name": "BarterGram",
+  "name": "Bareter - Worldwide Barter Marketplace",
+  "short_name": "Bareter",
   "description": "Trade goods and services without cash. Verified businesses worldwide.",
   "start_url": "/",
   "display": "standalone",
