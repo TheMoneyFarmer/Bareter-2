@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useWaitlist } from "@/lib/waitlist";
 import { loginSchema } from "@shared/schema";
 import { Handshake, Loader2, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
@@ -19,9 +20,20 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
   const { login, user } = useAuth();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { toast } = useToast();
   const { t } = useI18n();
   const [, navigate] = useLocation();
+
+  // In waitlist mode, redirect anonymous visitors to home + open dialog.
+  // Admins/existing users can still reach the form via `/login?override=1`.
+  useEffect(() => {
+    if (!waitlistMode.enabled || user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("override") === "1") return;
+    openWaitlist();
+    navigate("/");
+  }, [waitlistMode.enabled, user, openWaitlist, navigate]);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });

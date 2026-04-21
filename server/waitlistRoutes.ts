@@ -166,7 +166,7 @@ export function registerWaitlistRoutes(
       "referralCode", "referredByCode", "referralCount", "position", "source",
       "confirmedAt", "convertedUserId", "createdAt",
     ];
-    const csvEscape = (v: any): string => {
+    const csvEscape = (v: unknown): string => {
       if (v === null || v === undefined) return "";
       const s = String(v).replace(/"/g, '""');
       return /[",\n]/.test(s) ? `"${s}"` : s;

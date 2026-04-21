@@ -1658,6 +1658,9 @@ export function AdminPage() {
 }
 
 function WaitlistAdminSection() {
+  const { data: modeData } = useQuery<{ enabled: boolean; count: number }>({
+    queryKey: ["/api/waitlist/mode"],
+  });
   const { data, isLoading } = useQuery<{
     entries: WaitlistEntryRow[];
     total: number;
@@ -1687,6 +1690,17 @@ function WaitlistAdminSection() {
         <div>
           <h2 className="text-2xl font-bold mb-1">Waitlist</h2>
           <p className="text-muted-foreground">Manage early access signups and Founder Badge recipients</p>
+          <div
+            className={`mt-2 inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs font-medium ${
+              modeData?.enabled
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                : "bg-muted text-muted-foreground"
+            }`}
+            data-testid="badge-waitlist-mode"
+          >
+            <span className={`h-2 w-2 rounded-full ${modeData?.enabled ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
+            WAITLIST_MODE: {modeData?.enabled ? "ON (read-only)" : "OFF"}
+          </div>
         </div>
         <Button asChild data-testid="button-export-waitlist-csv">
           <a href="/api/admin/waitlist/export.csv" download>
