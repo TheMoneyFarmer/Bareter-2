@@ -2174,8 +2174,8 @@ export async function registerRoutes(
         }, req.session.userId).catch(() => {});
       }).catch(() => {});
     } catch (error) {
-      if (error instanceof Error && error.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid post data", errors: (error as unknown as Record<string, unknown>).errors });
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid post data", errors: error.errors });
       }
       console.error("Create post error:", error);
       res.status(500).json({ message: "Internal server error" });
