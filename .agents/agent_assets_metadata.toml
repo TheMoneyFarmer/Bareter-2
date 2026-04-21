@@ -1,0 +1,37 @@
+uploads = []
+
+[[generated]]
+id = "4h8oa5JPEIRmXvorif9KE"
+uri = "file://attached_assets/brand/concept-1-handshake.png"
+type = "image"
+title = "concept 1 modern handshake"
+
+[[generated]]
+id = "SeyBG3OTpsL1NxPcbZBtv"
+uri = "file://attached_assets/brand/concept-2-exchange-arrows.png"
+type = "image"
+title = "concept 2 exchange arrows"
+
+[[generated]]
+id = "Ia18BpkmhT_knK1Gs_std"
+uri = "file://attached_assets/brand/concept-3-globe-trade.png"
+type = "image"
+title = "concept 3 globe trade"
+
+[[outputs]]
+id = "mNd12HtbWu_l-PvG47rQh"
+uri = "file://attached_assets/brand/concept-1-handshake.png"
+type = "image"
+title = "Concept 1: Modern Handshake"
+
+[[outputs]]
+id = "KqLse-Y5Dct2VfwhyptVD"
+uri = "file://attached_assets/brand/concept-2-exchange-arrows.png"
+type = "image"
+title = "Concept 2: Exchange Arrows"
+
+[[outputs]]
+id = "DIP6k7VkJ1ylyPIusX6wP"
+uri = "file://attached_assets/brand/concept-3-globe-trade.png"
+type = "image"
+title = "Concept 3: Globe + Trade"
