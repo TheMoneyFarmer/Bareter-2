@@ -51,14 +51,14 @@ const categories = [
     ],
   },
   {
-    title: "Payments & Fees",
-    description: "Understand our simple fee structure",
+    title: "Account & Billing",
+    description: "Bareter is free — here's what to know",
     icon: CreditCard,
     articles: [
-      "How success fees work",
-      "Payment methods accepted",
-      "Splitting fees with partners",
-      "Getting invoices and receipts",
+      "Is Bareter really free?",
+      "Managing your account",
+      "VAT-compliant invoice templates",
+      "Updating your business details",
     ],
   },
   {

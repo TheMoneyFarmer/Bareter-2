@@ -37,8 +37,6 @@ import {
   Shield,
   Loader2,
   AlertTriangle,
-  DollarSign,
-  CreditCard,
   Star,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
@@ -64,9 +62,6 @@ export function DealDetailPage() {
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const searchParams = new URLSearchParams(window.location.search);
-  const paymentStatus = searchParams.get("payment");
-
   const { data: deal, isLoading } = useQuery<DealWithUsers>({
     queryKey: ["/api/deals", id],
   });
@@ -108,41 +103,6 @@ export function DealDetailPage() {
       });
     },
   });
-
-  const checkoutMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/deals/${id}/checkout`);
-      return res.json();
-    },
-    onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Checkout failed",
-        description: error.message || "Could not start checkout. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  useEffect(() => {
-    if (paymentStatus === "success") {
-      toast({
-        title: "Payment Successful!",
-        description: "Your deal has been completed. Don't forget to rate your experience!",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/deals", id] });
-    } else if (paymentStatus === "cancelled") {
-      toast({
-        title: "Payment Cancelled",
-        description: "You can complete the payment when you're ready.",
-        variant: "destructive",
-      });
-    }
-  }, [paymentStatus, id, toast, queryClient]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -203,14 +163,6 @@ export function DealDetailPage() {
   const canMarkInProgress = deal.state === "accepted";
   const canUploadProof = deal.state === "in_progress";
   const canMarkComplete = deal.state === "delivery_proof" && !myCompleted;
-
-  const successFee = Math.max(
-    100,
-    Math.min(
-      parseFloat(deal.seekerValue as string),
-      parseFloat(deal.providerValue as string)
-    ) * 0.12
-  );
 
   return (
     <div className="container px-4 py-8 mx-auto max-w-6xl">
@@ -518,22 +470,6 @@ export function DealDetailPage() {
                 </Button>
               )}
 
-              {deal.state === "delivery_proof" && myCompleted && theirCompleted && isSeeker && (
-                <Button
-                  className="w-full gap-2"
-                  onClick={() => checkoutMutation.mutate()}
-                  disabled={checkoutMutation.isPending}
-                  data-testid="button-pay-fee"
-                >
-                  {checkoutMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CreditCard className="h-4 w-4" />
-                  )}
-                  Pay Success Fee (AED {successFee.toLocaleString()})
-                </Button>
-              )}
-
               {deal.state === "completed" && (
                 <Button
                   className="w-full gap-2"
@@ -617,24 +553,6 @@ export function DealDetailPage() {
             </Card>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Success Fee
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-primary mb-1">
-                AED {successFee.toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                12% of the smaller value (min AED 100)
-                <br />
-                Charged to the seeker upon completion
-              </p>
-            </CardContent>
-          </Card>
         </div>
       </div>
 

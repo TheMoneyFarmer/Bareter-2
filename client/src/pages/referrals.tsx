@@ -12,7 +12,6 @@ import {
   Copy,
   Check,
   Users,
-  Ticket,
   Send,
   Loader2,
   Share2,
@@ -33,15 +32,8 @@ export function ReferralsPage() {
 
   const { data: stats } = useQuery<{
     totalReferrals: number;
-    feeWaiversEarned: number;
-    feeWaiversPending: number;
   }>({
     queryKey: ["/api/referral/stats"],
-    enabled: !!user,
-  });
-
-  const { data: waiverData } = useQuery<{ hasWaiver: boolean; waiverCount: number }>({
-    queryKey: ["/api/referral/check-waiver"],
     enabled: !!user,
   });
 
@@ -53,7 +45,6 @@ export function ReferralsPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/referral"] });
       queryClient.invalidateQueries({ queryKey: ["/api/referral/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/referral/check-waiver"] });
       setReferralInput("");
       toast({ title: "Referral Applied", description: data.message });
     },
@@ -74,7 +65,7 @@ export function ReferralsPage() {
   const shareViaWhatsApp = () => {
     if (codeData?.referralCode) {
       const message = encodeURIComponent(
-        `Join Bareter - the UAE barter marketplace! Use my referral code ${codeData.referralCode} and we both get 1 free deal fee waived. Sign up at ${window.location.origin}/register`
+        `Join me on Bareter — the UAE barter marketplace where businesses trade goods and services without cash. Use my referral code ${codeData.referralCode} when you sign up at ${window.location.origin}/register`
       );
       window.open(`https://wa.me/?text=${message}`, "_blank");
     }
@@ -84,7 +75,7 @@ export function ReferralsPage() {
     return (
       <div className="container px-4 py-16 mx-auto max-w-4xl text-center">
         <Gift className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Referral Program</h1>
+        <h1 className="text-2xl font-bold mb-2">Invite Friends</h1>
         <p className="text-muted-foreground mb-4">Please log in to access your referral code.</p>
         <Link href="/login">
           <Button data-testid="button-login">Log In</Button>
@@ -100,33 +91,19 @@ export function ReferralsPage() {
           <Gift className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Invite & Earn</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Invite Friends</h1>
           <p className="text-muted-foreground text-sm">
-            Invite a hotel, influencer, or business and both get 1 free deal fee waived
+            Help grow the Bareter community by inviting hotels, creators, and businesses to join.
           </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 mb-8">
+      <div className="mb-8">
         <Card>
           <CardContent className="p-6 text-center">
             <Users className="h-8 w-8 text-primary mx-auto mb-2" />
             <div className="text-3xl font-bold" data-testid="text-total-referrals">{stats?.totalReferrals || 0}</div>
             <p className="text-sm text-muted-foreground">People Invited</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 text-center">
-            <Ticket className="h-8 w-8 text-green-500 mx-auto mb-2" />
-            <div className="text-3xl font-bold" data-testid="text-waivers-available">{waiverData?.waiverCount || 0}</div>
-            <p className="text-sm text-muted-foreground">Fee Waivers Available</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6 text-center">
-            <Check className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-            <div className="text-3xl font-bold" data-testid="text-waivers-used">{stats?.feeWaiversEarned || 0}</div>
-            <p className="text-sm text-muted-foreground">Waivers Used</p>
           </CardContent>
         </Card>
       </div>
@@ -139,7 +116,7 @@ export function ReferralsPage() {
               Your Referral Code
             </CardTitle>
             <CardDescription>
-              Share this code with hotels, influencers, or businesses
+              Share this code with hotels, creators, or businesses you'd like to see on Bareter
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -208,7 +185,7 @@ export function ReferralsPage() {
                 <span className="font-bold text-primary">1</span>
               </div>
               <h4 className="font-medium mb-1">Share Your Code</h4>
-              <p className="text-sm text-muted-foreground">Send your referral code to a hotel, influencer, or business</p>
+              <p className="text-sm text-muted-foreground">Send your referral code to a hotel, creator, or business</p>
             </div>
             <div className="text-center">
               <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
@@ -221,8 +198,8 @@ export function ReferralsPage() {
               <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
                 <span className="font-bold text-primary">3</span>
               </div>
-              <h4 className="font-medium mb-1">Both Get Rewarded</h4>
-              <p className="text-sm text-muted-foreground">You both get 1 free deal fee waived (save up to AED 100+)</p>
+              <h4 className="font-medium mb-1">Community Grows</h4>
+              <p className="text-sm text-muted-foreground">More verified businesses means more trade opportunities for everyone</p>
             </div>
           </div>
         </CardContent>

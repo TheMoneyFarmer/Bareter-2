@@ -10,7 +10,7 @@ import {
   CheckCircle,
   ArrowRight,
   Shield,
-  DollarSign,
+  Sparkles,
   Star,
 } from "lucide-react";
 
@@ -60,9 +60,9 @@ const benefits = [
     icon: Shield,
   },
   {
-    title: "Low Success Fees",
-    description: "Only pay 12% of the smaller trade value upon completion (min AED 100). No upfront fees or subscriptions.",
-    icon: DollarSign,
+    title: "Free for Everyone",
+    description: "Every feature on Bareter is free — list, chat, sign contracts, and complete trades without paying anything.",
+    icon: Sparkles,
   },
   {
     title: "Trust & Ratings",

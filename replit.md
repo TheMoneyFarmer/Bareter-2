@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bareter is a full-stack barter marketplace platform designed for businesses in the UAE and GCC regions to trade goods and services without cash. Its primary purpose is to facilitate a cashless economy, enhance liquidity, and foster a collaborative business environment. Key capabilities include creating listings, negotiating trades via real-time chat, generating binding barter contracts, and processing transactions with integrated success fees. The platform supports global expansion with multi-country/city support and robust user verification systems (KYC/KYB).
+Bareter is a full-stack barter marketplace platform designed for businesses in the UAE and GCC regions to trade goods and services without cash. Its primary purpose is to facilitate a cashless economy, enhance liquidity, and foster a collaborative business environment. The platform is free for all users. Key capabilities include creating listings, negotiating trades via real-time chat, generating binding barter contracts, and managing the full deal lifecycle from proposal to completion. The platform supports global expansion with multi-country/city support and robust user verification systems (KYC/KYB).
 
 ## User Preferences
 
@@ -53,7 +53,7 @@ Preferred communication style: Simple, everyday language.
 
 - **Database**: PostgreSQL.
 - **Authentication & Security**: bcryptjs, express-session.
-- **Payment Processing**: Stripe for success fees and webhooks.
+- **Payment Processing**: Stripe SDK integration and plumbing exists in the codebase but is not used by any user-facing flow.
 - **Identity Verification**: Didit (KYC/KYB) for user and business verification.
 - **Email Services**: Nodemailer.
 - **AI Integration**: OpenAI for various AI agents.

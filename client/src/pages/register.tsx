@@ -121,7 +121,7 @@ export function RegisterPage() {
   });
 
   const benefits = [
-    t("landing.noSubscription"),
+    t("landing.freeForEveryone"),
     t("landing.verifiedPartners"),
     t("landing.bindingContracts"),
     t("deal.chat"),

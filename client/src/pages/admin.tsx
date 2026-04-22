@@ -944,18 +944,10 @@ export function AdminPage() {
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Success Fee Rate</p>
-                <p className="text-sm text-muted-foreground">Percentage charged on completed deals</p>
+                <p className="font-medium">Platform Pricing</p>
+                <p className="text-sm text-muted-foreground">Bareter is free for all users</p>
               </div>
-              <Badge variant="secondary">12%</Badge>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Minimum Fee</p>
-                <p className="text-sm text-muted-foreground">Minimum success fee per deal</p>
-              </div>
-              <Badge variant="secondary">AED 100</Badge>
+              <Badge variant="secondary">Free</Badge>
             </div>
             <Separator />
             <div className="flex items-center justify-between">

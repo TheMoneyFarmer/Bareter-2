@@ -1740,10 +1740,10 @@ export async function registerRoutes(
         userId: referrer.id,
         type: "referral",
         title: "New Referral",
-        message: `${user?.fullName} joined using your referral code! You both get 1 free deal fee waived.`,
+        message: `${user?.fullName} joined Bareter using your referral code. Welcome them to the community!`,
       });
       
-      res.json({ message: "Referral applied! Both you and the referrer get 1 free deal fee waived.", referral });
+      res.json({ message: "Referral applied! Thanks for helping grow the Bareter community.", referral });
     } catch (error) {
       console.error("Apply referral error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -2012,61 +2012,11 @@ export async function registerRoutes(
     }
   });
 
-  // Stripe checkout for deal completion
-  app.post("/api/deals/:id/checkout", requireAuth, async (req, res) => {
-    try {
-      const deal = await storage.getDeal(param(req.params.id));
-      if (!deal) {
-        return res.status(404).json({ message: "Deal not found" });
-      }
-      
-      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      
-      if (deal.state !== "delivery_proof" || !deal.seekerCompleted || !deal.providerCompleted) {
-        return res.status(400).json({ message: "Deal must be in delivery_proof state with both parties marking complete" });
-      }
-      
-      const seekerValue = parseFloat(deal.seekerValue as string);
-      const providerValue = parseFloat(deal.providerValue as string);
-      const smallerValue = Math.min(seekerValue, providerValue);
-      const successFee = Math.max(smallerValue * 0.12, 100);
-      
-      const { getUncachableStripeClient, getStripePublishableKey } = await import("./stripeClient");
-      const stripe = await getUncachableStripeClient();
-      
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-      
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items: [{
-          price_data: {
-            currency: "aed",
-            product_data: {
-              name: `Bareter Success Fee - Deal ${deal.dealNumber}`,
-              description: `12% success fee for completed barter deal (min AED 100)`,
-            },
-            unit_amount: Math.round(successFee * 100),
-          },
-          quantity: 1,
-        }],
-        mode: "payment",
-        success_url: `${baseUrl}/deals/${deal.id}?payment=success`,
-        cancel_url: `${baseUrl}/deals/${deal.id}?payment=cancelled`,
-        metadata: {
-          dealId: deal.id,
-          dealNumber: deal.dealNumber,
-        },
-      });
-      
-      await storage.updateDeal(deal.id, { successFee: successFee.toString() });
-      
-      res.json({ url: session.url, fee: successFee });
-    } catch (error) {
-      console.error("Checkout error:", error);
-      res.status(500).json({ message: "Failed to create checkout session" });
-    }
+  // Deal checkout endpoint — Bareter is free for all users, so this endpoint
+  // is intentionally a no-op. The Stripe SDK plumbing is preserved elsewhere
+  // in the codebase but is not invoked from any user-facing flow.
+  app.post("/api/deals/:id/checkout", requireAuth, async (_req, res) => {
+    res.status(404).json({ message: "Not available" });
   });
 
   // Onboarding routes

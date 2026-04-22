@@ -21,7 +21,7 @@ const faqs = [
       },
       {
         q: "Is Bareter free to use?",
-        a: "Yes, creating an account, listing your offers, and browsing other listings is completely free. We only charge a success fee (12% of the smaller trade value, minimum AED 100) when you successfully complete a trade.",
+        a: "Yes. Bareter is completely free for everyone. Creating an account, listing your offers, proposing trades, generating contracts, and completing deals are all free.",
       },
       {
         q: "How is Bareter different from other marketplaces?",
@@ -46,7 +46,11 @@ const faqs = [
       },
       {
         q: "What happens if a deal falls through?",
-        a: "Either party can cancel a deal at any stage before completion. If a deal is cancelled, no success fee is charged. However, we encourage open communication to resolve issues before cancellation.",
+        a: "Either party can cancel a deal at any stage before completion. We encourage open communication to resolve issues before cancellation.",
+      },
+      {
+        q: "How do I complete a deal?",
+        a: "Once both parties have delivered, each side marks the deal as complete. As soon as both confirmations are in, the deal moves to 'completed' and you can rate each other.",
       },
     ],
   },
@@ -64,27 +68,6 @@ const faqs = [
       {
         q: "How do digital signatures work?",
         a: "When both parties accept the final terms, you can digitally sign the contract. This creates a PDF document with both signatures, timestamps, and a unique deal ID for your records.",
-      },
-    ],
-  },
-  {
-    category: "Payments & Fees",
-    questions: [
-      {
-        q: "How is the success fee calculated?",
-        a: "The success fee is 12% of the smaller declared value between the two traded items/services, with a minimum of AED 100. For example, if you trade AED 5,000 worth of services for AED 6,000 worth of products, the fee is 12% of AED 5,000 = AED 600.",
-      },
-      {
-        q: "When do I pay the fee?",
-        a: "The fee is charged when both parties mark the deal as complete. Payment is processed via Stripe (credit/debit card). You'll receive an invoice for your records.",
-      },
-      {
-        q: "Who pays the success fee?",
-        a: "By default, the trade seeker (the person who initiated the trade) pays the fee. However, you can agree with your partner to split the fee or have the provider pay instead.",
-      },
-      {
-        q: "What payment methods are accepted?",
-        a: "We accept all major credit and debit cards through our secure payment partner, Stripe. We plan to add bank transfer and other payment options in the future.",
       },
     ],
   },

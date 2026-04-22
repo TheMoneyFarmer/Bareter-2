@@ -2,12 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, HelpCircle } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { CheckCircle } from "lucide-react";
 
 const features = [
   { name: "Create unlimited listings", included: true },
@@ -22,131 +17,66 @@ const features = [
   { name: "Email notifications", included: true },
 ];
 
-const feeExamples = [
-  { scenario: "Hotel stay (AED 5,000) for Marketing (AED 6,000)", smaller: 5000, fee: 600 },
-  { scenario: "Software license (AED 2,000) for Events (AED 2,500)", smaller: 2000, fee: 240 },
-  { scenario: "Consulting (AED 800) for Office supplies (AED 900)", smaller: 800, fee: 100 },
-  { scenario: "Design work (AED 500) for Photography (AED 600)", smaller: 500, fee: 100 },
-];
-
 export function PricingPage() {
   return (
-    <div className="container px-4 py-12 mx-auto max-w-5xl">
+    <div className="container px-4 py-12 mx-auto max-w-4xl">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h1>
+        <h1 className="text-4xl font-bold mb-4">Bareter is Free for Everyone</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          No subscriptions, no hidden fees. Only pay when you successfully complete a trade.
+          Every feature on Bareter is free to use. Create your account, list what you offer, find what you need, and complete trades — all at no cost.
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8 mb-16">
-        <Card className="border-2 border-primary">
-          <CardHeader className="text-center pb-2">
-            <Badge className="w-fit mx-auto mb-2">Only Fee</Badge>
-            <CardTitle className="text-2xl">Success Fee</CardTitle>
-            <CardDescription>Charged only when a deal is completed</CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <div className="mb-6">
-              <span className="text-5xl font-bold">12%</span>
-              <p className="text-muted-foreground mt-2">of the smaller declared value</p>
-              <p className="text-sm text-muted-foreground mt-1">Minimum AED 100 per deal</p>
-            </div>
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
-              <span>Paid by the trade seeker (initiator)</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <HelpCircle className="h-4 w-4" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  The person who proposes the trade pays the success fee. Option to split or transfer to provider available.
-                </TooltipContent>
-              </Tooltip>
-            </div>
+      <Card className="border-2 border-primary mb-12">
+        <CardHeader className="text-center pb-2">
+          <Badge className="w-fit mx-auto mb-2">Free</Badge>
+          <CardTitle className="text-2xl">Everything Included</CardTitle>
+          <CardDescription>All features available to every user, with nothing to pay</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="grid sm:grid-cols-2 gap-3 mt-4">
+            {features.map((feature) => (
+              <li key={feature.name} className="flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                <span className="text-sm">{feature.name}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="text-center mt-8">
             <Link href="/register">
-              <Button className="w-full" size="lg" data-testid="button-start-bartering">
-                Start Bartering Free
+              <Button size="lg" data-testid="button-start-bartering">
+                Create Your Free Account
               </Button>
             </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Everything Included</CardTitle>
-            <CardDescription>All features available to every user</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {features.map((feature) => (
-                <li key={feature.name} className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  <span className="text-sm">{feature.name}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mb-16">
-        <h2 className="text-2xl font-bold text-center mb-8">Fee Examples</h2>
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium">Trade Scenario</th>
-                    <th className="text-right p-4 font-medium">Smaller Value</th>
-                    <th className="text-right p-4 font-medium">Success Fee</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {feeExamples.map((example, index) => (
-                    <tr key={index} className="border-b last:border-b-0">
-                      <td className="p-4 text-sm">{example.scenario}</td>
-                      <td className="p-4 text-right text-sm">AED {example.smaller.toLocaleString()}</td>
-                      <td className="p-4 text-right text-sm font-medium text-primary">
-                        AED {example.fee.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          * Fee is always calculated on the smaller of the two declared values, with a minimum of AED 100
-        </p>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="bg-muted/30 rounded-2xl p-8">
         <h2 className="text-2xl font-bold text-center mb-6">Frequently Asked Questions</h2>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <h3 className="font-semibold mb-2">When do I pay the fee?</h3>
+            <h3 className="font-semibold mb-2">Is there really nothing to pay?</h3>
             <p className="text-sm text-muted-foreground">
-              Only when both parties mark the deal as complete. If a deal is cancelled, no fee is charged.
+              That's right. Listing items, proposing trades, chatting, generating contracts, and completing deals are all free.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">Can I split the fee?</h3>
+            <h3 className="font-semibold mb-2">Do I need a credit card to sign up?</h3>
             <p className="text-sm text-muted-foreground">
-              Yes, you can agree with your bartering partner to split the fee or have the provider pay instead.
+              No. You can register and use every feature on Bareter without entering any payment details.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">Is there a subscription?</h3>
+            <h3 className="font-semibold mb-2">Are there any limits on usage?</h3>
             <p className="text-sm text-muted-foreground">
-              No. Bareter is completely free to use. You only pay when you successfully complete trades.
+              No artificial limits — create as many listings and complete as many trades as you like.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">Are there any hidden fees?</h3>
+            <h3 className="font-semibold mb-2">What about VAT and contracts?</h3>
             <p className="text-sm text-muted-foreground">
-              None. The 12% success fee (min AED 100) is the only cost. No setup fees, no monthly fees.
+              Barter contracts and VAT-compliant invoice templates are included for free, helping you stay compliant with UAE FTA rules.
             </p>
           </div>
         </div>

@@ -58,10 +58,10 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">5. Fees and Payments</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Bareter charges a success fee of 12% of the smaller declared value in a completed trade, with a minimum fee of AED 100. This fee is charged to the trade seeker (initiator) upon completion of the deal, unless otherwise agreed by the parties.
+            Bareter is free to use. There are no charges for creating an account, listing items, proposing trades, generating contracts, or completing deals on the Platform.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
-            Payment is processed through our secure payment partner, Stripe. By using our Platform, you agree to Stripe's terms of service.
+            Each party in a barter transaction remains responsible for its own taxes, costs, and any third-party fees associated with delivering the goods or services it has agreed to provide.
           </p>
         </section>
 
@@ -88,7 +88,6 @@ export function TermsPage() {
             <li>Post false, misleading, or fraudulent content</li>
             <li>Infringe on the intellectual property rights of others</li>
             <li>Harass, abuse, or harm other users</li>
-            <li>Attempt to circumvent our fee structure</li>
             <li>Use automated tools to access or scrape the Platform</li>
             <li>Trade prohibited items including weapons, drugs, or counterfeit goods</li>
           </ul>
