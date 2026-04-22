@@ -342,6 +342,9 @@ describe("Deal completion runs end-to-end with no payment step", () => {
     expect(crossComplete.status).toBe(403);
 
     // 6b. Provider confirms — auto-completion should kick in.
+    const completionNotificationsBefore = notifications.filter(
+      (n) => n.relatedDealId === dealId && n.title === "Trade complete",
+    ).length;
     const providerConfirm = await asUser(
       request(app).patch(`/api/deals/${dealId}`),
       providerId,
@@ -351,6 +354,18 @@ describe("Deal completion runs end-to-end with no payment step", () => {
     expect(providerConfirm.body.seekerCompleted).toBe(true);
     expect(providerConfirm.body.state).toBe("completed");
     assertNoPaymentSurface(providerConfirm.body);
+
+    // Both parties should be notified the deal closed so they remember to
+    // come back and rate each other.
+    const completionNotifications = notifications.filter(
+      (n) => n.relatedDealId === dealId && n.title === "Trade complete",
+    );
+    expect(completionNotifications.length - completionNotificationsBefore).toBe(2);
+    const notifiedUserIds = completionNotifications.map((n) => n.userId).sort();
+    expect(notifiedUserIds).toEqual([seekerId, providerId].sort());
+    for (const notif of completionNotifications) {
+      expect(notif.message.toLowerCase()).toContain("rating");
+    }
 
     // Final read-back from both sides confirms the persisted state.
     const finalSeekerView = await asUser(

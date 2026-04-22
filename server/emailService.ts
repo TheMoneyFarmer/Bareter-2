@@ -220,6 +220,49 @@ export async function sendWaitlistWelcomeEmail(
   });
 }
 
+export async function sendDealCompletedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; counterpartyName: string; dealId: string; baseUrl: string },
+): Promise<void> {
+  const dealUrl = `${opts.baseUrl}/deals/${opts.dealId}`;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Deal completed for ${toEmail} (deal ${opts.dealId}) — link: ${dealUrl}`);
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 20px; color: #111; margin-bottom: 8px;">Your trade is complete 🎉</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      ${greeting} your trade with <strong>${opts.counterpartyName}</strong> has been marked complete by both sides.
+    </p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      Take a moment to leave a rating — it helps build trust on ${APP_NAME} and improves your reputation as a trader.
+    </p>
+    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Leave a rating
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour trade with ${opts.counterpartyName} on ${APP_NAME} is complete.\n\nLeave a rating to help build trust on the platform:\n${dealUrl}\n\n— ${APP_NAME}`;
+
+  await sendMail({
+    to: toEmail,
+    subject: `Your ${APP_NAME} trade with ${opts.counterpartyName} is complete`,
+    html,
+    text,
+  });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

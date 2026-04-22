@@ -1401,6 +1401,67 @@ export async function registerRoutes(
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
         updated = await storage.updateDeal(param(req.params.id), { state: "completed" });
+
+        // Notify both parties so they remember to leave a rating.
+        try {
+          const [seekerUser, providerUser] = await Promise.all([
+            storage.getUser(deal.seekerId),
+            storage.getUser(deal.providerId),
+          ]);
+          const seekerName = seekerUser?.fullName || "your trade partner";
+          const providerName = providerUser?.fullName || "your trade partner";
+
+          await Promise.all([
+            storage.createNotification({
+              userId: deal.seekerId,
+              type: "deal_update",
+              title: "Trade complete",
+              message: `Your trade with ${providerName} is complete — leave a rating`,
+              relatedDealId: deal.id,
+            }),
+            storage.createNotification({
+              userId: deal.providerId,
+              type: "deal_update",
+              title: "Trade complete",
+              message: `Your trade with ${seekerName} is complete — leave a rating`,
+              relatedDealId: deal.id,
+            }),
+          ]);
+
+          const { sendDealCompletedEmail } = await import("./emailService");
+          const baseUrl =
+            process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ||
+            (process.env.REPLIT_DOMAINS?.split(",")[0]?.trim()
+              ? `https://${process.env.REPLIT_DOMAINS!.split(",")[0]!.trim()}`
+              : process.env.REPLIT_DEV_DOMAIN?.trim()
+                ? `https://${process.env.REPLIT_DEV_DOMAIN!.trim()}`
+                : "http://localhost:5000");
+
+          const emailJobs: Promise<unknown>[] = [];
+          if (seekerUser?.email) {
+            emailJobs.push(
+              sendDealCompletedEmail(seekerUser.email, {
+                recipientName: seekerUser.fullName,
+                counterpartyName: providerName,
+                dealId: deal.id,
+                baseUrl,
+              }).catch((err) => console.error("[EMAIL] Deal completed email (seeker) failed:", err)),
+            );
+          }
+          if (providerUser?.email) {
+            emailJobs.push(
+              sendDealCompletedEmail(providerUser.email, {
+                recipientName: providerUser.fullName,
+                counterpartyName: seekerName,
+                dealId: deal.id,
+                baseUrl,
+              }).catch((err) => console.error("[EMAIL] Deal completed email (provider) failed:", err)),
+            );
+          }
+          await Promise.all(emailJobs);
+        } catch (notifyError) {
+          console.error("Deal completion notification error:", notifyError);
+        }
       }
 
       res.json(updated);
