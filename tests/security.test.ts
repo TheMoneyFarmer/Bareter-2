@@ -735,6 +735,104 @@ describe("Auth rate limiters", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// AI rate limiters (IPv6-safe)
+// ---------------------------------------------------------------------------
+
+import {
+  makeAiPerMinuteLimiter,
+  makeAiPerDayLimiter,
+  aiUserKey,
+} from "../server/handlers/aiRateLimit";
+
+describe("AI rate limiters", () => {
+  function appWithLimiter(
+    limiter: ReturnType<typeof makeAiPerMinuteLimiter>,
+    path: string,
+  ) {
+    const app = express();
+    app.use(express.json());
+    app.post(path, limiter, (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  const fixedKey = { keyGenerator: () => "test-bucket" };
+
+  it("returns 429 on the per-minute limiter after the configured threshold", async () => {
+    const limiter = makeAiPerMinuteLimiter({
+      ...fixedKey,
+      limit: 2,
+      windowMs: 60_000,
+    });
+    const app = appWithLimiter(limiter, "/api/ai/x");
+    const r1 = await request(app).post("/api/ai/x").send({});
+    const r2 = await request(app).post("/api/ai/x").send({});
+    const r3 = await request(app).post("/api/ai/x").send({});
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(429);
+    expect(r3.body.message).toMatch(/AI/i);
+  });
+
+  it("returns 429 on the per-day limiter after the configured threshold", async () => {
+    const limiter = makeAiPerDayLimiter({
+      ...fixedKey,
+      limit: 2,
+      windowMs: 24 * 60 * 60 * 1000,
+    });
+    const app = appWithLimiter(limiter, "/api/ai/y");
+    const r1 = await request(app).post("/api/ai/y").send({});
+    const r2 = await request(app).post("/api/ai/y").send({});
+    const r3 = await request(app).post("/api/ai/y").send({});
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(429);
+    expect(r3.body.message).toMatch(/daily/i);
+  });
+
+  it("uses the audit-required production thresholds by default", async () => {
+    for (const { limiter, expectLimit } of [
+      { limiter: makeAiPerMinuteLimiter(fixedKey), expectLimit: 10 },
+      { limiter: makeAiPerDayLimiter(fixedKey), expectLimit: 200 },
+    ]) {
+      const app = appWithLimiter(limiter, "/x");
+      const r = await request(app).post("/x").send({});
+      const header =
+        r.headers["ratelimit"] || r.headers["ratelimit-policy"] || "";
+      expect(String(header)).toContain(String(expectLimit));
+    }
+  });
+
+  it("prefers the session user id over the IP", () => {
+    const req = { session: { userId: "abc" }, ip: "1.2.3.4" } as any;
+    expect(aiUserKey(req)).toBe("u:abc");
+  });
+
+  it("normalises an IPv6 client through ipKeyGenerator so low-order bits can't bypass the limit", async () => {
+    // Two requests from different /128 addresses inside the same /64 should
+    // collapse to the same bucket. We construct the limiter with the real
+    // user-key generator and a tiny limit so the second hit overflows.
+    const limiter = makeAiPerMinuteLimiter({ limit: 1, windowMs: 60_000 });
+    const app = express();
+    app.set("trust proxy", true);
+    app.use(express.json());
+    app.post("/api/ai/z", limiter, (_req, res) => res.json({ ok: true }));
+
+    const ipA = "2001:db8::1";
+    const ipB = "2001:db8::2"; // same /64 as ipA
+    const r1 = await request(app)
+      .post("/api/ai/z")
+      .set("X-Forwarded-For", ipA)
+      .send({});
+    const r2 = await request(app)
+      .post("/api/ai/z")
+      .set("X-Forwarded-For", ipB)
+      .send({});
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(429);
+  });
+});
+
 describe("Hashed password-reset tokens", () => {
   it("hashes raw tokens with SHA-256 (64-hex chars, never the raw value)", () => {
     const raw = "abcdef0123456789";

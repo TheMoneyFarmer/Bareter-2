@@ -39,39 +39,23 @@ import {
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
 } from "./handlers/authHardening";
+import {
+  makeAiPerMinuteLimiter,
+  makeAiPerDayLimiter,
+} from "./handlers/aiRateLimit";
 import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
-import rateLimit from "express-rate-limit";
 import { WebhookHandlers } from "./webhookHandlers";
 
-// Rate limiters for sensitive endpoints (audit Day 1).
-// Keyed by session user id when present, falling back to req.ip
-// (which is proxy-trusted because `app.set("trust proxy", 1)` is set
-// in server/index.ts).
-const userKey = (req: Request): string =>
-  req.session?.userId ? `u:${req.session.userId}` : `ip:${req.ip}`;
-
-const aiPerMinuteLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: 10,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  keyGenerator: userKey,
-  message: { message: "Too many AI requests. Please slow down and try again in a minute." },
-});
-
-const aiPerDayLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000,
-  limit: 200,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  keyGenerator: userKey,
-  message: { message: "Daily AI usage limit reached. Please try again tomorrow." },
-});
+// AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
+// security tests can construct fresh, low-threshold copies, and so the
+// IP key normalises through `ipKeyGenerator` (IPv6-safe).
+const aiPerMinuteLimiter = makeAiPerMinuteLimiter();
+const aiPerDayLimiter = makeAiPerDayLimiter();
 
 // Per-IP limiters for the auth surface. Login + register are bursty during
 // credential stuffing / mass-signup abuse, so we cap them; the password
