@@ -848,6 +848,20 @@ export const loginSchema = z
   })
   .strict();
 
+// Strict whitelist of admin-settable KYB statuses. Anything outside this
+// enum (including SQL fragments, arrays, etc.) is rejected with 400.
+export const adminKybStatusSchema = z
+  .object({
+    status: z.enum([
+      "NOT_STARTED",
+      "IN_PROGRESS",
+      "PENDING_REVIEW",
+      "APPROVED",
+      "DECLINED",
+    ]),
+  })
+  .strict();
+
 export const registerSchema = z
   .object({
     email: z.string().email("Invalid email address"),

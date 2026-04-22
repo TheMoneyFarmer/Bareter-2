@@ -40,7 +40,7 @@ function isPrivateAddress(ip: string): boolean {
   return true;
 }
 
-async function assertSafeImageUrl(rawUrl: string): Promise<URL> {
+export async function assertSafeImageUrl(rawUrl: string): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -51,7 +51,13 @@ async function assertSafeImageUrl(rawUrl: string): Promise<URL> {
   const host = parsed.hostname;
   if (!host) throw new Error("missing_host");
 
-  if (net.isIP(host)) {
+  // WHATWG URL keeps the surrounding brackets on IPv6 hostnames
+  // (e.g. `[::1]`), so strip them before asking `net.isIP`.
+  const hostForIpCheck = host.startsWith("[") && host.endsWith("]")
+    ? host.slice(1, -1)
+    : host;
+
+  if (net.isIP(hostForIpCheck)) {
     // Block all IP-literal hosts; the Vision client must only fetch
     // proper hostnames so DNS resolution gives us something to validate.
     throw new Error("ip_literal_blocked");

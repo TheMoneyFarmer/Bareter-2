@@ -15,6 +15,7 @@ import fs from "fs";
 import {
   loginSchema,
   registerSchema,
+  adminKybStatusSchema,
   insertListingSchema,
   insertDealSchema,
   insertMessageSchema,
@@ -26,6 +27,15 @@ import {
   quickInquiries,
   users,
 } from "@shared/schema";
+import {
+  isValidPrivateDocPath,
+  canAccessPrivateDoc,
+} from "./security";
+import {
+  makeRegisterValidator,
+  makeAdminKybValidator,
+  makePrivateDocAuthGate,
+} from "./handlers/securitySensitive";
 import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
@@ -215,10 +225,12 @@ export async function registerRoutes(
     })
   );
 
-  // Auth routes
-  app.post("/api/auth/register", async (req, res) => {
+  // Auth routes. The strict-schema validation is mounted as a separate
+  // middleware so the security test suite can exercise the 400 response
+  // for unknown fields without needing a database.
+  app.post("/api/auth/register", makeRegisterValidator(), async (req, res) => {
     try {
-      const data = registerSchema.parse(req.body);
+      const data = res.locals.registerData as ReturnType<typeof registerSchema.parse>;
 
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
@@ -262,9 +274,6 @@ export async function registerRoutes(
         res.json(userWithoutPassword);
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
@@ -549,22 +558,14 @@ export async function registerRoutes(
 
   // Auth-gated download for private documents (KYC/KYB).
   // Only the owner of the document or an admin may fetch it.
-  app.get("/api/private-docs/:userId/:filename", requireAuth, async (req, res) => {
+  app.get(
+    "/api/private-docs/:userId/:filename",
+    requireAuth,
+    makePrivateDocAuthGate({ getUser: (id) => storage.getUser(id) }),
+    async (req, res) => {
     try {
-      const ownerId = req.params.userId;
-      const filename = req.params.filename;
-      // Refuse path traversal attempts in either segment.
-      if (
-        !/^[a-zA-Z0-9-]+$/.test(ownerId) ||
-        !/^[a-f0-9]{48}\.[a-z0-9]+$/i.test(filename)
-      ) {
-        return res.status(400).json({ message: "Invalid path" });
-      }
-      const callerId = req.session.userId!;
-      const caller = await storage.getUser(callerId);
-      if (callerId !== ownerId && !caller?.isAdmin) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+      const ownerId = req.params.userId as string;
+      const filename = req.params.filename as string;
 
       const { objectStorageClient, ObjectStorageService } = await import(
         "./replit_integrations/object_storage/objectStorage"
@@ -3184,36 +3185,26 @@ export async function registerRoutes(
   });
 
   // ========== Business License Routes ==========
-  // Strict whitelist of admin-settable KYB statuses. Anything outside this
-  // enum (including SQL fragments, arrays, etc.) is rejected with 400.
-  const adminKybStatusSchema = z
-    .object({
-      status: z.enum([
-        "NOT_STARTED",
-        "IN_PROGRESS",
-        "PENDING_REVIEW",
-        "APPROVED",
-        "DECLINED",
-      ]),
-    })
-    .strict();
-
-  app.patch("/api/admin/users/:id/kyb", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { status } = adminKybStatusSchema.parse(req.body);
-      const updated = await storage.updateUser(param(req.params.id), { kybStatus: status });
-      res.json(updated);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          message:
-            "Status must be one of NOT_STARTED, IN_PROGRESS, PENDING_REVIEW, APPROVED, DECLINED",
+  // adminKybStatusSchema is defined in shared/schema.ts so the security
+  // test suite can assert the whitelist independently of route plumbing.
+  app.patch(
+    "/api/admin/users/:id/kyb",
+    requireAuth,
+    requireAdmin,
+    makeAdminKybValidator(),
+    async (req, res) => {
+      try {
+        const status = res.locals.kybStatus as string;
+        const updated = await storage.updateUser(param(req.params.id), {
+          kybStatus: status,
         });
+        res.json(updated);
+      } catch (error) {
+        console.error("KYB update error:", error);
+        res.status(500).json({ message: "Internal server error" });
       }
-      console.error("KYB update error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+    },
+  );
 
   // ========== Pause / Unpause Account ==========
   app.patch("/api/admin/users/:id/pause", requireAuth, requireAdmin, async (req, res) => {

@@ -1,0 +1,651 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import express from "express";
+import request from "supertest";
+
+// ---------------------------------------------------------------------------
+// SSRF guard on the Vision client
+// ---------------------------------------------------------------------------
+
+vi.mock("node:dns/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:dns/promises")>(
+    "node:dns/promises",
+  );
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      lookup: vi.fn(),
+    },
+    lookup: vi.fn(),
+  };
+});
+
+import dns from "node:dns/promises";
+import { assertSafeImageUrl } from "../server/visionClient";
+
+describe("SSRF guard (assertSafeImageUrl)", () => {
+  beforeEach(() => {
+    (dns.lookup as unknown as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("rejects http:// URLs", async () => {
+    await expect(
+      assertSafeImageUrl("http://images.example.com/cat.jpg"),
+    ).rejects.toThrow(/non_https_url/);
+  });
+
+  it("rejects raw IPv4 literals even over https", async () => {
+    await expect(
+      assertSafeImageUrl("https://192.0.2.10/cat.jpg"),
+    ).rejects.toThrow(/ip_literal_blocked/);
+  });
+
+  it("rejects raw IPv6 literals", async () => {
+    await expect(
+      assertSafeImageUrl("https://[::1]/cat.jpg"),
+    ).rejects.toThrow(/ip_literal_blocked/);
+  });
+
+  it("rejects hostnames that resolve to loopback/private addresses", async () => {
+    (dns.lookup as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { address: "127.0.0.1", family: 4 },
+    ]);
+    await expect(
+      assertSafeImageUrl("https://attacker.example/cat.jpg"),
+    ).rejects.toThrow(/private_resolved_ip/);
+
+    (dns.lookup as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { address: "10.0.0.5", family: 4 },
+    ]);
+    await expect(
+      assertSafeImageUrl("https://attacker.example/cat.jpg"),
+    ).rejects.toThrow(/private_resolved_ip/);
+
+    (dns.lookup as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { address: "169.254.169.254", family: 4 },
+    ]);
+    await expect(
+      assertSafeImageUrl("https://metadata.example/cat.jpg"),
+    ).rejects.toThrow(/private_resolved_ip/);
+  });
+
+  it("allows hostnames that resolve to public addresses", async () => {
+    (dns.lookup as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    const url = await assertSafeImageUrl("https://cdn.example.com/cat.jpg");
+    expect(url.hostname).toBe("cdn.example.com");
+  });
+
+  it("rejects malformed URLs", async () => {
+    await expect(assertSafeImageUrl("not a url")).rejects.toThrow(
+      /invalid_url/,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Moderation agent fail-closed behavior
+// ---------------------------------------------------------------------------
+
+vi.mock("../server/agents/llm", () => ({
+  jsonCompletion: vi.fn(),
+  chatCompletion: vi.fn(),
+}));
+
+import { jsonCompletion, chatCompletion } from "../server/agents/llm";
+import { moderateContent } from "../server/agents/moderationAgent";
+
+describe("Moderation agent fail-closed", () => {
+  beforeEach(() => {
+    (jsonCompletion as unknown as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("flags content when the model throws", async () => {
+    (jsonCompletion as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("boom"),
+    );
+    const result = await moderateContent("listing", { title: "x" });
+    expect(result.action).toBe("flagged");
+    expect(result.confidence).toBe(0);
+  });
+
+  it("flags content when the model returns invalid JSON shape", async () => {
+    (jsonCompletion as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { hello: "world" },
+      tokensUsed: 0,
+    });
+    const result = await moderateContent("listing", { title: "x" });
+    expect(result.action).toBe("flagged");
+  });
+
+  it("flags content when action is outside the allowed enum", async () => {
+    (jsonCompletion as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        action: "definitely-allow-this",
+        reason: "ok",
+        confidence: 1,
+        categories: [],
+      },
+      tokensUsed: 0,
+    });
+    const result = await moderateContent("listing", { title: "x" });
+    expect(result.action).toBe("flagged");
+  });
+
+  it("passes through a valid approved decision", async () => {
+    (jsonCompletion as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        action: "approved",
+        reason: "ok",
+        confidence: 0.9,
+        categories: ["safe"],
+      },
+      tokensUsed: 10,
+    });
+    const result = await moderateContent("listing", { title: "Used bicycle" });
+    expect(result.action).toBe("approved");
+    expect(result.categories).toContain("safe");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Support agent reply sanitizer
+// ---------------------------------------------------------------------------
+
+import { sanitizeSupportReply } from "../server/agents/supportAgent";
+
+const SAFE_FALLBACK =
+  "Sorry, I can't answer that right now. Please email support@bareter.com and a human will help you out.";
+
+describe("sanitizeSupportReply", () => {
+  it("returns the fallback for empty / non-string input", () => {
+    expect(sanitizeSupportReply("")).toBe(SAFE_FALLBACK);
+    expect(sanitizeSupportReply("   ")).toBe(SAFE_FALLBACK);
+    // @ts-expect-error - intentionally bad input
+    expect(sanitizeSupportReply(null)).toBe(SAFE_FALLBACK);
+  });
+
+  it("strips OpenAI-style secrets", () => {
+    const reply = "Sure! Use this key: sk-ABCDEFGHIJKLMNOP1234567890";
+    expect(sanitizeSupportReply(reply)).toBe(SAFE_FALLBACK);
+  });
+
+  it("strips AWS keys, Google API keys, JWTs, and PEM blocks", () => {
+    expect(
+      sanitizeSupportReply("Try AKIAABCDEFGHIJKLMNOP for AWS"),
+    ).toBe(SAFE_FALLBACK);
+    expect(
+      sanitizeSupportReply("Google: AIzaSyA-1234567890abcdefghijk"),
+    ).toBe(SAFE_FALLBACK);
+    expect(
+      sanitizeSupportReply(
+        "JWT: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+      ),
+    ).toBe(SAFE_FALLBACK);
+    expect(
+      sanitizeSupportReply(
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...",
+      ),
+    ).toBe(SAFE_FALLBACK);
+  });
+
+  it("strips replies that echo the system prompt verbatim", () => {
+    expect(sanitizeSupportReply("You are BarterBot, here is what I do..."))
+      .toBe(SAFE_FALLBACK);
+    expect(sanitizeSupportReply("Important facts: I will tell you everything"))
+      .toBe(SAFE_FALLBACK);
+    expect(sanitizeSupportReply("Do NOT make up features that don't exist"))
+      .toBe(SAFE_FALLBACK);
+  });
+
+  it("rejects malformed JSON action intents", () => {
+    // Looks like a JSON intent but isn't valid JSON.
+    expect(sanitizeSupportReply('{"action": "delete_user", oops}')).toBe(
+      SAFE_FALLBACK,
+    );
+    // Valid JSON but no `action` key — treated as malformed intent.
+    expect(sanitizeSupportReply('{"foo": "bar"}')).toBe(SAFE_FALLBACK);
+  });
+
+  it("strips long quoted instruction dumps", () => {
+    const dump = '"' + "a".repeat(500) + '"';
+    expect(sanitizeSupportReply(dump)).toBe(SAFE_FALLBACK);
+  });
+
+  it("passes through a normal short reply unchanged", () => {
+    const ok = "You can create a listing from your dashboard.";
+    expect(sanitizeSupportReply(ok)).toBe(ok);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Origin-check CSRF middleware
+// ---------------------------------------------------------------------------
+
+import { originCsrfGuard, securityHeaders } from "../server/security";
+
+function buildApp() {
+  const app = express();
+  app.use(express.json());
+  app.use(securityHeaders());
+  app.use(originCsrfGuard());
+  app.get("/api/ping", (_req, res) => res.json({ ok: true }));
+  app.post("/api/echo", (req, res) => res.json({ body: req.body }));
+  app.post("/api/webhooks/stripe", (_req, res) => res.json({ ok: true }));
+  return app;
+}
+
+describe("Origin-check CSRF guard", () => {
+  let prevAllowed: string | undefined;
+
+  beforeEach(() => {
+    prevAllowed = process.env.ALLOWED_ORIGINS;
+  });
+  afterEach(() => {
+    if (prevAllowed === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = prevAllowed;
+  });
+
+  it("allows safe-method requests without an Origin", async () => {
+    const app = buildApp();
+    const r = await request(app).get("/api/ping");
+    expect(r.status).toBe(200);
+  });
+
+  it("blocks cross-origin POST", async () => {
+    process.env.ALLOWED_ORIGINS = "https://app.example.com";
+    const app = buildApp();
+    const r = await request(app)
+      .post("/api/echo")
+      .set("Origin", "https://evil.example.com")
+      .send({ a: 1 });
+    expect(r.status).toBe(403);
+  });
+
+  it("blocks POST with no Origin and no Referer", async () => {
+    process.env.ALLOWED_ORIGINS = "https://app.example.com";
+    const app = buildApp();
+    const r = await request(app).post("/api/echo").send({ a: 1 });
+    expect(r.status).toBe(403);
+  });
+
+  it("allows same-origin POST (Origin matches request Host)", async () => {
+    delete process.env.ALLOWED_ORIGINS;
+    const app = buildApp();
+    const r = await request(app)
+      .post("/api/echo")
+      .set("Host", "myapp.local")
+      .set("Origin", "https://myapp.local")
+      .send({ a: 1 });
+    expect(r.status).toBe(200);
+  });
+
+  it("allows POST whose Origin matches the configured allowlist", async () => {
+    process.env.ALLOWED_ORIGINS = "https://app.example.com";
+    const app = buildApp();
+    const r = await request(app)
+      .post("/api/echo")
+      .set("Origin", "https://app.example.com")
+      .send({ hi: 1 });
+    expect(r.status).toBe(200);
+  });
+
+  it("exempts the Stripe webhook path from origin checks", async () => {
+    const app = buildApp();
+    const r = await request(app)
+      .post("/api/webhooks/stripe")
+      .set("Origin", "https://stripe.com")
+      .send({});
+    expect(r.status).toBe(200);
+  });
+
+  it("sets standard helmet security headers", async () => {
+    const app = buildApp();
+    const r = await request(app).get("/api/ping");
+    expect(r.headers["x-content-type-options"]).toBe("nosniff");
+    expect(r.headers["x-frame-options"]).toBeDefined();
+    expect(r.headers["referrer-policy"]).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strict input schemas: register + admin KYB
+// ---------------------------------------------------------------------------
+
+import { registerSchema, adminKybStatusSchema } from "@shared/schema";
+
+describe("registerSchema (strict)", () => {
+  const base = {
+    email: "alice@example.com",
+    password: "supersecret",
+    fullName: "Alice Example",
+    country: "AE",
+    city: "Dubai",
+  };
+
+  it("accepts a valid payload", () => {
+    expect(registerSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("rejects unknown fields like isAdmin", () => {
+    const r = registerSchema.safeParse({ ...base, isAdmin: true });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects unknown fields like role / kybStatus / id", () => {
+    expect(registerSchema.safeParse({ ...base, role: "admin" }).success).toBe(
+      false,
+    );
+    expect(
+      registerSchema.safeParse({ ...base, kybStatus: "APPROVED" }).success,
+    ).toBe(false);
+    expect(
+      registerSchema.safeParse({ ...base, id: "00000000-..." }).success,
+    ).toBe(false);
+  });
+
+  it("rejects invalid email / short password", () => {
+    expect(
+      registerSchema.safeParse({ ...base, email: "not-an-email" }).success,
+    ).toBe(false);
+    expect(registerSchema.safeParse({ ...base, password: "abc" }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("adminKybStatusSchema (whitelist)", () => {
+  const allowed = [
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "PENDING_REVIEW",
+    "APPROVED",
+    "DECLINED",
+  ];
+
+  it.each(allowed)("accepts %s", (status) => {
+    expect(adminKybStatusSchema.safeParse({ status }).success).toBe(true);
+  });
+
+  it("rejects arbitrary strings", () => {
+    expect(
+      adminKybStatusSchema.safeParse({ status: "SUPER_APPROVED" }).success,
+    ).toBe(false);
+    expect(adminKybStatusSchema.safeParse({ status: "approved" }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects non-string status (arrays, SQL fragments, objects)", () => {
+    expect(
+      adminKybStatusSchema.safeParse({ status: ["APPROVED"] }).success,
+    ).toBe(false);
+    expect(
+      adminKybStatusSchema.safeParse({ status: { raw: "APPROVED" } }).success,
+    ).toBe(false);
+    expect(
+      adminKybStatusSchema.safeParse({ status: "APPROVED; DROP TABLE users" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects unknown fields alongside status", () => {
+    expect(
+      adminKybStatusSchema.safeParse({ status: "APPROVED", extra: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Private-doc download authorization
+// ---------------------------------------------------------------------------
+
+import {
+  isValidPrivateDocPath,
+  canAccessPrivateDoc,
+} from "../server/security";
+
+describe("Private-doc download auth", () => {
+  const validUserId = "abc123-DEF";
+  const validFilename = "a".repeat(48) + ".pdf";
+
+  it("accepts a well-formed user id and 48-hex filename", () => {
+    expect(isValidPrivateDocPath(validUserId, validFilename)).toBe(true);
+  });
+
+  it("rejects path-traversal in user id", () => {
+    expect(isValidPrivateDocPath("../etc", validFilename)).toBe(false);
+    expect(isValidPrivateDocPath("a/b", validFilename)).toBe(false);
+  });
+
+  it("rejects filenames that aren't 48-hex.<ext>", () => {
+    expect(isValidPrivateDocPath(validUserId, "../escape.pdf")).toBe(false);
+    expect(isValidPrivateDocPath(validUserId, "short.pdf")).toBe(false);
+    expect(isValidPrivateDocPath(validUserId, validFilename + "/x")).toBe(
+      false,
+    );
+  });
+
+  it("allows the owner to download their own doc", () => {
+    expect(
+      canAccessPrivateDoc({
+        callerId: "u1",
+        ownerId: "u1",
+        isAdmin: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("allows admins to download any doc", () => {
+    expect(
+      canAccessPrivateDoc({
+        callerId: "admin",
+        ownerId: "u1",
+        isAdmin: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("forbids non-owner non-admin", () => {
+    expect(
+      canAccessPrivateDoc({
+        callerId: "u2",
+        ownerId: "u1",
+        isAdmin: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("forbids unauthenticated callers", () => {
+    expect(
+      canAccessPrivateDoc({
+        callerId: null,
+        ownerId: "u1",
+        isAdmin: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+// chatCompletion is mocked above so its import isn't tree-shaken away.
+void chatCompletion;
+
+// ---------------------------------------------------------------------------
+// Route-level tests for the production handlers
+// ---------------------------------------------------------------------------
+
+import {
+  makeRegisterValidator,
+  makeAdminKybValidator,
+  makePrivateDocAuthGate,
+} from "../server/handlers/securitySensitive";
+
+describe("POST /api/auth/register (route)", () => {
+  function buildApp() {
+    const app = express();
+    app.use(express.json());
+    app.post("/api/auth/register", makeRegisterValidator(), (_req, res) => {
+      // Stand-in for the production DB write — proves validation passed.
+      res.status(200).json({ ok: true, data: res.locals.registerData });
+    });
+    return app;
+  }
+
+  const validBody = {
+    email: "alice@example.com",
+    password: "supersecret",
+    fullName: "Alice Example",
+    country: "AE",
+    city: "Dubai",
+  };
+
+  it("accepts a valid payload (200)", async () => {
+    const r = await request(buildApp()).post("/api/auth/register").send(validBody);
+    expect(r.status).toBe(200);
+    expect(r.body.data.email).toBe("alice@example.com");
+  });
+
+  it("rejects unknown isAdmin field with 400", async () => {
+    const r = await request(buildApp())
+      .post("/api/auth/register")
+      .send({ ...validBody, isAdmin: true });
+    expect(r.status).toBe(400);
+  });
+
+  it("rejects unknown role / kybStatus fields with 400", async () => {
+    for (const extra of [{ role: "admin" }, { kybStatus: "APPROVED" }, { id: "x" }]) {
+      const r = await request(buildApp())
+        .post("/api/auth/register")
+        .send({ ...validBody, ...extra });
+      expect(r.status).toBe(400);
+    }
+  });
+});
+
+describe("PATCH /api/admin/users/:id/kyb (route)", () => {
+  function buildApp() {
+    const app = express();
+    app.use(express.json());
+    // No requireAuth/requireAdmin in the test app — we're proving the
+    // input-validation gate fails closed regardless of who's calling.
+    app.patch(
+      "/api/admin/users/:id/kyb",
+      makeAdminKybValidator(),
+      (_req, res) => {
+        res.status(200).json({ ok: true, status: res.locals.kybStatus });
+      },
+    );
+    return app;
+  }
+
+  it("accepts whitelisted statuses (200)", async () => {
+    for (const status of [
+      "NOT_STARTED",
+      "IN_PROGRESS",
+      "PENDING_REVIEW",
+      "APPROVED",
+      "DECLINED",
+    ]) {
+      const r = await request(buildApp())
+        .patch("/api/admin/users/abc/kyb")
+        .send({ status });
+      expect(r.status).toBe(200);
+      expect(r.body.status).toBe(status);
+    }
+  });
+
+  it("rejects non-whitelisted status with 400", async () => {
+    const r = await request(buildApp())
+      .patch("/api/admin/users/abc/kyb")
+      .send({ status: "SUPER_APPROVED" });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/NOT_STARTED.*APPROVED/);
+  });
+
+  it("rejects array / object / SQL-fragment status with 400", async () => {
+    for (const status of [
+      ["APPROVED"],
+      { raw: "APPROVED" },
+      "APPROVED; DROP TABLE users",
+    ]) {
+      const r = await request(buildApp())
+        .patch("/api/admin/users/abc/kyb")
+        .send({ status });
+      expect(r.status).toBe(400);
+    }
+  });
+
+  it("rejects extra unknown fields alongside status", async () => {
+    const r = await request(buildApp())
+      .patch("/api/admin/users/abc/kyb")
+      .send({ status: "APPROVED", extra: 1 });
+    expect(r.status).toBe(400);
+  });
+});
+
+describe("GET /api/private-docs/:userId/:filename (route)", () => {
+  // A storage stub that lets us pretend to be admin or non-admin.
+  function buildApp(opts: {
+    sessionUserId?: string | null;
+    isAdmin?: boolean;
+  }) {
+    const app = express();
+    // Inject a minimal session.
+    app.use((req: any, _res, next) => {
+      req.session = opts.sessionUserId
+        ? { userId: opts.sessionUserId }
+        : {};
+      next();
+    });
+    const stub = {
+      getUser: async (id: string) =>
+        id === opts.sessionUserId
+          ? { isAdmin: !!opts.isAdmin }
+          : { isAdmin: false },
+    };
+    app.get(
+      "/api/private-docs/:userId/:filename",
+      makePrivateDocAuthGate({ getUser: stub.getUser }),
+      (_req, res) => res.status(200).json({ ok: true }),
+    );
+    return app;
+  }
+
+  const validFilename = "a".repeat(48) + ".pdf";
+
+  it("allows the owner (200)", async () => {
+    const r = await request(buildApp({ sessionUserId: "user-1" })).get(
+      `/api/private-docs/user-1/${validFilename}`,
+    );
+    expect(r.status).toBe(200);
+  });
+
+  it("allows admins downloading other users' docs (200)", async () => {
+    const r = await request(
+      buildApp({ sessionUserId: "admin-1", isAdmin: true }),
+    ).get(`/api/private-docs/user-2/${validFilename}`);
+    expect(r.status).toBe(200);
+  });
+
+  it("forbids non-owner non-admin (403)", async () => {
+    const r = await request(buildApp({ sessionUserId: "user-2" })).get(
+      `/api/private-docs/user-1/${validFilename}`,
+    );
+    expect(r.status).toBe(403);
+  });
+
+  it("rejects unauthenticated callers (401)", async () => {
+    const r = await request(buildApp({})).get(
+      `/api/private-docs/user-1/${validFilename}`,
+    );
+    expect(r.status).toBe(401);
+  });
+
+  it("rejects path-traversal in filename with 400", async () => {
+    const r = await request(buildApp({ sessionUserId: "user-1" })).get(
+      "/api/private-docs/user-1/..%2Fescape.pdf",
+    );
+    expect(r.status).toBe(400);
+  });
+});
