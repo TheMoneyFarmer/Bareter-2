@@ -21,11 +21,12 @@ import {
   quickInquiries,
   users,
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
+import crypto from "crypto";
+import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
-import memorystore from "memorystore";
 import rateLimit from "express-rate-limit";
 import { WebhookHandlers } from "./webhookHandlers";
 
@@ -94,7 +95,30 @@ const upload = multer({
   },
 });
 
-const MemoryStore = memorystore(session);
+const PgSession = connectPgSimple(session);
+
+// Hash a password-reset token before storing or looking it up.
+// Raw token only ever travels in the email link.
+function hashResetToken(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+// Destroy every persisted session for a user except (optionally) the
+// caller's current one. Safe to call from auth flows after a password
+// change/reset. Touches the connect-pg-simple `session` table directly.
+async function destroyUserSessions(userId: string, exceptSid?: string): Promise<void> {
+  const params: (string | undefined)[] = [userId];
+  let sql = `DELETE FROM "session" WHERE sess->>'userId' = $1`;
+  if (exceptSid) {
+    sql += ` AND sid <> $2`;
+    params.push(exceptSid);
+  }
+  try {
+    await pool.query(sql, params.filter((p): p is string => p !== undefined));
+  } catch (err) {
+    console.error("[session] failed to invalidate sessions for user", userId, err);
+  }
+}
 
 declare module "express-session" {
   interface SessionData {
@@ -155,22 +179,18 @@ export async function registerRoutes(
       secret: (() => {
         const s = process.env.SESSION_SECRET;
         if (!s) {
-          if (process.env.NODE_ENV === "production") {
-            throw new Error(
-              "SESSION_SECRET is required in production. Refusing to boot with an insecure fallback.",
-            );
-          }
-          console.warn(
-            "[session] SESSION_SECRET is not set — using an insecure development fallback. Set SESSION_SECRET before deploying.",
+          throw new Error(
+            "SESSION_SECRET is required. Refusing to boot. Set SESSION_SECRET in your environment (development and production).",
           );
-          return "dev-only-insecure-fallback-do-not-use-in-prod";
         }
         return s;
       })(),
       resave: false,
       saveUninitialized: false,
-      store: new MemoryStore({
-        checkPeriod: 86400000,
+      store: new PgSession({
+        pool,
+        tableName: "session",
+        createTableIfMissing: true,
       }),
       cookie: {
         secure: true, // Always secure since Replit serves over HTTPS
@@ -280,12 +300,12 @@ export async function registerRoutes(
       const user = await storage.getUserByEmail(email.toLowerCase().trim());
 
       if (user) {
-        const crypto = await import("crypto");
         const token = crypto.randomBytes(32).toString("hex");
         const expires = new Date(Date.now() + 60 * 60 * 1000);
 
+        // Store only the SHA-256 hash. Raw token lives only in the email link.
         await storage.updateUser(user.id, {
-          passwordResetToken: token,
+          passwordResetToken: hashResetToken(token),
           passwordResetExpires: expires,
         });
 
@@ -309,7 +329,7 @@ export async function registerRoutes(
     if (!token || typeof token !== "string") {
       return res.status(400).json({ valid: false, message: "Token is required" });
     }
-    const user = await storage.getUserByPasswordResetToken(token);
+    const user = await storage.getUserByPasswordResetToken(hashResetToken(token));
     if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
       return res.status(400).json({ valid: false, message: "Reset link is invalid or has expired" });
     }
@@ -326,7 +346,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Password must be at least 8 characters" });
       }
 
-      const user = await storage.getUserByPasswordResetToken(token);
+      const user = await storage.getUserByPasswordResetToken(hashResetToken(token));
       if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
         return res.status(400).json({ message: "Reset link is invalid or has expired" });
       }
@@ -339,6 +359,11 @@ export async function registerRoutes(
         passwordResetToken: null,
         passwordResetExpires: null,
       });
+
+      // Reset is performed by an unauthenticated caller — destroy ALL of
+      // the user's existing sessions so any attacker who was already in is
+      // booted out.
+      await destroyUserSessions(user.id);
 
       res.json({ message: "Password updated successfully" });
     } catch (err) {
@@ -581,6 +606,11 @@ export async function registerRoutes(
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await storage.updateUser(req.session.userId!, { password: hashedPassword });
+
+      // Destroy every other active session for this user so a stolen
+      // session is invalidated as soon as the legitimate user changes
+      // their password. Keep the caller's current session alive.
+      await destroyUserSessions(req.session.userId!, req.sessionID);
 
       res.json({ message: "Password changed successfully" });
     } catch (error) {
