@@ -649,3 +649,211 @@ describe("GET /api/private-docs/:userId/:filename (route)", () => {
     expect(r.status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit hardening: rate limits, hashed reset tokens, magic-byte sniffing,
+// unified bcrypt cost
+// ---------------------------------------------------------------------------
+
+import bcrypt from "bcryptjs";
+import {
+  BCRYPT_ROUNDS,
+  hashPassword,
+  hashResetToken,
+  detectAllowedFileType,
+  ALLOWED_UPLOAD_MIMES,
+  makeLoginRateLimiter,
+  makeRegisterRateLimiter,
+  makeForgotPasswordRateLimiter,
+} from "../server/handlers/authHardening";
+
+describe("Auth rate limiters", () => {
+  function appWithLimiter(limiter: ReturnType<typeof makeLoginRateLimiter>, path: string) {
+    const app = express();
+    app.use(express.json());
+    app.post(path, limiter, (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  // Force every test request to share a key so the bucket fills quickly.
+  const fixedKey = { keyGenerator: () => "test-bucket" };
+
+  it("returns 429 on /api/auth/login after the configured threshold", async () => {
+    const limiter = makeLoginRateLimiter({ ...fixedKey, limit: 2, windowMs: 60_000 });
+    const app = appWithLimiter(limiter, "/api/auth/login");
+    const r1 = await request(app).post("/api/auth/login").send({});
+    const r2 = await request(app).post("/api/auth/login").send({});
+    const r3 = await request(app).post("/api/auth/login").send({});
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(429);
+    expect(r3.body.message).toMatch(/login/i);
+  });
+
+  it("returns 429 on /api/auth/register after the configured threshold", async () => {
+    const limiter = makeRegisterRateLimiter({ ...fixedKey, limit: 2, windowMs: 60_000 });
+    const app = appWithLimiter(limiter, "/api/auth/register");
+    const r1 = await request(app).post("/api/auth/register").send({});
+    const r2 = await request(app).post("/api/auth/register").send({});
+    const r3 = await request(app).post("/api/auth/register").send({});
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(429);
+    expect(r3.body.message).toMatch(/registration/i);
+  });
+
+  it("returns 429 on /api/auth/forgot-password after the configured threshold", async () => {
+    const limiter = makeForgotPasswordRateLimiter({ ...fixedKey, limit: 3, windowMs: 60_000 });
+    const app = appWithLimiter(limiter, "/api/auth/forgot-password");
+    const codes: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await request(app).post("/api/auth/forgot-password").send({});
+      codes.push(r.status);
+    }
+    expect(codes.slice(0, 3)).toEqual([200, 200, 200]);
+    expect(codes[3]).toBe(429);
+  });
+
+  it("uses the audit-required production thresholds by default", () => {
+    // The factories construct middleware whose .options carry the limit/windowMs
+    // we configured. We re-read them by hitting the limiter and inspecting the
+    // standard rate-limit response header on the very first request.
+    const cases = [
+      { limiter: makeLoginRateLimiter(fixedKey), path: "/x", expectLimit: 10 },
+      { limiter: makeRegisterRateLimiter(fixedKey), path: "/x", expectLimit: 5 },
+      { limiter: makeForgotPasswordRateLimiter(fixedKey), path: "/x", expectLimit: 3 },
+    ];
+    return Promise.all(
+      cases.map(async ({ limiter, expectLimit }) => {
+        const app = appWithLimiter(limiter, "/x");
+        const r = await request(app).post("/x").send({});
+        // express-rate-limit draft-7 emits `RateLimit` with `limit=N`.
+        const header = r.headers["ratelimit"] || r.headers["ratelimit-policy"] || "";
+        expect(String(header)).toContain(String(expectLimit));
+      }),
+    );
+  });
+});
+
+describe("Hashed password-reset tokens", () => {
+  it("hashes raw tokens with SHA-256 (64-hex chars, never the raw value)", () => {
+    const raw = "abcdef0123456789";
+    const hashed = hashResetToken(raw);
+    expect(hashed).toMatch(/^[a-f0-9]{64}$/);
+    expect(hashed).not.toBe(raw);
+  });
+
+  it("is deterministic so lookups by hash succeed", () => {
+    expect(hashResetToken("same")).toBe(hashResetToken("same"));
+    expect(hashResetToken("a")).not.toBe(hashResetToken("b"));
+  });
+
+  it("simulated forgot-password flow stores only the hash, not the raw token", async () => {
+    // Mirror the production handler: the route generates a random token,
+    // emails the RAW value, and writes hashResetToken(raw) into the DB.
+    const updates: Array<{ id: string; data: any }> = [];
+    const stubStorage = {
+      getUserByEmail: async (_email: string) => ({ id: "u1" }),
+      updateUser: async (id: string, data: any) => {
+        updates.push({ id, data });
+        return { id, ...data };
+      },
+    };
+    const emailedTokens: string[] = [];
+    const sendResetEmail = async (_to: string, token: string) => {
+      emailedTokens.push(token);
+    };
+
+    // Reproduce the small slice of the production handler under test.
+    const raw = "deadbeefdeadbeefdeadbeefdeadbeef";
+    const user = await stubStorage.getUserByEmail("alice@example.com");
+    if (user) {
+      await stubStorage.updateUser(user.id, {
+        passwordResetToken: hashResetToken(raw),
+        passwordResetExpires: new Date(Date.now() + 3_600_000),
+      });
+      await sendResetEmail("alice@example.com", raw);
+    }
+
+    expect(updates).toHaveLength(1);
+    const stored = updates[0].data.passwordResetToken;
+    expect(stored).toBe(hashResetToken(raw));
+    expect(stored).not.toBe(raw);
+    // The raw token is what users actually click — it must be the only
+    // place the unhashed value ever appears.
+    expect(emailedTokens).toEqual([raw]);
+  });
+});
+
+describe("Magic-byte upload sniffing (detectAllowedFileType)", () => {
+  it("rejects an HTML file masquerading as .jpg", async () => {
+    const html = Buffer.from(
+      "<!doctype html><html><body><script>alert(1)</script></body></html>",
+      "utf8",
+    );
+    const detected = await detectAllowedFileType(html);
+    expect(detected).toBeNull();
+  });
+
+  it("rejects an arbitrary text payload", async () => {
+    const txt = Buffer.from("just plain text, definitely not an image", "utf8");
+    expect(await detectAllowedFileType(txt)).toBeNull();
+  });
+
+  it("rejects an empty buffer", async () => {
+    expect(await detectAllowedFileType(Buffer.alloc(0))).toBeNull();
+  });
+
+  it("rejects an SVG (XML, not in allow-list) even with image-y bytes", async () => {
+    const svg = Buffer.from(
+      '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>',
+      "utf8",
+    );
+    expect(await detectAllowedFileType(svg)).toBeNull();
+  });
+
+  it("accepts a real JPEG buffer (magic bytes FF D8 FF)", async () => {
+    // Minimal valid JPEG-of-EXIF header that file-type recognises as image/jpeg.
+    const jpeg = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+      0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9,
+    ]);
+    const detected = await detectAllowedFileType(jpeg);
+    expect(detected).not.toBeNull();
+    expect(detected?.mime).toBe("image/jpeg");
+    expect(ALLOWED_UPLOAD_MIMES.has(detected!.mime)).toBe(true);
+  });
+
+  it("accepts a real PNG buffer (magic bytes 89 50 4E 47)", async () => {
+    // 1x1 transparent PNG.
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+      "base64",
+    );
+    const detected = await detectAllowedFileType(png);
+    expect(detected?.mime).toBe("image/png");
+  });
+});
+
+describe("Unified bcrypt cost (BCRYPT_ROUNDS)", () => {
+  it("constant equals the audit-required value (12)", () => {
+    expect(BCRYPT_ROUNDS).toBe(12);
+  });
+
+  it("hashPassword (used by register, change-password, and reset) uses BCRYPT_ROUNDS", async () => {
+    const hash = await hashPassword("supersecret");
+    expect(bcrypt.getRounds(hash)).toBe(BCRYPT_ROUNDS);
+    // Round-trip sanity check so a future regression to plaintext fails loudly.
+    expect(await bcrypt.compare("supersecret", hash)).toBe(true);
+  });
+
+  it("two independent hashes both come out at the configured cost", async () => {
+    const [a, b] = await Promise.all([
+      hashPassword("one"),
+      hashPassword("two"),
+    ]);
+    expect(bcrypt.getRounds(a)).toBe(12);
+    expect(bcrypt.getRounds(b)).toBe(12);
+    expect(a).not.toBe(b);
+  });
+});

@@ -2,11 +2,6 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
-
-// Single source of truth for bcrypt cost. All password hash sites in this
-// file must reference BCRYPT_ROUNDS so the strength is consistent across
-// register, password change, and password reset.
-const BCRYPT_ROUNDS = 12;
 import session from "express-session";
 import { z } from "zod";
 import multer from "multer";
@@ -36,6 +31,14 @@ import {
   makeAdminKybValidator,
   makePrivateDocAuthGate,
 } from "./handlers/securitySensitive";
+import {
+  hashPassword,
+  hashResetToken,
+  detectAllowedFileType,
+  makeLoginRateLimiter,
+  makeRegisterRateLimiter,
+  makeForgotPasswordRateLimiter,
+} from "./handlers/authHardening";
 import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
@@ -70,15 +73,14 @@ const aiPerDayLimiter = rateLimit({
   message: { message: "Daily AI usage limit reached. Please try again tomorrow." },
 });
 
-// Stricter limiter for password-reset requests — keyed by IP only,
-// never by email (avoids leaking which addresses are registered).
-const forgotPasswordLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 3,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { message: "Too many password reset requests. Please try again in 15 minutes." },
-});
+// Per-IP limiters for the auth surface. Login + register are bursty during
+// credential stuffing / mass-signup abuse, so we cap them; the password
+// reset endpoint is the most attractive enumeration target so it gets the
+// strictest cap. Factories live in `handlers/authHardening.ts` so the
+// security tests can construct fresh, low-threshold copies.
+const loginLimiter = makeLoginRateLimiter();
+const registerLimiter = makeRegisterRateLimiter();
+const forgotPasswordLimiter = makeForgotPasswordRateLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -96,36 +98,15 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-// Magic-byte allow-list for uploaded files. Verified with `file-type` against
-// the actual buffer bytes — client-supplied extension/MIME are ignored.
-const ALLOWED_UPLOAD_MIMES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-]);
-
-async function detectAllowedFileType(
-  buffer: Buffer,
-): Promise<{ mime: string; ext: string } | null> {
-  const { fileTypeFromBuffer } = await import("file-type");
-  const ft = await fileTypeFromBuffer(buffer);
-  if (!ft || !ALLOWED_UPLOAD_MIMES.has(ft.mime)) return null;
-  return { mime: ft.mime, ext: ft.ext };
-}
+// Magic-byte allow-list and detector live in `handlers/authHardening.ts`
+// alongside the other audit hardening primitives so the security suite
+// can exercise them without booting the full route table.
 
 // Private upload types are routed to object storage; everything else goes to
 // the public /uploads dir.
 const PRIVATE_UPLOAD_TYPES = new Set(["verification", "business_license"]);
 
 const PgSession = connectPgSimple(session);
-
-// Hash a password-reset token before storing or looking it up.
-// Raw token only ever travels in the email link.
-function hashResetToken(raw: string): string {
-  return crypto.createHash("sha256").update(raw).digest("hex");
-}
 
 // Destroy every persisted session for a user except (optionally) the
 // caller's current one. Safe to call from auth flows after a password
@@ -228,7 +209,7 @@ export async function registerRoutes(
   // Auth routes. The strict-schema validation is mounted as a separate
   // middleware so the security test suite can exercise the 400 response
   // for unknown fields without needing a database.
-  app.post("/api/auth/register", makeRegisterValidator(), async (req, res) => {
+  app.post("/api/auth/register", registerLimiter, makeRegisterValidator(), async (req, res) => {
     try {
       const data = res.locals.registerData as ReturnType<typeof registerSchema.parse>;
 
@@ -237,7 +218,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+      const hashedPassword = await hashPassword(data.password);
 
       // Auto-grant Founder Badge if email matches a waitlist entry
       const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => undefined);
@@ -279,7 +260,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
       const data = loginSchema.parse(req.body);
 
@@ -374,7 +355,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Reset link is invalid or has expired" });
       }
 
-      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const hashedPassword = await hashPassword(password);
 
       await storage.updateUser(user.id, {
         password: hashedPassword,
@@ -716,7 +697,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+      const hashedPassword = await hashPassword(newPassword);
       await storage.updateUser(req.session.userId!, { password: hashedPassword });
 
       // Destroy every other active session for this user so a stolen
@@ -2509,7 +2490,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const hashedPassword = await bcrypt.hash("demo123", BCRYPT_ROUNDS);
+      const hashedPassword = await hashPassword("demo123");
 
       const sampleBusinesses = [
         {
