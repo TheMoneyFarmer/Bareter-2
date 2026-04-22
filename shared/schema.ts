@@ -834,19 +834,25 @@ export const insertListingCommentSchema = createInsertSchema(listingComments).om
   createdAt: true,
 });
 
-// Auth schemas
-export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+// Auth schemas. Use `.strict()` on registration so unknown fields
+// (e.g. attempts to smuggle `isAdmin`, `role`, `kybStatus` etc.) are
+// rejected with a 400 instead of silently passing through.
+export const loginSchema = z
+  .object({
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+  })
+  .strict();
 
-export const registerSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  country: z.string().length(2, "Please select a country"),
-  city: z.string().min(1, "Please select a city"),
-});
+export const registerSchema = z
+  .object({
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    fullName: z.string().min(2, "Full name must be at least 2 characters"),
+    country: z.string().length(2, "Please select a country"),
+    city: z.string().min(1, "Please select a city"),
+  })
+  .strict();
 
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;

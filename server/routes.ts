@@ -65,35 +65,44 @@ const forgotPasswordLimiter = rateLimit({
   message: { message: "Too many password reset requests. Please try again in 15 minutes." },
 });
 
-// Configure multer for file uploads
+// Configure multer for file uploads.
+// We keep uploads in-memory so we can magic-byte verify the buffer before
+// committing it anywhere. Public assets (avatars/portfolio) are written to
+// the local /uploads dir with crypto-random names; private documents
+// (KYC/KYB) go to the private object-storage bucket and are gated behind
+// an owner/admin auth check.
 const uploadDir = "./uploads";
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const multerStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-const upload = multer({
-  storage: multerStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|pdf|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
-      return cb(null, true);
-    }
-    cb(new Error("Invalid file type"));
-  },
-});
+// Magic-byte allow-list for uploaded files. Verified with `file-type` against
+// the actual buffer bytes — client-supplied extension/MIME are ignored.
+const ALLOWED_UPLOAD_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+]);
+
+async function detectAllowedFileType(
+  buffer: Buffer,
+): Promise<{ mime: string; ext: string } | null> {
+  const { fileTypeFromBuffer } = await import("file-type");
+  const ft = await fileTypeFromBuffer(buffer);
+  if (!ft || !ALLOWED_UPLOAD_MIMES.has(ft.mime)) return null;
+  return { mime: ft.mime, ext: ft.ext };
+}
+
+// Private upload types are routed to object storage; everything else goes to
+// the public /uploads dir.
+const PRIVATE_UPLOAD_TYPES = new Set(["verification", "business_license"]);
 
 const PgSession = connectPgSimple(session);
 
@@ -442,32 +451,86 @@ export async function registerRoutes(
   });
   app.use("/uploads", express.static(uploadDir));
 
-  // File upload endpoint
+  // File upload endpoint.
+  // - Magic-byte verifies the buffer (extension/MIME from the client are
+  //   ignored) against ALLOWED_UPLOAD_MIMES.
+  // - Private types (verification / business_license) are uploaded to the
+  //   private object-storage bucket and surfaced via `/api/private-docs/*`,
+  //   which is gated by owner-or-admin auth.
+  // - Public types (avatar / portfolio) are written to /uploads with a
+  //   crypto-random unguessable filename.
   app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
     try {
-      if (!req.file) {
+      if (!req.file || !req.file.buffer) {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
+      const detected = await detectAllowedFileType(req.file.buffer);
+      if (!detected) {
+        return res.status(400).json({
+          message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed.",
+        });
+      }
+
       const uploadType = req.body.type;
+      const userId = req.session.userId!;
+
+      let fileUrl: string;
+
+      if (PRIVATE_UPLOAD_TYPES.has(uploadType)) {
+        // Push to the private object-storage bucket. The object path is
+        // `<PRIVATE_OBJECT_DIR>/private-docs/<userId>/<random>.<ext>`.
+        const { objectStorageClient, ObjectStorageService } = await import(
+          "./replit_integrations/object_storage/objectStorage"
+        );
+        const svc = new ObjectStorageService();
+        const privateDir = svc.getPrivateObjectDir().replace(/\/+$/, "");
+        const random = crypto.randomBytes(24).toString("hex");
+        const objectPath = `${privateDir}/private-docs/${userId}/${random}.${detected.ext}`;
+        // parseObjectPath equivalent: first segment is bucket, rest is key
+        const parts = objectPath.replace(/^\/+/, "").split("/");
+        const bucketName = parts[0];
+        const objectName = parts.slice(1).join("/");
+        await objectStorageClient
+          .bucket(bucketName)
+          .file(objectName)
+          .save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: {
+              metadata: {
+                "custom:aclPolicy": JSON.stringify({
+                  owner: userId,
+                  visibility: "private",
+                }),
+              },
+            },
+          });
+        // Public URL exposed by our app — actual download is gated.
+        fileUrl = `/api/private-docs/${userId}/${random}.${detected.ext}`;
+      } else {
+        // Public uploads — crypto-random unguessable name on local disk.
+        const random = crypto.randomBytes(24).toString("hex");
+        const filename = `${random}.${detected.ext}`;
+        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+        fileUrl = `/uploads/${filename}`;
+      }
 
       // Update user profile based on upload type
       if (uploadType === "avatar") {
-        await storage.updateUser(req.session.userId!, { avatarUrl: fileUrl });
+        await storage.updateUser(userId, { avatarUrl: fileUrl });
       } else if (uploadType === "verification") {
-        await storage.updateUser(req.session.userId!, {
+        await storage.updateUser(userId, {
           verificationDocUrl: fileUrl,
           verificationStatus: "submitted",
         });
       } else if (uploadType === "portfolio") {
-        const user = await storage.getUser(req.session.userId!);
+        const user = await storage.getUser(userId);
         if (user) {
           const portfolioImages = [...(user.portfolioImages || []), fileUrl];
-          await storage.updateUser(req.session.userId!, { portfolioImages });
+          await storage.updateUser(userId, { portfolioImages });
         }
       } else if (uploadType === "business_license") {
-        await storage.updateUser(req.session.userId!, {
+        await storage.updateUser(userId, {
           businessLicenseUrl: fileUrl,
           kybStatus: "PENDING_REVIEW",
         });
@@ -480,6 +543,48 @@ export async function registerRoutes(
     }
   });
 
+  // Auth-gated download for private documents (KYC/KYB).
+  // Only the owner of the document or an admin may fetch it.
+  app.get("/api/private-docs/:userId/:filename", requireAuth, async (req, res) => {
+    try {
+      const ownerId = req.params.userId;
+      const filename = req.params.filename;
+      // Refuse path traversal attempts in either segment.
+      if (
+        !/^[a-zA-Z0-9-]+$/.test(ownerId) ||
+        !/^[a-f0-9]{48}\.[a-z0-9]+$/i.test(filename)
+      ) {
+        return res.status(400).json({ message: "Invalid path" });
+      }
+      const callerId = req.session.userId!;
+      const caller = await storage.getUser(callerId);
+      if (callerId !== ownerId && !caller?.isAdmin) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { objectStorageClient, ObjectStorageService } = await import(
+        "./replit_integrations/object_storage/objectStorage"
+      );
+      const svc = new ObjectStorageService();
+      const privateDir = svc.getPrivateObjectDir().replace(/\/+$/, "");
+      const objectPath = `${privateDir}/private-docs/${ownerId}/${filename}`;
+      const parts = objectPath.replace(/^\/+/, "").split("/");
+      const bucketName = parts[0];
+      const objectName = parts.slice(1).join("/");
+      const file = objectStorageClient.bucket(bucketName).file(objectName);
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      await svc.downloadObject(file, res, 0);
+    } catch (error) {
+      console.error("Private doc download error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch document" });
+      }
+    }
+  });
+
   // User routes - with strict allowlist to prevent privilege escalation
   const offerNeedItemSchema = z.object({
     name: z.string(),
@@ -487,20 +592,22 @@ export async function registerRoutes(
     description: z.string().optional(),
   });
 
-  const updateProfileSchema = z.object({
-    fullName: z.string().min(2).optional(),
-    bio: z.string().optional(),
-    location: z.string().optional(),
-    country: z.string().length(2).optional(),
-    city: z.string().optional(),
-    locationPrompted: z.boolean().optional(),
-    businessName: z.string().optional(),
-    avatarUrl: z.string().optional(),
-    whatIOffer: z.array(offerNeedItemSchema).optional(),
-    whatINeed: z.array(offerNeedItemSchema).optional(),
-    portfolioImages: z.array(z.string()).optional(),
-    language: z.enum(["en", "ar"]).optional(),
-  });
+  const updateProfileSchema = z
+    .object({
+      fullName: z.string().min(2).optional(),
+      bio: z.string().optional(),
+      location: z.string().optional(),
+      country: z.string().length(2).optional(),
+      city: z.string().optional(),
+      locationPrompted: z.boolean().optional(),
+      businessName: z.string().optional(),
+      avatarUrl: z.string().optional(),
+      whatIOffer: z.array(offerNeedItemSchema).optional(),
+      whatINeed: z.array(offerNeedItemSchema).optional(),
+      portfolioImages: z.array(z.string()).optional(),
+      language: z.enum(["en", "ar"]).optional(),
+    })
+    .strict();
 
   app.patch("/api/users/profile", requireAuth, async (req, res) => {
     try {
@@ -2059,28 +2166,30 @@ export async function registerRoutes(
   });
 
   // Onboarding routes
-  const onboardingSchema = z.object({
-    step: z.number().min(1).max(4),
-    fullName: z.string().optional(),
-    businessName: z.string().optional(),
-    location: z.string().optional(),
-    country: z.string().length(2).optional(),
-    city: z.string().optional(),
-    locationPrompted: z.boolean().optional(),
-    bio: z.string().optional(),
-    whatIOffer: z.array(z.object({
-      name: z.string(),
-      value: z.number(),
-      description: z.string().optional(),
-    })).optional(),
-    whatINeed: z.array(z.object({
-      name: z.string(),
-      value: z.number(),
-      description: z.string().optional(),
-    })).optional(),
-    avatarUrl: z.string().optional(),
-    portfolioImages: z.array(z.string()).optional(),
-  });
+  const onboardingSchema = z
+    .object({
+      step: z.number().min(1).max(4),
+      fullName: z.string().optional(),
+      businessName: z.string().optional(),
+      location: z.string().optional(),
+      country: z.string().length(2).optional(),
+      city: z.string().optional(),
+      locationPrompted: z.boolean().optional(),
+      bio: z.string().optional(),
+      whatIOffer: z.array(z.object({
+        name: z.string(),
+        value: z.number(),
+        description: z.string().optional(),
+      })).optional(),
+      whatINeed: z.array(z.object({
+        name: z.string(),
+        value: z.number(),
+        description: z.string().optional(),
+      })).optional(),
+      avatarUrl: z.string().optional(),
+      portfolioImages: z.array(z.string()).optional(),
+    })
+    .strict();
 
   app.patch("/api/onboarding", requireAuth, async (req, res) => {
     try {
@@ -3073,15 +3182,32 @@ export async function registerRoutes(
   });
 
   // ========== Business License Routes ==========
+  // Strict whitelist of admin-settable KYB statuses. Anything outside this
+  // enum (including SQL fragments, arrays, etc.) is rejected with 400.
+  const adminKybStatusSchema = z
+    .object({
+      status: z.enum([
+        "NOT_STARTED",
+        "IN_PROGRESS",
+        "PENDING_REVIEW",
+        "APPROVED",
+        "DECLINED",
+      ]),
+    })
+    .strict();
+
   app.patch("/api/admin/users/:id/kyb", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { status } = req.body; // "APPROVED" or "REJECTED"
-      if (!["APPROVED", "REJECTED"].includes(status)) {
-        return res.status(400).json({ message: "Status must be APPROVED or REJECTED" });
-      }
+      const { status } = adminKybStatusSchema.parse(req.body);
       const updated = await storage.updateUser(param(req.params.id), { kybStatus: status });
       res.json(updated);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message:
+            "Status must be one of NOT_STARTED, IN_PROGRESS, PENDING_REVIEW, APPROVED, DECLINED",
+        });
+      }
       console.error("KYB update error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
