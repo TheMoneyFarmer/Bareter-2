@@ -12,7 +12,9 @@
  *      with the same `owner=userId / visibility=private` ACL the live
  *      upload route writes.
  *   4. Updates the user row to point at the new `/api/private-docs/...` URL.
- *   5. Deletes the local file.
+ *   5. Deletes the local file once every field for that user has been
+ *      processed (so two fields pointing at the same legacy file both
+ *      get migrated before the source disappears).
  *
  * Idempotent: rows whose URLs already start with `/api/private-docs/`
  * are skipped, and a missing local file is logged and skipped (the URL
@@ -67,6 +69,34 @@ function isLegacyLocalUrl(url: string | null | undefined): url is string {
   return !!url && url.startsWith("/uploads/");
 }
 
+function safeLocalPath(legacyUrl: string): string | null {
+  const filename = legacyUrl.replace(/^\/uploads\//, "");
+  if (filename.includes("/") || filename.includes("..") || filename.includes("\\")) {
+    return null;
+  }
+  return path.join(UPLOADS_DIR, filename);
+}
+
+async function updateUserField(
+  userId: string,
+  field: Field,
+  newUrl: string,
+): Promise<void> {
+  // Typed branch — avoids `any` casts on the storage interface.
+  if (field === "verificationDocUrl") {
+    await appStorage.updateUser(userId, { verificationDocUrl: newUrl });
+  } else {
+    await appStorage.updateUser(userId, { businessLicenseUrl: newUrl });
+  }
+}
+
+/**
+ * Migrate a single (user, field) -> private object storage. Reads the
+ * local file lazily but does NOT delete it; the caller decides when
+ * the source file is safe to unlink (after every field for that user
+ * has been processed, so a shared source survives until both fields
+ * are done).
+ */
 async function migrateOne(
   userId: string,
   field: Field,
@@ -79,9 +109,8 @@ async function migrateOne(
     return { userId, field, oldUrl: url, status: "skipped_not_local" };
   }
 
-  const filename = url.replace(/^\/uploads\//, "");
-  // Reject any traversal attempt before we touch the filesystem.
-  if (filename.includes("/") || filename.includes("..") || filename.includes("\\")) {
+  const localPath = safeLocalPath(url);
+  if (!localPath) {
     return {
       userId,
       field,
@@ -90,7 +119,6 @@ async function migrateOne(
       detail: "suspicious filename, refusing to read",
     };
   }
-  const localPath = path.join(UPLOADS_DIR, filename);
   if (!fs.existsSync(localPath)) {
     return { userId, field, oldUrl: url, status: "missing_local_file" };
   }
@@ -136,21 +164,7 @@ async function migrateOne(
       },
     });
 
-  await appStorage.updateUser(userId, { [field]: newUrl } as any);
-
-  // Only unlink AFTER both the upload and the DB update have succeeded.
-  try {
-    fs.unlinkSync(localPath);
-  } catch (err) {
-    return {
-      userId,
-      field,
-      oldUrl: url,
-      newUrl,
-      status: "migrated",
-      detail: `migrated, but failed to delete local file: ${(err as Error).message}`,
-    };
-  }
+  await updateUserField(userId, field, newUrl);
 
   return { userId, field, oldUrl: url, newUrl, status: "migrated" };
 }
@@ -178,15 +192,42 @@ async function main() {
 
   const outcomes: Outcome[] = [];
   for (const row of rows) {
+    // Process every field for the user BEFORE deleting any source
+    // file, so two fields that happen to point at the same legacy
+    // file both get migrated.
+    const fieldsToMigrate: Array<{ field: Field; url: string }> = [];
     if (isLegacyLocalUrl(row.verificationDocUrl)) {
-      outcomes.push(
-        await migrateOne(row.id, "verificationDocUrl", row.verificationDocUrl),
-      );
+      fieldsToMigrate.push({ field: "verificationDocUrl", url: row.verificationDocUrl });
     }
     if (isLegacyLocalUrl(row.businessLicenseUrl)) {
-      outcomes.push(
-        await migrateOne(row.id, "businessLicenseUrl", row.businessLicenseUrl),
-      );
+      fieldsToMigrate.push({ field: "businessLicenseUrl", url: row.businessLicenseUrl });
+    }
+
+    const userOutcomes: Outcome[] = [];
+    for (const { field, url } of fieldsToMigrate) {
+      userOutcomes.push(await migrateOne(row.id, field, url));
+    }
+    outcomes.push(...userOutcomes);
+
+    // Now safe to delete every source file we successfully migrated
+    // for this user. Dedupe so we don't try to unlink a shared file
+    // twice.
+    if (!DRY_RUN) {
+      const pathsToUnlink = new Set<string>();
+      for (const o of userOutcomes) {
+        if (o.status !== "migrated") continue;
+        const lp = safeLocalPath(o.oldUrl);
+        if (lp) pathsToUnlink.add(lp);
+      }
+      for (const lp of pathsToUnlink) {
+        try {
+          fs.unlinkSync(lp);
+        } catch (err) {
+          console.warn(
+            `[migrate-private-docs] migrated row(s) but failed to unlink ${lp}: ${(err as Error).message}`,
+          );
+        }
+      }
     }
   }
 
