@@ -98,9 +98,15 @@ function extractSessionCookie(headers: Headers): string | null {
 
 // Session cookies are flagged `secure: true`, so on plain HTTP express-session
 // only emits `Set-Cookie` when the request looks like HTTPS via trust-proxy.
-const PROXY_HEADERS = { "x-forwarded-proto": "https" } as const;
+// `origin` is set to baseUrl so the Day-5 origin-CSRF middleware accepts the
+// state-changing requests below — this script's job is to exercise the AUTH
+// gate, not the CSRF gate (which has its own coverage in tests/security.test.ts).
+function commonHeaders(baseUrl: string) {
+  return { "x-forwarded-proto": "https", origin: baseUrl } as const;
+}
 
 async function runTests(baseUrl: string) {
+  const PROXY_HEADERS = commonHeaders(baseUrl);
   // 1) Anonymous request must be rejected with 401.
   {
     const res = await fetch(`${baseUrl}/api/uploads/request-url`, {
