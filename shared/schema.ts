@@ -851,6 +851,21 @@ export const registerSchema = z
     fullName: z.string().min(2, "Full name must be at least 2 characters"),
     country: z.string().length(2, "Please select a country"),
     city: z.string().min(1, "Please select a city"),
+    // Optional product fields supplied by the signup wizard. Explicitly
+    // listed (and validated) so `.strict()` doesn't break the existing
+    // client payload while still rejecting unknown smuggled fields.
+    signupType: z.enum(SIGNUP_TYPES).optional(),
+    socialProfiles: z
+      .array(
+        z.object({
+          platform: z.string().min(1),
+          username: z.string().min(1),
+          url: z.string().optional(),
+          followerCount: z.number().int().nonnegative().optional(),
+          categories: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
   })
   .strict();
 
