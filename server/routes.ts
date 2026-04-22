@@ -2,6 +2,11 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
+
+// Single source of truth for bcrypt cost. All password hash sites in this
+// file must reference BCRYPT_ROUNDS so the strength is consistent across
+// register, password change, and password reset.
+const BCRYPT_ROUNDS = 12;
 import session from "express-session";
 import { z } from "zod";
 import multer from "multer";
@@ -220,7 +225,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
       // Auto-grant Founder Badge if email matches a waitlist entry
       const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => undefined);
@@ -360,8 +365,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Reset link is invalid or has expired" });
       }
 
-      const bcrypt = await import("bcryptjs");
-      const hashedPassword = await bcrypt.hash(password, 12);
+      const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
       await storage.updateUser(user.id, {
         password: hashedPassword,
@@ -711,7 +715,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
       await storage.updateUser(req.session.userId!, { password: hashedPassword });
 
       // Destroy every other active session for this user so a stolen
@@ -1708,8 +1712,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing session_id" });
       }
 
-      const users = await storage.getAllUsers();
-      const user = users.find(u => u.diditSessionId === sessionId);
+      const user = await storage.getUserByDiditSessionId(sessionId);
 
       if (!user) {
         console.log("User not found for session:", sessionId);
@@ -2505,8 +2508,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const bcrypt = await import("bcryptjs");
-      const hashedPassword = await bcrypt.hash("demo123", 10);
+      const hashedPassword = await bcrypt.hash("demo123", BCRYPT_ROUNDS);
 
       const sampleBusinesses = [
         {

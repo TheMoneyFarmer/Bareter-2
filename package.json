@@ -66,6 +66,7 @@
     "file-type": "^21.3.4",
     "framer-motion": "^11.13.1",
     "google-auth-library": "^10.5.0",
+    "helmet": "^8.1.0",
     "input-otp": "^1.4.2",
     "jspdf": "^4.1.0",
     "lucide-react": "^0.453.0",

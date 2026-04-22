@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -16,6 +17,77 @@ const httpServer = createServer(app);
 // so that rate-limiting and similar anti-abuse checks cannot be bypassed by
 // a forged X-Forwarded-For header from a direct client.
 app.set("trust proxy", 1);
+
+// Standard browser security headers. CSP is left disabled because the Vite
+// dev middleware injects inline scripts/HMR that a strict CSP would block;
+// the rest of helmet's defaults (X-Frame-Options, X-Content-Type-Options,
+// Referrer-Policy, HSTS, etc.) are kept on.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
+// Origin-check CSRF guard for state-changing requests on /api/*.
+// We trust the same-origin model: an unsafe-method request must declare an
+// `Origin` (or `Referer`) whose host matches one of our allowed app hosts.
+// External integration webhooks (Stripe, Didit) sign their payloads and are
+// explicitly exempted because they intentionally come from a different host.
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const CSRF_EXEMPT_PATHS = new Set([
+  "/api/webhooks/stripe",
+  "/api/webhooks/didit",
+]);
+
+function getAllowedOriginHosts(req: Request): Set<string> {
+  const allowed = new Set<string>();
+  const fromEnv = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const o of fromEnv) {
+    try {
+      allowed.add(new URL(o).host);
+    } catch {
+      allowed.add(o);
+    }
+  }
+  // Always trust the host the request itself is hitting (Replit edge,
+  // custom domain, localhost during dev) since same-origin XHR will send
+  // an Origin matching it.
+  const selfHost = (req.headers["x-forwarded-host"] as string) || req.headers.host;
+  if (selfHost) allowed.add(selfHost);
+  return allowed;
+}
+
+function originHost(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).host;
+  } catch {
+    return null;
+  }
+}
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (!req.path.startsWith("/api/")) return next();
+  if (!UNSAFE_METHODS.has(req.method)) return next();
+  if (CSRF_EXEMPT_PATHS.has(req.path)) return next();
+
+  const allowed = getAllowedOriginHosts(req);
+  const originHeader = req.headers.origin as string | undefined;
+  const refererHeader = req.headers.referer as string | undefined;
+  const candidate = originHost(originHeader) || originHost(refererHeader);
+
+  if (!candidate || !allowed.has(candidate)) {
+    return res
+      .status(403)
+      .json({ message: "Cross-origin request blocked (origin check failed)" });
+  }
+  next();
+});
 
 declare module "http" {
   interface IncomingMessage {

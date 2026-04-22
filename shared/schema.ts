@@ -317,7 +317,11 @@ export const users = pgTable("users", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Index used by the Didit webhook to look up the user for a given
+  // verification session in O(log n) instead of scanning every row.
+  diditSessionIdx: index("users_didit_session_id_idx").on(table.diditSessionId),
+}));
 
 // Waitlist entries (pre-launch email collection)
 export const waitlistEntries = pgTable("waitlist_entries", {
