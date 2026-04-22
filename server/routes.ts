@@ -26,7 +26,43 @@ import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
 import memorystore from "memorystore";
+import rateLimit from "express-rate-limit";
 import { WebhookHandlers } from "./webhookHandlers";
+
+// Rate limiters for sensitive endpoints (audit Day 1).
+// Keyed by session user id when present, falling back to req.ip
+// (which is proxy-trusted because `app.set("trust proxy", 1)` is set
+// in server/index.ts).
+const userKey = (req: Request): string =>
+  req.session?.userId ? `u:${req.session.userId}` : `ip:${req.ip}`;
+
+const aiPerMinuteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { message: "Too many AI requests. Please slow down and try again in a minute." },
+});
+
+const aiPerDayLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 200,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { message: "Daily AI usage limit reached. Please try again tomorrow." },
+});
+
+// Stricter limiter for password-reset requests — keyed by IP only,
+// never by email (avoids leaking which addresses are registered).
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many password reset requests. Please try again in 15 minutes." },
+});
 
 // Configure multer for file uploads
 const uploadDir = "./uploads";
@@ -234,7 +270,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/forgot-password", async (req, res) => {
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email || typeof email !== "string") {
@@ -3279,7 +3315,7 @@ export async function registerRoutes(
   // ========== AI Agent Routes ==========
 
   // Support chat
-  app.post("/api/ai/support", requireAuth, async (req, res) => {
+  app.post("/api/ai/support", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const { message, history } = req.body;
       if (!message || typeof message !== "string") {
@@ -3299,7 +3335,7 @@ export async function registerRoutes(
   });
 
   // Valuation advice
-  app.post("/api/ai/valuation", requireAuth, async (req, res) => {
+  app.post("/api/ai/valuation", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const { title, description, category, condition } = req.body;
       if (!title || !description || !category) {
@@ -3319,7 +3355,7 @@ export async function registerRoutes(
   });
 
   // Smart matching
-  app.get("/api/ai/matches", requireAuth, async (req, res) => {
+  app.get("/api/ai/matches", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "User not found" });
@@ -3363,7 +3399,7 @@ export async function registerRoutes(
   });
 
   // Engagement suggestions
-  app.get("/api/ai/engagement", requireAuth, async (req, res) => {
+  app.get("/api/ai/engagement", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "User not found" });
@@ -3383,7 +3419,7 @@ export async function registerRoutes(
   });
 
   // Admin insights
-  app.get("/api/ai/admin/insights", requireAdmin, async (req, res) => {
+  app.get("/api/ai/admin/insights", requireAdmin, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const allUsers = await storage.getAllUsers();
       const allListings = await storage.getListings();
@@ -3408,7 +3444,7 @@ export async function registerRoutes(
   });
 
   // Admin ask agent
-  app.post("/api/ai/admin/ask", requireAdmin, async (req, res) => {
+  app.post("/api/ai/admin/ask", requireAdmin, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const { question } = req.body;
       if (!question) return res.status(400).json({ message: "Question is required" });
@@ -3425,7 +3461,7 @@ export async function registerRoutes(
   });
 
   // AI Logs for admin
-  app.get("/api/ai/logs", requireAdmin, async (req, res) => {
+  app.get("/api/ai/logs", requireAdmin, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
       const { moderationLogs, agentInteractions } = await import("@shared/schema");
       const modLogs = await db
