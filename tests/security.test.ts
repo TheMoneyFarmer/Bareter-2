@@ -933,6 +933,191 @@ describe("Magic-byte upload sniffing (detectAllowedFileType)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Didit webhook: indexed lookup must not regress to a full table scan
+// ---------------------------------------------------------------------------
+
+import {
+  makeDiditWebhookHandler,
+  type DiditUserProjection,
+  type DiditUserUpdate,
+  type DiditWebhookStorage,
+} from "../server/handlers/diditWebhook";
+import { users as usersTable } from "@shared/schema";
+import type { InsertNotification } from "@shared/schema";
+import { getTableConfig } from "drizzle-orm/pg-core";
+import type { Request, Response, NextFunction } from "express";
+
+interface ScanGuardedStorage extends DiditWebhookStorage {
+  getAllUsers(): Promise<never>;
+}
+
+interface RawBodyRequest extends Request {
+  rawBody?: Buffer;
+}
+
+interface DiditTestCalls {
+  getUserByDiditSessionId: string[];
+  updateUser: Array<{ id: string; data: DiditUserUpdate }>;
+  createNotification: InsertNotification[];
+}
+
+describe("Didit webhook indexed lookup", () => {
+  function buildApp(opts: {
+    storage: DiditWebhookStorage;
+    verifyWebhookSignature?: (payload: string, sig: string) => boolean;
+  }) {
+    const app = express();
+    // Mimic the production rawBody capture used by the webhook handler.
+    app.use(
+      express.json({
+        verify: (req: Request, _res: Response, buf: Buffer) => {
+          (req as RawBodyRequest).rawBody = buf;
+        },
+      }),
+    );
+    app.post(
+      "/api/webhooks/didit",
+      (req: Request, res: Response, next: NextFunction) =>
+        makeDiditWebhookHandler({
+          storage: opts.storage,
+          verifyWebhookSignature:
+            opts.verifyWebhookSignature ?? (() => true),
+        })(req, res).catch(next),
+    );
+    return app;
+  }
+
+  function makeStorageStub(user: DiditUserProjection | undefined) {
+    const calls: DiditTestCalls = {
+      getUserByDiditSessionId: [],
+      updateUser: [],
+      createNotification: [],
+    };
+    const stub: ScanGuardedStorage = {
+      getUserByDiditSessionId: async (sessionId: string) => {
+        calls.getUserByDiditSessionId.push(sessionId);
+        return user;
+      },
+      updateUser: async (id: string, data: DiditUserUpdate) => {
+        calls.updateUser.push({ id, data });
+        return { id, accountType: user?.accountType ?? "individual" };
+      },
+      createNotification: async (n: InsertNotification) => {
+        calls.createNotification.push(n);
+        return n;
+      },
+      // Forbidden method — if the handler ever falls back to a scan, this
+      // throws and the test fails loudly.
+      getAllUsers: async () => {
+        throw new Error(
+          "regression: Didit webhook fell back to a full users scan",
+        );
+      },
+    };
+    return { stub, calls };
+  }
+
+  it("looks the user up by indexed session id and never scans all users", async () => {
+    const { stub, calls } = makeStorageStub({
+      id: "u1",
+      accountType: "individual",
+    });
+    const app = buildApp({ storage: stub });
+
+    const r = await request(app)
+      .post("/api/webhooks/didit")
+      .send({ session_id: "sess-123", status: "APPROVED" });
+
+    expect(r.status).toBe(200);
+    expect(calls.getUserByDiditSessionId).toEqual(["sess-123"]);
+    expect(calls.updateUser).toHaveLength(1);
+    expect(calls.updateUser[0].id).toBe("u1");
+    expect(calls.updateUser[0].data.kycStatus).toBe("APPROVED");
+    expect(calls.updateUser[0].data.isVerified).toBe(true);
+  });
+
+  it("uses kybStatus for business accounts", async () => {
+    const { stub, calls } = makeStorageStub({
+      id: "biz1",
+      accountType: "business",
+    });
+    const app = buildApp({ storage: stub });
+
+    const r = await request(app)
+      .post("/api/webhooks/didit")
+      .send({ session_id: "sess-biz", status: "APPROVED" });
+
+    expect(r.status).toBe(200);
+    expect(calls.getUserByDiditSessionId).toEqual(["sess-biz"]);
+    expect(calls.updateUser[0].data.kybStatus).toBe("APPROVED");
+    expect(calls.updateUser[0].data.kycStatus).toBeUndefined();
+  });
+
+  it("returns 200 and does NOT scan when the session id is unknown", async () => {
+    const { stub, calls } = makeStorageStub(undefined);
+    const app = buildApp({ storage: stub });
+
+    const r = await request(app)
+      .post("/api/webhooks/didit")
+      .send({ session_id: "missing", status: "APPROVED" });
+
+    expect(r.status).toBe(200);
+    expect(calls.getUserByDiditSessionId).toEqual(["missing"]);
+    expect(calls.updateUser).toHaveLength(0);
+  });
+
+  it("rejects payloads with an invalid signature without touching storage", async () => {
+    const { stub, calls } = makeStorageStub({
+      id: "u1",
+      accountType: "individual",
+    });
+    const app = buildApp({
+      storage: stub,
+      verifyWebhookSignature: () => false,
+    });
+
+    const r = await request(app)
+      .post("/api/webhooks/didit")
+      .send({ session_id: "sess-123", status: "APPROVED" });
+
+    expect(r.status).toBe(401);
+    expect(calls.getUserByDiditSessionId).toHaveLength(0);
+  });
+
+  it("rejects payloads missing session_id", async () => {
+    const { stub, calls } = makeStorageStub(undefined);
+    const app = buildApp({ storage: stub });
+
+    const r = await request(app)
+      .post("/api/webhooks/didit")
+      .send({ status: "APPROVED" });
+
+    expect(r.status).toBe(400);
+    expect(calls.getUserByDiditSessionId).toHaveLength(0);
+  });
+});
+
+describe("Didit indexed-column schema invariants", () => {
+  const config = getTableConfig(usersTable);
+
+  it("users table still exposes a didit_session_id column", () => {
+    const col = config.columns.find((c) => c.name === "didit_session_id");
+    expect(col).toBeDefined();
+  });
+
+  it("declares the users_didit_session_id_idx index on didit_session_id", () => {
+    const idx = config.indexes.find(
+      (i) => i.config.name === "users_didit_session_id_idx",
+    );
+    expect(idx).toBeDefined();
+    const indexedColumnNames = idx!.config.columns
+      .map((c) => ("name" in c ? c.name : undefined))
+      .filter((n): n is string => typeof n === "string");
+    expect(indexedColumnNames).toContain("didit_session_id");
+  });
+});
+
 describe("Unified bcrypt cost (BCRYPT_ROUNDS)", () => {
   it("constant equals the audit-required value (12)", () => {
     expect(BCRYPT_ROUNDS).toBe(12);

@@ -1650,80 +1650,15 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/webhooks/didit", async (req, res) => {
-    try {
-      const signature = req.headers["x-webhook-signature"] as string;
-      const rawBody = (req as any).rawBody as Buffer;
-      
-      if (!rawBody) {
-        return res.status(400).json({ message: "Missing webhook payload" });
-      }
-
-      const { verifyWebhookSignature } = await import("./diditClient");
-      const payload = rawBody.toString();
-      
-      if (!verifyWebhookSignature(payload, signature)) {
-        console.error("Invalid Didit webhook signature");
-        return res.status(401).json({ message: "Invalid signature" });
-      }
-
-      const data = JSON.parse(payload);
-      console.log("Didit webhook received:", data);
-
-      const sessionId = data.session_id;
-      const status = data.status;
-      const vendorData = data.vendor_data;
-
-      if (!sessionId) {
-        return res.status(400).json({ message: "Missing session_id" });
-      }
-
-      const user = await storage.getUserByDiditSessionId(sessionId);
-
-      if (!user) {
-        console.log("User not found for session:", sessionId);
-        return res.json({ received: true });
-      }
-
-      const updateData: any = {
-        updatedAt: new Date(),
-      };
-
-      if (user.accountType === "business") {
-        updateData.kybStatus = status;
-      } else {
-        updateData.kycStatus = status;
-      }
-
-      if (status === "APPROVED") {
-        updateData.isVerified = true;
-        updateData.diditVerifiedAt = new Date();
-        updateData.diditVerificationData = data.user_data || data.verification || {};
-        
-        await storage.createNotification({
-          userId: user.id,
-          type: "system",
-          title: "Verification Complete",
-          message: "Your identity has been verified. You can now start bartering!",
-        });
-      } else if (status === "DECLINED") {
-        updateData.isVerified = false;
-        
-        await storage.createNotification({
-          userId: user.id,
-          type: "system",
-          title: "Verification Failed",
-          message: "Your identity verification was declined. Please try again or contact support.",
-        });
-      }
-
-      await storage.updateUser(user.id, updateData);
-      res.json({ received: true });
-    } catch (error) {
-      console.error("Didit webhook error:", error);
-      res.status(500).json({ message: "Webhook processing failed" });
-    }
+  const { verifyWebhookSignature: verifyDiditSignature } = await import(
+    "./diditClient"
+  );
+  const { makeDiditWebhookHandler } = await import("./handlers/diditWebhook");
+  const diditWebhookHandler = makeDiditWebhookHandler({
+    storage,
+    verifyWebhookSignature: verifyDiditSignature,
   });
+  app.post("/api/webhooks/didit", diditWebhookHandler);
 
   app.patch("/api/users/account-type", requireAuth, async (req, res) => {
     try {
