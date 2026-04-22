@@ -52,8 +52,9 @@ async function assertSafeImageUrl(rawUrl: string): Promise<URL> {
   if (!host) throw new Error("missing_host");
 
   if (net.isIP(host)) {
-    if (isPrivateAddress(host)) throw new Error("private_ip_literal");
-    return parsed;
+    // Block all IP-literal hosts; the Vision client must only fetch
+    // proper hostnames so DNS resolution gives us something to validate.
+    throw new Error("ip_literal_blocked");
   }
 
   const records = await dns.lookup(host, { all: true, verbatim: true });
