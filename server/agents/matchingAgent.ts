@@ -55,6 +55,7 @@ export async function findMatches(
 
   try {
     const { data, tokensUsed } = await jsonCompletion<MatchResult[]>(messages, {
+      agentName: "matching",
       temperature: 0.3,
       maxTokens: 512,
     });

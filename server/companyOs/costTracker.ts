@@ -5,11 +5,26 @@
 // the free-form path before it ever hits OpenAI when spend reaches 95%
 // of the configured AED budget.
 
-import { and, gte, lte, sql } from "drizzle-orm";
+import { and, gte, lte, sql, count } from "drizzle-orm";
 import { db } from "../db";
 import { companyOsLogs } from "@shared/schema";
 
 export const DEFAULT_MODEL = "openai/gpt-4o-mini";
+
+// Thrown by `chatCompletion`/`jsonCompletion` when the monthly AED budget
+// gate fires. Callers (moderation, valuation, etc.) catch and fall back
+// to safe defaults; the manager free-form path pre-checks and renders a
+// friendly WhatsApp refusal instead of throwing.
+export class BudgetExceededError extends Error {
+  readonly verdict: BudgetVerdict;
+  constructor(verdict: BudgetVerdict) {
+    super(
+      `Company OS monthly AED budget exceeded: spent ${verdict.spentAed.toFixed(2)} of ${verdict.budgetAed.toFixed(2)} (${(verdict.pctUsed * 100).toFixed(1)}%)`,
+    );
+    this.name = "BudgetExceededError";
+    this.verdict = verdict;
+  }
+}
 
 // USD price per 1K tokens, blended (input/output averaged for simplicity).
 // Easy to extend by adding rows. We keep the values deliberately
@@ -121,6 +136,43 @@ export async function getBudgetVerdict(): Promise<BudgetVerdict> {
 
 export async function isBudgetSafe(): Promise<boolean> {
   return (await getBudgetVerdict()).safe;
+}
+
+// Per-agent cost + call-count breakdown for the current month. Backs the
+// per-agent lines in the WhatsApp `costs` command and the
+// `/api/company-os/finance` JSON.
+export interface AgentSpendRow {
+  agentName: string;
+  spentAed: number;
+  calls: number;
+}
+
+export async function getMonthSpendByAgent(): Promise<AgentSpendRow[]> {
+  try {
+    const since = startOfMonthUtc();
+    const rows = await db
+      .select({
+        agentName: companyOsLogs.agentName,
+        total: sql<string>`COALESCE(SUM(${companyOsLogs.costAed}), 0)`,
+        c: count(),
+      })
+      .from(companyOsLogs)
+      .where(gte(companyOsLogs.createdAt, since))
+      .groupBy(companyOsLogs.agentName);
+    return rows
+      .map((r) => {
+        const n = Number(r.total ?? "0");
+        return {
+          agentName: r.agentName,
+          spentAed: Number((Number.isFinite(n) ? n : 0).toFixed(2)),
+          calls: r.c,
+        };
+      })
+      .sort((a, b) => b.spentAed - a.spentAed || a.agentName.localeCompare(b.agentName));
+  } catch (err) {
+    console.error("[companyOs] getMonthSpendByAgent failed:", err);
+    return [];
+  }
 }
 
 // Total cost in AED for a custom date range — used by the daily briefing

@@ -104,6 +104,7 @@ export async function getSupportResponse(
 
   try {
     const { content, tokensUsed } = await chatCompletion(messages, {
+      agentName: "support",
       temperature: 0.5,
       maxTokens: 512,
     });

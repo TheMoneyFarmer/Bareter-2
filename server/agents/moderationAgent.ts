@@ -79,6 +79,7 @@ export async function moderateContent(
 
   try {
     const { data } = await jsonCompletion<unknown>(messages, {
+      agentName: "moderation",
       temperature: 0.1,
       maxTokens: 256,
     });

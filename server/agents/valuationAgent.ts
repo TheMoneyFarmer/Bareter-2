@@ -55,6 +55,7 @@ export async function getValuation(
 
   try {
     const { data, tokensUsed } = await jsonCompletion<ValuationAdvice>(messages, {
+      agentName: "valuation",
       temperature: 0.4,
       maxTokens: 512,
     });

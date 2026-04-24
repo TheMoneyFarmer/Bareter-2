@@ -51,6 +51,7 @@ export async function getEngagementSuggestions(
 
   try {
     const { data, tokensUsed } = await jsonCompletion<EngagementSuggestion[]>(messages, {
+      agentName: "engagement",
       temperature: 0.7,
       maxTokens: 512,
     });

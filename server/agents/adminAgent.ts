@@ -49,6 +49,8 @@ export async function getAdminInsights(
 
   try {
     const { data, tokensUsed } = await jsonCompletion<AdminInsight>(messages, {
+      agentName: "admin",
+      command: "insight",
       temperature: 0.3,
       maxTokens: 512,
     });
@@ -94,6 +96,8 @@ export async function askAdminAgent(
 
   try {
     const { content, tokensUsed } = await chatCompletion(messages, {
+      agentName: "admin",
+      command: "chat",
       temperature: 0.4,
       maxTokens: 512,
     });

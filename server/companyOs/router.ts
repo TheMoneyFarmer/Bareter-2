@@ -22,6 +22,7 @@ import {
 import { getStatusJson } from "./managerAgent";
 import { sendWhatsApp, validateTwilioRequest, isFromFounder } from "./twilio";
 import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
+import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
   const router = express.Router();
@@ -152,11 +153,13 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
 
   router.get("/finance", opts.requireAdmin, async (_req, res) => {
     try {
-      const [todayReport, weeklyReport, weekly, recent] = await Promise.all([
+      const [todayReport, weeklyReport, weekly, recent, aiByAgent, aiBudget] = await Promise.all([
         formatFinanceReport("today"),
         formatFinanceReport("week"),
         getWeeklyRevenue(),
         getRecentSnapshots(14),
+        getMonthSpendByAgent(),
+        getBudgetVerdict(),
       ]);
       res.json({
         date: dubaiDateString(),
@@ -164,6 +167,10 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
         weeklyReport,
         weekly,
         recentSnapshots: recent,
+        aiSpend: {
+          budget: aiBudget,
+          byAgent: aiByAgent,
+        },
       });
     } catch (err) {
       console.error("[companyOs] /finance failed:", err);

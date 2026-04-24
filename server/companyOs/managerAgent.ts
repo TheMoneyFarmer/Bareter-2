@@ -20,6 +20,7 @@ import { chatCompletion, type ChatMessage } from "../agents/llm";
 import {
   isBudgetSafe,
   getBudgetVerdict,
+  getMonthSpendByAgent,
   logLlmCall,
   DEFAULT_MODEL,
 } from "./costTracker";
@@ -120,14 +121,22 @@ export async function getAgentActivity(): Promise<string> {
 }
 
 export async function getCostsReport(): Promise<string> {
-  const v = await getBudgetVerdict();
+  const [v, byAgent] = await Promise.all([getBudgetVerdict(), getMonthSpendByAgent()]);
   const pct = (v.pctUsed * 100).toFixed(1);
   const lines = [
     `*AI spend · this month*`,
     `${fmtAed(v.spentAed)} of ${fmtAed(v.budgetAed)} budget (${pct}%)`,
     `Remaining: ${fmtAed(v.remainingAed)}`,
   ];
+  if (byAgent.length > 0) {
+    lines.push("");
+    lines.push("*By agent*");
+    for (const row of byAgent) {
+      lines.push(`• ${row.agentName}: ${fmtAed(row.spentAed)} (${row.calls} ${row.calls === 1 ? "call" : "calls"})`);
+    }
+  }
   if (!v.safe) {
+    lines.push("");
     lines.push("⚠️ Budget gate is ON — free-form questions will be refused until next month.");
   }
   return lines.join("\n");
@@ -226,31 +235,23 @@ async function answerFreeform(question: string): Promise<string> {
   ];
 
   try {
-    const { content, tokensUsed } = await chatCompletion(messages, {
+    // `skipBudgetCheck: true` because we already pre-checked above and
+    // rendered a friendly WhatsApp refusal — no need for chatCompletion's
+    // backstop check to fire and double-log. chatCompletion still
+    // auto-records the cost row on success/error, so we skip the manual
+    // logLlmCall calls here.
+    const { content } = await chatCompletion(messages, {
+      agentName: "manager",
+      command: "freeform",
+      inputPreview: question,
+      model: DEFAULT_MODEL,
       temperature: 0.3,
       maxTokens: 400,
+      skipBudgetCheck: true,
     });
-    const text = (content || "").trim() || "I don't have an answer for that right now.";
-    await logLlmCall({
-      agentName: "manager",
-      command: "freeform",
-      inputPreview: question,
-      outputPreview: text,
-      model: DEFAULT_MODEL,
-      tokensUsed,
-      status: "ok",
-    });
-    return text;
+    return (content || "").trim() || "I don't have an answer for that right now.";
   } catch (err) {
     console.error("[companyOs.manager] answerFreeform LLM call failed:", err);
-    await logLlmCall({
-      agentName: "manager",
-      command: "freeform",
-      inputPreview: question,
-      tokensUsed: 0,
-      status: "error",
-      errorMessage: err instanceof Error ? err.message : String(err),
-    });
     return "I'm having trouble answering right now. Try again in a minute.";
   }
 }
