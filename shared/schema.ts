@@ -696,11 +696,7 @@ export const agentInteractions = pgTable("agent_interactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Session table — owned by connect-pg-simple (auto-created at app boot via
-// `createTableIfMissing`). Declared here ONLY so drizzle-kit doesn't think
-// it's an orphan and ask to drop it (or treat new tables as renames of it)
-// during `db:push`. Do not insert/select through Drizzle — use the
-// express-session middleware instead.
+// connect-pg-simple session table — declared so `db:push --force` doesn't drop it.
 export const sessionTable = pgTable("session", {
   sid: varchar("sid").primaryKey(),
   sess: json("sess").notNull(),
