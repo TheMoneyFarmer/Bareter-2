@@ -37,6 +37,23 @@ declare module "http" {
   }
 }
 
+// Stripe webhook needs the *raw* request body to verify the HMAC
+// signature. Mount the raw parser BEFORE the global JSON parser so
+// `req.body` arrives as a Buffer at /api/company-os/stripe-webhook.
+app.use(
+  "/api/company-os/stripe-webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+);
+
+// Twilio sends inbound WhatsApp webhooks as application/x-www-form-urlencoded.
+// The global urlencoded parser below already handles this, but we mount it
+// explicitly here so the intent is documented and so any future change to
+// the global parser can't silently break webhook signature validation.
+app.use(
+  "/api/company-os/whatsapp",
+  express.urlencoded({ extended: false, limit: "256kb" }),
+);
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -102,6 +119,16 @@ app.use((req, res, next) => {
   // Register main routes first so the session middleware is initialized
   // before the object-storage routes try to read req.session.
   await registerRoutes(httpServer, app);
+
+  // Company OS scheduler — node-cron jobs (daily briefing, hourly
+  // finance snapshot, budget warning). Production-only by default;
+  // safe to call on every boot (idempotent).
+  try {
+    const { startScheduler } = await import("./companyOs/scheduler");
+    startScheduler();
+  } catch (err) {
+    console.error("[startup] Failed to start Company OS scheduler:", err);
+  }
 
   // Register object storage routes (depend on session middleware above)
   registerObjectStorageRoutes(app);

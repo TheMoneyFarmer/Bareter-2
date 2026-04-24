@@ -696,6 +696,46 @@ export const agentInteractions = pgTable("agent_interactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Company OS logs - per-LLM-call tracking for the WhatsApp Manager Agent.
+// Used by the cost tracker to enforce the monthly AED budget and by the
+// /api/company-os/logs admin endpoint for visibility.
+export const companyOsLogs = pgTable("company_os_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  agentName: text("agent_name").notNull(), // "manager", "finance", "scheduler", etc.
+  command: text("command"), // hard-coded command name or "freeform"
+  inputPreview: text("input_preview"), // truncated user message (no PII beyond what they sent)
+  outputPreview: text("output_preview"), // truncated agent response
+  model: text("model"), // e.g. "openai/gpt-4o-mini"
+  tokensUsed: integer("tokens_used").default(0),
+  costAed: decimal("cost_aed", { precision: 10, scale: 6 }).default("0"),
+  status: text("status").notNull().default("ok"), // "ok", "error", "blocked_budget"
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  createdAtIdx: index("company_os_logs_created_at_idx").on(table.createdAt),
+}));
+
+// Finance snapshots - one row per Dubai-day, upserted by the Finance Agent
+// from Stripe charges grouped by metadata.category. Powers the WhatsApp
+// `revenue` / `revenue week` commands and the /api/company-os/finance
+// admin endpoint.
+export const financeSnapshots = pgTable("finance_snapshots", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  snapshotDate: text("snapshot_date").notNull().unique(), // YYYY-MM-DD in Asia/Dubai
+  totalRevenueAed: decimal("total_revenue_aed", { precision: 12, scale: 2 }).notNull().default("0"),
+  transactionCount: integer("transaction_count").notNull().default(0),
+  // Breakdown by metadata.category — keys are free-form (e.g. "brand_subscription",
+  // "featured_listing", "boosted_post", "ad_space", "insurance", "uncategorized")
+  // and values are AED totals as numbers.
+  breakdown: jsonb("breakdown").$type<Record<string, number>>().default({}),
+  refundsAed: decimal("refunds_aed", { precision: 12, scale: 2 }).notNull().default("0"),
+  refundCount: integer("refund_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  snapshotDateIdx: index("finance_snapshots_date_idx").on(table.snapshotDate),
+}));
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -975,6 +1015,21 @@ export const insertAgentInteractionSchema = createInsertSchema(agentInteractions
 });
 export type InsertAgentInteraction = z.infer<typeof insertAgentInteractionSchema>;
 export type AgentInteraction = typeof agentInteractions.$inferSelect;
+
+export const insertCompanyOsLogSchema = createInsertSchema(companyOsLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCompanyOsLog = z.infer<typeof insertCompanyOsLogSchema>;
+export type CompanyOsLog = typeof companyOsLogs.$inferSelect;
+
+export const insertFinanceSnapshotSchema = createInsertSchema(financeSnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertFinanceSnapshot = z.infer<typeof insertFinanceSnapshotSchema>;
+export type FinanceSnapshot = typeof financeSnapshots.$inferSelect;
 
 // Waitlist
 export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)

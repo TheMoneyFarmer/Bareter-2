@@ -61,3 +61,5 @@ timeoutMs = 20000
 
 [userenv.shared]
 WAITLIST_MODE = "true"
+COMPANY_OS_MONTHLY_BUDGET_AED = "400"
+USD_TO_AED_RATE = "3.6725"

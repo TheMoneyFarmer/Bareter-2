@@ -1702,6 +1702,13 @@ export async function registerRoutes(
   });
   app.post("/api/webhooks/didit", diditWebhookHandler);
 
+  // Company OS — WhatsApp control plane.
+  // Mount the router *after* the session middleware so requireAdmin can
+  // read req.session, and use a dynamic import so the file boots cleanly
+  // even when the optional Twilio/Stripe secrets are missing.
+  const { createCompanyOsRouter } = await import("./companyOs/router");
+  app.use("/api/company-os", createCompanyOsRouter({ requireAdmin }));
+
   app.patch("/api/users/account-type", requireAuth, async (req, res) => {
     try {
       const { accountType } = req.body;
