@@ -232,7 +232,6 @@ function buildApp() {
   app.use(originCsrfGuard());
   app.get("/api/ping", (_req, res) => res.json({ ok: true }));
   app.post("/api/echo", (req, res) => res.json({ body: req.body }));
-  app.post("/api/webhooks/stripe", (_req, res) => res.json({ ok: true }));
   return app;
 }
 
@@ -288,15 +287,6 @@ describe("Origin-check CSRF guard", () => {
       .post("/api/echo")
       .set("Origin", "https://app.example.com")
       .send({ hi: 1 });
-    expect(r.status).toBe(200);
-  });
-
-  it("exempts the Stripe webhook path from origin checks", async () => {
-    const app = buildApp();
-    const r = await request(app)
-      .post("/api/webhooks/stripe")
-      .set("Origin", "https://stripe.com")
-      .send({});
     expect(r.status).toBe(200);
   });
 
@@ -1119,186 +1109,14 @@ describe("Didit indexed-column schema invariants", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Stripe webhook: indexed lookup must not regress to a full table scan
+// Stripe webhook removal: the success-fee / Stripe checkout path was retired
+// because Bareter is free for everyone. The webhook handler module, the
+// /api/webhooks/stripe route, the success_fee / stripe_payment_id columns,
+// and the deal-checkout endpoint were all deleted as a unit. The block of
+// regression tests that used to exercise the indexed lookup against a
+// scan-guarded storage stub were removed at the same time so they would not
+// silently re-import a deleted module.
 // ---------------------------------------------------------------------------
-
-import {
-  makeStripeWebhookHandler,
-  type StripeDealProjection,
-  type StripeDealUpdate,
-  type StripeWebhookStorage,
-} from "../server/webhookHandlers";
-import { deals as dealsTable } from "@shared/schema";
-import type Stripe from "stripe";
-
-interface StripeTestCalls {
-  getDeal: string[];
-  updateDeal: Array<{ id: string; data: StripeDealUpdate }>;
-  createNotification: InsertNotification[];
-}
-
-interface ScanGuardedStripeStorage extends StripeWebhookStorage {
-  // Forbidden methods — if the handler ever falls back to a scan, these
-  // throw and the test fails loudly.
-  getAllDeals(): Promise<never>;
-  getAllUsers(): Promise<never>;
-}
-
-describe("Stripe webhook indexed lookup", () => {
-  function makeStorageStub(deal: StripeDealProjection | undefined) {
-    const calls: StripeTestCalls = {
-      getDeal: [],
-      updateDeal: [],
-      createNotification: [],
-    };
-    const stub: ScanGuardedStripeStorage = {
-      getDeal: async (id: string) => {
-        calls.getDeal.push(id);
-        return deal && deal.id === id ? deal : undefined;
-      },
-      updateDeal: async (id: string, data: StripeDealUpdate) => {
-        calls.updateDeal.push({ id, data });
-        return deal && deal.id === id ? deal : undefined;
-      },
-      createNotification: async (n: InsertNotification) => {
-        calls.createNotification.push(n);
-        return n;
-      },
-      getAllDeals: async () => {
-        throw new Error(
-          "regression: Stripe webhook fell back to a full deals scan",
-        );
-      },
-      getAllUsers: async () => {
-        throw new Error(
-          "regression: Stripe webhook fell back to a full users scan",
-        );
-      },
-    };
-    return { stub, calls };
-  }
-
-  function makeCheckoutEvent(opts: {
-    dealId?: string;
-    paymentIntent?: string;
-  }): Stripe.Event {
-    return {
-      type: "checkout.session.completed",
-      data: {
-        object: {
-          metadata: opts.dealId ? { dealId: opts.dealId } : {},
-          payment_intent: opts.paymentIntent ?? "pi_test_123",
-        } as unknown as Stripe.Checkout.Session,
-      },
-    } as unknown as Stripe.Event;
-  }
-
-  it("looks the deal up by indexed primary key and never scans all deals/users", async () => {
-    const { stub, calls } = makeStorageStub({
-      id: "deal-1",
-      seekerId: "user-seeker",
-      providerId: "user-provider",
-    });
-    const handler = makeStripeWebhookHandler({
-      storage: stub,
-      processWebhook: async () =>
-        makeCheckoutEvent({ dealId: "deal-1", paymentIntent: "pi_abc" }),
-    });
-
-    await handler(Buffer.from("{}"), "sig");
-
-    expect(calls.getDeal).toEqual(["deal-1"]);
-    expect(calls.updateDeal).toHaveLength(1);
-    expect(calls.updateDeal[0].id).toBe("deal-1");
-    expect(calls.updateDeal[0].data.state).toBe("completed");
-    expect(calls.updateDeal[0].data.stripePaymentId).toBe("pi_abc");
-    // One notification per participant.
-    expect(calls.createNotification).toHaveLength(2);
-    const recipients = calls.createNotification.map((n) => n.userId).sort();
-    expect(recipients).toEqual(["user-provider", "user-seeker"]);
-  });
-
-  it("does NOT scan when the dealId in metadata is unknown", async () => {
-    const { stub, calls } = makeStorageStub(undefined);
-    const handler = makeStripeWebhookHandler({
-      storage: stub,
-      processWebhook: async () =>
-        makeCheckoutEvent({ dealId: "missing-deal" }),
-    });
-
-    await handler(Buffer.from("{}"), "sig");
-
-    // updateDeal is still called by id (the production handler always
-    // updates first, then re-reads), but importantly no scan happens and
-    // no notifications go out for the missing deal.
-    expect(calls.updateDeal).toEqual([
-      {
-        id: "missing-deal",
-        data: expect.objectContaining({ state: "completed" }),
-      },
-    ]);
-    expect(calls.getDeal).toEqual(["missing-deal"]);
-    expect(calls.createNotification).toHaveLength(0);
-  });
-
-  it("does nothing (and does not scan) when metadata.dealId is absent", async () => {
-    const { stub, calls } = makeStorageStub(undefined);
-    const handler = makeStripeWebhookHandler({
-      storage: stub,
-      processWebhook: async () => makeCheckoutEvent({}),
-    });
-
-    await handler(Buffer.from("{}"), "sig");
-
-    expect(calls.getDeal).toHaveLength(0);
-    expect(calls.updateDeal).toHaveLength(0);
-    expect(calls.createNotification).toHaveLength(0);
-  });
-
-  it("ignores non-checkout events without touching storage", async () => {
-    const { stub, calls } = makeStorageStub({
-      id: "deal-1",
-      seekerId: "s",
-      providerId: "p",
-    });
-    const handler = makeStripeWebhookHandler({
-      storage: stub,
-      processWebhook: async () =>
-        ({ type: "payment_intent.succeeded", data: { object: {} } }) as unknown as Stripe.Event,
-    });
-
-    await handler(Buffer.from("{}"), "sig");
-
-    expect(calls.getDeal).toHaveLength(0);
-    expect(calls.updateDeal).toHaveLength(0);
-    expect(calls.createNotification).toHaveLength(0);
-  });
-
-  it("rejects non-Buffer payloads (defends against express.json() ordering bug)", async () => {
-    const { stub } = makeStorageStub(undefined);
-    const handler = makeStripeWebhookHandler({
-      storage: stub,
-      processWebhook: async () => makeCheckoutEvent({ dealId: "deal-1" }),
-    });
-
-    await expect(
-      handler("not a buffer" as unknown as Buffer, "sig"),
-    ).rejects.toThrow(/STRIPE WEBHOOK ERROR/);
-  });
-});
-
-describe("Stripe webhook indexed-column schema invariants", () => {
-  const config = getTableConfig(dealsTable);
-
-  it("deals table still exposes an id primary-key column", () => {
-    const col = config.columns.find((c) => c.name === "id");
-    expect(col).toBeDefined();
-    // Postgres automatically creates a unique B-tree index for primary keys,
-    // so "looking a deal up by id" is always an indexed lookup.
-    expect(col!.primary).toBe(true);
-  });
-
-});
 
 describe("Unified bcrypt cost (BCRYPT_ROUNDS)", () => {
   it("constant equals the audit-required value (12)", () => {

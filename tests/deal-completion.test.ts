@@ -105,8 +105,6 @@ const inMemoryStorage = new Proxy(
         providerProofUrl: null,
         seekerCompleted: false,
         providerCompleted: false,
-        successFee: null,
-        stripePaymentId: null,
         contractPdfUrl: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -226,15 +224,11 @@ function assertNoPaymentSurface(payload: AnyRecord | AnyRecord[]) {
   const items = Array.isArray(payload) ? payload : [payload];
   for (const item of items) {
     if (item == null) continue;
-    // The deal row may carry these columns from the schema, but they must
-    // remain unset for a free-platform completion. Surfacing a Stripe
-    // payment id or a non-null successFee would imply the fee path was hit.
-    if ("successFee" in item) {
-      expect(item.successFee, "successFee must remain null").toBeNull();
-    }
-    if ("stripePaymentId" in item) {
-      expect(item.stripePaymentId, "stripePaymentId must remain null").toBeNull();
-    }
+    // The success-fee / Stripe checkout columns have been dropped from the
+    // schema. Anything that tries to reintroduce them on the response
+    // payload should fail this guard.
+    expect("successFee" in item, "successFee must not appear on deal payload").toBe(false);
+    expect("stripePaymentId" in item, "stripePaymentId must not appear on deal payload").toBe(false);
     // Defensive: no field should look like a Stripe checkout URL or a
     // pay/fee CTA descriptor leaked from the API.
     const stringy = JSON.stringify(item).toLowerCase();
@@ -383,30 +377,6 @@ describe("Deal completion runs end-to-end with no payment step", () => {
     expect(finalProviderView.status).toBe(200);
     expect(finalProviderView.body.state).toBe("completed");
     assertNoPaymentSurface(finalProviderView.body);
-  });
-
-  it("legacy fee checkout endpoint is not available", async () => {
-    const { seekerId, providerId } = createUsers();
-    const listingId = createListing(providerId);
-    const propose = await asUser(
-      request(app).post("/api/deals"),
-      seekerId,
-    ).send({
-      providerListingId: listingId,
-      seekerOffer: "Consulting hours",
-      seekerValue: "1000.00",
-    });
-    expect(propose.status).toBe(200);
-    const dealId: string = propose.body.id;
-
-    // Both seeker and provider should see the checkout endpoint as gone.
-    for (const userId of [seekerId, providerId]) {
-      const checkout = await asUser(
-        request(app).post(`/api/deals/${dealId}/checkout`),
-        userId,
-      ).send({});
-      expect(checkout.status).toBe(404);
-    }
   });
 
   it("deal-detail page does not render any payment / fee UI", () => {

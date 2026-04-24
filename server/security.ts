@@ -4,7 +4,6 @@ import helmet from "helmet";
 export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const CSRF_EXEMPT_PATHS = new Set<string>([
-  "/api/webhooks/stripe",
   "/api/webhooks/didit",
 ]);
 

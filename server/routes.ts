@@ -49,7 +49,6 @@ import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
-import { WebhookHandlers } from "./webhookHandlers";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -142,24 +141,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Stripe webhook route - must be before other middleware that parse body
-  app.post("/api/webhooks/stripe", async (req, res) => {
-    try {
-      const signature = req.headers["stripe-signature"] as string;
-      const rawBody = (req as any).rawBody as Buffer;
-      
-      if (!rawBody || !signature) {
-        return res.status(400).json({ message: "Missing webhook payload or signature" });
-      }
-      
-      await WebhookHandlers.processWebhook(rawBody, signature);
-      res.json({ received: true });
-    } catch (error) {
-      console.error("Webhook error:", error);
-      res.status(400).json({ message: "Webhook processing failed" });
-    }
-  });
-
   // Session middleware - trust proxy for Replit's HTTPS
   app.set("trust proxy", 1);
   
@@ -1949,16 +1930,12 @@ export async function registerRoutes(
       const activeDeals = allDeals.filter(d => ["proposed", "accepted", "in_progress", "delivery_proof"].includes(d.state));
       const totalGMV = completedDeals.reduce((sum, d) => 
         sum + parseFloat(d.seekerValue as string) + parseFloat(d.providerValue as string), 0);
-      const feesCollected = completedDeals.reduce((sum, d) => 
-        sum + (d.successFee ? parseFloat(d.successFee as string) : 0), 0);
-      
+
       const now = new Date();
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const monthlyDeals = completedDeals.filter(d => d.createdAt && new Date(d.createdAt) >= thisMonth);
       const monthlyGMV = monthlyDeals.reduce((sum, d) => 
         sum + parseFloat(d.seekerValue as string) + parseFloat(d.providerValue as string), 0);
-      const monthlyFees = monthlyDeals.reduce((sum, d) => 
-        sum + (d.successFee ? parseFloat(d.successFee as string) : 0), 0);
       
       const pendingVerifications = allUsers.filter(u => 
         (u.kycStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || 
@@ -1998,9 +1975,7 @@ export async function registerRoutes(
         totalListings: allListings.length,
         activeListings: allListings.filter(l => l.isActive).length,
         totalGMV,
-        feesCollected,
         monthlyGMV,
-        monthlyFees,
         pendingVerifications,
         categoryStats,
         dealsPerWeek,
@@ -2071,13 +2046,6 @@ export async function registerRoutes(
       console.error("Admin get deal messages error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
-  });
-
-  // Deal checkout endpoint — Bareter is free for all users, so this endpoint
-  // is intentionally a no-op. The Stripe SDK plumbing is preserved elsewhere
-  // in the codebase but is not invoked from any user-facing flow.
-  app.post("/api/deals/:id/checkout", requireAuth, async (_req, res) => {
-    res.status(404).json({ message: "Not available" });
   });
 
   // Onboarding routes

@@ -439,8 +439,6 @@ export const deals = pgTable("deals", {
   providerProofUrl: text("provider_proof_url"),
   seekerCompleted: boolean("seeker_completed").default(false),
   providerCompleted: boolean("provider_completed").default(false),
-  successFee: decimal("success_fee", { precision: 12, scale: 2 }),
-  stripePaymentId: text("stripe_payment_id"),
   contractPdfUrl: text("contract_pdf_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -734,8 +732,6 @@ export const insertDealSchema = createInsertSchema(deals).omit({
   updatedAt: true,
   seekerCompleted: true,
   providerCompleted: true,
-  successFee: true,
-  stripePaymentId: true,
   contractPdfUrl: true,
 });
 

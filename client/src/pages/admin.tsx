@@ -47,7 +47,6 @@ import {
   Users,
   Package,
   Handshake,
-  TrendingUp,
   Search,
   Shield,
   ShieldCheck,
@@ -128,9 +127,7 @@ type AnalyticsData = {
   totalListings: number;
   activeListings: number;
   totalGMV: number;
-  feesCollected: number;
   monthlyGMV: number;
-  monthlyFees: number;
   pendingVerifications: number;
   categoryStats: Record<string, number>;
   dealsPerWeek: { week: string; count: number }[];
@@ -321,23 +318,6 @@ export function AdminPage() {
               </div>
               <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
                 <DollarSign className="h-5 w-5 text-green-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-fees-collected">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Fees Collected</p>
-                <p className="text-2xl font-bold" data-testid="text-fees-collected">
-                  {analytics?.monthlyFees ? `${analytics.monthlyFees.toLocaleString()}` : "0"}
-                </p>
-                <p className="text-xs text-muted-foreground">AED</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center shrink-0">
-                <TrendingUp className="h-5 w-5 text-yellow-500" />
               </div>
             </div>
           </CardContent>
@@ -751,7 +731,6 @@ export function AdminPage() {
                   <TableHead>Parties</TableHead>
                   <TableHead>Values (AED)</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Fee Paid</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
@@ -795,15 +774,6 @@ export function AdminPage() {
                       }>
                         {d.state}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {d.successFee ? (
-                        <span className="text-green-600 font-medium">
-                          AED {parseFloat(d.successFee as string).toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "-"}
@@ -914,12 +884,6 @@ export function AdminPage() {
                   AED {analytics?.totalGMV ? (analytics.totalGMV / 1000).toFixed(0) : 0}K
                 </p>
                 <p className="text-sm text-muted-foreground">Total GMV</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-yellow-500">
-                  AED {analytics?.feesCollected?.toLocaleString() || 0}
-                </p>
-                <p className="text-sm text-muted-foreground">Fees Collected</p>
               </div>
             </div>
           </CardContent>
@@ -1554,12 +1518,6 @@ export function AdminPage() {
                   <p className="text-sm text-muted-foreground">Status</p>
                   <Badge className="mt-1">{selectedDeal.state}</Badge>
                 </div>
-                {selectedDeal.successFee && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Fee Paid</p>
-                    <p className="font-medium text-green-600">AED {parseFloat(selectedDeal.successFee as string).toLocaleString()}</p>
-                  </div>
-                )}
                 {selectedDeal.timeline && (
                   <div>
                     <p className="text-sm text-muted-foreground">Timeline</p>
