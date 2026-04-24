@@ -1,0 +1,1349 @@
+# BarterGram Company OS — Weeks 3–4 Replit Build Prompt
+
+Paste this entire document as a prompt to Replit AI.
+
+---
+
+## CONTEXT — READ BEFORE BUILDING
+
+Weeks 1 and 2 are complete. The following are live:
+- Manager Agent (WhatsApp command router, daily briefing)
+- Finance Agent (Stripe revenue, AED tracking, snapshots)
+- Marketing Agent (campaign briefs, Zeely/Meta bridge, Buffer posting)
+- Sales Agent (lead scoring, Airtable CRM, re-engagement emails)
+- Connectors: Twilio, Google Drive, Buffer, Meta Graph API
+- Tables: company_os_logs, finance_snapshots, campaign_performance, content_briefs, sales_leads
+
+**What we are building in Weeks 3–4:**
+1. Schema additions — 2 new tables (legal_documents, kpi_snapshots)
+2. `server/agents/companyOs/legalAgent.ts` — UAE contract templates, dispute risk summaries, VAT compliance
+3. `server/agents/companyOs/dashboardAgent.ts` — KPI aggregator, Google Sheets export, Recharts data
+4. `server/connectors/googleSheets.ts` — writes P&L and KPI reports to Sheets
+5. Frontend: `client/src/pages/CompanyOsDashboard.tsx` — full /admin/company-os page
+6. New routes, scheduler jobs, and WhatsApp commands for both agents
+
+**Do not touch:** Any Week 1 or Week 2 files, existing product agents, existing schema tables, existing client pages.
+
+---
+
+## STEP 1 — ADD NEW SECRETS TO REPLIT
+
+```
+# Google Sheets (uses same service account as Drive — no new secrets needed)
+# Just ensure GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_DRIVE_FOLDER_ID are set from Week 2
+
+# For Legal Agent (no new external APIs — uses OpenAI + Drive)
+# No new secrets needed for legal agent
+
+# Optional: Notion for legal knowledge base
+NOTION_API_KEY               = secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NOTION_LEGAL_DATABASE_ID     = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+---
+
+## STEP 2 — NO NEW PACKAGES NEEDED
+
+All required packages are already installed from Weeks 1–2:
+`googleapis`, `openai`, `drizzle-orm`, `twilio`, `node-cron`
+
+---
+
+## STEP 3 — SCHEMA ADDITIONS
+
+**Append to the bottom of `shared/schema.ts`:**
+
+```typescript
+// ============================================================
+// COMPANY OS TABLES — added Weeks 3–4
+// ============================================================
+
+export const legalDocuments = pgTable("legal_documents", {
+  id: serial("id").primaryKey(),
+  documentType: text("document_type").notNull(), // 'barter_contract' | 'terms_update' | 'dispute_summary' | 'compliance_report'
+  title: text("title").notNull(),
+  relatedDisputeId: integer("related_dispute_id"),
+  relatedUserId: integer("related_user_id"),
+  content: text("content"),
+  googleDocUrl: text("google_doc_url"),
+  riskLevel: text("risk_level").default("low"), // 'low' | 'medium' | 'high'
+  vatRelevant: boolean("vat_relevant").default(false),
+  status: text("status").default("draft"),       // 'draft' | 'reviewed' | 'issued'
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const kpiSnapshots = pgTable("kpi_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotDate: text("snapshot_date").notNull(),      // YYYY-MM-DD
+  snapshotType: text("snapshot_type").notNull(),      // 'daily' | 'weekly' | 'monthly'
+  totalUsers: integer("total_users").default(0),
+  newUsersToday: integer("new_users_today").default(0),
+  activeUsers7d: integer("active_users_7d").default(0),
+  totalPosts: integer("total_posts").default(0),
+  newPostsToday: integer("new_posts_today").default(0),
+  totalDeals: integer("total_deals").default(0),
+  completedDeals: integer("completed_deals").default(0),
+  dealCompletionRate: numeric("deal_completion_rate", { precision: 5, scale: 2 }),
+  gmvAed: numeric("gmv_aed", { precision: 14, scale: 2 }).default("0"),
+  revenueAed: numeric("revenue_aed", { precision: 12, scale: 2 }).default("0"),
+  openDisputes: integer("open_disputes").default(0),
+  resolvedDisputes: integer("resolved_disputes").default(0),
+  topCategory: text("top_category"),
+  topCity: text("top_city"),
+  aiCostAed: numeric("ai_cost_aed", { precision: 8, scale: 2 }).default("0"),
+  googleSheetsUrl: text("google_sheets_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type LegalDocument = typeof legalDocuments.$inferSelect;
+export type InsertLegalDocument = typeof legalDocuments.$inferInsert;
+export type KpiSnapshot = typeof kpiSnapshots.$inferSelect;
+export type InsertKpiSnapshot = typeof kpiSnapshots.$inferInsert;
+```
+
+```bash
+npm run db:push
+```
+
+---
+
+## STEP 4 — CREATE FILE: `server/connectors/googleSheets.ts`
+
+```typescript
+/**
+ * googleSheets.ts
+ * Writes KPI reports and P&L data to Google Sheets.
+ * Uses the same Service Account as googleDrive.ts.
+ */
+
+import { google, sheets_v4 } from "googleapis";
+import { JWT } from "google-auth-library";
+import { getOrCreateSubFolder } from "./googleDrive.js";
+
+function getAuth(): JWT {
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
+  return new JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive",
+    ],
+  });
+}
+
+function getSheets(): sheets_v4.Sheets {
+  return google.sheets({ version: "v4", auth: getAuth() });
+}
+
+function getDrive() {
+  return google.drive({ version: "v3", auth: getAuth() });
+}
+
+/**
+ * Creates a new Google Sheet in the specified sub-folder and populates it.
+ * Returns the sheet URL.
+ */
+export async function createReport(
+  title: string,
+  headers: string[],
+  rows: (string | number | null)[][],
+  subFolder: "finance" | "analytics" | "admin"
+): Promise<string> {
+  const sheets = getSheets();
+  const drive = getDrive();
+
+  // Create spreadsheet
+  const spreadsheet = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: { title },
+      sheets: [{ properties: { title: "Report" } }],
+    },
+  });
+
+  const sheetId = spreadsheet.data.spreadsheetId!;
+
+  // Write headers + data
+  const values = [headers, ...rows];
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: sheetId,
+    range: "Report!A1",
+    valueInputOption: "RAW",
+    requestBody: { values },
+  });
+
+  // Bold the header row
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: sheetId,
+    requestBody: {
+      requests: [
+        {
+          repeatCell: {
+            range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 },
+            cell: {
+              userEnteredFormat: {
+                textFormat: { bold: true },
+                backgroundColor: { red: 0.2, green: 0.6, blue: 0.4 },
+              },
+            },
+            fields: "userEnteredFormat(textFormat,backgroundColor)",
+          },
+        },
+      ],
+    },
+  });
+
+  // Move to correct Drive folder
+  const folderNames = { finance: "Finance", analytics: "Analytics", admin: "Admin" };
+  const folderId = await getOrCreateSubFolder(folderNames[subFolder]);
+  const file = await drive.files.get({ fileId: sheetId, fields: "parents" });
+  await drive.files.update({
+    fileId: sheetId,
+    addParents: folderId,
+    removeParents: file.data.parents?.join(","),
+    fields: "id",
+  });
+
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+}
+
+/**
+ * Appends rows to an existing sheet.
+ */
+export async function appendToSheet(
+  spreadsheetId: string,
+  rows: (string | number | null)[][]
+): Promise<void> {
+  const sheets = getSheets();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: "Report!A1",
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: rows },
+  });
+}
+```
+
+---
+
+## STEP 5 — CREATE FILE: `server/agents/companyOs/legalAgent.ts`
+
+```typescript
+/**
+ * legalAgent.ts
+ * Generates UAE-compliant barter contract templates,
+ * reads dispute logs for risk summaries, and flags VAT/compliance issues.
+ *
+ * DISCLAIMER: All outputs are for guidance only — not legal advice.
+ * Always recommend consulting a UAE-licensed legal professional.
+ */
+
+import OpenAI from "openai";
+import { db } from "../../db.js";
+import { legalDocuments } from "../../../shared/schema.js";
+import { desc, eq, sql } from "drizzle-orm";
+import { createGoogleDoc } from "../../connectors/googleDrive.js";
+import { logAgentRun, isBudgetSafe } from "./costTracker.js";
+import { notifyFounder } from "../../connectors/twilio.js";
+
+const openai = new OpenAI();
+
+const LEGAL_DISCLAIMER = `\n\n---\nDISCLAIMER: This document is generated for guidance purposes only and does not constitute legal advice. BarterGram is not a law firm. For legally binding agreements, consult a UAE-licensed legal professional. VAT guidance references UAE FTA regulations as of 2024 — verify current rates at uaevat.gov.ae.`;
+
+// ─── Contract generation ──────────────────────────────────────────────────────
+
+export interface ContractParams {
+  partyAName: string;
+  partyAOffer: string;
+  partyAOfferValueAed: number;
+  partyBName: string;
+  partyBOffer: string;
+  partyBOfferValueAed: number;
+  city: string;
+  dealId?: number;
+}
+
+/**
+ * Generates a UAE barter contract and saves it to Google Drive.
+ */
+export async function generateBarterContract(params: ContractParams): Promise<{
+  docUrl: string;
+  riskLevel: string;
+  vatNote: string;
+}> {
+  const { safe } = await isBudgetSafe();
+  if (!safe) {
+    return {
+      docUrl: "",
+      riskLevel: "unknown",
+      vatNote: "AI budget exhausted — use manual template",
+    };
+  }
+
+  const totalValueAed = params.partyAOfferValueAed + params.partyBOfferValueAed;
+  const isHighValue = totalValueAed > 50000;
+  const vatRequired = totalValueAed >= 375000; // UAE VAT registration threshold
+
+  const systemPrompt = `You are a UAE legal document specialist for BarterGram, a barter marketplace.
+Generate clear, professional barter agreements that reference UAE Commercial Transactions Law (Federal Decree-Law No. 50 of 2022).
+Include: parties, offer descriptions, valuations in AED, delivery obligations, dispute resolution clause (BarterGram platform first, then Dubai Courts/DIFC), VAT note, and signature blocks.
+Be specific and practical. Use formal but readable language.`;
+
+  const userPrompt = `Generate a barter exchange agreement for:
+
+Party A: ${params.partyAName}
+Offers: ${params.partyAOffer} (estimated value: AED ${params.partyAOfferValueAed.toLocaleString()})
+
+Party B: ${params.partyBName}
+Offers: ${params.partyBOffer} (estimated value: AED ${params.partyBOfferValueAed.toLocaleString()})
+
+Location: ${params.city}, UAE
+Total deal value: AED ${totalValueAed.toLocaleString()}
+High-value deal: ${isHighValue ? "Yes — include enhanced verification clause" : "No"}
+VAT registration threshold applicable: ${vatRequired ? "Yes — include VAT advisory clause" : "No — values below AED 375,000 threshold"}
+
+Include all standard UAE barter agreement clauses.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    max_tokens: 1500,
+  });
+
+  const contractContent = (response.choices[0].message.content ?? "") + LEGAL_DISCLAIMER;
+  const title = `Barter Agreement — ${params.partyAName} & ${params.partyBName}`;
+  const docUrl = await createGoogleDoc(title, contractContent, "legal");
+
+  const riskLevel = isHighValue ? "high" : totalValueAed > 10000 ? "medium" : "low";
+  const vatNote = vatRequired
+    ? "⚠️ Deal value approaches VAT registration threshold. Advise parties to consult FTA."
+    : "Deal value below UAE VAT registration threshold (AED 375,000).";
+
+  await db.insert(legalDocuments).values({
+    documentType: "barter_contract",
+    title,
+    content: contractContent.slice(0, 2000),
+    googleDocUrl: docUrl,
+    riskLevel,
+    vatRelevant: vatRequired,
+    status: "draft",
+    notes: vatNote,
+  });
+
+  await logAgentRun({
+    agentName: "legalAgent",
+    triggeredBy: "api",
+    input: `Contract: ${params.partyAName} <> ${params.partyBName}, AED ${totalValueAed}`,
+    output: `Generated: ${docUrl}`,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  });
+
+  return { docUrl, riskLevel, vatNote };
+}
+
+// ─── Dispute risk summary ─────────────────────────────────────────────────────
+
+/**
+ * Reads recent dispute logs and generates a risk summary.
+ * Runs weekly and whenever a high-risk dispute is escalated.
+ */
+export async function generateDisputeRiskSummary(): Promise<string> {
+  const { safe } = await isBudgetSafe();
+  if (!safe) return "⚠️ AI budget limit reached. Risk summary skipped.";
+
+  // Read dispute data from existing ai_logs
+  // Adjust to match your actual dispute table structure
+  const disputeData = await db.execute(sql`
+    SELECT
+      COUNT(*) as total_disputes,
+      SUM(CASE WHEN output ILIKE '%escalat%' THEN 1 ELSE 0 END) as escalated,
+      SUM(CASE WHEN output ILIKE '%fraud%' OR output ILIKE '%scam%' THEN 1 ELSE 0 END) as fraud_flags,
+      SUM(CASE WHEN output ILIKE '%vat%' OR output ILIKE '%tax%' THEN 1 ELSE 0 END) as vat_issues,
+      SUM(CASE WHEN output ILIKE '%high.value%' OR output ILIKE '%50000%' THEN 1 ELSE 0 END) as high_value_disputes
+    FROM company_os_logs
+    WHERE agent_name = 'disputeResolution'
+      AND created_at >= NOW() - INTERVAL '30 days'
+  `);
+
+  const stats = disputeData.rows[0] as {
+    total_disputes: number;
+    escalated: number;
+    fraud_flags: number;
+    vat_issues: number;
+    high_value_disputes: number;
+  };
+
+  const systemPrompt = `You are a UAE legal risk analyst for BarterGram barter marketplace.
+Write concise, actionable risk summaries. Reference UAE law where relevant.
+Always add the disclaimer that this is guidance only, not legal advice.
+Format for WhatsApp: use *bold* for key points, keep it under 200 words.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `Generate a 30-day dispute risk summary for BarterGram UAE:
+Total disputes: ${stats.total_disputes}
+Escalated to admin: ${stats.escalated}
+Fraud flags: ${stats.fraud_flags}
+VAT-related issues: ${stats.vat_issues}
+High-value disputes (>AED 50k): ${stats.high_value_disputes}
+
+Identify the top 2-3 risk patterns and suggest one operational action for each.`,
+      },
+    ],
+    max_tokens: 400,
+  });
+
+  const summary = (response.choices[0].message.content ?? "") + "\n\n_Guidance only — not legal advice._";
+
+  // Save to Drive
+  const title = `Legal Risk Summary — ${new Date().toLocaleDateString("en-AE", { timeZone: "Asia/Dubai" })}`;
+  const docUrl = await createGoogleDoc(title, summary, "legal");
+
+  await db.insert(legalDocuments).values({
+    documentType: "dispute_summary",
+    title,
+    content: summary,
+    googleDocUrl: docUrl,
+    riskLevel: stats.fraud_flags > 2 ? "high" : stats.escalated > 5 ? "medium" : "low",
+    status: "reviewed",
+  });
+
+  await logAgentRun({
+    agentName: "legalAgent",
+    triggeredBy: "scheduler",
+    input: "monthly_risk_summary",
+    output: summary,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  });
+
+  return `⚖️ *Legal Risk Summary*\n\n${summary}\n\n📄 Full report: ${docUrl}`;
+}
+
+// ─── VAT / compliance check ───────────────────────────────────────────────────
+
+/**
+ * Checks a deal value for UAE VAT implications and returns guidance.
+ */
+export async function checkVatCompliance(dealValueAed: number): Promise<string> {
+  if (dealValueAed < 375000) {
+    return `✅ Deal value (AED ${dealValueAed.toLocaleString()}) is below the UAE VAT registration threshold of AED 375,000. Standard barter rules apply.`;
+  }
+
+  if (dealValueAed >= 375000) {
+    return [
+      `⚠️ *VAT Advisory Notice*`,
+      ``,
+      `Deal value: AED ${dealValueAed.toLocaleString()}`,
+      `UAE VAT registration threshold: AED 375,000`,
+      ``,
+      `This deal may trigger VAT obligations for one or both parties.`,
+      `Both parties should verify their VAT registration status with the FTA (uaevat.gov.ae).`,
+      `BarterGram platform fees are subject to 5% VAT.`,
+      ``,
+      `_For guidance only — consult a UAE tax professional._`,
+    ].join("\n");
+  }
+
+  return "";
+}
+
+// ─── WhatsApp summary ─────────────────────────────────────────────────────────
+
+export async function getLegalSummary(): Promise<string> {
+  const recent = await db
+    .select()
+    .from(legalDocuments)
+    .orderBy(desc(legalDocuments.createdAt))
+    .limit(5);
+
+  const highRisk = recent.filter((d) => d.riskLevel === "high").length;
+  const vatDocs = recent.filter((d) => d.vatRelevant).length;
+
+  const lines = [
+    `⚖️ *Legal Agent Summary*`,
+    ``,
+    `Documents generated (recent): ${recent.length}`,
+    `High-risk items: ${highRisk}`,
+    `VAT-relevant documents: ${vatDocs}`,
+    ``,
+    `Recent documents:`,
+    ...recent.slice(0, 3).map((d) => `• ${d.title} (${d.riskLevel} risk)`),
+    ``,
+    `_All outputs are for guidance only — not legal advice._`,
+  ];
+
+  return lines.join("\n");
+}
+```
+
+---
+
+## STEP 6 — CREATE FILE: `server/agents/companyOs/dashboardAgent.ts`
+
+```typescript
+/**
+ * dashboardAgent.ts
+ * Aggregates KPIs from all agents and tables.
+ * Produces Recharts-ready JSON for the admin frontend.
+ * Exports weekly reports to Google Sheets.
+ */
+
+import { db } from "../../db.js";
+import {
+  kpiSnapshots,
+  financeSnapshots,
+  campaignPerformance,
+  salesLeads,
+  companyOsLogs,
+} from "../../../shared/schema.js";
+import { desc, sql, gte } from "drizzle-orm";
+import { createReport } from "../../connectors/googleSheets.js";
+import { getMonthlySpendAed } from "./costTracker.js";
+import { logAgentRun } from "./costTracker.js";
+import { notifyFounder } from "../../connectors/twilio.js";
+
+// ─── KPI aggregation ──────────────────────────────────────────────────────────
+
+export interface DashboardKpis {
+  // Users
+  totalUsers: number;
+  newUsersToday: number;
+  activeUsers7d: number;
+  // Posts & deals
+  totalPosts: number;
+  newPostsToday: number;
+  totalDeals: number;
+  completedDeals: number;
+  dealCompletionRate: number;
+  // Revenue
+  gmvAed: number;
+  revenueAed: number;
+  revenueThisMonth: number;
+  // Disputes
+  openDisputes: number;
+  resolvedDisputes: number;
+  // Marketing
+  activeCampaigns: number;
+  totalAdSpendAed: number;
+  // Costs
+  aiCostThisMonthAed: number;
+  aiCostBudgetAed: number;
+  // Top metrics
+  topCategory: string;
+  topCity: string;
+  // Chart data (Recharts format)
+  revenueChart: Array<{ date: string; revenueAed: number; transactions: number }>;
+  userGrowthChart: Array<{ date: string; totalUsers: number; newUsers: number }>;
+  categoryChart: Array<{ category: string; count: number; gmvAed: number }>;
+  agentActivityChart: Array<{ agent: string; runs: number; errors: number; costAed: number }>;
+}
+
+/**
+ * Aggregates all KPIs from the database.
+ * Adjust table/column names to match your actual schema.
+ */
+export async function aggregateKpis(): Promise<DashboardKpis> {
+  const today = new Date().toISOString().split("T")[0];
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Run all queries in parallel for speed
+  const [
+    userStats,
+    postStats,
+    dealStats,
+    disputeStats,
+    revenueHistory,
+    campaignStats,
+    categoryStats,
+    agentStats,
+    aiCost,
+  ] = await Promise.all([
+    // User stats — adjust table name as needed
+    db.execute(sql`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN created_at::date = CURRENT_DATE THEN 1 ELSE 0 END) as today,
+        SUM(CASE WHEN created_at >= ${sevenDaysAgo.toISOString()} THEN 1 ELSE 0 END) as active_7d
+      FROM users
+    `),
+
+    // Post stats
+    db.execute(sql`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN created_at::date = CURRENT_DATE THEN 1 ELSE 0 END) as today
+      FROM barter_posts
+      WHERE status != 'deleted'
+    `),
+
+    // Deal stats + GMV
+    db.execute(sql`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        COALESCE(SUM(CASE WHEN status = 'completed' THEN estimated_value_aed ELSE 0 END), 0) as gmv_aed
+      FROM barter_deals
+    `),
+
+    // Dispute stats
+    db.execute(sql`
+      SELECT
+        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
+        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved_count
+      FROM barter_disputes
+    `),
+
+    // Revenue from finance snapshots (last 30 days)
+    db.select()
+      .from(financeSnapshots)
+      .where(gte(financeSnapshots.snapshotDate, thirtyDaysAgo.toISOString().split("T")[0]))
+      .orderBy(desc(financeSnapshots.snapshotDate))
+      .limit(30),
+
+    // Campaign stats
+    db.select()
+      .from(campaignPerformance)
+      .orderBy(desc(campaignPerformance.fetchedAt))
+      .limit(20),
+
+    // Category breakdown
+    db.execute(sql`
+      SELECT
+        category,
+        COUNT(*) as count,
+        COALESCE(SUM(estimated_value_aed), 0) as gmv_aed,
+        city
+      FROM barter_posts
+      WHERE created_at >= ${thirtyDaysAgo.toISOString()}
+        AND status = 'active'
+      GROUP BY category, city
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+
+    // Agent activity
+    db.execute(sql`
+      SELECT
+        agent_name,
+        COUNT(*) as runs,
+        SUM(CASE WHEN success = false THEN 1 ELSE 0 END) as errors,
+        COALESCE(SUM(cost_aed::numeric), 0) as cost_aed
+      FROM company_os_logs
+      WHERE created_at >= ${thirtyDaysAgo.toISOString()}
+      GROUP BY agent_name
+      ORDER BY runs DESC
+    `),
+
+    getMonthlySpendAed(),
+  ]);
+
+  const users = userStats.rows[0] as { total: number; today: number; active_7d: number };
+  const posts = postStats.rows[0] as { total: number; today: number };
+  const deals = dealStats.rows[0] as { total: number; completed: number; gmv_aed: number };
+  const disputes = disputeStats.rows[0] as { open_count: number; resolved_count: number };
+  const categories = categoryStats.rows as Array<{ category: string; count: number; gmv_aed: number; city: string }>;
+  const agentActivity = agentStats.rows as Array<{ agent_name: string; runs: number; errors: number; cost_aed: number }>;
+
+  const revenueThisMonth = revenueHistory.reduce(
+    (sum, r) => sum + parseFloat(String(r.revenueAed ?? "0")), 0
+  );
+
+  const activeCampaigns = campaignStats.filter((c) => c.status === "ACTIVE").length;
+  const totalAdSpend = campaignStats.reduce(
+    (sum, c) => sum + parseFloat(String(c.spendAed ?? "0")), 0
+  );
+
+  const topCategory = categories[0]?.category ?? "General";
+  const topCity = categories[0]?.city ?? "Dubai";
+
+  const completionRate = deals.total > 0
+    ? parseFloat(((deals.completed / deals.total) * 100).toFixed(1))
+    : 0;
+
+  // Build chart data
+  const revenueChart = revenueHistory.slice(0, 14).reverse().map((r) => ({
+    date: r.snapshotDate,
+    revenueAed: parseFloat(String(r.revenueAed ?? "0")),
+    transactions: r.transactionCount ?? 0,
+  }));
+
+  const categoryChart = categories.slice(0, 8).map((c) => ({
+    category: c.category,
+    count: Number(c.count),
+    gmvAed: parseFloat(String(c.gmv_aed ?? "0")),
+  }));
+
+  const agentActivityChart = agentActivity.map((a) => ({
+    agent: a.agent_name.replace("Agent", ""),
+    runs: Number(a.runs),
+    errors: Number(a.errors),
+    costAed: parseFloat(String(a.cost_aed ?? "0")),
+  }));
+
+  return {
+    totalUsers: Number(users.total ?? 0),
+    newUsersToday: Number(users.today ?? 0),
+    activeUsers7d: Number(users.active_7d ?? 0),
+    totalPosts: Number(posts.total ?? 0),
+    newPostsToday: Number(posts.today ?? 0),
+    totalDeals: Number(deals.total ?? 0),
+    completedDeals: Number(deals.completed ?? 0),
+    dealCompletionRate: completionRate,
+    gmvAed: parseFloat(String(deals.gmv_aed ?? "0")),
+    revenueAed: revenueHistory[0] ? parseFloat(String(revenueHistory[0].revenueAed ?? "0")) : 0,
+    revenueThisMonth,
+    openDisputes: Number(disputes.open_count ?? 0),
+    resolvedDisputes: Number(disputes.resolved_count ?? 0),
+    activeCampaigns,
+    totalAdSpendAed: totalAdSpend,
+    aiCostThisMonthAed: aiCost,
+    aiCostBudgetAed: parseFloat(process.env.COMPANY_OS_MONTHLY_BUDGET_AED ?? "400"),
+    topCategory,
+    topCity,
+    revenueChart,
+    userGrowthChart: [], // populate from user history table if available
+    categoryChart,
+    agentActivityChart,
+  };
+}
+
+// ─── Daily KPI snapshot ───────────────────────────────────────────────────────
+
+export async function saveDailyKpiSnapshot(): Promise<DashboardKpis> {
+  const kpis = await aggregateKpis();
+  const today = new Date().toISOString().split("T")[0];
+
+  await db
+    .insert(kpiSnapshots)
+    .values({
+      snapshotDate: today,
+      snapshotType: "daily",
+      totalUsers: kpis.totalUsers,
+      newUsersToday: kpis.newUsersToday,
+      activeUsers7d: kpis.activeUsers7d,
+      totalPosts: kpis.totalPosts,
+      newPostsToday: kpis.newPostsToday,
+      totalDeals: kpis.totalDeals,
+      completedDeals: kpis.completedDeals,
+      dealCompletionRate: kpis.dealCompletionRate.toFixed(2),
+      gmvAed: kpis.gmvAed.toFixed(2),
+      revenueAed: kpis.revenueAed.toFixed(2),
+      openDisputes: kpis.openDisputes,
+      resolvedDisputes: kpis.resolvedDisputes,
+      topCategory: kpis.topCategory,
+      topCity: kpis.topCity,
+      aiCostAed: kpis.aiCostThisMonthAed.toFixed(2),
+    })
+    .onConflictDoNothing();
+
+  await logAgentRun({
+    agentName: "dashboardAgent",
+    triggeredBy: "scheduler",
+    input: "daily_kpi_snapshot",
+    output: `KPIs saved: ${kpis.totalUsers} users, AED ${kpis.revenueAed} revenue`,
+    inputTokens: 0,
+    outputTokens: 0,
+  });
+
+  return kpis;
+}
+
+// ─── Weekly Google Sheets export ──────────────────────────────────────────────
+
+export async function exportWeeklyReport(): Promise<string> {
+  const kpis = await aggregateKpis();
+
+  const headers = [
+    "Date", "Total Users", "New Users", "Active 7d",
+    "Total Posts", "Deals", "Completed Deals", "Completion Rate %",
+    "GMV AED", "Revenue AED", "Open Disputes", "Top Category", "AI Cost AED"
+  ];
+
+  const today = new Date().toLocaleDateString("en-AE", { timeZone: "Asia/Dubai" });
+
+  const rows = [[
+    today,
+    kpis.totalUsers,
+    kpis.newUsersToday,
+    kpis.activeUsers7d,
+    kpis.totalPosts,
+    kpis.totalDeals,
+    kpis.completedDeals,
+    kpis.dealCompletionRate,
+    kpis.gmvAed,
+    kpis.revenueThisMonth,
+    kpis.openDisputes,
+    kpis.topCategory,
+    kpis.aiCostThisMonthAed,
+  ]];
+
+  // Add revenue history rows
+  for (const r of kpis.revenueChart) {
+    rows.push([r.date, null, null, null, null, null, null, null, null, r.revenueAed, null, null, null]);
+  }
+
+  const title = `BarterGram Weekly Report — W${getWeekNumber()}`;
+  const sheetUrl = await createReport(title, headers, rows, "analytics");
+
+  await notifyFounder(
+    `📊 *Weekly Report Ready*\n\nKPIs exported to Google Sheets:\n${sheetUrl}\n\nHighlights:\nUsers: ${kpis.totalUsers} (+${kpis.newUsersToday} today)\nRevenue this month: AED ${kpis.revenueThisMonth.toFixed(0)}\nDeal completion: ${kpis.dealCompletionRate}%\nGMV: AED ${kpis.gmvAed.toFixed(0)}`
+  );
+
+  return sheetUrl;
+}
+
+function getWeekNumber(): string {
+  const now = new Date();
+  const week = Math.ceil(((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7);
+  return `${now.getFullYear()}-${String(week).padStart(2, "0")}`;
+}
+
+export async function getDashboardSummary(): Promise<string> {
+  const kpis = await aggregateKpis();
+  return [
+    `📊 *Dashboard Summary*`,
+    ``,
+    `👥 Users: ${kpis.totalUsers} total, +${kpis.newUsersToday} today`,
+    `📦 Posts: ${kpis.totalPosts} (+${kpis.newPostsToday} today)`,
+    `🤝 Deals: ${kpis.completedDeals}/${kpis.totalDeals} completed (${kpis.dealCompletionRate}%)`,
+    `💰 GMV: AED ${kpis.gmvAed.toLocaleString()}`,
+    `💳 Revenue this month: AED ${kpis.revenueThisMonth.toFixed(0)}`,
+    `⚖️ Open disputes: ${kpis.openDisputes}`,
+    `📣 Active campaigns: ${kpis.activeCampaigns}`,
+    `🤖 AI cost this month: AED ${kpis.aiCostThisMonthAed.toFixed(0)} / ${kpis.aiCostBudgetAed}`,
+  ].join("\n");
+}
+```
+
+---
+
+## STEP 7 — CREATE FILE: `client/src/pages/CompanyOsDashboard.tsx`
+
+```tsx
+/**
+ * CompanyOsDashboard.tsx
+ * /admin/company-os — shows all 15 agents, live KPIs, revenue chart,
+ * campaign performance, and cost tracker.
+ * Uses TanStack Query for data fetching + Recharts for charts.
+ */
+
+import { useQuery } from "@tanstack/react-query";
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface DashboardKpis {
+  totalUsers: number;
+  newUsersToday: number;
+  activeUsers7d: number;
+  totalPosts: number;
+  newPostsToday: number;
+  totalDeals: number;
+  completedDeals: number;
+  dealCompletionRate: number;
+  gmvAed: number;
+  revenueAed: number;
+  revenueThisMonth: number;
+  openDisputes: number;
+  activeCampaigns: number;
+  totalAdSpendAed: number;
+  aiCostThisMonthAed: number;
+  aiCostBudgetAed: number;
+  topCategory: string;
+  topCity: string;
+  revenueChart: Array<{ date: string; revenueAed: number; transactions: number }>;
+  categoryChart: Array<{ category: string; count: number; gmvAed: number }>;
+  agentActivityChart: Array<{ agent: string; runs: number; errors: number; costAed: number }>;
+}
+
+interface AgentStatus {
+  status: string;
+  monthlySpendAed: number;
+  budgetAed: number;
+  recentActivity: Array<{
+    agentName: string;
+    triggeredBy: string;
+    success: boolean;
+    createdAt: string;
+  }>;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CHART_COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+
+const ALL_AGENTS = [
+  { name: "Manager", icon: "🧠", type: "os" },
+  { name: "Finance", icon: "💰", type: "os" },
+  { name: "Marketing", icon: "📣", type: "os" },
+  { name: "Sales", icon: "💼", type: "os" },
+  { name: "Legal", icon: "⚖️", type: "os" },
+  { name: "Dashboard", icon: "📊", type: "os" },
+  { name: "Moderation", icon: "🛡", type: "product" },
+  { name: "Support", icon: "🎧", type: "product" },
+  { name: "Matching", icon: "🔗", type: "product" },
+  { name: "Valuation", icon: "💎", type: "product" },
+  { name: "Engagement", icon: "🔔", type: "product" },
+  { name: "Admin Helper", icon: "⚙️", type: "product" },
+  { name: "Onboarding", icon: "👋", type: "product" },
+  { name: "Dispute", icon: "🤝", type: "product" },
+  { name: "Analytics", icon: "📈", type: "product" },
+];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  icon,
+  highlight,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: string;
+  highlight?: "green" | "red" | "yellow";
+}) {
+  const highlightClass =
+    highlight === "green"
+      ? "border-green-500/30 bg-green-500/5"
+      : highlight === "red"
+      ? "border-red-500/30 bg-red-500/5"
+      : highlight === "yellow"
+      ? "border-yellow-500/30 bg-yellow-500/5"
+      : "";
+
+  return (
+    <Card className={`${highlightClass}`}>
+      <CardContent className="pt-4 pb-3 px-4">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
+          <span className="text-lg">{icon}</span>
+        </div>
+        <div className="text-2xl font-semibold text-foreground">{value}</div>
+        {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentStatusGrid({ activityData }: { activityData: Array<{ agentName: string; runs: number; errors: number }> }) {
+  const activityMap = new Map(activityData.map((a) => [a.agentName.replace("Agent", "").toLowerCase(), a]));
+
+  return (
+    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+      {ALL_AGENTS.map((agent) => {
+        const key = agent.name.toLowerCase().replace(" ", "");
+        const activity = activityMap.get(key);
+        const hasErrors = activity && Number(activity.errors) > 0;
+        const hasActivity = !!activity;
+
+        return (
+          <div
+            key={agent.name}
+            className={`flex flex-col items-center p-2.5 rounded-lg border text-center gap-1
+              ${hasErrors ? "border-red-500/30 bg-red-500/5" : hasActivity ? "border-green-500/30 bg-green-500/5" : "border-border bg-muted/30"}`}
+          >
+            <span className="text-xl">{agent.icon}</span>
+            <span className="text-[10px] font-medium text-foreground leading-tight">{agent.name}</span>
+            <div className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${hasErrors ? "bg-red-500" : hasActivity ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                {agent.type === "os" ? "OS" : "Product"}
+              </Badge>
+            </div>
+            {activity && (
+              <span className="text-[9px] text-muted-foreground">{activity.runs} runs</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function CompanyOsDashboard() {
+  const { data: kpis, isLoading: kpisLoading, refetch: refetchKpis } = useQuery<DashboardKpis>({
+    queryKey: ["/api/company-os/kpis"],
+    refetchInterval: 60000, // refresh every minute
+  });
+
+  const { data: agentStatus } = useQuery<AgentStatus>({
+    queryKey: ["/api/company-os/status"],
+    refetchInterval: 30000,
+  });
+
+  const handleExportReport = async () => {
+    await fetch("/api/company-os/dashboard/export-weekly", { method: "POST" });
+    alert("Weekly report exported to Google Sheets and sent to WhatsApp.");
+  };
+
+  const handleGenerateBrief = async () => {
+    await fetch("/api/company-os/marketing/generate-brief", { method: "POST" });
+    alert("Campaign brief generating — check WhatsApp.");
+  };
+
+  if (kpisLoading || !kpis) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-muted-foreground animate-pulse">Loading Company OS...</div>
+      </div>
+    );
+  }
+
+  const budgetPct = (kpis.aiCostThisMonthAed / kpis.aiCostBudgetAed) * 100;
+  const budgetHighlight = budgetPct > 85 ? "red" : budgetPct > 65 ? "yellow" : "green";
+
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">BarterGram Company OS</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            15 agents · {ALL_AGENTS.filter((a) => a.type === "os").length} OS + {ALL_AGENTS.filter((a) => a.type === "product").length} product
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleGenerateBrief}>
+            📣 Generate brief
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportReport}>
+            📊 Export report
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetchKpis()}>
+            ↺ Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <KpiCard label="Total users" value={kpis.totalUsers.toLocaleString()} sub={`+${kpis.newUsersToday} today`} icon="👥" highlight="green" />
+        <KpiCard label="Active 7d" value={kpis.activeUsers7d.toLocaleString()} icon="⚡" />
+        <KpiCard label="Revenue (month)" value={`AED ${kpis.revenueThisMonth.toFixed(0)}`} sub={`AED ${kpis.revenueAed.toFixed(0)} today`} icon="💰" highlight="green" />
+        <KpiCard label="GMV total" value={`AED ${kpis.gmvAed.toLocaleString()}`} icon="📦" />
+        <KpiCard label="Deal completion" value={`${kpis.dealCompletionRate}%`} sub={`${kpis.completedDeals}/${kpis.totalDeals} deals`} icon="🤝" highlight={kpis.dealCompletionRate > 60 ? "green" : "yellow"} />
+        <KpiCard label="Open disputes" value={kpis.openDisputes} icon="⚖️" highlight={kpis.openDisputes > 5 ? "red" : undefined} />
+        <KpiCard label="Active campaigns" value={kpis.activeCampaigns} sub={`AED ${kpis.totalAdSpendAed.toFixed(0)} spent`} icon="📣" />
+        <KpiCard label="AI cost (month)" value={`AED ${kpis.aiCostThisMonthAed.toFixed(0)}`} sub={`of AED ${kpis.aiCostBudgetAed} budget`} icon="🤖" highlight={budgetHighlight} />
+        <KpiCard label="Top category" value={kpis.topCategory} sub={kpis.topCity} icon="🏆" />
+        <KpiCard label="New posts today" value={kpis.newPostsToday} sub={`${kpis.totalPosts} total`} icon="📝" />
+      </div>
+
+      {/* Revenue chart */}
+      {kpis.revenueChart.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Revenue — last 14 days (AED)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={kpis.revenueChart}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(v: number) => [`AED ${v.toFixed(0)}`, "Revenue"]} />
+                <Line type="monotone" dataKey="revenueAed" stroke="#22c55e" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Category breakdown + Agent activity side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {kpis.categoryChart.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Top categories (30 days)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={kpis.categoryChart} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} />
+                  <YAxis dataKey="category" type="category" tick={{ fontSize: 10 }} width={80} />
+                  <Tooltip formatter={(v: number) => [v, "Posts"]} />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {kpis.agentActivityChart.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Agent runs (30 days)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={kpis.agentActivityChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="agent" tick={{ fontSize: 9 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="runs" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="errors" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* AI budget bar */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Monthly AI budget</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between mb-2 text-sm">
+            <span className="text-muted-foreground">AED {kpis.aiCostThisMonthAed.toFixed(2)} used</span>
+            <span className="text-muted-foreground">AED {kpis.aiCostBudgetAed} budget</span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-3">
+            <div
+              className={`h-3 rounded-full transition-all ${budgetPct > 85 ? "bg-red-500" : budgetPct > 65 ? "bg-yellow-500" : "bg-green-500"}`}
+              style={{ width: `${Math.min(budgetPct, 100)}%` }}
+            />
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">{budgetPct.toFixed(1)}% of monthly budget used</div>
+        </CardContent>
+      </Card>
+
+      {/* All 15 agents status */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">All 15 agents</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AgentStatusGrid activityData={(agentStatus?.recentActivity ?? []) as any} />
+        </CardContent>
+      </Card>
+
+    </div>
+  );
+}
+```
+
+---
+
+## STEP 8 — ADD ROUTE FOR COMPANY OS DASHBOARD PAGE
+
+In your main router file (likely `client/src/App.tsx` or wherever Wouter routes are defined), add:
+
+```tsx
+import CompanyOsDashboard from "@/pages/CompanyOsDashboard";
+
+// Inside your Route declarations:
+<Route path="/admin/company-os" component={CompanyOsDashboard} />
+```
+
+---
+
+## STEP 9 — ADD NEW API ROUTES TO `server/routes/companyOs.ts`
+
+Append to the existing routes file:
+
+```typescript
+// Dashboard KPI endpoint
+companyOsRouter.get("/kpis", async (_req, res) => {
+  const { aggregateKpis } = await import("../agents/companyOs/dashboardAgent.js");
+  const kpis = await aggregateKpis();
+  res.json(kpis);
+});
+
+companyOsRouter.post("/dashboard/export-weekly", async (_req, res) => {
+  const { exportWeeklyReport } = await import("../agents/companyOs/dashboardAgent.js");
+  const sheetUrl = await exportWeeklyReport();
+  res.json({ sheetUrl });
+});
+
+// Legal endpoints
+companyOsRouter.post("/legal/generate-contract", async (req, res) => {
+  const { generateBarterContract } = await import("../agents/companyOs/legalAgent.js");
+  const result = await generateBarterContract(req.body);
+  res.json(result);
+});
+
+companyOsRouter.get("/legal/risk-summary", async (_req, res) => {
+  const { generateDisputeRiskSummary } = await import("../agents/companyOs/legalAgent.js");
+  const summary = await generateDisputeRiskSummary();
+  res.json({ summary });
+});
+
+companyOsRouter.get("/legal/documents", async (_req, res) => {
+  const docs = await db
+    .select()
+    .from(legalDocuments)
+    .orderBy(desc(legalDocuments.createdAt))
+    .limit(20);
+  res.json(docs);
+});
+
+companyOsRouter.get("/legal/vat-check/:valueAed", async (req, res) => {
+  const { checkVatCompliance } = await import("../agents/companyOs/legalAgent.js");
+  const result = await checkVatCompliance(parseFloat(req.params.valueAed));
+  res.json({ result });
+});
+```
+
+---
+
+## STEP 10 — ADD NEW WHATSAPP COMMANDS TO `managerAgent.ts`
+
+Add before the free-form handler:
+
+```typescript
+    // --- Dashboard commands ---
+    if (cmd === "dashboard" || cmd === "kpis") {
+      const { getDashboardSummary } = await import("./dashboardAgent.js");
+      return getDashboardSummary();
+    }
+
+    if (cmd === "export report" || cmd === "weekly report") {
+      const { exportWeeklyReport } = await import("./dashboardAgent.js");
+      const url = await exportWeeklyReport();
+      return `📊 Weekly report exported to Google Sheets:\n${url}`;
+    }
+
+    // --- Legal commands ---
+    if (cmd === "legal" || cmd === "legal summary") {
+      const { getLegalSummary } = await import("./legalAgent.js");
+      return getLegalSummary();
+    }
+
+    if (cmd === "risk report") {
+      const { generateDisputeRiskSummary } = await import("./legalAgent.js");
+      return generateDisputeRiskSummary();
+    }
+
+    if (cmd.startsWith("vat check ")) {
+      const value = parseFloat(cmd.replace("vat check ", ""));
+      if (!isNaN(value)) {
+        const { checkVatCompliance } = await import("./legalAgent.js");
+        return checkVatCompliance(value);
+      }
+    }
+```
+
+Also update `getHelpText()` to add:
+
+```typescript
+    `📊 *dashboard* — full KPI summary`,
+    `📤 *export report* — send to Google Sheets`,
+    `⚖️ *legal* — recent legal documents`,
+    `🔍 *risk report* — dispute risk analysis`,
+    `💡 *vat check [amount]* — UAE VAT guidance`,
+```
+
+---
+
+## STEP 11 — ADD SCHEDULER JOBS TO `scheduler.ts`
+
+```typescript
+  // Daily KPI snapshot — 7:45 AM UAE (03:45 UTC) — before morning briefing
+  cron.schedule("45 3 * * *", async () => {
+    console.log("[scheduler] Saving daily KPI snapshot...");
+    const { saveDailyKpiSnapshot } = await import("./dashboardAgent.js");
+    await saveDailyKpiSnapshot();
+  });
+
+  // Weekly Google Sheets export — Sunday 7 AM UAE (03:00 UTC)
+  cron.schedule("0 3 * * 0", async () => {
+    console.log("[scheduler] Exporting weekly report to Google Sheets...");
+    const { exportWeeklyReport } = await import("./dashboardAgent.js");
+    await exportWeeklyReport();
+  });
+
+  // Monthly legal risk summary — 1st of month, 9 AM UAE (05:00 UTC)
+  cron.schedule("0 5 1 * *", async () => {
+    console.log("[scheduler] Generating monthly legal risk summary...");
+    const { generateDisputeRiskSummary } = await import("./legalAgent.js");
+    const summary = await generateDisputeRiskSummary();
+    const { notifyFounder } = await import("../../connectors/twilio.js");
+    await notifyFounder(summary);
+  });
+```
+
+---
+
+## STEP 12 — VERIFY THE BUILD
+
+```
+1. npm run db:push → new tables created
+2. GET /api/company-os/kpis → returns full KPI object with chart data
+3. GET /api/company-os/legal/vat-check/500000 → VAT advisory notice
+4. POST /api/company-os/legal/risk-summary → generates summary, saves to Drive
+5. POST /api/company-os/dashboard/export-weekly → exports to Sheets, WhatsApps you
+6. Browser: /admin/company-os → full dashboard with charts renders
+7. WhatsApp: "dashboard" → KPI summary
+8. WhatsApp: "legal" → recent documents list
+9. WhatsApp: "vat check 400000" → VAT threshold guidance
+10. WhatsApp: "export report" → Google Sheets link sent back
+```
+
+---
+
+## FILE SUMMARY
+
+```
+server/
+  connectors/
+    googleSheets.ts              ← NEW
+  agents/
+    companyOs/
+      legalAgent.ts              ← NEW
+      dashboardAgent.ts          ← NEW
+      managerAgent.ts            ← MODIFIED (new commands)
+      scheduler.ts               ← MODIFIED (3 new jobs)
+  routes/
+    companyOs.ts                 ← MODIFIED (6 new routes)
+client/
+  src/pages/
+    CompanyOsDashboard.tsx       ← NEW (full admin frontend)
+  src/App.tsx                    ← MODIFIED (new route added)
+shared/
+  schema.ts                      ← MODIFIED (2 new tables)
+```
+
+No new secrets needed — uses existing Google Service Account from Week 2.
+No new npm packages needed.
+
+---
+
+## WEEKS 5–7 PREVIEW (final prompt)
+
+The last prompt delivers full autonomy:
+- Cross-agent memory layer — agents share learnings via Supabase logs
+- Proactive intelligence — agents flag opportunities without being asked
+- Monthly board report — full company PDF auto-generated and sent to Drive
+- Per-agent spend limits (not just global budget)
+- Self-healing: agents detect their own errors and retry or escalate
+- Final integration test: simulate a full week of company operation
