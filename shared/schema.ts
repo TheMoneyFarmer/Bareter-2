@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb, uniqueIndex, serial, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, decimal, jsonb, json, uniqueIndex, serial, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { DeliverableItem } from "./deliverables";
@@ -695,6 +695,19 @@ export const agentInteractions = pgTable("agent_interactions", {
   tokensUsed: integer("tokens_used").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Session table — owned by connect-pg-simple (auto-created at app boot via
+// `createTableIfMissing`). Declared here ONLY so drizzle-kit doesn't think
+// it's an orphan and ask to drop it (or treat new tables as renames of it)
+// during `db:push`. Do not insert/select through Drizzle — use the
+// express-session middleware instead.
+export const sessionTable = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6, mode: "date" }).notNull(),
+}, (table) => ({
+  expireIdx: index("IDX_session_expire").on(table.expire),
+}));
 
 // Company OS logs - per-LLM-call tracking for the WhatsApp Manager Agent.
 // Used by the cost tracker to enforce the monthly AED budget and by the

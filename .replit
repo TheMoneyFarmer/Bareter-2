@@ -55,7 +55,7 @@ integrations = ["stripe:2.0.0", "javascript_object_storage:2.0.0", "javascript_o
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 480000
 
 [userenv]
 
