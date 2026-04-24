@@ -50,6 +50,12 @@ Preferred communication style: Simple, everyday language.
 - **AI Agents Platform**: Integration of 6 specialized AI agents (Moderation, Support, Matching, Valuation, Engagement, Admin) powered by OpenAI for various platform functions.
 - **Company OS (WhatsApp control plane)**: Founder-only WhatsApp number that exposes `help`, `revenue`, `revenue week`, `status`, `agents`, `costs`, plus free-form questions answered by the LLM (gated by a monthly AED budget). Inbound webhook lives at `/api/company-os/whatsapp`.
 
+## Why the scheduler needs production deploy
+
+The Company OS cron jobs in `server/companyOs/scheduler.ts` only start when `NODE_ENV === "production"` (or with the `COMPANY_OS_SCHEDULER_FORCE` flag). The Replit dev workflow runs in development, so the 08:00 Asia/Dubai daily briefing, the hourly Stripe finance snapshot, and the 09:00 budget-warning job will **not** fire from the dev preview — they only fire from a published deployment. Do not "fix" the dev-mode skip; it is intentional so dev restarts don't spam the founder phone.
+
+Deploy as **Reserved VM** or **Background Worker**, not Autoscale, so the Node process stays resident long enough for `node-cron` to fire on time. After deploy, repoint the Stripe webhook in the Stripe dashboard from the dev URL to `https://<your-domain>/api/company-os/stripe-webhook`.
+
 ## Verifying the WhatsApp control plane after deploy
 
 1. In the Twilio Console, open **Messaging → Try it out → Send a WhatsApp message** and copy the join code (e.g. `join orange-zebra`).
