@@ -1,0 +1,984 @@
+# BarterGram Company OS — Week 1 Replit Build Prompt
+
+Paste this entire document as a prompt to Replit AI.
+
+---
+
+## CONTEXT — READ BEFORE BUILDING
+
+This is BarterGram, a UAE-based barter marketplace. The project is already running with:
+- TypeScript end-to-end, Node 20, ES modules
+- Frontend: React 18 + Vite + Wouter + TanStack Query + shadcn/ui + Tailwind
+- Backend: Express 5, same port as Vite dev server
+- Database: PostgreSQL via Drizzle ORM (`shared/schema.ts`), `DATABASE_URL` in Replit Secrets
+- AI: OpenAI SDK v6 (`openai ^6.34.0`) through `server/agents/llm.ts`
+- 9 existing AI agents in `server/agents/` — do NOT modify these
+- No Supabase anywhere — pure Drizzle + PostgreSQL
+- No `.env` file — all secrets in Replit Secret store
+
+**What we are building in this prompt (Week 1):**
+1. Schema additions — two new Drizzle tables
+2. Cost tracker utility — tracks OpenAI spend in AED, enforces AED 400/month budget
+3. Manager Agent — your WhatsApp command router and daily briefing compiler
+4. Finance Agent — reads Stripe transactions, tracks revenue in AED, sends alerts
+5. Twilio connector — WhatsApp send/receive via Twilio sandbox
+6. Company OS routes — Express routes for WhatsApp webhook, commands, Stripe webhook
+7. Scheduled jobs — 8 AM UAE daily briefing, hourly finance sync
+8. Mount everything into the existing server
+
+**Do not touch:** `server/agents/llm.ts`, any existing agent files, `client/`, `shared/schema.ts` existing tables, existing routes.
+
+---
+
+## STEP 1 — ADD SECRETS TO REPLIT
+
+Before building, add these to Replit Secrets (Settings → Secrets):
+
+```
+TWILIO_ACCOUNT_SID        = ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN         = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_WHATSAPP_FROM      = whatsapp:+14155238886
+FOUNDER_WHATSAPP_NUMBER   = whatsapp:+971XXXXXXXXX   ← your UAE number
+COMPANY_OS_MONTHLY_BUDGET_AED = 400
+META_AED_RATE             = 3.67
+```
+
+Stripe is already managed by Replit integrations — `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are already available.
+
+---
+
+## STEP 2 — INSTALL NEW PACKAGES
+
+Run in the Replit Shell:
+
+```bash
+npm install twilio node-cron
+npm install --save-dev @types/node-cron
+```
+
+---
+
+## STEP 3 — SCHEMA ADDITIONS
+
+**Append to the bottom of `shared/schema.ts`** (do not modify existing tables):
+
+```typescript
+// ============================================================
+// COMPANY OS TABLES — added Week 1
+// ============================================================
+
+export const companyOsLogs = pgTable("company_os_logs", {
+  id: serial("id").primaryKey(),
+  agentName: text("agent_name").notNull(),
+  triggeredBy: text("triggered_by").notNull(), // 'whatsapp' | 'scheduler' | 'stripe_webhook' | 'agent'
+  input: text("input"),
+  output: text("output"),
+  tokensUsed: integer("tokens_used").default(0),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 6 }).default("0"),
+  costAed: numeric("cost_aed", { precision: 10, scale: 4 }).default("0"),
+  success: boolean("success").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const financeSnapshots = pgTable("finance_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotDate: text("snapshot_date").notNull(), // YYYY-MM-DD
+  revenueAed: numeric("revenue_aed", { precision: 12, scale: 2 }).default("0"),
+  transactionCount: integer("transaction_count").default(0),
+  topCategory: text("top_category"),
+  newPayingUsers: integer("new_paying_users").default(0),
+  stripeBalanceAed: numeric("stripe_balance_aed", { precision: 12, scale: 2 }).default("0"),
+  rawData: text("raw_data"), // JSON string of Stripe data
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CompanyOsLog = typeof companyOsLogs.$inferSelect;
+export type InsertCompanyOsLog = typeof companyOsLogs.$inferInsert;
+export type FinanceSnapshot = typeof financeSnapshots.$inferSelect;
+export type InsertFinanceSnapshot = typeof financeSnapshots.$inferInsert;
+```
+
+After adding, run the migration:
+
+```bash
+npm run db:push
+```
+
+---
+
+## STEP 4 — CREATE FILE: `server/agents/companyOs/costTracker.ts`
+
+```typescript
+/**
+ * costTracker.ts
+ * Tracks OpenAI token usage and enforces monthly AED 400 budget.
+ * All company OS agents call logAgentRun() after each LLM call.
+ */
+
+import { db } from "../../db.js";
+import { companyOsLogs } from "../../../shared/schema.js";
+import { sql } from "drizzle-orm";
+
+const AED_RATE = parseFloat(process.env.META_AED_RATE ?? "3.67");
+const MONTHLY_BUDGET_AED = parseFloat(process.env.COMPANY_OS_MONTHLY_BUDGET_AED ?? "400");
+
+// GPT-4o-mini pricing (USD per 1k tokens) — update if model changes
+const COST_PER_1K_INPUT = 0.000150;
+const COST_PER_1K_OUTPUT = 0.000600;
+
+export function estimateCost(inputTokens: number, outputTokens: number): {
+  usd: number;
+  aed: number;
+} {
+  const usd =
+    (inputTokens / 1000) * COST_PER_1K_INPUT +
+    (outputTokens / 1000) * COST_PER_1K_OUTPUT;
+  return { usd, aed: usd * AED_RATE };
+}
+
+export async function logAgentRun(params: {
+  agentName: string;
+  triggeredBy: string;
+  input: string;
+  output: string;
+  inputTokens: number;
+  outputTokens: number;
+  success?: boolean;
+}): Promise<void> {
+  const { usd, aed } = estimateCost(params.inputTokens, params.outputTokens);
+  await db.insert(companyOsLogs).values({
+    agentName: params.agentName,
+    triggeredBy: params.triggeredBy,
+    input: params.input.slice(0, 2000),
+    output: params.output.slice(0, 4000),
+    tokensUsed: params.inputTokens + params.outputTokens,
+    costUsd: usd.toFixed(6),
+    costAed: aed.toFixed(4),
+    success: params.success ?? true,
+  });
+}
+
+export async function getMonthlySpendAed(): Promise<number> {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const result = await db
+    .select({ total: sql<string>`COALESCE(SUM(cost_aed::numeric), 0)` })
+    .from(companyOsLogs)
+    .where(sql`created_at >= ${startOfMonth.toISOString()}`);
+
+  return parseFloat(result[0]?.total ?? "0");
+}
+
+export async function isBudgetSafe(): Promise<{ safe: boolean; spentAed: number; remainingAed: number }> {
+  const spent = await getMonthlySpendAed();
+  const remaining = MONTHLY_BUDGET_AED - spent;
+  return {
+    safe: spent < MONTHLY_BUDGET_AED * 0.95, // 5% buffer
+    spentAed: spent,
+    remainingAed: remaining,
+  };
+}
+```
+
+---
+
+## STEP 5 — CREATE FILE: `server/connectors/twilio.ts`
+
+```typescript
+/**
+ * twilio.ts
+ * Sends and receives WhatsApp messages via Twilio.
+ * Only responds to FOUNDER_WHATSAPP_NUMBER for security.
+ */
+
+import twilio from "twilio";
+
+const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const fromNumber = process.env.TWILIO_WHATSAPP_FROM!;
+export const founderNumber = process.env.FOUNDER_WHATSAPP_NUMBER!;
+
+let client: twilio.Twilio;
+
+function getClient(): twilio.Twilio {
+  if (!client) {
+    client = twilio(accountSid, authToken);
+  }
+  return client;
+}
+
+export async function sendWhatsApp(to: string, message: string): Promise<void> {
+  // Truncate to WhatsApp 4096 char limit
+  const body = message.length > 4000 ? message.slice(0, 3997) + "..." : message;
+  await getClient().messages.create({ from: fromNumber, to, body });
+}
+
+export async function notifyFounder(message: string): Promise<void> {
+  await sendWhatsApp(founderNumber, message);
+}
+
+export function isFromFounder(fromNumber: string): boolean {
+  return fromNumber === founderNumber;
+}
+
+export function validateTwilioRequest(
+  signature: string,
+  url: string,
+  params: Record<string, string>
+): boolean {
+  return twilio.validateRequest(authToken, signature, url, params);
+}
+```
+
+---
+
+## STEP 6 — CREATE FILE: `server/agents/companyOs/financeAgent.ts`
+
+```typescript
+/**
+ * financeAgent.ts
+ * Reads Stripe data, tracks revenue in AED, stores daily snapshots,
+ * and returns formatted reports for the Manager Agent.
+ */
+
+import Stripe from "stripe";
+import { db } from "../../db.js";
+import { financeSnapshots } from "../../../shared/schema.js";
+import { desc, eq } from "drizzle-orm";
+import { logAgentRun, isBudgetSafe } from "./costTracker.js";
+
+const AED_RATE = parseFloat(process.env.META_AED_RATE ?? "3.67");
+
+function getStripe(): Stripe {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2024-06-20",
+  });
+}
+
+function usdToAed(usdCents: number): number {
+  return (usdCents / 100) * AED_RATE;
+}
+
+export interface DailyFinanceSummary {
+  revenueAed: number;
+  transactionCount: number;
+  stripeBalanceAed: number;
+  newPayingUsers: number;
+  topCategory: string;
+  date: string;
+}
+
+/**
+ * Fetches today's Stripe charges and builds a daily snapshot.
+ * Called by the scheduler and on-demand via WhatsApp command.
+ */
+export async function runDailyFinanceSnapshot(): Promise<DailyFinanceSummary> {
+  const stripe = getStripe();
+  const today = new Date();
+  const startOfDay = new Date(today);
+  startOfDay.setHours(0, 0, 0, 0);
+  const dateStr = today.toISOString().split("T")[0];
+
+  // Fetch today's charges
+  const charges = await stripe.charges.list({
+    created: { gte: Math.floor(startOfDay.getTime() / 1000) },
+    limit: 100,
+  });
+
+  const successfulCharges = charges.data.filter((c) => c.status === "succeeded");
+  const revenueUsdCents = successfulCharges.reduce((sum, c) => sum + c.amount, 0);
+  const revenueAed = usdToAed(revenueUsdCents);
+
+  // Unique customers today
+  const uniqueCustomers = new Set(
+    successfulCharges.map((c) => c.customer).filter(Boolean)
+  ).size;
+
+  // Stripe balance
+  const balance = await stripe.balance.retrieve();
+  const availableUsd = balance.available.find((b) => b.currency === "usd");
+  const balanceAed = usdToAed(availableUsd?.amount ?? 0);
+
+  // Determine top category from charge metadata
+  const categoryCounts: Record<string, number> = {};
+  for (const charge of successfulCharges) {
+    const cat = (charge.metadata?.category as string) ?? "platform_fee";
+    categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+  }
+  const topCategory =
+    Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+    "platform_fee";
+
+  const summary: DailyFinanceSummary = {
+    revenueAed: parseFloat(revenueAed.toFixed(2)),
+    transactionCount: successfulCharges.length,
+    stripeBalanceAed: parseFloat(balanceAed.toFixed(2)),
+    newPayingUsers: uniqueCustomers,
+    topCategory,
+    date: dateStr,
+  };
+
+  // Upsert snapshot — replace if same date already exists
+  const existing = await db
+    .select()
+    .from(financeSnapshots)
+    .where(eq(financeSnapshots.snapshotDate, dateStr))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(financeSnapshots)
+      .set({
+        revenueAed: summary.revenueAed.toFixed(2),
+        transactionCount: summary.transactionCount,
+        topCategory: summary.topCategory,
+        newPayingUsers: summary.newPayingUsers,
+        stripeBalanceAed: summary.stripeBalanceAed.toFixed(2),
+        rawData: JSON.stringify(charges.data.slice(0, 20)),
+      })
+      .where(eq(financeSnapshots.snapshotDate, dateStr));
+  } else {
+    await db.insert(financeSnapshots).values({
+      snapshotDate: dateStr,
+      revenueAed: summary.revenueAed.toFixed(2),
+      transactionCount: summary.transactionCount,
+      topCategory: summary.topCategory,
+      newPayingUsers: summary.newPayingUsers,
+      stripeBalanceAed: summary.stripeBalanceAed.toFixed(2),
+      rawData: JSON.stringify(charges.data.slice(0, 20)),
+    });
+  }
+
+  return summary;
+}
+
+/**
+ * Returns last 7 days of revenue snapshots.
+ */
+export async function getWeeklyRevenue(): Promise<FinanceSnapshot[]> {
+  return db
+    .select()
+    .from(financeSnapshots)
+    .orderBy(desc(financeSnapshots.snapshotDate))
+    .limit(7);
+}
+
+/**
+ * Formats a finance summary as a WhatsApp-friendly string.
+ */
+export function formatFinanceReport(summary: DailyFinanceSummary): string {
+  return [
+    `💰 *Finance Report — ${summary.date}*`,
+    ``,
+    `Revenue today: AED ${summary.revenueAed.toLocaleString()}`,
+    `Transactions: ${summary.transactionCount}`,
+    `New paying users: ${summary.newPayingUsers}`,
+    `Top category: ${summary.topCategory}`,
+    `Stripe balance: AED ${summary.stripeBalanceAed.toLocaleString()}`,
+  ].join("\n");
+}
+
+/**
+ * Handles a Stripe payment_intent.succeeded webhook event.
+ * Called from the webhook route — fires immediately on payment.
+ */
+export async function handleStripePaymentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
+): Promise<void> {
+  const amountAed = usdToAed(paymentIntent.amount);
+
+  // Alert founder only for significant payments (>AED 50)
+  if (amountAed >= 50) {
+    const { notifyFounder } = await import("../../connectors/twilio.js");
+    await notifyFounder(
+      `💳 *New payment received*\nAED ${amountAed.toFixed(2)}\nFrom: ${paymentIntent.customer ?? "guest"}`
+    );
+  }
+
+  // Log to company OS
+  await logAgentRun({
+    agentName: "financeAgent",
+    triggeredBy: "stripe_webhook",
+    input: `payment_intent.succeeded: ${paymentIntent.id}`,
+    output: `AED ${amountAed.toFixed(2)} logged`,
+    inputTokens: 0,
+    outputTokens: 0,
+  });
+}
+```
+
+---
+
+## STEP 7 — CREATE FILE: `server/agents/companyOs/managerAgent.ts`
+
+```typescript
+/**
+ * managerAgent.ts
+ * Routes WhatsApp commands to the correct agent.
+ * Compiles the daily 8 AM briefing.
+ * This is the only agent the founder talks to directly.
+ */
+
+import OpenAI from "openai";
+import { db } from "../../db.js";
+import { companyOsLogs, financeSnapshots } from "../../../shared/schema.js";
+import { desc, gte, sql } from "drizzle-orm";
+import {
+  runDailyFinanceSnapshot,
+  formatFinanceReport,
+  getWeeklyRevenue,
+} from "./financeAgent.js";
+import { logAgentRun, getMonthlySpendAed, isBudgetSafe } from "./costTracker.js";
+import { notifyFounder } from "../../connectors/twilio.js";
+
+const openai = new OpenAI(); // reads OPENAI_API_KEY automatically
+
+// ─── Command dispatcher ───────────────────────────────────────────────────────
+
+export async function handleWhatsAppCommand(message: string): Promise<string> {
+  const cmd = message.trim().toLowerCase();
+
+  try {
+    // --- Finance commands ---
+    if (cmd === "revenue" || cmd === "finance" || cmd === "money") {
+      const snapshot = await runDailyFinanceSnapshot();
+      return formatFinanceReport(snapshot);
+    }
+
+    if (cmd === "revenue week" || cmd === "weekly revenue") {
+      const rows = await getWeeklyRevenue();
+      if (!rows.length) return "No finance data yet. Run 'revenue' first.";
+      const lines = rows.map(
+        (r) => `${r.snapshotDate}: AED ${Number(r.revenueAed).toLocaleString()} (${r.transactionCount} txns)`
+      );
+      return `📊 *Last 7 days revenue*\n\n${lines.join("\n")}`;
+    }
+
+    // --- Status / briefing ---
+    if (cmd === "status" || cmd === "briefing" || cmd === "report") {
+      return await compileDailyBriefing();
+    }
+
+    // --- Agent costs ---
+    if (cmd === "costs" || cmd === "budget") {
+      const spent = await getMonthlySpendAed();
+      const budget = parseFloat(process.env.COMPANY_OS_MONTHLY_BUDGET_AED ?? "400");
+      const pct = ((spent / budget) * 100).toFixed(1);
+      return [
+        `🤖 *AI Agent Costs — This Month*`,
+        ``,
+        `Spent: AED ${spent.toFixed(2)} of AED ${budget} budget`,
+        `Used: ${pct}%`,
+        `Remaining: AED ${(budget - spent).toFixed(2)}`,
+      ].join("\n");
+    }
+
+    // --- Agents status ---
+    if (cmd === "agents" || cmd === "agents status") {
+      return await getAgentStatusSummary();
+    }
+
+    // --- Help ---
+    if (cmd === "help" || cmd === "commands" || cmd === "?") {
+      return getHelpText();
+    }
+
+    // --- AI-powered free-form command ---
+    return await handleFreeFormCommand(message);
+
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    await logAgentRun({
+      agentName: "managerAgent",
+      triggeredBy: "whatsapp",
+      input: message,
+      output: `ERROR: ${errMsg}`,
+      inputTokens: 0,
+      outputTokens: 0,
+      success: false,
+    });
+    return `⚠️ Error processing command: ${errMsg}\nTry 'help' for available commands.`;
+  }
+}
+
+// ─── Daily briefing (8 AM UAE) ────────────────────────────────────────────────
+
+export async function compileDailyBriefing(): Promise<string> {
+  const [finance, budgetStatus, recentLogs] = await Promise.all([
+    runDailyFinanceSnapshot(),
+    isBudgetSafe(),
+    getRecentAgentActivity(),
+  ]);
+
+  const budgetLine = budgetStatus.safe
+    ? `✅ AI budget: AED ${budgetStatus.spentAed.toFixed(0)} / ${process.env.COMPANY_OS_MONTHLY_BUDGET_AED} used`
+    : `⚠️ AI budget alert: AED ${budgetStatus.spentAed.toFixed(0)} spent — approaching limit`;
+
+  const lines = [
+    `🌅 *Good morning, Thando*`,
+    `*BarterGram Daily Briefing — ${new Date().toLocaleDateString("en-AE", { timeZone: "Asia/Dubai", weekday: "long", day: "numeric", month: "long" })}*`,
+    ``,
+    `💰 Revenue today: AED ${finance.revenueAed.toLocaleString()}`,
+    `📦 Transactions: ${finance.transactionCount}`,
+    `👤 New paying users: ${finance.newPayingUsers}`,
+    `🏦 Stripe balance: AED ${finance.stripeBalanceAed.toLocaleString()}`,
+    ``,
+    `🤖 Agent activity (last 24h): ${recentLogs.total} runs, ${recentLogs.errors} errors`,
+    budgetLine,
+    ``,
+    `Reply with any command or ask anything. Type *help* for command list.`,
+  ];
+
+  const briefing = lines.join("\n");
+
+  await logAgentRun({
+    agentName: "managerAgent",
+    triggeredBy: "scheduler",
+    input: "daily_briefing",
+    output: briefing,
+    inputTokens: 0,
+    outputTokens: 0,
+  });
+
+  return briefing;
+}
+
+// ─── AI free-form handler ─────────────────────────────────────────────────────
+
+async function handleFreeFormCommand(message: string): Promise<string> {
+  const { safe } = await isBudgetSafe();
+  if (!safe) {
+    return "⚠️ Monthly AI budget nearly exhausted. Direct commands still work (revenue, status, agents, costs).";
+  }
+
+  const systemPrompt = `You are the BarterGram company OS assistant for Thando, the solo founder of BarterGram — a UAE-based barter marketplace.
+You have access to information about the platform's agents, revenue, and operations.
+Keep responses concise and WhatsApp-friendly (use *bold* for emphasis, avoid markdown headers).
+Always use AED for currency. Reference Dubai/Abu Dhabi context where relevant.
+If asked to do something that requires another agent (marketing report, legal contract, etc.), explain that the specific agent will handle it and list the correct command.
+Current date/time in UAE: ${new Date().toLocaleString("en-AE", { timeZone: "Asia/Dubai" })}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message },
+    ],
+    max_tokens: 500,
+  });
+
+  const output = response.choices[0].message.content ?? "No response generated.";
+  const usage = response.usage;
+
+  await logAgentRun({
+    agentName: "managerAgent",
+    triggeredBy: "whatsapp",
+    input: message,
+    output,
+    inputTokens: usage?.prompt_tokens ?? 0,
+    outputTokens: usage?.completion_tokens ?? 0,
+  });
+
+  return output;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getRecentAgentActivity(): Promise<{ total: number; errors: number }> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      total: sql<string>`COUNT(*)`,
+      errors: sql<string>`SUM(CASE WHEN success = false THEN 1 ELSE 0 END)`,
+    })
+    .from(companyOsLogs)
+    .where(gte(companyOsLogs.createdAt, since));
+
+  return {
+    total: parseInt(rows[0]?.total ?? "0"),
+    errors: parseInt(rows[0]?.errors ?? "0"),
+  };
+}
+
+async function getAgentStatusSummary(): Promise<string> {
+  const rows = await db
+    .select({
+      agentName: companyOsLogs.agentName,
+      runs: sql<string>`COUNT(*)`,
+      lastRun: sql<string>`MAX(created_at)`,
+      errors: sql<string>`SUM(CASE WHEN success = false THEN 1 ELSE 0 END)`,
+    })
+    .from(companyOsLogs)
+    .groupBy(companyOsLogs.agentName)
+    .orderBy(desc(sql`MAX(created_at)`))
+    .limit(10);
+
+  if (!rows.length) return "No agent activity logged yet.";
+
+  const lines = rows.map((r) => {
+    const last = new Date(r.lastRun).toLocaleTimeString("en-AE", { timeZone: "Asia/Dubai", hour: "2-digit", minute: "2-digit" });
+    const errCount = parseInt(r.errors ?? "0");
+    const status = errCount > 0 ? "⚠️" : "✅";
+    return `${status} *${r.agentName}* — ${r.runs} runs, last: ${last}`;
+  });
+
+  return `🤖 *Agent Status*\n\n${lines.join("\n")}`;
+}
+
+function getHelpText(): string {
+  return [
+    `*BarterGram OS — Commands*`,
+    ``,
+    `📊 *status* — daily company briefing`,
+    `💰 *revenue* — today's Stripe revenue in AED`,
+    `📈 *revenue week* — last 7 days`,
+    `🤖 *agents* — all agent run statuses`,
+    `💸 *costs* — monthly AI budget usage`,
+    ``,
+    `Or just ask anything in plain English.`,
+    `E.g. "how many disputes this week?"`,
+  ].join("\n");
+}
+
+// ─── Send scheduled briefing ──────────────────────────────────────────────────
+
+export async function sendScheduledBriefing(): Promise<void> {
+  try {
+    const briefing = await compileDailyBriefing();
+    await notifyFounder(briefing);
+  } catch (error) {
+    console.error("[managerAgent] Scheduled briefing failed:", error);
+  }
+}
+```
+
+---
+
+## STEP 8 — CREATE FILE: `server/routes/companyOs.ts`
+
+```typescript
+/**
+ * companyOs.ts — Express router for all Company OS endpoints
+ *
+ * Routes:
+ *   POST /api/company-os/whatsapp        ← Twilio webhook (WhatsApp messages)
+ *   POST /api/company-os/stripe-webhook  ← Stripe payment events
+ *   GET  /api/company-os/status          ← health check (admin panel)
+ *   GET  /api/company-os/finance         ← latest finance snapshot (admin panel)
+ *   GET  /api/company-os/logs            ← recent agent logs (admin panel)
+ */
+
+import { Router, Request, Response } from "express";
+import { validateTwilioRequest, isFromFounder, founderNumber } from "../connectors/twilio.js";
+import { handleWhatsAppCommand } from "../agents/companyOs/managerAgent.js";
+import { handleStripePaymentSucceeded, runDailyFinanceSnapshot } from "../agents/companyOs/financeAgent.js";
+import { getMonthlySpendAed } from "../agents/companyOs/costTracker.js";
+import { db } from "../db.js";
+import { companyOsLogs, financeSnapshots } from "../../shared/schema.js";
+import { desc, sql } from "drizzle-orm";
+import Stripe from "stripe";
+import crypto from "crypto";
+
+export const companyOsRouter = Router();
+
+// ─── WhatsApp Webhook ─────────────────────────────────────────────────────────
+
+// Twilio sends application/x-www-form-urlencoded
+companyOsRouter.post(
+  "/whatsapp",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      // Validate request is from Twilio
+      const signature = req.headers["x-twilio-signature"] as string;
+      const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+      const isValid = validateTwilioRequest(signature, fullUrl, req.body);
+
+      // In Replit dev mode, skip validation (Twilio can't reach localhost)
+      // IMPORTANT: remove the `|| true` part when deployed to production
+      if (!isValid && process.env.NODE_ENV === "production") {
+        res.status(403).send("Forbidden");
+        return;
+      }
+
+      const fromNumber: string = req.body.From ?? "";
+      const messageBody: string = req.body.Body ?? "";
+
+      // Security — only respond to the founder's number
+      if (!isFromFounder(fromNumber)) {
+        res.status(200).send("<Response></Response>");
+        return;
+      }
+
+      // Process command asynchronously — respond to Twilio immediately
+      // then send the reply back via the Twilio API (not TwiML response)
+      // This avoids Twilio's 15-second timeout for long-running agents
+      res.status(200).type("text/xml").send("<Response></Response>");
+
+      // Handle command and send reply
+      const reply = await handleWhatsAppCommand(messageBody);
+      const { sendWhatsApp } = await import("../connectors/twilio.js");
+      await sendWhatsApp(founderNumber, reply);
+
+    } catch (error) {
+      console.error("[companyOs] WhatsApp webhook error:", error);
+      res.status(200).send("<Response></Response>"); // Always 200 to Twilio
+    }
+  }
+);
+
+// ─── Stripe Webhook ───────────────────────────────────────────────────────────
+
+// IMPORTANT: Stripe webhooks need the raw body — mount BEFORE express.json()
+// This route uses express.raw() via the middleware applied in server/index.ts
+companyOsRouter.post(
+  "/stripe-webhook",
+  async (req: Request, res: Response): Promise<void> => {
+    const sig = req.headers["stripe-signature"] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+
+    let event: Stripe.Event;
+
+    try {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: "2024-06-20",
+      });
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      console.error("[companyOs] Stripe webhook signature failed:", err);
+      res.status(400).send("Webhook signature verification failed");
+      return;
+    }
+
+    try {
+      switch (event.type) {
+        case "payment_intent.succeeded":
+          await handleStripePaymentSucceeded(event.data.object as Stripe.PaymentIntent);
+          break;
+        case "charge.refunded":
+          // Log refund for Finance Agent awareness
+          console.log("[companyOs] Charge refunded:", event.data.object);
+          break;
+        default:
+          // Ignore other events
+          break;
+      }
+      res.json({ received: true });
+    } catch (error) {
+      console.error("[companyOs] Stripe event handling error:", error);
+      res.status(500).json({ error: "Event handling failed" });
+    }
+  }
+);
+
+// ─── Admin Panel API endpoints ────────────────────────────────────────────────
+
+companyOsRouter.get("/status", async (_req: Request, res: Response) => {
+  const [spendAed, recentLogs] = await Promise.all([
+    getMonthlySpendAed(),
+    db.select().from(companyOsLogs).orderBy(desc(companyOsLogs.createdAt)).limit(5),
+  ]);
+
+  res.json({
+    status: "online",
+    monthlySpendAed: spendAed,
+    budgetAed: parseFloat(process.env.COMPANY_OS_MONTHLY_BUDGET_AED ?? "400"),
+    recentActivity: recentLogs,
+  });
+});
+
+companyOsRouter.get("/finance", async (_req: Request, res: Response) => {
+  const [latest, history] = await Promise.all([
+    runDailyFinanceSnapshot(),
+    db.select().from(financeSnapshots).orderBy(desc(financeSnapshots.snapshotDate)).limit(30),
+  ]);
+  res.json({ latest, history });
+});
+
+companyOsRouter.get("/logs", async (req: Request, res: Response) => {
+  const limit = parseInt((req.query.limit as string) ?? "50");
+  const agentName = req.query.agent as string | undefined;
+
+  const rows = agentName
+    ? await db
+        .select()
+        .from(companyOsLogs)
+        .where(sql`agent_name = ${agentName}`)
+        .orderBy(desc(companyOsLogs.createdAt))
+        .limit(limit)
+    : await db
+        .select()
+        .from(companyOsLogs)
+        .orderBy(desc(companyOsLogs.createdAt))
+        .limit(limit);
+
+  res.json(rows);
+});
+```
+
+---
+
+## STEP 9 — CREATE FILE: `server/agents/companyOs/scheduler.ts`
+
+```typescript
+/**
+ * scheduler.ts
+ * Cron jobs for all scheduled Company OS tasks.
+ * Import and call startScheduler() once from server/index.ts.
+ */
+
+import cron from "node-cron";
+import { sendScheduledBriefing } from "./managerAgent.js";
+import { runDailyFinanceSnapshot } from "./financeAgent.js";
+import { notifyFounder } from "../../connectors/twilio.js";
+import { isBudgetSafe } from "./costTracker.js";
+
+export function startScheduler(): void {
+  // Daily briefing — 8:00 AM UAE time (UTC+4 = 04:00 UTC)
+  cron.schedule("0 4 * * *", async () => {
+    console.log("[scheduler] Sending daily briefing...");
+    await sendScheduledBriefing();
+  });
+
+  // Finance sync — every hour
+  cron.schedule("0 * * * *", async () => {
+    console.log("[scheduler] Running hourly finance sync...");
+    await runDailyFinanceSnapshot();
+  });
+
+  // Budget warning — daily at 9 AM UAE (05:00 UTC)
+  cron.schedule("0 5 * * *", async () => {
+    const { safe, spentAed, remainingAed } = await isBudgetSafe();
+    if (!safe) {
+      await notifyFounder(
+        `⚠️ *AI Budget Warning*\nSpent: AED ${spentAed.toFixed(0)} this month\nRemaining: AED ${remainingAed.toFixed(0)}\nReview agent usage at /admin`
+      );
+    }
+  });
+
+  console.log("[scheduler] Company OS scheduler started. Daily briefing at 8 AM UAE time.");
+}
+```
+
+---
+
+## STEP 10 — MODIFY `server/routes.ts`
+
+Find the existing routes file and add these lines. Add the imports at the top with the other imports, and mount the router with the other `app.use()` calls.
+
+**Add to imports section:**
+```typescript
+import express from "express";
+import { companyOsRouter } from "./routes/companyOs.js";
+import { startScheduler } from "./agents/companyOs/scheduler.js";
+```
+
+**Add BEFORE `app.use(express.json())` — Stripe needs raw body:**
+```typescript
+// Stripe webhook needs raw body — must come before express.json()
+app.use(
+  "/api/company-os/stripe-webhook",
+  express.raw({ type: "application/json" })
+);
+```
+
+**Add AFTER the existing `app.use(express.json())` line:**
+```typescript
+// WhatsApp uses urlencoded form data
+app.use("/api/company-os/whatsapp", express.urlencoded({ extended: false }));
+
+// Mount Company OS router
+app.use("/api/company-os", companyOsRouter);
+```
+
+**Add at the end of the server startup block (where `app.listen` or similar is called):**
+```typescript
+// Start Company OS scheduler
+startScheduler();
+```
+
+---
+
+## STEP 11 — CONFIGURE TWILIO WEBHOOK
+
+1. Go to [twilio.com/console](https://console.twilio.com)
+2. Sign up / log in → Go to Messaging → Try it out → Send a WhatsApp message
+3. In the Sandbox settings, set **"When a message comes in"** to:
+   `https://YOUR-REPLIT-APP.replit.app/api/company-os/whatsapp`
+   Method: `HTTP POST`
+4. Join the sandbox by sending the join code to `+14155238886` on WhatsApp
+5. Send "status" to that number → you should get the daily briefing
+
+---
+
+## STEP 12 — CONFIGURE STRIPE WEBHOOK
+
+1. Go to [dashboard.stripe.com/webhooks](https://dashboard.stripe.com/webhooks)
+2. Add endpoint: `https://YOUR-REPLIT-APP.replit.app/api/company-os/stripe-webhook`
+3. Select events: `payment_intent.succeeded`, `charge.refunded`
+4. Copy the webhook signing secret → add to Replit Secrets as `STRIPE_WEBHOOK_SECRET`
+
+---
+
+## STEP 13 — VERIFY THE BUILD
+
+After building all files and running `npm run db:push`, test in order:
+
+```
+1. GET  /api/company-os/status          → should return { status: "online", ... }
+2. GET  /api/company-os/finance         → should return Stripe snapshot in AED
+3. GET  /api/company-os/logs            → should return empty array initially
+4. WhatsApp: send "help"                → should return command list
+5. WhatsApp: send "revenue"             → should return today's Stripe revenue in AED
+6. WhatsApp: send "status"              → should return full company briefing
+7. WhatsApp: send "costs"               → should return AED budget usage
+```
+
+---
+
+## FILE SUMMARY — WHAT WAS CREATED
+
+```
+server/
+  connectors/
+    twilio.ts                           ← NEW: WhatsApp send/receive
+  agents/
+    companyOs/
+      costTracker.ts                    ← NEW: AED budget tracking
+      managerAgent.ts                   ← NEW: command router + briefings
+      financeAgent.ts                   ← NEW: Stripe + revenue in AED
+      scheduler.ts                      ← NEW: cron jobs (8 AM briefing etc.)
+  routes/
+    companyOs.ts                        ← NEW: Express routes
+shared/
+  schema.ts                             ← MODIFIED: 2 new tables appended
+server/routes.ts (or index.ts)          ← MODIFIED: router mounted + scheduler started
+```
+
+New Replit Secrets needed:
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM`
+- `FOUNDER_WHATSAPP_NUMBER`
+- `COMPANY_OS_MONTHLY_BUDGET_AED`
+- `META_AED_RATE`
+- `STRIPE_WEBHOOK_SECRET` (if not already present)
+
+New npm packages:
+- `twilio`
+- `node-cron`
+- `@types/node-cron` (dev)
+
+---
+
+## WEEK 2 PREVIEW
+
+The next prompt builds:
+- `server/agents/companyOs/marketingAgent.ts` — reads DB trends, writes campaign briefs, polls Meta Graph API for Zeely campaign performance
+- `server/agents/companyOs/salesAgent.ts` — lead scoring from onboarding data, Airtable CRM sync, re-engagement emails via Gmail
+- `server/connectors/googleDrive.ts` — Google Drive service account, content brief storage
+- `server/connectors/buffer.ts` — single API call posts to Instagram + LinkedIn + X simultaneously
+- `server/connectors/metaGraph.ts` — reads Zeely campaign CTR, CPC, impressions in AED
+
+All Week 2 agents follow exactly the same patterns as Week 1.
