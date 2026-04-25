@@ -200,10 +200,13 @@ async function loadOverrideCache(): Promise<void> {
         agentBudgetOverrideCache.set(r.agentName, n);
       }
     }
-  } catch (err) {
-    console.error("[companyOs] loadOverrideCache failed:", err);
-  } finally {
+    // Only flip the readiness flag on success — a transient DB read
+    // failure must NOT permanently suppress override reads. Subsequent
+    // `getAgentBudgetAed` calls will re-trigger the lazy load.
     overrideCacheReady = true;
+  } catch (err) {
+    console.error("[companyOs] loadOverrideCache failed (will retry on next read):", err);
+    // Leave overrideCacheReady = false so the next call retries.
   }
 }
 
