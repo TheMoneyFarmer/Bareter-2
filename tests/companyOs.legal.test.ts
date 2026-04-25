@@ -219,8 +219,11 @@ import {
   getContractByToken,
   signContract,
   gatherDisputeData,
+  gatherDisputeDailyTotals,
+  renderDisputeRiskPdf,
   runDisputeRiskSummary,
   runVatCheck,
+  DISPUTE_TREND_WINDOW_DAYS,
   VAT_HARD_THRESHOLD_AED,
   VAT_SOFT_THRESHOLD_AED,
 } from "../server/companyOs/legalAgent";
@@ -708,15 +711,108 @@ describe("gatherDisputeData", () => {
 });
 
 // ===========================================================================
+// gatherDisputeDailyTotals — zero-filled daily series for the trend chart
+// ===========================================================================
+describe("gatherDisputeDailyTotals", () => {
+  it("returns one entry per day in the window, zero-filled, sorted oldest → newest", async () => {
+    dbState.selectQueue = [[]]; // No reports → all zeros.
+    const series = await gatherDisputeDailyTotals(7);
+    expect(series).toHaveLength(7);
+    expect(series.every((d) => d.count === 0)).toBe(true);
+    // Sorted ascending.
+    for (let i = 1; i < series.length; i++) {
+      expect(series[i - 1].date <= series[i].date).toBe(true);
+    }
+  });
+
+  it("merges DB rows into the right buckets and leaves the others at zero", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    dbState.selectQueue = [[{ day: today, c: 5 }]];
+    const series = await gatherDisputeDailyTotals(7);
+    const todayBucket = series.find((d) => d.date === today);
+    expect(todayBucket?.count).toBe(5);
+    const others = series.filter((d) => d.date !== today);
+    expect(others.every((d) => d.count === 0)).toBe(true);
+  });
+
+  it("degrades to a zero-filled series when the DB throws", async () => {
+    dbState.selectShouldThrow = true;
+    const series = await gatherDisputeDailyTotals(DISPUTE_TREND_WINDOW_DAYS);
+    expect(series).toHaveLength(DISPUTE_TREND_WINDOW_DAYS);
+    expect(series.every((d) => d.count === 0)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// renderDisputeRiskPdf — produces a non-empty PDF buffer with the rollup
+// ===========================================================================
+describe("renderDisputeRiskPdf", () => {
+  it("renders a PDF buffer that starts with the %PDF magic bytes", () => {
+    const snapshot = {
+      windowDays: 7,
+      totalReports: 4,
+      byReason: [
+        { reason: "scam", count: 2 },
+        { reason: "spam", count: 2 },
+      ],
+      byTargetType: [{ targetType: "listing", count: 4 }],
+      byStatus: [{ status: "pending", count: 4 }],
+    };
+    const callouts = ["Watch out for scam reports.", "Tighten KYC."];
+    const dailyTotals = Array.from({ length: 28 }, (_, i) => ({
+      date: `2026-04-${String(i + 1).padStart(2, "0")}`,
+      count: i % 3,
+    }));
+    const buf = renderDisputeRiskPdf(
+      snapshot,
+      callouts,
+      dailyTotals,
+      "2026-04-25",
+    );
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(buf.length).toBeGreaterThan(1000);
+    // PDF magic.
+    expect(buf.subarray(0, 4).toString("latin1")).toBe("%PDF");
+  });
+
+  it("renders even with empty snapshot data (cold-start week)", () => {
+    const buf = renderDisputeRiskPdf(
+      {
+        windowDays: 7,
+        totalReports: 0,
+        byReason: [],
+        byTargetType: [],
+        byStatus: [],
+      },
+      [
+        "No new reports filed this week — keep monitoring.",
+        "Schedule a quarterly review.",
+        "Re-confirm KYC.",
+      ],
+      [],
+      "2026-04-25",
+    );
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(buf.length).toBeGreaterThan(500);
+    expect(buf.subarray(0, 4).toString("latin1")).toBe("%PDF");
+  });
+});
+
+// ===========================================================================
 // runDisputeRiskSummary — persists a `dispute_summary` row + LLM callouts
 // ===========================================================================
 describe("runDisputeRiskSummary", () => {
-  it("aggregates, calls the LLM, and persists a dispute_summary row", async () => {
+  it("aggregates, calls the LLM, persists a dispute_summary row, renders a PDF, and patches the storage key", async () => {
     dbState.selectQueue = [
       [{ reason: "scam", c: 3 }],
       [{ targetType: "listing", c: 3 }],
       [{ status: "pending", c: 3 }],
       [{ c: 3 }],
+      // Daily totals trend select — partial coverage is fine; the
+      // helper zero-fills the rest of the 28-day window.
+      [
+        { day: new Date().toISOString().slice(0, 10), c: 3 },
+      ],
     ];
     dbState.returningQueue = [
       [
@@ -735,6 +831,23 @@ describe("runDisputeRiskSummary", () => {
           updatedAt: new Date(),
         },
       ],
+      // Patch row after PDF upload — picks up the storage key.
+      [
+        {
+          id: "summary-1",
+          documentType: "dispute_summary",
+          title: "Dispute risk summary · 2026-04-25",
+          partyA: null,
+          partyB: null,
+          valueAed: null,
+          body: "...",
+          metadata: {},
+          objectStorageKey: "companyOs/legal/dispute-summaries/summary-1.pdf",
+          status: "generated",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
     ];
 
     const result = await runDisputeRiskSummary(7);
@@ -743,15 +856,38 @@ describe("runDisputeRiskSummary", () => {
     expect(result.document?.documentType).toBe("dispute_summary");
     expect(dbState.insertedValues).toHaveLength(1);
     expect(dbState.insertedValues[0].documentType).toBe("dispute_summary");
+    // Metadata now carries the daily totals series for the chart.
+    const meta = dbState.insertedValues[0].metadata as Record<string, unknown>;
+    expect(Array.isArray(meta.dailyTotals)).toBe(true);
+    expect((meta.dailyTotals as unknown[]).length).toBe(28);
     // Body has the rolled-up counts AND the callouts.
     const body = String(dbState.insertedValues[0].body);
     expect(body).toContain("scam: 3");
     expect(body).toContain("Risk callouts:");
+    // PDF was rendered, uploaded, and the row was patched with the key.
+    expect(result.pdf).toBeInstanceOf(Buffer);
+    expect((result.pdf as Buffer).length).toBeGreaterThan(0);
+    expect(result.pdfStorageKey).toBe(
+      "companyOs/legal/dispute-summaries/summary-1.pdf",
+    );
+    expect(uploadCalls).toHaveLength(1);
+    expect(uploadCalls[0].key).toBe(
+      "companyOs/legal/dispute-summaries/summary-1.pdf",
+    );
+    expect(uploadCalls[0].contentType).toBe("application/pdf");
+    expect(dbState.updatedSets).toHaveLength(1);
+    expect(dbState.updatedSets[0].objectStorageKey).toBe(
+      "companyOs/legal/dispute-summaries/summary-1.pdf",
+    );
+    expect(result.document?.objectStorageKey).toBe(
+      "companyOs/legal/dispute-summaries/summary-1.pdf",
+    );
   });
 
   it("produces hand-crafted fallback callouts when totalReports == 0", async () => {
-    // Empty selects across the board.
-    dbState.selectQueue = [[], [], [], [{ c: 0 }]];
+    // Empty selects across the board (4 from gatherDisputeData + 1 from
+    // gatherDisputeDailyTotals).
+    dbState.selectQueue = [[], [], [], [{ c: 0 }], []];
     dbState.returningQueue = [
       [
         {
@@ -769,12 +905,36 @@ describe("runDisputeRiskSummary", () => {
           updatedAt: new Date(),
         },
       ],
+      // PDF-upload patch row.
+      [
+        {
+          id: "summary-empty",
+          documentType: "dispute_summary",
+          title: "Dispute risk summary · today",
+          partyA: null,
+          partyB: null,
+          valueAed: null,
+          body: "...",
+          metadata: {},
+          objectStorageKey:
+            "companyOs/legal/dispute-summaries/summary-empty.pdf",
+          status: "generated",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
     ];
     const result = await runDisputeRiskSummary(7);
     expect(result.snapshot.totalReports).toBe(0);
     expect(result.callouts).toHaveLength(3);
     // The cold-start callouts are hard-coded so we can assert the first one.
     expect(result.callouts[0]).toContain("No new reports");
+    // PDF still renders even with no incidents — provides the founder's
+    // archival "quiet week" record.
+    expect(result.pdf).toBeInstanceOf(Buffer);
+    expect(result.pdfStorageKey).toBe(
+      "companyOs/legal/dispute-summaries/summary-empty.pdf",
+    );
   });
 });
 
@@ -1023,6 +1183,8 @@ describe("Manager Agent — legal commands via WhatsApp webhook", () => {
       [{ targetType: "user", c: 2 }],
       [{ status: "pending", c: 2 }],
       [{ c: 2 }],
+      // gatherDisputeDailyTotals select.
+      [],
     ];
     dbState.returningQueue = [
       [
@@ -1036,6 +1198,23 @@ describe("Manager Agent — legal commands via WhatsApp webhook", () => {
           body: "...",
           metadata: {},
           objectStorageKey: null,
+          status: "generated",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      // PDF-upload patch row.
+      [
+        {
+          id: "summary-2",
+          documentType: "dispute_summary",
+          title: "Dispute risk summary · today",
+          partyA: null,
+          partyB: null,
+          valueAed: null,
+          body: "...",
+          metadata: {},
+          objectStorageKey: "companyOs/legal/dispute-summaries/summary-2.pdf",
           status: "generated",
           createdAt: new Date(),
           updatedAt: new Date(),

@@ -17,6 +17,7 @@ import {
 } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
+import { sendDisputeRiskEmail } from "../emailService";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { runIntelligenceSweep } from "./intelligenceAgent";
@@ -106,7 +107,7 @@ async function weeklyDisputeRiskJob(): Promise<void> {
     return;
   }
   try {
-    const { snapshot, callouts } = await runDisputeRiskSummary(7);
+    const { snapshot, callouts, pdf, document } = await runDisputeRiskSummary(7);
     const lines: string[] = [
       `⚖️ *Dispute risk · last ${snapshot.windowDays} days*`,
       `Total reports: ${snapshot.totalReports}`,
@@ -124,7 +125,58 @@ async function weeklyDisputeRiskJob(): Promise<void> {
     lines.push("");
     lines.push("*Risk callouts*");
     for (const c of callouts) lines.push(`• ${c}`);
-    await notifyFounder(lines.join("\n"));
+    const whatsappBody = lines.join("\n");
+    await notifyFounder(whatsappBody);
+
+    // Email the founder the same rollup with the PDF attached. The
+    // WhatsApp ping above is the primary channel — email is the
+    // archival record — so a missing FOUNDER_EMAIL or a Resend
+    // failure is logged but does not fail the job.
+    const founderEmail = process.env.FOUNDER_EMAIL?.trim();
+    if (!founderEmail) {
+      console.log(
+        "[companyOs.scheduler] weeklyDisputeRisk: FOUNDER_EMAIL not set, skipping email",
+      );
+      return;
+    }
+    if (!pdf) {
+      console.warn(
+        "[companyOs.scheduler] weeklyDisputeRisk: PDF render failed, skipping email",
+      );
+      return;
+    }
+    // Subject + preview text mirror the WhatsApp summary so the
+    // founder's inbox preview looks familiar at a glance.
+    const subject = `⚖️ Dispute risk · last ${snapshot.windowDays} days · ${snapshot.totalReports} reports`;
+    const topReasons = snapshot.byReason
+      .slice(0, 3)
+      .map((r) => `${r.reason}: ${r.count}`)
+      .join(", ");
+    const previewText = topReasons
+      ? `Total ${snapshot.totalReports} · ${topReasons}`
+      : `Total ${snapshot.totalReports} · no new reports filed this week`;
+    const filenameDate = (document?.createdAt ?? new Date())
+      .toISOString()
+      .slice(0, 10);
+    try {
+      const ok = await sendDisputeRiskEmail(founderEmail, {
+        subject,
+        previewText,
+        summaryText: whatsappBody,
+        pdf,
+        pdfFilename: `bareter-dispute-risk-${filenameDate}.pdf`,
+      });
+      if (!ok) {
+        console.warn(
+          "[companyOs.scheduler] weeklyDisputeRisk: email send returned false",
+        );
+      }
+    } catch (err) {
+      console.error(
+        "[companyOs.scheduler] weeklyDisputeRisk: email send threw:",
+        err,
+      );
+    }
   } catch (err) {
     console.error("[companyOs.scheduler] weeklyDisputeRisk failed:", err);
   }

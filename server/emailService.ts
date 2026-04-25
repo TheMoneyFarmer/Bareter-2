@@ -39,11 +39,18 @@ export async function isEmailConfigured(): Promise<boolean> {
   return await isResendReady();
 }
 
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
 interface MailOptions {
   to: string;
   subject: string;
   html: string;
   text: string;
+  attachments?: MailAttachment[];
 }
 
 async function sendViaResend(opts: MailOptions): Promise<boolean> {
@@ -55,6 +62,11 @@ async function sendViaResend(opts: MailOptions): Promise<boolean> {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    attachments: opts.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.contentType,
+    })),
   });
   if (result.error) {
     console.error("[EMAIL] Resend error:", result.error);
@@ -72,6 +84,11 @@ async function sendViaSmtp(opts: MailOptions): Promise<boolean> {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    attachments: opts.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.contentType,
+    })),
   });
   return true;
 }
@@ -284,6 +301,80 @@ export async function sendReEngagementEmail(
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+  });
+}
+
+/**
+ * Send the weekly dispute-risk PDF report to the founder. The PDF is
+ * attached so the founder has an archival copy alongside the WhatsApp
+ * text rollup. Subject + preview text mirror the WhatsApp summary so
+ * Inbox previews feel familiar.
+ *
+ * Returns true if the underlying send succeeded; false if email is not
+ * configured or if Resend/SMTP both failed (the WhatsApp ping is the
+ * primary channel so a failed email is logged but non-fatal).
+ */
+export async function sendDisputeRiskEmail(
+  toEmail: string,
+  opts: {
+    subject: string;
+    previewText: string;
+    summaryText: string;
+    pdf: Buffer;
+    pdfFilename: string;
+  },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Dispute-risk email skipped for ${toEmail} (email not configured).`);
+    return false;
+  }
+  // Escape every user-derived value before splicing it into HTML.
+  // Subject + previewText can contain report reasons (originally
+  // user-supplied), so we escape them too — not just the body.
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const escapedSubject = escapeHtml(opts.subject);
+  const escapedPreview = escapeHtml(opts.previewText);
+  const escapedSummary = escapeHtml(opts.summaryText);
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapedSubject}</title>
+</head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <!-- Hidden preview text — mirrors the WhatsApp summary so the inbox
+       preview matches what the founder already saw on their phone. -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all;">${escapedPreview}</div>
+  <div style="max-width: 640px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <h1 style="margin: 0 0 16px; font-size: 20px; color: #136c68;">⚖️ Weekly dispute risk</h1>
+    <p style="color: #4b5563; font-size: 14px; margin: 0 0 16px;">
+      The weekly dispute-risk report is attached as a PDF. The text rollup below mirrors the WhatsApp message you already received.
+    </p>
+    <pre style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #111827; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; white-space: pre-wrap; line-height: 1.5;">${escapedSummary}</pre>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Legal Agent · Friday weekly rollup</p>
+  </div>
+</body>
+</html>`;
+  const text = `${opts.previewText}\n\n${opts.summaryText}\n\n— ${APP_NAME} Legal Agent`;
+  return sendMail({
+    to: toEmail,
+    subject: opts.subject,
+    html,
+    text,
+    attachments: [
+      {
+        filename: opts.pdfFilename,
+        content: opts.pdf,
+        contentType: "application/pdf",
+      },
+    ],
   });
 }
 

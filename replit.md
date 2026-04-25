@@ -64,7 +64,7 @@ Deploy as **Reserved VM** or **Background Worker**, not Autoscale, so the Node p
 3. In the Twilio Console, set the sandbox **"WHEN A MESSAGE COMES IN"** webhook to `https://<your-domain>/api/company-os/whatsapp` (HTTP POST). The handler responds 200 immediately and dispatches the actual reply over the REST API, so Twilio never times out.
 4. From the founder phone, send `help`. You should receive the Bareter Company OS menu. Then verify each command returns a sensible reply: `revenue`, `revenue week`, `status`, `agents`, `costs`, and a free-form question like "How are we doing this month?".
 5. Send a message from any other WhatsApp number to the sandbox — it should be silently ignored (no reply, 200 in the Twilio logs).
-6. Required production secrets: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (e.g. `whatsapp:+14155238886`), `FOUNDER_WHATSAPP_NUMBER` (e.g. `whatsapp:+9715XXXXXXXX`). Optional: `COMPANY_OS_MONTHLY_BUDGET_AED` (default 400), `USD_TO_AED_RATE` (default 3.6725).
+6. Required production secrets: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (e.g. `whatsapp:+14155238886`), `FOUNDER_WHATSAPP_NUMBER` (e.g. `whatsapp:+9715XXXXXXXX`). Optional: `COMPANY_OS_MONTHLY_BUDGET_AED` (default 400), `USD_TO_AED_RATE` (default 3.6725), `FOUNDER_EMAIL` (founder's address that receives the Friday weekly dispute-risk PDF — falls back to a WhatsApp-only ping when unset).
 
 The end-to-end behaviour above is also covered by `tests/companyOs.whatsapp.test.ts` — running `npx vitest run tests/companyOs.whatsapp.test.ts` exercises the signature gate, founder ACL, and every command before deploy.
 

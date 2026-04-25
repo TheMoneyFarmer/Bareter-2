@@ -831,11 +831,275 @@ export interface DisputeRiskResult {
   document: LegalDocument | null;
   snapshot: DisputeRiskSnapshot;
   callouts: string[];
+  pdf: Buffer | null;
+  pdfStorageKey: string | null;
+  /** Daily totals for the trend chart (oldest → newest). */
+  dailyTotals: DisputeDailyTotal[];
+}
+
+/** Number of days of history to plot in the "reports over time" chart. */
+export const DISPUTE_TREND_WINDOW_DAYS = 28;
+
+export interface DisputeDailyTotal {
+  /** ISO date (YYYY-MM-DD) in UTC. */
+  date: string;
+  count: number;
+}
+
+/**
+ * Fetch report counts grouped by UTC day for the last `days` days.
+ * Returns one entry per day (zero-filled) so the trend chart always
+ * has a continuous x-axis even on quiet weeks. Errors degrade to an
+ * empty (zero-filled) series so the cron job can keep going.
+ */
+export async function gatherDisputeDailyTotals(
+  days = DISPUTE_TREND_WINDOW_DAYS,
+): Promise<DisputeDailyTotal[]> {
+  // Anchor to UTC midnight today so the bucket window always includes
+  // today (and the prior `days - 1` UTC days). Starting from Date.now()
+  // minus `days` days would silently drop today from the chart.
+  const now = new Date();
+  const todayUtcMidnight = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  const startUtcMidnight = todayUtcMidnight - (days - 1) * 24 * 60 * 60 * 1000;
+  const since = new Date(startUtcMidnight);
+  const buckets = new Map<string, number>();
+  // Pre-seed all days so the chart is never sparse / jagged.
+  for (let i = 0; i < days; i++) {
+    const d = new Date(startUtcMidnight + i * 24 * 60 * 60 * 1000);
+    buckets.set(d.toISOString().slice(0, 10), 0);
+  }
+  try {
+    const rows = await db
+      .select({
+        day: drizzleSql<string>`to_char(date_trunc('day', ${reports.createdAt}), 'YYYY-MM-DD')`,
+        c: count(),
+      })
+      .from(reports)
+      .where(gte(reports.createdAt, since))
+      .groupBy(drizzleSql`date_trunc('day', ${reports.createdAt})`);
+    for (const r of rows) {
+      const k = String(r.day);
+      if (buckets.has(k)) buckets.set(k, r.c);
+    }
+  } catch (err) {
+    console.error("[companyOs.legal] gatherDisputeDailyTotals failed:", err);
+    // Fall through with zero-filled buckets.
+  }
+  return Array.from(buckets.entries())
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+// ---------------------------------------------------------------------------
+// Dispute risk PDF — bar charts of by-reason / by-status, plus a daily
+// time-series, drawn directly with jsPDF primitives so we don't pull in a
+// heavy chart library just for the Friday rollup.
+// ---------------------------------------------------------------------------
+
+interface ChartBar {
+  label: string;
+  value: number;
+}
+
+function drawBarChart(
+  doc: jsPDF,
+  bars: ChartBar[],
+  opts: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    title: string;
+    /** When true, labels are rotated and we leave more room beneath. */
+    timeSeries?: boolean;
+  },
+): number {
+  const { x, y, width, height, title } = opts;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text(title, x, y);
+  const plotTop = y + 4;
+  const plotBottom = y + height;
+  const plotHeight = plotBottom - plotTop;
+
+  if (bars.length === 0) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(10);
+    doc.text("(no data this window)", x, plotTop + 8);
+    return plotBottom + 6;
+  }
+
+  const max = Math.max(1, ...bars.map((b) => b.value));
+  const gap = 2;
+  const labelHeight = opts.timeSeries ? 10 : 6;
+  const availableHeight = plotHeight - labelHeight;
+  const barWidth = Math.max(1, (width - gap * (bars.length - 1)) / bars.length);
+
+  // Axis baseline.
+  doc.setDrawColor(180);
+  doc.setLineWidth(0.2);
+  doc.line(x, plotBottom - labelHeight, x + width, plotBottom - labelHeight);
+
+  doc.setFillColor(19, 108, 104); // Bareter teal.
+  doc.setDrawColor(19, 108, 104);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(opts.timeSeries ? 6 : 8);
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i];
+    const bx = x + i * (barWidth + gap);
+    const bh = (b.value / max) * availableHeight;
+    const by = plotBottom - labelHeight - bh;
+    doc.rect(bx, by, barWidth, bh, "F");
+    // Value above bar (only when there's room and it's not zero).
+    if (b.value > 0 && !opts.timeSeries) {
+      doc.setTextColor(60);
+      doc.text(String(b.value), bx + barWidth / 2, by - 1, { align: "center" });
+    }
+    // X-axis label.
+    doc.setTextColor(80);
+    if (opts.timeSeries) {
+      // Show only month-day to keep labels short.
+      const short = b.label.length >= 10 ? b.label.slice(5) : b.label;
+      doc.text(short, bx + barWidth / 2, plotBottom - labelHeight + 5, {
+        align: "center",
+      });
+    } else {
+      const truncated = b.label.length > 14 ? `${b.label.slice(0, 13)}…` : b.label;
+      doc.text(truncated, bx + barWidth / 2, plotBottom - labelHeight + 4, {
+        align: "center",
+      });
+    }
+  }
+  doc.setTextColor(0);
+  return plotBottom + 6;
+}
+
+/**
+ * Render the weekly dispute-risk PDF: header, totals, three charts
+ * (over time, by reason, by status), and the LLM-authored callouts.
+ * Drawn entirely with jsPDF primitives so we don't add a chart dep
+ * just for the Friday email.
+ */
+export function renderDisputeRiskPdf(
+  snapshot: DisputeRiskSnapshot,
+  callouts: string[],
+  dailyTotals: DisputeDailyTotal[],
+  generatedOnDubaiDate: string,
+): Buffer {
+  const doc = new jsPDF();
+  const left = 18;
+  const right = 192;
+  const width = right - left;
+  let y = 22;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text("Bareter — Weekly dispute-risk report", left, y);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(
+    `Generated ${generatedOnDubaiDate} (Asia/Dubai) · last ${snapshot.windowDays} days`,
+    left,
+    y,
+  );
+  y += 6;
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.text(`Total reports: ${snapshot.totalReports}`, left, y);
+  y += 8;
+
+  // Time-series chart: daily totals over the trend window.
+  y = drawBarChart(
+    doc,
+    dailyTotals.map((d) => ({ label: d.date, value: d.count })),
+    {
+      x: left,
+      y,
+      width,
+      height: 40,
+      title: `Reports per day · last ${dailyTotals.length} days`,
+      timeSeries: true,
+    },
+  );
+  y += 4;
+
+  // By-reason bar chart (current window).
+  y = drawBarChart(
+    doc,
+    snapshot.byReason.slice(0, 12).map((r) => ({ label: r.reason, value: r.count })),
+    {
+      x: left,
+      y,
+      width,
+      height: 40,
+      title: "By reason · current window",
+    },
+  );
+  y += 2;
+
+  // By-status bar chart (current window).
+  y = drawBarChart(
+    doc,
+    snapshot.byStatus.slice(0, 8).map((s) => ({ label: s.status, value: s.count })),
+    {
+      x: left,
+      y,
+      width,
+      height: 40,
+      title: "By status · current window",
+    },
+  );
+  y += 4;
+
+  // Callouts — LLM-authored or hand-crafted fallbacks.
+  if (y > 250) {
+    doc.addPage();
+    y = 22;
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Risk callouts", left, y);
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  for (const c of callouts) {
+    if (y > 275) {
+      doc.addPage();
+      y = 22;
+    }
+    const lines = doc.splitTextToSize(`• ${c}`, width);
+    doc.text(lines, left, y);
+    y += lines.length * 5 + 2;
+  }
+
+  // Footer disclaimer mirrors the contract template's tone.
+  if (y > 270) {
+    doc.addPage();
+    y = 22;
+  }
+  y += 4;
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  const disclaimerLines = doc.splitTextToSize(
+    "Risk callouts above are AI-generated as a starting point for the founder's review. Treat as guidance, not legal advice.",
+    width,
+  );
+  doc.text(disclaimerLines, left, y);
+  doc.setTextColor(0);
+
+  return Buffer.from(doc.output("arraybuffer"));
 }
 
 export async function runDisputeRiskSummary(windowDays = 7): Promise<DisputeRiskResult> {
   const snapshot = await gatherDisputeData(windowDays);
   const callouts = await generateDisputeCallouts(snapshot);
+  const dailyTotals = await gatherDisputeDailyTotals(DISPUTE_TREND_WINDOW_DAYS);
   const date = dubaiDateString();
   const body = formatDisputeSummaryBody(snapshot, callouts);
   let document: LegalDocument | null = null;
@@ -849,7 +1113,7 @@ export async function runDisputeRiskSummary(windowDays = 7): Promise<DisputeRisk
         partyB: null,
         valueAed: null,
         body,
-        metadata: { snapshot, callouts },
+        metadata: { snapshot, callouts, dailyTotals },
         objectStorageKey: null,
         status: "generated",
       })
@@ -858,7 +1122,37 @@ export async function runDisputeRiskSummary(windowDays = 7): Promise<DisputeRisk
   } catch (err) {
     console.error("[companyOs.legal] persist dispute_summary failed:", err);
   }
-  return { document, snapshot, callouts };
+
+  // Best-effort PDF render + upload. If either step fails the row is
+  // already persisted with text body + metadata so the founder still
+  // gets the WhatsApp rollup; we just skip the email attachment.
+  let pdf: Buffer | null = null;
+  let pdfStorageKey: string | null = null;
+  try {
+    pdf = renderDisputeRiskPdf(snapshot, callouts, dailyTotals, date);
+    if (document) {
+      const key = `companyOs/legal/dispute-summaries/${document.id}.pdf`;
+      try {
+        await uploadPrivateBuffer(key, pdf, "application/pdf");
+        pdfStorageKey = key;
+        const updated = await db
+          .update(legalDocuments)
+          .set({ objectStorageKey: key, updatedAt: new Date() })
+          .where(eq(legalDocuments.id, document.id))
+          .returning();
+        document = updated[0] ?? { ...document, objectStorageKey: key };
+      } catch (err) {
+        console.error(
+          "[companyOs.legal] dispute_summary PDF upload failed:",
+          err,
+        );
+      }
+    }
+  } catch (err) {
+    console.error("[companyOs.legal] dispute_summary PDF render failed:", err);
+  }
+
+  return { document, snapshot, callouts, pdf, pdfStorageKey, dailyTotals };
 }
 
 function formatDisputeSummaryBody(
