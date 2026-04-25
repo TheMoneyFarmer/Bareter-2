@@ -891,6 +891,30 @@ export const salesReengagementEvents = pgTable("sales_reengagement_events", {
   ),
 }));
 
+// Sales sync state - singleton row that holds the cursor used by the
+// Sales Agent's `syncNewLeads` refresh pass. Persisting the cursor
+// (instead of recomputing it from `salesLeads.updatedAt`) is what
+// guarantees every Bareter user is re-scored on a predictable cadence
+// even after the marketplace grows past the per-run ingest budget:
+// each run advances `cursorUserId` by ≤ refreshLimit users; when the
+// query returns fewer rows than the limit we know we've reached the
+// end of the user table and reset the cursor (a "wrap"). `wrapCount`
+// is bumped on each wrap so the founder / monitoring can see the
+// full-pass cadence in one glance.
+//
+// Single row keyed by `id = 'default'`. We use the literal string
+// "default" rather than a UUID so the upsert in `syncNewLeads` is
+// dead simple (`onConflictDoUpdate({ target: id })`). If we ever need
+// per-tenant cursors the `id` column already accommodates additional
+// keys without a schema change.
+export const salesSyncState = pgTable("sales_sync_state", {
+  id: text("id").primaryKey(),
+  cursorUserId: varchar("cursor_user_id", { length: 36 }),
+  lastRunAt: timestamp("last_run_at"),
+  wrapCount: integer("wrap_count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Agent memory - shared cross-agent learnings persisted by the Memory
 // Agent. Every Company OS agent can write `remember()` after a meaningful
 // output (preference, learning, pattern) and read `buildAgentContext()`
@@ -1311,6 +1335,12 @@ export const insertSalesReengagementEventSchema = createInsertSchema(
 export type InsertSalesReengagementEvent = z.infer<
   typeof insertSalesReengagementEventSchema
 >;
+
+export const insertSalesSyncStateSchema = createInsertSchema(salesSyncState).omit({
+  updatedAt: true,
+});
+export type InsertSalesSyncState = z.infer<typeof insertSalesSyncStateSchema>;
+export type SalesSyncState = typeof salesSyncState.$inferSelect;
 export type SalesReengagementEvent =
   typeof salesReengagementEvents.$inferSelect;
 

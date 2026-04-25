@@ -26,6 +26,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
@@ -41,6 +42,7 @@ import {
   deals,
   salesLeads,
   salesReengagementEvents,
+  salesSyncState,
   type SalesLead,
 } from "@shared/schema";
 import { chatCompletion, type ChatMessage } from "../agents/llm";
@@ -54,6 +56,18 @@ const RE_ENGAGEMENT_INACTIVE_DAYS = 7;
 const RE_ENGAGEMENT_COOLDOWN_DAYS = 14;
 const DEFAULT_INGEST_BATCH = 50;
 const DEFAULT_REENGAGE_CAP = 20;
+// Cursor / freshness tunables for the cursor-based refresh pass. Set so a
+// healthy 1k-user marketplace gets every account re-scored at least once
+// every ~40 runs (i.e. ~5 weeks at one cron tick/day, well inside the
+// "every 24-48 hours" cadence on a per-active-user basis once the stale
+// priority pass picks up dormant accounts first).
+const DEFAULT_CURSOR_BATCH = 50;
+const STALE_LEAD_FRESHNESS_DAYS = 14;
+const DEFAULT_STALE_LIMIT = 25;
+// Singleton key for the sales_sync_state row. We keep one cursor for the
+// whole agent — per-tenant cursors aren't on the roadmap and a single row
+// makes the upsert / read trivially cheap.
+const SYNC_STATE_KEY = "default";
 // Conversion-tracking window: of the most recent N "sent" events, how many
 // brought the user back within `RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS` days.
 // Tunable via the `getReEngagementConversion` helper for tests / future
@@ -316,12 +330,27 @@ export interface SyncResult {
 }
 
 /**
- * Two-phase candidate selection so the agent can never starve older
- * users: backlog drain first (users without a `sales_leads` row yet),
- * then refresh-pass on the stalest existing leads with whatever
- * capacity remains. This keeps every Bareter user re-scored on a
- * predictable cadence even after the marketplace grows past the
- * per-run limit.
+ * Three-phase candidate selection so the agent can never starve older
+ * users:
+ *
+ *   1. **Backlog drain** — users with no `sales_leads` row yet (newest
+ *      first). The LEFT JOIN + IS NULL filter guarantees older unsynced
+ *      users eventually surface.
+ *   2. **Stale priority** — existing leads whose `lastActivityAt` is
+ *      older than the freshness window are re-scored on every run
+ *      regardless of cursor position. This is what makes the
+ *      re-engagement job continue to find dormant users even when
+ *      sign-ups stop.
+ *   3. **Cursor pagination** — every other user is walked in
+ *      `users.id` order (cursor stored in `sales_sync_state`). Each
+ *      run advances the cursor by ≤ `cursorLimit` users; when the
+ *      query returns fewer rows than the limit we wrap the cursor
+ *      back to the start (and bump `wrapCount`).
+ *
+ * Together, every Bareter user is re-scored on a predictable cadence
+ * — recent or otherwise — even after the marketplace grows past any
+ * single per-run budget. Same userId never gets ingested twice in
+ * one run (deduped before the ingest loop).
  */
 const USER_COLUMNS = {
   id: users.id,
@@ -336,22 +365,133 @@ const USER_COLUMNS = {
   createdAt: users.createdAt,
 } as const;
 
+export interface SyncCursorState {
+  /** The userId we'll start AFTER on the next run, or null when the
+   *  next run should start from the beginning of the user table. */
+  cursorUserId: string | null;
+  /** Wall-clock time of the most recent successful run. */
+  lastRunAt: Date | null;
+  /** How many full passes through the user table we've completed. A
+   *  monotonic counter so the founder can see ingest cadence at a
+   *  glance from the OS dashboard / a future admin endpoint. */
+  wrapCount: number;
+}
+
+const ZERO_CURSOR: SyncCursorState = {
+  cursorUserId: null,
+  lastRunAt: null,
+  wrapCount: 0,
+};
+
+/**
+ * Read the persisted cursor (or the zero-state if no row exists yet).
+ * Wrapped in try/catch so a transient DB hiccup degrades to a fresh
+ * pass from the beginning instead of crashing the whole sync — the
+ * only downside of the fallback is a single duplicated rescore on
+ * the next run, which is harmless because `ingestUser` is idempotent.
+ */
+export async function getSalesSyncCursor(): Promise<SyncCursorState> {
+  try {
+    const [row] = await db
+      .select()
+      .from(salesSyncState)
+      .where(eq(salesSyncState.id, SYNC_STATE_KEY))
+      .limit(1);
+    if (!row) return { ...ZERO_CURSOR };
+    return {
+      cursorUserId: row.cursorUserId ?? null,
+      lastRunAt: row.lastRunAt ?? null,
+      wrapCount: row.wrapCount ?? 0,
+    };
+  } catch (err) {
+    console.error("[companyOs.sales] getSalesSyncCursor failed:", err);
+    return { ...ZERO_CURSOR };
+  }
+}
+
+/**
+ * Persist the cursor for the next run. Single-row upsert keyed on
+ * `id = 'default'`. `wrapped` is exposed as a parameter (rather than
+ * derived inside the helper) so the caller can decide when a "wrap"
+ * is meaningful — currently: when the cursor pagination query returns
+ * fewer rows than the requested limit AND a previous cursor existed.
+ */
+async function persistSalesSyncCursor(opts: {
+  cursorUserId: string | null;
+  lastRunAt: Date;
+  wrapped: boolean;
+  previousWrapCount: number;
+}): Promise<void> {
+  const nextWrapCount = opts.wrapped
+    ? opts.previousWrapCount + 1
+    : opts.previousWrapCount;
+  try {
+    await db
+      .insert(salesSyncState)
+      .values({
+        id: SYNC_STATE_KEY,
+        cursorUserId: opts.cursorUserId,
+        lastRunAt: opts.lastRunAt,
+        wrapCount: nextWrapCount,
+      })
+      .onConflictDoUpdate({
+        target: salesSyncState.id,
+        set: {
+          cursorUserId: opts.cursorUserId,
+          lastRunAt: opts.lastRunAt,
+          wrapCount: nextWrapCount,
+          updatedAt: opts.lastRunAt,
+        },
+      });
+  } catch (err) {
+    // Cursor persistence failures are non-fatal — the next run will
+    // re-read the previous (un-advanced) cursor and re-scan the same
+    // window. ingestUser is idempotent so this just costs a wasted
+    // refresh pass, never a duplicate or skipped lead.
+    console.error("[companyOs.sales] persistSalesSyncCursor failed:", err);
+  }
+}
+
+export interface SyncResultWithCursor extends SyncResult {
+  cursor: SyncCursorState;
+}
+
 export async function syncNewLeads(
-  opts: { limit?: number; refreshLimit?: number } = {},
-): Promise<SyncResult> {
+  opts: {
+    limit?: number;
+    refreshLimit?: number;
+    cursorLimit?: number;
+    staleLimit?: number;
+    freshnessDays?: number;
+  } = {},
+): Promise<SyncResultWithCursor> {
   const limit = Math.max(1, Math.min(200, opts.limit ?? DEFAULT_INGEST_BATCH));
-  // Default refresh budget = half the ingest budget (rounded up). Caller
-  // can override or set to 0 to skip the refresh pass entirely.
+  // `refreshLimit` is the legacy knob retained for backwards compat
+  // with existing callers / tests: when supplied it caps the COMBINED
+  // stale + cursor pass so the per-run footprint stays bounded. When
+  // omitted, stale and cursor pulls each get their own default budget.
   const refreshLimit =
     opts.refreshLimit === undefined
-      ? Math.ceil(limit / 2)
-      : Math.max(0, Math.min(200, opts.refreshLimit));
+      ? null
+      : Math.max(0, Math.min(400, opts.refreshLimit));
+  const cursorLimit = Math.max(
+    0,
+    Math.min(200, opts.cursorLimit ?? DEFAULT_CURSOR_BATCH),
+  );
+  const staleLimit = Math.max(
+    0,
+    Math.min(200, opts.staleLimit ?? DEFAULT_STALE_LIMIT),
+  );
+  const freshnessDays = Math.max(
+    1,
+    Math.min(90, opts.freshnessDays ?? STALE_LEAD_FRESHNESS_DAYS),
+  );
   const now = new Date();
+  const freshnessCutoff = new Date(
+    now.getTime() - freshnessDays * 86_400_000,
+  );
 
-  // Phase 1 — backlog drain: pull users that don't yet have a row in
-  // sales_leads, newest first. The LEFT JOIN + IS NULL filter ensures
-  // older unsynced users eventually surface even after the newest
-  // cohort is fully scored.
+  // ── Phase 1 — backlog drain ────────────────────────────────────────────
   const unsynced = await db
     .select(USER_COLUMNS)
     .from(users)
@@ -360,25 +500,92 @@ export async function syncNewLeads(
     .orderBy(desc(users.createdAt))
     .limit(limit);
 
-  // Phase 2 — refresh pass: re-score the stalest existing leads (oldest
-  // updatedAt first) so their score and lastActivityAt don't drift.
+  // Decide how many slots phase 2 + 3 may use. When the legacy
+  // `refreshLimit` is set we honour it; otherwise stale + cursor each
+  // get their own budget.
+  const remaining =
+    refreshLimit === null ? cursorLimit + staleLimit : refreshLimit;
+
+  // ── Phase 2 — stale priority pass ──────────────────────────────────────
+  // Pull existing leads whose lastActivityAt is older than the
+  // freshness window, oldest first. These are re-scored on EVERY
+  // run, independent of where the cursor is — which is exactly the
+  // "re-score dormant users even when no new sign-ups happened"
+  // requirement from the task spec.
+  const staleBudget = Math.min(
+    remaining,
+    refreshLimit === null ? staleLimit : refreshLimit,
+  );
   const stale =
-    refreshLimit > 0
+    staleBudget > 0
       ? await db
           .select(USER_COLUMNS)
           .from(users)
           .innerJoin(salesLeads, eq(salesLeads.userId, users.id))
-          .orderBy(asc(salesLeads.updatedAt))
-          .limit(refreshLimit)
+          .where(lt(salesLeads.lastActivityAt, freshnessCutoff))
+          .orderBy(asc(salesLeads.lastActivityAt))
+          .limit(staleBudget)
       : [];
 
-  const candidates = [...unsynced, ...stale];
+  const remainingAfterStale = Math.max(0, remaining - stale.length);
+
+  // ── Phase 3 — cursor pagination ────────────────────────────────────────
+  // Walk the users table in `id` order, starting AFTER the persisted
+  // cursor. When we receive fewer rows than the budget we know we've
+  // hit the end of the table → wrap the cursor back to null and bump
+  // wrapCount on the next persist. Cursor read is deferred until we
+  // actually have a non-zero budget so callers passing `refreshLimit:0`
+  // (e.g. one-shot backlog drain) skip the salesSyncState round-trip
+  // entirely.
+  const cursorBudget = Math.min(remainingAfterStale, cursorLimit);
+  let cursorState: SyncCursorState = ZERO_CURSOR;
+  let cursorUsers: UserCandidate[] = [];
+  if (cursorBudget > 0) {
+    cursorState = await getSalesSyncCursor();
+    cursorUsers = (await db
+      .select(USER_COLUMNS)
+      .from(users)
+      .where(
+        cursorState.cursorUserId
+          ? gt(users.id, cursorState.cursorUserId)
+          : drizzleSql`TRUE`,
+      )
+      .orderBy(asc(users.id))
+      .limit(cursorBudget)) as UserCandidate[];
+  }
+
+  // Wrap detection: any time the cursor pass returns fewer rows than
+  // the budget AND we asked for a non-zero budget, we've reached the
+  // tail of the user table. Reset the cursor so the next run starts
+  // from the beginning. We treat the very-first run (no previous
+  // cursor) the same way: if it returns < budget, the user table is
+  // small enough that one run covers it — still a wrap.
+  const wrapped = cursorBudget > 0 && cursorUsers.length < cursorBudget;
+  const nextCursorUserId = wrapped
+    ? null
+    : cursorUsers.length > 0
+      ? cursorUsers[cursorUsers.length - 1].id
+      : cursorState.cursorUserId;
+
+  // Dedupe across phases — a single run never ingests the same user
+  // twice (e.g. a stale user whose id also falls in the cursor window).
+  // First-write-wins: backlog → stale → cursor mirrors task priority.
+  const seen = new Set<string>();
+  const candidates: UserCandidate[] = [];
+  for (const list of [unsynced, stale, cursorUsers]) {
+    for (const u of list as UserCandidate[]) {
+      if (seen.has(u.id)) continue;
+      seen.add(u.id);
+      candidates.push(u);
+    }
+  }
+
   let inserted = 0;
   let updated = 0;
   let errors = 0;
   for (const u of candidates) {
     try {
-      const r = await ingestUser(u as UserCandidate, now);
+      const r = await ingestUser(u, now);
       if (r.isNew) inserted++;
       else updated++;
     } catch (err) {
@@ -386,7 +593,32 @@ export async function syncNewLeads(
       console.error("[companyOs.sales] ingestUser failed for", u.id, err);
     }
   }
-  return { scanned: candidates.length, inserted, updated, errors };
+
+  // Persist the cursor LAST so a crash mid-ingest leaves the cursor
+  // un-advanced and the next run safely re-scans the same window
+  // (idempotent).
+  let nextCursor: SyncCursorState = cursorState;
+  if (cursorBudget > 0) {
+    await persistSalesSyncCursor({
+      cursorUserId: nextCursorUserId,
+      lastRunAt: now,
+      wrapped,
+      previousWrapCount: cursorState.wrapCount,
+    });
+    nextCursor = {
+      cursorUserId: nextCursorUserId,
+      lastRunAt: now,
+      wrapCount: wrapped ? cursorState.wrapCount + 1 : cursorState.wrapCount,
+    };
+  }
+
+  return {
+    scanned: candidates.length,
+    inserted,
+    updated,
+    errors,
+    cursor: nextCursor,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -671,20 +903,19 @@ export async function runReEngagementCampaign(
 // ---------------------------------------------------------------------------
 
 export interface DailySalesResult {
-  sync: SyncResult;
+  sync: SyncResultWithCursor;
   reEngagement: ReEngagementResult;
 }
 
 /**
  * Daily orchestration entry point used by the 09:30 Asia/Dubai cron.
  *
- * Two-pass ingest: up to `DEFAULT_INGEST_BATCH` new users from the
- * backlog, plus up to ~half that many of the *stalest* existing leads
- * for a refresh re-score. Total processed users per run can therefore
- * exceed `DEFAULT_INGEST_BATCH` — that's deliberate, so older leads
- * never drift indefinitely once the backlog has been drained. Override
- * by passing `refreshLimit: 0` to `syncNewLeads` directly if a strict
- * "exactly N" cap is ever required.
+ * Three-pass ingest: backlog drain (new users) → stale-priority refresh
+ * (existing leads inactive past the freshness window) → cursor pagination
+ * over every other user. The cursor is persisted in `sales_sync_state`
+ * so successive runs cover the entire user base instead of starving
+ * older accounts when the marketplace grows past one batch. See
+ * `syncNewLeads` for the per-phase budgets and dedupe rules.
  */
 export async function runDailySalesSync(): Promise<DailySalesResult> {
   const sync = await syncNewLeads({ limit: DEFAULT_INGEST_BATCH });

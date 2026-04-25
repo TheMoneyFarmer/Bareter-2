@@ -937,10 +937,14 @@ describe("syncNewLeads", () => {
     // Order of selects inside syncNewLeads → ingestUser (atomic upsert
     // path — no separate existing-row check):
     //   1. SELECT users LEFT JOIN salesLeads WHERE salesLeads.userId IS NULL  → unsynced batch
-    //   2. SELECT users INNER JOIN salesLeads ORDER BY updatedAt ASC          → stale batch (empty here)
-    //   then per-user: 3-5 (postCount, dealAll, dealDone)
+    //   2. SELECT users INNER JOIN salesLeads WHERE lastActivityAt < cutoff   → stale priority (empty here)
+    //   3. SELECT salesSyncState WHERE id='default'                            → cursor read (empty here → ZERO_CURSOR)
+    //   4. SELECT users WHERE id > cursor ORDER BY id ASC                      → cursor pagination (empty here)
+    //   then per-user: 5-7 (postCount, dealAll, dealDone)
     dbState.selectQueue = [
       [u],
+      [],
+      [],
       [],
       [{ c: 0, latest: null }],
       [{ c: 0, latest: null }],
@@ -954,8 +958,12 @@ describe("syncNewLeads", () => {
     expect(r.inserted).toBe(1);
     expect(r.updated).toBe(0);
     expect(r.errors).toBe(0);
-    expect(dbState.insertedValues).toHaveLength(1);
-    const lead = dbState.insertedValues[0];
+    // Filter for lead inserts — the cursor-state upsert (id='default')
+    // also lands in `insertedValues` and would otherwise inflate the
+    // count.
+    const leadInserts = dbState.insertedValues.filter((v) => "userId" in v);
+    expect(leadInserts).toHaveLength(1);
+    const lead = leadInserts[0];
     expect(lead.userId).toBe("u-1");
     // asset_owner +15, onboarding +20, Dubai +10 = 45.
     expect(lead.leadScore).toBe(45);
@@ -998,8 +1006,14 @@ describe("syncNewLeads", () => {
     dbState.selectQueue = [
       // Phase 1: backlog (LEFT JOIN ... IS NULL)
       [backlog],
-      // Phase 2: stale (INNER JOIN ... ORDER BY updatedAt ASC)
+      // Phase 2: stale priority (INNER JOIN ... WHERE lastActivityAt < cutoff)
       [stale],
+      // Phase 3a: salesSyncState cursor read (empty → ZERO_CURSOR, start of table)
+      [],
+      // Phase 3b: cursor pagination (empty here — refresh budget = 5 was
+      // already consumed by the stale row, so this query never runs in
+      // practice, but the mock still returns []).
+      [],
       // Per-user features for backlog user (3 selects: posts, dealAll, dealDone)
       [{ c: 0, latest: null }],
       [{ c: 0, latest: null }],
@@ -1022,11 +1036,12 @@ describe("syncNewLeads", () => {
     expect(r.inserted).toBe(1); // backlog user (wasInsert=true)
     expect(r.updated).toBe(1);  // stale user (wasInsert=false → upsert hit ON CONFLICT)
     // Both upserts go through `db.insert(...).values(...)`, so both
-    // payloads land in `insertedValues`. This also proves the function
-    // processes both populations in a single run rather than only ever
-    // hitting the newest cohort.
-    expect(dbState.insertedValues).toHaveLength(2);
-    const userIds = dbState.insertedValues.map((v) => v.userId).sort();
+    // payloads land in `insertedValues`. Filter by `userId` (set on lead
+    // upserts only) so the cursor-state upsert that also runs at end of
+    // sync doesn't inflate the count.
+    const leadInserts = dbState.insertedValues.filter((v) => "userId" in v);
+    expect(leadInserts).toHaveLength(2);
+    const userIds = leadInserts.map((v) => v.userId).sort();
     expect(userIds).toEqual(["u-old", "u-stale"]);
     // No separate db.update() calls happen in the ingest path now —
     // the upsert handles update at the DB layer atomically.
@@ -1034,8 +1049,11 @@ describe("syncNewLeads", () => {
   });
 
   it("skips the refresh pass when refreshLimit=0", async () => {
-    // Only Phase 1 should run — single SELECT for the backlog batch,
-    // no second SELECT for stale leads.
+    // Only Phase 1 should run — single SELECT for the backlog batch.
+    // No stale query, no cursor read, no cursor pagination, no
+    // sales_sync_state upsert: passing refreshLimit=0 makes the agent
+    // a one-shot backlog drainer, useful for catch-up runs without
+    // disturbing the persisted cursor.
     dbState.selectQueue = [
       [], // Phase 1 returns empty → no per-user selects either.
     ];
@@ -1043,8 +1061,136 @@ describe("syncNewLeads", () => {
     expect(r.scanned).toBe(0);
     expect(r.inserted).toBe(0);
     expect(r.updated).toBe(0);
-    // Exactly one select call: just the backlog query, no refresh query.
+    // Exactly one select call: just the backlog query, no refresh query
+    // and no cursor read.
     expect(dbState.selectCalls).toBe(1);
+    // No cursor write — refreshLimit=0 must not touch sales_sync_state.
+    const cursorWrites = dbState.insertedValues.filter((v) => v.id === "default");
+    expect(cursorWrites).toHaveLength(0);
+    // Cursor in the result still reflects the un-touched persisted state
+    // (we never read it, so it's the ZERO_CURSOR fallback).
+    expect(r.cursor.cursorUserId).toBeNull();
+    expect(r.cursor.wrapCount).toBe(0);
+  });
+
+  it("advances the cursor across runs and wraps once the user table is fully covered", async () => {
+    // Two-run test — proves both halves of the spec:
+    //   1. After a run that returned exactly cursorLimit users, the
+    //      persisted cursor sits on the LAST user id seen (advance).
+    //   2. A subsequent run that returns FEWER than cursorLimit users
+    //      detects the tail of the table, wraps the cursor back to
+    //      null and bumps wrapCount (wrap-around).
+    // The test bypasses backlog and stale by setting refreshLimit
+    // explicitly and supplying an empty backlog; it focuses on the
+    // cursor pagination path which is the new behaviour added in the
+    // "stop the Sales Agent from missing users" change.
+    const mkUser = (id: string) => ({
+      id,
+      email: `${id}@example.com`,
+      fullName: `User ${id}`,
+      accountType: "individual",
+      signupType: "brand",
+      city: "Dubai",
+      location: null,
+      onboardingCompleted: true,
+      lastActiveAt: new Date(),
+      createdAt: new Date(),
+    });
+    const u1 = mkUser("u-001");
+    const u2 = mkUser("u-002");
+
+    // ── Run 1 — cursor advances to u-002 ──────────────────────────────
+    dbState.selectQueue = [
+      [],          // Phase 1 backlog (empty)
+      [],          // Phase 2 stale (empty — staleLimit=0)
+      [],          // Phase 3a sync_state cursor read (no row → ZERO_CURSOR)
+      [u1, u2],    // Phase 3b cursor pagination — exactly cursorLimit=2
+      // Per-user features (3 selects per user × 2 users = 6 selects)
+      [{ c: 0, latest: null }],
+      [{ c: 0, latest: null }],
+      [{ c: 0, first: null }],
+      [{ c: 0, latest: null }],
+      [{ c: 0, latest: null }],
+      [{ c: 0, first: null }],
+    ];
+    dbState.returningQueue = [
+      [{ wasInsert: true }],
+      [{ wasInsert: true }],
+    ];
+
+    const run1 = await syncNewLeads({
+      limit: 5,
+      refreshLimit: 2,   // total refresh budget = stale + cursor
+      cursorLimit: 2,
+      staleLimit: 0,
+    });
+    expect(run1.scanned).toBe(2);
+    expect(run1.cursor.cursorUserId).toBe("u-002");
+    expect(run1.cursor.wrapCount).toBe(0);
+    const cursorWrite1 = dbState.insertedValues.find((v) => v.id === "default");
+    expect(cursorWrite1?.cursorUserId).toBe("u-002");
+    expect(cursorWrite1?.wrapCount).toBe(0);
+
+    // ── Run 2 — cursor wraps because pagination returned <budget ──────
+    resetDbState();
+    dbState.selectQueue = [
+      [],                                 // Phase 1 backlog
+      [],                                 // Phase 2 stale
+      [{ id: "default", cursorUserId: "u-002", lastRunAt: new Date(), wrapCount: 0 }], // cursor read
+      [],                                 // Phase 3b cursor pagination — 0 < budget=2 → wrap
+    ];
+    dbState.returningQueue = [];
+
+    const run2 = await syncNewLeads({
+      limit: 5,
+      refreshLimit: 2,
+      cursorLimit: 2,
+      staleLimit: 0,
+    });
+    expect(run2.scanned).toBe(0);
+    expect(run2.cursor.cursorUserId).toBeNull();
+    expect(run2.cursor.wrapCount).toBe(1); // bumped from 0 → 1
+    const cursorWrite2 = dbState.insertedValues.find((v) => v.id === "default");
+    expect(cursorWrite2?.cursorUserId).toBeNull();
+    expect(cursorWrite2?.wrapCount).toBe(1);
+  });
+
+  it("re-scores stale leads (lastActivityAt past freshness window) even when no new sign-ups happened", async () => {
+    // Phase 1 (backlog drain) returns nothing — no sign-ups. The stale
+    // priority pass MUST still pull dormant leads and re-score them so
+    // the re-engagement job has fresh `lastActivityAt` / `leadScore`
+    // values to work from. This is the "predictable cadence" half of
+    // the task spec.
+    const dormant = {
+      id: "u-dormant",
+      email: "old@example.com",
+      fullName: "Dormant User",
+      accountType: "individual",
+      signupType: "brand",
+      city: "Dubai",
+      location: null,
+      onboardingCompleted: true,
+      lastActiveAt: new Date(Date.now() - 30 * 86_400_000),
+      createdAt: new Date("2024-01-01"),
+    };
+    dbState.selectQueue = [
+      [],         // Phase 1 backlog (no new sign-ups)
+      [dormant],  // Phase 2 stale (lastActivityAt < 14d cutoff)
+      [],         // sync_state cursor read
+      [],         // cursor pagination (irrelevant — dedupe already saw u-dormant)
+      [{ c: 0, latest: null }],
+      [{ c: 0, latest: null }],
+      [{ c: 0, first: null }],
+    ];
+    dbState.returningQueue = [[{ wasInsert: false }]];
+
+    const r = await syncNewLeads({ limit: 10 });
+    expect(r.scanned).toBe(1);
+    expect(r.inserted).toBe(0);
+    expect(r.updated).toBe(1);
+    const leadInserts = dbState.insertedValues.filter((v) => "userId" in v);
+    expect(leadInserts).toHaveLength(1);
+    expect(leadInserts[0].userId).toBe("u-dormant");
   });
 });
 
