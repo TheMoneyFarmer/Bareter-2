@@ -917,6 +917,31 @@ export const salesReengagementEvents = pgTable("sales_reengagement_events", {
   ),
 }));
 
+// Marketing posts - one row per outbound publish attempt by the Marketing
+// Agent's `publishPostFromTopic` / `handleConfirmPublishSend` flows.
+// Decoupled from `llm_calls` (which is an audit log of LLM usage) so the
+// dashboard / weekly brief can show *what actually went out* without
+// joining against text-search of LLM previews.
+//
+// `status` is "success" or "failure" — the publisher returns a typed
+// outcome and we persist both the success metadata (externalId,
+// externalUrl) and the failure detail (`error`) so the founder can see
+// why a publish broke from the same row that records the attempt.
+export const marketingPosts = pgTable("marketing_posts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  channel: text("channel"),                          // "buffer" | "linkedin" | "meta" | null when the dispatch never picked one
+  topic: text("topic").notNull(),                    // founder-supplied topic that drove the draft
+  body: text("body").notNull(),                      // the rendered post body that was sent
+  externalId: text("external_id"),                   // upstream post id from the connector (when available)
+  externalUrl: text("external_url"),                 // upstream public URL (when the connector returns one)
+  status: text("status").notNull(),                  // "success" | "failure"
+  error: text("error"),                              // failure detail (truncated)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  createdAtIdx: index("marketing_posts_created_at_idx").on(table.createdAt),
+  statusIdx: index("marketing_posts_status_idx").on(table.status),
+}));
+
 // Sales sync state - singleton row that holds the cursor used by the
 // Sales Agent's `syncNewLeads` refresh pass. Persisting the cursor
 // (instead of recomputing it from `salesLeads.updatedAt`) is what
@@ -1343,6 +1368,13 @@ export const insertLegalDocumentSchema = createInsertSchema(legalDocuments).omit
 });
 export type InsertLegalDocument = z.infer<typeof insertLegalDocumentSchema>;
 export type LegalDocument = typeof legalDocuments.$inferSelect;
+
+export const insertMarketingPostSchema = createInsertSchema(marketingPosts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMarketingPost = z.infer<typeof insertMarketingPostSchema>;
+export type MarketingPost = typeof marketingPosts.$inferSelect;
 
 export const insertSalesLeadSchema = createInsertSchema(salesLeads).omit({
   id: true,

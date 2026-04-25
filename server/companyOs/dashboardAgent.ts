@@ -18,6 +18,7 @@ import {
   kpiSnapshots,
   legalDocuments,
   listings,
+  marketingPosts,
   posts,
   salesLeads,
   users,
@@ -74,6 +75,15 @@ export interface LiveKpis {
     ctr: number;
     spendAed: number;
     conversions: number;
+  }[];
+  latestMarketingPosts: {
+    id: string;
+    channel: string | null;
+    topic: string;
+    status: string;
+    externalUrl: string | null;
+    error: string | null;
+    createdAt: string | null;
   }[];
 }
 
@@ -186,6 +196,16 @@ interface CampaignRow {
   conversions: number | string | null;
 }
 
+interface MarketingPostRow {
+  id: string;
+  channel: string | null;
+  topic: string | null;
+  status: string | null;
+  externalUrl: string | null;
+  error: string | null;
+  createdAt: Date | string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Live aggregation — runs all queries in parallel, caps each with LIMIT
 // where applicable, and degrades gracefully on per-query failure.
@@ -229,6 +249,7 @@ export async function getLiveKpis(): Promise<LiveKpis> {
     legalDocs,
     briefs,
     campaigns,
+    recentPosts,
   ] = await Promise.all([
     safe(
       db.select({ c: count() }).from(users).then((r) => safeNum(r[0]?.c)),
@@ -443,6 +464,23 @@ export async function getLiveKpis(): Promise<LiveKpis> {
       [] as CampaignRow[],
       "marketing.campaigns",
     ),
+    safe(
+      db
+        .select({
+          id: marketingPosts.id,
+          channel: marketingPosts.channel,
+          topic: marketingPosts.topic,
+          status: marketingPosts.status,
+          externalUrl: marketingPosts.externalUrl,
+          error: marketingPosts.error,
+          createdAt: marketingPosts.createdAt,
+        })
+        .from(marketingPosts)
+        .orderBy(desc(marketingPosts.createdAt))
+        .limit(10),
+      [] as MarketingPostRow[],
+      "marketing.posts",
+    ),
   ]);
 
   // Build the 30-day revenue series, filling gaps with zeros.
@@ -564,6 +602,15 @@ export async function getLiveKpis(): Promise<LiveKpis> {
       ctr: safeNum(c.ctr),
       spendAed: safeNum(c.spendAed),
       conversions: safeNum(c.conversions),
+    })),
+    latestMarketingPosts: recentPosts.map((p) => ({
+      id: String(p.id),
+      channel: p.channel ?? null,
+      topic: String(p.topic ?? ""),
+      status: String(p.status ?? "unknown"),
+      externalUrl: p.externalUrl ?? null,
+      error: p.error ?? null,
+      createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : null,
     })),
   };
 }

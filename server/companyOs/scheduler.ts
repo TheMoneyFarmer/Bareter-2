@@ -14,6 +14,8 @@ import {
   generateAndStoreBrief,
   BRIEF_SIGNED_URL_TTL_SEC,
   runMetaCampaignSync,
+  getRecentMarketingPosts,
+  formatMarketingPostLine,
 } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
@@ -94,6 +96,18 @@ async function weeklyMarketingBriefJob(): Promise<void> {
       lines.push((brief.hashtags as string[]).join("  "));
     }
     if (url) lines.push(`PDF: ${url}`);
+    // Tail the brief with the most recent posts that actually went out so
+    // the founder sees both the plan (theme/budget) and the proof
+    // (channels + URLs / errors) in a single WhatsApp message.
+    try {
+      const recentPosts = await getRecentMarketingPosts(5);
+      if (recentPosts.length > 0) {
+        lines.push("", "*Recent posts*");
+        for (const p of recentPosts) lines.push(formatMarketingPostLine(p));
+      }
+    } catch (err) {
+      console.error("[companyOs.scheduler] recent posts append failed:", err);
+    }
     lines.push("", "Log results with `campaign update <name> ctr=X spend=Y conversions=Z`.");
     await notifyFounder(lines.join("\n"));
   } catch (err) {

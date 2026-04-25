@@ -88,6 +88,15 @@ interface LiveKpis {
     spendAed: number;
     conversions: number;
   }[];
+  latestMarketingPosts: {
+    id: string;
+    channel: string | null;
+    topic: string;
+    status: string;
+    externalUrl: string | null;
+    error: string | null;
+    createdAt: string | null;
+  }[];
 }
 
 interface BoardReport {
@@ -1133,6 +1142,70 @@ export default function CompanyOsDashboard() {
                   </span>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-marketing-posts">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Megaphone className="h-4 w-4" /> Recent posts
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(live?.latestMarketingPosts ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="text-posts-empty">
+                  No posts published yet.
+                </p>
+              )}
+              {(live?.latestMarketingPosts ?? []).map((p) => {
+                const ok = p.status === "success";
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-start justify-between gap-2 text-xs"
+                    data-testid={`row-marketing-post-${p.id}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={ok ? "secondary" : "destructive"}
+                          className="h-5 px-1.5 text-[10px]"
+                          data-testid={`status-marketing-post-${p.id}`}
+                        >
+                          {ok ? "sent" : "failed"}
+                        </Badge>
+                        <span className="text-muted-foreground">{p.channel ?? "—"}</span>
+                      </div>
+                      <p className="mt-1 truncate font-medium" data-testid={`text-post-topic-${p.id}`}>
+                        {p.topic || "(no topic)"}
+                      </p>
+                      {ok && p.externalUrl ? (
+                        <a
+                          href={p.externalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block truncate text-primary hover:underline"
+                          data-testid={`link-post-external-${p.id}`}
+                        >
+                          {p.externalUrl}
+                        </a>
+                      ) : null}
+                      {!ok && p.error ? (
+                        <p
+                          className="truncate text-destructive"
+                          data-testid={`text-post-error-${p.id}`}
+                          title={p.error}
+                        >
+                          {p.error}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {p.createdAt ? new Date(p.createdAt).toLocaleString() : ""}
+                    </span>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </div>

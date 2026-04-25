@@ -15,6 +15,7 @@ import {
   getAllBriefs,
   getBriefById,
   getRecentCampaigns,
+  getRecentMarketingPosts,
 } from "./marketingAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { handleManagerMessage, composeDailyBriefing } from "./managerAgent";
@@ -327,6 +328,20 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ count: campaigns.length, campaigns });
     } catch (err) {
       console.error("[companyOs] /campaigns failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // Recent published posts (success + failure rows). Used by the admin
+  // dashboard to debug delivery failures and confirm what went out.
+  router.get("/marketing-posts", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 50;
+      const posts = await getRecentMarketingPosts(limit);
+      res.json({ count: posts.length, posts });
+    } catch (err) {
+      console.error("[companyOs] /marketing-posts failed:", err);
       res.status(500).json({ message: "Internal error" });
     }
   });

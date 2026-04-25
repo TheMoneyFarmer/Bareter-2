@@ -34,8 +34,10 @@ import {
   listings,
   contentBriefs,
   campaignPerformance,
+  marketingPosts,
   type ContentBrief,
   type CampaignPerformance,
+  type MarketingPost,
 } from "@shared/schema";
 import { jsonCompletion, chatCompletion, type ChatMessage } from "../agents/llm";
 import { logLlmCall, DEFAULT_MODEL } from "./costTracker";
@@ -428,6 +430,55 @@ export async function getRecentCampaigns(limit = 5): Promise<CampaignPerformance
     .limit(limit);
 }
 
+/**
+ * Persist one marketing publish attempt (success OR failure) to the
+ * `marketing_posts` table. Best-effort — a write failure is logged but
+ * never raised to the caller, so a Postgres hiccup can never block an
+ * actual publish or confirmation reply.
+ *
+ * Called from both `publishPostFromTopic` (legacy auto-publish path) and
+ * `handleConfirmPublishSend` (Task #86 confirmation flow) so every
+ * outbound post — regardless of which surface triggered it — shows up
+ * on the dashboard.
+ */
+export async function recordPublishedPost(input: {
+  topic: string;
+  postBody: string;
+  outcome: PublishOutcome;
+}): Promise<void> {
+  const { topic, postBody, outcome } = input;
+  try {
+    await db.insert(marketingPosts).values({
+      channel: outcome.channel ?? null,
+      topic: topic.slice(0, 500),
+      body: postBody.slice(0, 4000),
+      externalId: outcome.ok ? outcome.externalId ?? null : null,
+      externalUrl: outcome.ok ? outcome.externalUrl ?? null : null,
+      status: outcome.ok ? "success" : "failure",
+      error: outcome.ok ? null : `${outcome.reason}: ${outcome.detail}`.slice(0, 1000),
+    });
+  } catch (err) {
+    console.error("[companyOs.marketing] recordPublishedPost failed:", err);
+  }
+}
+
+/**
+ * Read the last N marketing publish attempts. Used by the dashboard,
+ * the WhatsApp `marketing` report, and the weekly brief notification.
+ */
+export async function getRecentMarketingPosts(limit = 5): Promise<MarketingPost[]> {
+  try {
+    return await db
+      .select()
+      .from(marketingPosts)
+      .orderBy(desc(marketingPosts.createdAt))
+      .limit(Math.max(1, Math.min(100, limit)));
+  } catch (err) {
+    console.error("[companyOs.marketing] getRecentMarketingPosts failed:", err);
+    return [];
+  }
+}
+
 export async function getAllBriefs(limit = 50): Promise<ContentBrief[]> {
   return db
     .select()
@@ -446,7 +497,11 @@ export async function getBriefById(id: string): Promise<ContentBrief | null> {
 }
 
 export async function formatMarketingReport(): Promise<string> {
-  const [latest, recent] = await Promise.all([getLatestBrief(), getRecentCampaigns(3)]);
+  const [latest, recent, recentPosts] = await Promise.all([
+    getLatestBrief(),
+    getRecentCampaigns(3),
+    getRecentMarketingPosts(5),
+  ]);
   const lines: string[] = ["*Marketing · latest brief*"];
 
   if (!latest) {
@@ -480,11 +535,40 @@ export async function formatMarketingReport(): Promise<string> {
     lines.push("_Log results with:_ `campaign update <name> ctr=X spend=Y conversions=Z`");
   }
 
+  // Recent published posts — one line per attempt with the upstream URL
+  // when available so the founder can jump straight to the live post.
+  // Failed attempts surface their error so debugging stays in one place.
+  lines.push("");
+  if (recentPosts.length > 0) {
+    lines.push("*Recent posts*");
+    for (const p of recentPosts) {
+      lines.push(formatMarketingPostLine(p));
+    }
+  } else {
+    lines.push("_No posts published yet._ Use `publish post <topic>` to send one.");
+  }
+
   // `dubaiDateString` is referenced so the import is non-decorative — and so
   // future formatters can sprinkle the date if needed without re-importing.
   void dubaiDateString;
 
   return lines.join("\n");
+}
+
+/**
+ * One-line WhatsApp summary for a single `marketing_posts` row.
+ * Exported so the scheduler's weekly brief job can render the same
+ * format without re-running the formatter.
+ */
+export function formatMarketingPostLine(p: MarketingPost): string {
+  const channel = p.channel ?? "unknown";
+  const topic = (p.topic ?? "").slice(0, 60) || "(no topic)";
+  if (p.status === "success") {
+    const tail = p.externalUrl ? ` — ${p.externalUrl}` : "";
+    return `• ✅ ${channel} · ${topic}${tail}`;
+  }
+  const detail = (p.error ?? "publish failed").slice(0, 120);
+  return `• ❌ ${channel} · ${topic} — ${detail}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +754,8 @@ export async function publishPostFromTopic(topic: string): Promise<PublishPostRe
     status: outcome.ok ? "ok" : "error",
     errorMessage: outcome.ok ? null : outcome.detail.slice(0, 400),
   });
+  // First-class record of the post for the dashboard / weekly brief.
+  await recordPublishedPost({ topic: cleanTopic, postBody, outcome });
   return { topic: cleanTopic, postBody, outcome };
 }
 
@@ -813,6 +899,13 @@ export async function handleConfirmPublishSend(senderId?: string): Promise<strin
     tokensUsed: 0,
     status: outcome.ok ? "ok" : "error",
     errorMessage: outcome.ok ? null : outcome.detail.slice(0, 400),
+  });
+  // First-class record of the confirmed publish for the dashboard /
+  // weekly brief — same row shape as the legacy auto-publish path.
+  await recordPublishedPost({
+    topic: draft.topic,
+    postBody: draft.postBody,
+    outcome,
   });
   return formatPublishOutcomeReply({
     topic: draft.topic,
