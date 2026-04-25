@@ -7,6 +7,7 @@ import {
   isAgentBudgetSafe,
   getAgentBudgetVerdict,
 } from "../companyOs/costTracker";
+import { withRetry } from "../companyOs/retry";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -102,12 +103,16 @@ export async function chatCompletion(
   }
 
   try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 1024,
-    });
+    const response = await withRetry(
+      () =>
+        openai.chat.completions.create({
+          model,
+          messages,
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.maxTokens ?? 1024,
+        }),
+      { agentName: options.agentName, opName: "openai.chat" },
+    );
 
     const content = response.choices[0]?.message?.content || "";
     const tokensUsed = response.usage?.total_tokens || 0;

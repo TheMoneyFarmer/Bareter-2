@@ -50,6 +50,10 @@ import {
   acknowledgeAlert,
   snoozeAlerts,
 } from "./intelligenceAgent";
+import {
+  parseBoardReportCommand,
+  handleBoardReportCommand,
+} from "./boardReportAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -74,6 +78,8 @@ const HELP_TEXT = [
   "• `alerts` — open anomaly alerts from the Intelligence Agent",
   "• `ack <id>` — acknowledge an alert by short id (8-char prefix)",
   "• `quiet alerts` — snooze non-critical alerts for 24h",
+  "• `board report` — last month's PDF (auto-generates if missing)",
+  "• `board report YYYY-MM` — specific month's board PDF",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -459,6 +465,12 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
       tokensUsed: 0,
     });
     return out;
+  }
+
+  // Board Report Agent surface — generates / fetches the monthly board PDF.
+  // Keep this branch BEFORE the freeform fallback so it doesn't burn budget.
+  if (parseBoardReportCommand(text)) {
+    return handleBoardReportCommand(text);
   }
 
   if (normalized.startsWith("forget ")) {

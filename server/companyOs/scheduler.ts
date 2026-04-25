@@ -16,6 +16,12 @@ import { runDisputeRiskSummary } from "./legalAgent";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { runIntelligenceSweep } from "./intelligenceAgent";
+import {
+  generateMonthlyReport,
+  lastCompletedMonthYyyyMm,
+  BOARD_REPORT_SIGNED_URL_TTL_SEC,
+} from "./boardReportAgent";
+import { withRetry } from "./retry";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
 const isProd = () => process.env.NODE_ENV === "production";
@@ -27,7 +33,10 @@ function schedule(name: string, expr: string, run: () => Promise<void>) {
   const task = cron.schedule(
     expr,
     () => {
-      run().catch((err) => {
+      // Wrap each cron tick in `withRetry` so a single transient failure
+      // (e.g. brief Object Storage 5xx, OpenAI 429) doesn't silently kill
+      // the day's job. Final failures are logged to companyOsLogs.
+      withRetry(run, { agentName: "scheduler", opName: name }).catch((err) => {
         console.error(`[companyOs.scheduler] ${name} failed:`, err);
       });
     },
@@ -179,6 +188,40 @@ async function intelligenceSweepJob(): Promise<void> {
   }
 }
 
+async function monthlyBoardReportJob(): Promise<void> {
+  // Always targets the most recently completed calendar month.
+  const month = lastCompletedMonthYyyyMm();
+  try {
+    const r = await generateMonthlyReport(month);
+    console.log(
+      `[companyOs.scheduler] monthlyBoardReport: month=${month} pdfBytes=${r.report.pdfSizeBytes} truncated=${r.truncated}`,
+    );
+    if (!isFounderConfigured()) {
+      console.log("[companyOs.scheduler] monthlyBoardReport: founder number not set, skipping ping");
+      return;
+    }
+    let url = r.signedUrl;
+    if (!url && r.report.objectStorageKey) {
+      try {
+        url = await getSignedDownloadUrl(r.report.objectStorageKey, BOARD_REPORT_SIGNED_URL_TTL_SEC);
+      } catch (err) {
+        console.error("[companyOs.scheduler] monthlyBoardReport signed URL failed:", err);
+      }
+    }
+    const lines = [
+      `📑 *Board report ready — ${month}*`,
+      `PDF size: ${(r.report.pdfSizeBytes / 1024).toFixed(0)} KB`,
+    ];
+    if (url) lines.push(`Download: ${url}`);
+    if (r.truncated) lines.push("(some sections were truncated to stay under 5 MB)");
+    lines.push("");
+    lines.push(r.report.summaryText.slice(0, 1200));
+    await notifyFounder(lines.join("\n"));
+  } catch (err) {
+    console.error("[companyOs.scheduler] monthlyBoardReport failed:", err);
+  }
+}
+
 async function budgetWarningJob(): Promise<void> {
   if (!isFounderConfigured()) return;
   const v = await getBudgetVerdict();
@@ -236,6 +279,13 @@ export function startScheduler(): void {
   // dedup'd at the SQL level (alertType + dayKey) so multiple ticks per
   // day are safe — at most one alert of each type per UTC day.
   schedule("intelligenceSweep", "0 6,10,14,18,22 * * *", intelligenceSweepJob);
+  // 10:00 Dubai on the 1st of every month (== 06:00 UTC) — Board Report
+  // Agent. Aggregates the prior calendar month's KPIs / finance / sales
+  // / marketing / legal / alerts / AI cost into a multi-section PDF,
+  // uploads it to private object storage, and pings the founder with a
+  // signed download link. Idempotent on `reportMonth` so re-runs of
+  // the same month overwrite cleanly.
+  schedule("monthlyBoardReport", "0 10 1 * *", monthlyBoardReportJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

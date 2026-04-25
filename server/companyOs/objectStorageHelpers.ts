@@ -9,6 +9,7 @@
 // that powers `ObjectStorageService` for those two operations only.
 
 import { objectStorageClient } from "../replit_integrations/object_storage";
+import { withRetry } from "./retry";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
@@ -78,10 +79,14 @@ export async function uploadPrivateBuffer(
 ): Promise<string> {
   const fullPath = resolveFullPath(relativeKey);
   const { bucketName, objectName } = parseObjectPath(fullPath);
-  await objectStorageClient
-    .bucket(bucketName)
-    .file(objectName)
-    .save(buffer, { contentType, resumable: false });
+  await withRetry(
+    () =>
+      objectStorageClient
+        .bucket(bucketName)
+        .file(objectName)
+        .save(buffer, { contentType, resumable: false }),
+    { agentName: "objectStorage", opName: "uploadPrivateBuffer" },
+  );
   return relativeKey;
 }
 
@@ -96,24 +101,32 @@ export async function getSignedDownloadUrl(
 ): Promise<string> {
   const fullPath = resolveFullPath(relativeKey);
   const { bucketName, objectName } = parseObjectPath(fullPath);
-  const res = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bucket_name: bucketName,
-        object_name: objectName,
-        method: "GET",
-        expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-      }),
+  const res = await withRetry(
+    async () => {
+      const r = await fetch(
+        `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bucket_name: bucketName,
+            object_name: objectName,
+            method: "GET",
+            expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+          }),
+        },
+      );
+      if (!r.ok) {
+        const err = new Error(
+          `Replit sidecar signed URL failed: HTTP ${r.status} for ${relativeKey}`,
+        ) as Error & { status: number };
+        err.status = r.status;
+        throw err;
+      }
+      return r;
     },
+    { agentName: "objectStorage", opName: "getSignedDownloadUrl" },
   );
-  if (!res.ok) {
-    throw new Error(
-      `Replit sidecar signed URL failed: HTTP ${res.status} for ${relativeKey}`,
-    );
-  }
   const json = (await res.json()) as { signed_url?: string };
   if (!json.signed_url) {
     throw new Error("Replit sidecar response missing signed_url field");

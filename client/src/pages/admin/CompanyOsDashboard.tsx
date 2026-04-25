@@ -22,6 +22,7 @@ import {
   FileText,
   Megaphone,
   Bot,
+  ClipboardList,
 } from "lucide-react";
 import {
   AreaChart,
@@ -87,6 +88,20 @@ interface LiveKpis {
     spendAed: number;
     conversions: number;
   }[];
+}
+
+interface BoardReport {
+  id: string;
+  reportMonth: string;
+  objectStorageKey: string;
+  summaryText: string;
+  pdfSizeBytes: number;
+  createdAt: string | null;
+}
+
+interface BoardReportsResponse {
+  count: number;
+  reports: BoardReport[];
 }
 
 interface SnapshotsResponse {
@@ -254,6 +269,65 @@ export default function CompanyOsDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  // Board reports — last 12 months of generated PDFs. Refreshed on the
+  // KPI cadence so a fresh cron run shows up without a manual reload.
+  const boardReportsQuery = useQuery<BoardReportsResponse>({
+    queryKey: ["/api/company-os/board-reports"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const generateBoardReportMutation = useMutation<unknown, Error, string | undefined>({
+    mutationFn: async (month) => {
+      const url = month
+        ? `/api/company-os/board-reports/generate?month=${encodeURIComponent(month)}`
+        : `/api/company-os/board-reports/generate`;
+      const res = await apiRequest("POST", url);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-os/board-reports"] });
+      toast({ title: "Board report generated" });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Generate failed",
+        description: err.message,
+      });
+    },
+  });
+
+  async function downloadBoardReport(month: string) {
+    try {
+      const res = await fetch(
+        `/api/company-os/board-reports/${encodeURIComponent(month)}/pdf`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: "Download failed",
+          description: `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const j: { signedUrl?: string } = await res.json();
+      if (j.signedUrl) {
+        window.open(j.signedUrl, "_blank", "noopener,noreferrer");
+      } else {
+        toast({ variant: "destructive", title: "Download failed", description: "No URL returned" });
+      }
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: (err as Error).message,
+      });
+    }
+  }
+
   const ackMutation = useMutation<unknown, Error, string>({
     mutationFn: async (alertId: string) => {
       const res = await apiRequest(
@@ -302,7 +376,11 @@ export default function CompanyOsDashboard() {
   const live = liveQuery.data;
   const isLoading = liveQuery.isLoading;
   const isFetching =
-    liveQuery.isFetching || snapshotsQuery.isFetching || alertsQuery.isFetching;
+    liveQuery.isFetching ||
+    snapshotsQuery.isFetching ||
+    alertsQuery.isFetching ||
+    boardReportsQuery.isFetching;
+  const boardReports = boardReportsQuery.data?.reports ?? [];
   const error = liveQuery.error ?? snapshotsQuery.error;
   const openAlerts = alertsQuery.data?.alerts ?? [];
   const snoozedUntilDate = alertsQuery.data?.snoozedUntil
@@ -753,6 +831,66 @@ export default function CompanyOsDashboard() {
             </PieChart>
           </ChartCard>
         </div>
+
+        {/* Board reports — last 12 months of generated PDFs. The signed
+            URL is fetched on demand (not preloaded) so the dashboard
+            doesn't ship 12 short-lived URLs that may expire before the
+            user clicks. */}
+        <Card data-testid="card-board-reports">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <ClipboardList className="h-4 w-4" /> Board reports (last 12 months)
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateBoardReportMutation.mutate(undefined)}
+              disabled={generateBoardReportMutation.isPending}
+              data-testid="button-generate-board-report"
+            >
+              {generateBoardReportMutation.isPending ? "Generating…" : "Generate last month"}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {boardReportsQuery.isLoading && (
+              <Skeleton className="h-16 w-full" />
+            )}
+            {!boardReportsQuery.isLoading && boardReports.length === 0 && (
+              <p className="text-xs text-muted-foreground" data-testid="text-board-reports-empty">
+                No board reports yet. Click "Generate last month" or wait for the 1st of next month.
+              </p>
+            )}
+            {boardReports.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-start justify-between gap-2 rounded-md border border-border p-2 text-xs"
+                data-testid={`row-board-report-${r.reportMonth}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium" data-testid={`text-board-report-month-${r.reportMonth}`}>
+                    {r.reportMonth}
+                  </p>
+                  <p className="line-clamp-2 text-muted-foreground">
+                    {(r.summaryText ?? "").slice(0, 220)}
+                  </p>
+                  <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                    {(r.pdfSizeBytes / 1024).toFixed(0)} KB ·{" "}
+                    {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadBoardReport(r.reportMonth)}
+                  data-testid={`button-download-board-report-${r.reportMonth}`}
+                >
+                  <Download className="mr-1 h-3 w-3" />
+                  PDF
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         {/* Side surfaces — legal docs, briefs, campaigns */}
         <div className="grid gap-3 md:grid-cols-3">

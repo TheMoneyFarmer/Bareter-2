@@ -63,6 +63,13 @@ import {
   getAlertsSnoozedUntil,
 } from "./intelligenceAgent";
 import { getAllAgentSpendsAed } from "./costTracker";
+import {
+  generateMonthlyReport,
+  getRecentReports,
+  getReportByMonth,
+  parseReportMonth,
+  BOARD_REPORT_SIGNED_URL_TTL_SEC,
+} from "./boardReportAgent";
 import { z } from "zod";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
@@ -643,6 +650,70 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /alerts/budgets failed:", err);
       res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Board Report Agent — admin surface. Founder-only via requireAdmin.
+  //   • GET    /board-reports                 — last 12 months, newest first.
+  //   • POST   /board-reports/generate        — trigger now (?month=YYYY-MM).
+  //   • GET    /board-reports/:month/pdf      — signed download URL.
+  // The list never throws (returns [] on DB failure); the PDF endpoint
+  // returns 404 when no row matches so the dashboard can render the
+  // right toast.
+  // ---------------------------------------------------------------------------
+  router.get("/board-reports", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 12);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(120, limitRaw)) : 12;
+      const rows = await getRecentReports(limit);
+      res.json({ count: rows.length, reports: rows });
+    } catch (err) {
+      console.error("[companyOs] /board-reports failed:", err);
+      res.status(500).json({ count: 0, reports: [], message: "Internal error" });
+    }
+  });
+
+  router.post("/board-reports/generate", opts.requireAdmin, async (req, res) => {
+    try {
+      const monthRaw = (req.query.month as string | undefined) ?? (req.body?.month as string | undefined);
+      if (monthRaw) {
+        try {
+          parseReportMonth(monthRaw);
+        } catch (err) {
+          return res.status(400).json({ ok: false, message: (err as Error).message });
+        }
+      }
+      const result = await generateMonthlyReport(monthRaw);
+      res.json({
+        ok: true,
+        report: result.report,
+        signedUrl: result.signedUrl,
+        truncated: result.truncated,
+      });
+    } catch (err) {
+      console.error("[companyOs] /board-reports/generate failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.get("/board-reports/:month/pdf", opts.requireAdmin, async (req, res) => {
+    try {
+      const month = String(req.params.month || "");
+      try {
+        parseReportMonth(month);
+      } catch (err) {
+        return res.status(400).json({ ok: false, message: (err as Error).message });
+      }
+      const row = await getReportByMonth(month);
+      if (!row || !row.objectStorageKey) {
+        return res.status(404).json({ ok: false, message: "Not found" });
+      }
+      const url = await getSignedDownloadUrl(row.objectStorageKey, BOARD_REPORT_SIGNED_URL_TTL_SEC);
+      res.json({ ok: true, signedUrl: url, expiresInSec: BOARD_REPORT_SIGNED_URL_TTL_SEC });
+    } catch (err) {
+      console.error("[companyOs] /board-reports/:month/pdf failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
     }
   });
 

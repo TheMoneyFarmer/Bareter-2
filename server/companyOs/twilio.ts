@@ -7,6 +7,7 @@
 
 import twilio from "twilio";
 import type { Twilio } from "twilio";
+import { withRetry } from "./retry";
 
 const MAX_BODY_LEN = 4000;
 
@@ -72,7 +73,10 @@ export async function sendWhatsApp(to: string, body: string): Promise<boolean> {
     return false;
   }
   try {
-    await client.messages.create({ from, to: dest, body: truncateBody(body) });
+    await withRetry(
+      () => client.messages.create({ from, to: dest, body: truncateBody(body) }),
+      { agentName: "twilio", opName: "sendWhatsApp" },
+    );
     return true;
   } catch (err) {
     console.error("[companyOs.twilio] sendWhatsApp failed:", err);
