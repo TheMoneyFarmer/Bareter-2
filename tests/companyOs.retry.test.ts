@@ -35,10 +35,35 @@ vi.mock("../server/db", () => ({
   },
 }));
 
-import { withRetry, classifyError } from "../server/companyOs/retry";
+// ---------------------------------------------------------------------------
+// Twilio mock — captures every founder page so we can assert that
+// critical-path failures (Task #82) page the founder, non-critical
+// failures don't, and dedupe within a 1h window suppresses repeats.
+// `pageFounderResponse` lets a single test simulate a transient
+// page-send failure to verify the dedupe is NOT recorded on failure.
+// ---------------------------------------------------------------------------
+const pages: string[] = [];
+let pageFounderResponse: boolean | (() => boolean) = true;
+vi.mock("../server/companyOs/twilio", () => ({
+  pageFounder: vi.fn(async (body: string) => {
+    pages.push(body);
+    return typeof pageFounderResponse === "function"
+      ? pageFounderResponse()
+      : pageFounderResponse;
+  }),
+}));
+
+import {
+  withRetry,
+  classifyError,
+  _resetPageDedupeForTests,
+} from "../server/companyOs/retry";
 
 beforeEach(() => {
   inserted.length = 0;
+  pages.length = 0;
+  pageFounderResponse = true;
+  _resetPageDedupeForTests();
   vi.useRealTimers();
 });
 
@@ -244,5 +269,267 @@ describe("withRetry — exponential backoff", () => {
     expect(err).toBeInstanceOf(Error);
     expect(String((err as Error).message)).toContain("retry me");
     vi.useRealTimers();
+  });
+});
+
+// ===========================================================================
+// withRetry — founder paging on critical-path failure (Task #82)
+// ===========================================================================
+describe("withRetry — founder paging", () => {
+  it("pages the founder when a critical agent fails terminally", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio is down");
+      e.status = 503;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 1,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow("twilio is down");
+    expect(pages).toHaveLength(1);
+    // Body must include the agent name, op, attempt count, and error.
+    const body = pages[0];
+    expect(body).toContain("twilio");
+    expect(body).toContain("sendWhatsApp");
+    expect(body).toContain("attempts: 2");
+    expect(body).toContain("twilio is down");
+  });
+
+  it("pages on a critical-OP failure even when agentName is generic", async () => {
+    // chatCompletion routes every Company OS sub-agent's OpenAI call
+    // through opName="openai.chat", so the allow-list keys on the op
+    // rather than the agent for OpenAI specifically.
+    const fn = vi.fn(async () => {
+      const e: any = new Error("openai outage");
+      e.status = 500;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "salesAgent",
+        opName: "openai.chat",
+      }),
+    ).rejects.toThrow("openai outage");
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toContain("openai.chat");
+    expect(pages[0]).toContain("salesAgent");
+  });
+
+  it("does NOT page when the failing agent is not on the allow-list", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("dashboard query failed");
+      e.status = 500;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "dashboardAgent",
+        opName: "render",
+      }),
+    ).rejects.toThrow("dashboard query failed");
+    expect(pages).toHaveLength(0);
+    // The failure log row must still be written so the dashboard
+    // surfaces the outage even though we didn't page WhatsApp.
+    expect(inserted.filter((r) => r.status === "error")).toHaveLength(1);
+  });
+
+  it("respects an explicit `paging: \"founder\"` opt-in for non-critical agents", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("custom critical");
+      e.status = 500;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "marketingAgent",
+        opName: "publishPost",
+        paging: "founder",
+      }),
+    ).rejects.toThrow("custom critical");
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toContain("marketingAgent");
+  });
+
+  it("respects an explicit `paging: \"none\"` opt-out for critical agents", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio down but quiet");
+      e.status = 503;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+        paging: "none",
+      }),
+    ).rejects.toThrow("twilio down but quiet");
+    expect(pages).toHaveLength(0);
+  });
+
+  it("does NOT page on a successful attempt after retries", async () => {
+    let calls = 0;
+    const fn = vi.fn(async () => {
+      calls++;
+      if (calls < 2) {
+        const e: any = new Error("rate limited");
+        e.status = 429;
+        throw e;
+      }
+      return "ok";
+    });
+    const out = await withRetry(fn, {
+      retries: 3,
+      baseMs: 1,
+      agentName: "twilio",
+      opName: "sendWhatsApp",
+    });
+    expect(out).toBe("ok");
+    // No final-error row, no founder page.
+    expect(pages).toHaveLength(0);
+    expect(inserted.filter((r) => r.status === "error")).toHaveLength(0);
+  });
+
+  it("de-duplicates pages per agent+op within the 1h window", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio still down");
+      e.status = 503;
+      throw e;
+    });
+    // First failure → page sent.
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    // Second failure within the dedupe window → page suppressed.
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    // Third failure within the dedupe window → still suppressed.
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(1);
+    // But every failure still wrote its own error log row so the
+    // dashboard sees the full pattern.
+    expect(inserted.filter((r) => r.status === "error")).toHaveLength(3);
+  });
+
+  it("dedupes per (agent, op) — different ops on the same agent each get their own page", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("storage down");
+      e.status = 500;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "objectStorage",
+        opName: "uploadPrivateBuffer",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "objectStorage",
+        opName: "getSignedDownloadUrl",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(2);
+  });
+
+  it("does NOT record the dedupe timestamp when the page itself fails to send", async () => {
+    // First terminal failure: simulate Twilio rejecting the page (e.g.
+    // transient outage). The dedupe must NOT be recorded — otherwise
+    // the next failure within the hour would be silently suppressed
+    // even though the founder was never actually paged.
+    pageFounderResponse = false;
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio is down");
+      e.status = 503;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(1); // attempted once, returned false
+
+    // Second terminal failure: simulate Twilio recovering. Because
+    // the previous send failed, the dedupe should NOT have been
+    // recorded, so we should attempt to page again immediately.
+    pageFounderResponse = true;
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(2);
+
+    // Third terminal failure: now Twilio accepted the previous send
+    // so the dedupe IS recorded — this one should be suppressed.
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(2);
+  });
+
+  it("pages on a terminal 4xx short-circuit for a critical agent (no retries)", async () => {
+    const fn = vi.fn(async () => {
+      const e: any = new Error("invalid recipient");
+      e.status = 400;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 3,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow("invalid recipient");
+    // Single attempt because 400 short-circuits.
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toContain("attempts: 1");
   });
 });

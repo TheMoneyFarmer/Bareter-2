@@ -18,6 +18,13 @@
 //     terminal error (4xx other than 408/425/429) on attempt 1, so
 //     the founder can see retry-driven failures alongside other
 //     agent activity in the dashboard / `agents` WhatsApp command.
+//   • For critical paths (Twilio outbound, OpenAI completions,
+//     Object Storage uploads), final failures ALSO page the founder
+//     on WhatsApp so production outages aren't invisible until
+//     someone opens the dashboard. Pages are de-duplicated per
+//     agent+op within a 1-hour window so a flapping API can't spam
+//     the founder. Callers can opt-in explicitly via
+//     `paging: "founder"` or opt-out via `paging: "none"`.
 //
 // This is the architectural rule the spec calls out: "the retry
 // helper must NEVER swallow errors silently". The helper still
@@ -50,6 +57,20 @@ export interface WithRetryOptions {
    * usual node fetch network errors.
    */
   isRetryable?: (err: unknown) => boolean;
+  /**
+   * Page-the-founder behaviour on terminal failure (after retries
+   * are exhausted or a terminal 4xx short-circuits attempt 1):
+   *   • `"founder"` — always page the founder on WhatsApp.
+   *   • `"none"`    — never page, even if the agent is on the
+   *                    critical-path allow-list.
+   *   • `"auto"` (default) — page only if `agentName` or `opName`
+   *                    is on the critical-path allow-list (Twilio
+   *                    outbound, OpenAI completions, Object Storage
+   *                    uploads).
+   * Pages are de-duplicated per (agentName, opName) within a 1-hour
+   * window so a flapping upstream can't spam the founder.
+   */
+  paging?: "founder" | "none" | "auto";
 }
 
 export interface RetryClassification {
@@ -171,11 +192,117 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ---------------------------------------------------------------------------
+// Founder paging on terminal failure (critical-path allow-list)
+// ---------------------------------------------------------------------------
+
+/**
+ * Agents whose terminal failures warrant an immediate WhatsApp page
+ * to the founder. Anything not in this set (and not in
+ * `CRITICAL_OPS`) only writes the failure log row.
+ */
+const CRITICAL_AGENTS = new Set<string>(["twilio", "objectStorage"]);
+
+/**
+ * Op names whose terminal failures warrant an immediate page —
+ * useful when the agentName varies (e.g. every Company OS sub-agent
+ * routes its OpenAI calls through `chatCompletion`, but they all
+ * share `opName: "openai.chat"`).
+ */
+const CRITICAL_OPS = new Set<string>(["openai.chat"]);
+
+const PAGE_DEDUPE_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * In-memory dedupe map: `${agentName}|${opName}` → last-page epoch
+ * ms. A flapping API can otherwise spam the founder if every retry
+ * cycle fails terminally; we send at most one page per agent+op per
+ * `PAGE_DEDUPE_MS` window. Memory grows with the unique
+ * (agent, op) cardinality, which is bounded by the allow-list above.
+ */
+const pageDedupe = new Map<string, number>();
+
+/**
+ * Reset hook for tests. Not exported in the public API surface
+ * (callers shouldn't rely on it) but available so unit tests can
+ * isolate the dedupe state across cases.
+ */
+export function _resetPageDedupeForTests(): void {
+  pageDedupe.clear();
+}
+
+function shouldPage(
+  paging: WithRetryOptions["paging"],
+  agentName: string,
+  opName: string,
+): boolean {
+  if (paging === "none") return false;
+  if (paging === "founder") return true;
+  // "auto" / undefined → consult allow-lists.
+  return CRITICAL_AGENTS.has(agentName) || CRITICAL_OPS.has(opName);
+}
+
+/**
+ * True iff a page for `(agentName, opName)` was sent within the
+ * dedupe window. Read-only — the timestamp is only recorded after
+ * a successful `pageFounder` call (see below) so a transient page
+ * failure doesn't suppress the next retry's page for a full hour.
+ */
+function wasPagedRecently(
+  agentName: string,
+  opName: string,
+  now: number = Date.now(),
+): boolean {
+  const key = `${agentName}|${opName}`;
+  const last = pageDedupe.get(key) ?? 0;
+  return now - last < PAGE_DEDUPE_MS;
+}
+
+function markPaged(
+  agentName: string,
+  opName: string,
+  now: number = Date.now(),
+): void {
+  pageDedupe.set(`${agentName}|${opName}`, now);
+}
+
+/**
+ * Best-effort founder page on terminal failure. Uses a dynamic
+ * import of `./twilio` to avoid the circular import (twilio.ts
+ * already imports `withRetry` from this module). Failures here are
+ * caught and console-logged so they can never bring down the
+ * caller — the failure log row was already written by the time we
+ * get here. Returns true iff Twilio accepted the page so the caller
+ * can decide whether to record the dedupe timestamp.
+ */
+async function pageFounderOnFinalFailure(
+  agentName: string,
+  opName: string,
+  attempt: number,
+  err: unknown,
+): Promise<boolean> {
+  try {
+    const mod = await import("./twilio");
+    const body = [
+      `🚨 Agent failure`,
+      `agent: ${agentName}`,
+      `op: ${opName}`,
+      `attempts: ${attempt}`,
+      `error: ${describeError(err).slice(0, 500)}`,
+    ].join("\n");
+    return await mod.pageFounder(body);
+  } catch (pageErr) {
+    console.error("[companyOs.retry] pageFounderOnFinalFailure failed:", pageErr);
+    return false;
+  }
+}
+
 /**
  * Run `fn` with retry + exponential backoff on transient failures.
  * Re-throws the final error so callers retain full control over
  * graceful degradation. Final failures are recorded to companyOsLogs
- * before re-throwing.
+ * before re-throwing, and (for critical-path agents/ops) page the
+ * founder on WhatsApp with a 1-hour dedupe window per agent+op.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -207,6 +334,28 @@ export async function withRetry<T>(
       // dashboard can filter out the noise without losing the trail.
       await logAttempt(agentName, opName, err, attempt, classification, !canRetry);
       if (!canRetry) {
+        // Critical-path failure → page the founder on WhatsApp,
+        // de-duplicated per agent+op within a 1-hour window so a
+        // flapping upstream can't spam them. Best-effort: any page
+        // failure is swallowed (the log row already captured the
+        // outage). The dedupe timestamp is only recorded on a
+        // SUCCESSFUL page so a transient page-send failure doesn't
+        // suppress alerts for a full hour.
+        if (shouldPage(opts.paging, agentName, opName)) {
+          if (!wasPagedRecently(agentName, opName)) {
+            const sent = await pageFounderOnFinalFailure(
+              agentName,
+              opName,
+              attempt,
+              err,
+            );
+            if (sent) markPaged(agentName, opName);
+          } else {
+            console.log(
+              `[companyOs.retry] page suppressed for ${agentName}/${opName} (within 1h dedupe window)`,
+            );
+          }
+        }
         throw err;
       }
       // Exponential: baseMs, 2*baseMs, 4*baseMs, ...

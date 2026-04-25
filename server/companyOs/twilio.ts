@@ -98,6 +98,31 @@ export async function notifyFounder(body: string): Promise<boolean> {
 }
 
 /**
+ * Best-effort, single-attempt page to the founder. Used by the retry
+ * helper to alert on critical agent failures WITHOUT going through
+ * `withRetry` / `notifyFounder` (which themselves use `withRetry`
+ * and would re-enter the same paging path on failure, causing
+ * recursion). Returns true on a successful Twilio API call, false on
+ * any failure (missing config, API error, etc.). Never throws.
+ */
+export async function pageFounder(body: string): Promise<boolean> {
+  const founder = process.env.FOUNDER_WHATSAPP_NUMBER;
+  if (!founder) return false;
+  const client = getClient();
+  if (!client) return false;
+  const from = normalizeWhatsappNumber(process.env.TWILIO_WHATSAPP_FROM);
+  const dest = normalizeWhatsappNumber(founder);
+  if (!from || !dest) return false;
+  try {
+    await client.messages.create({ from, to: dest, body: truncateBody(body) });
+    return true;
+  } catch (err) {
+    console.error("[companyOs.twilio] pageFounder failed:", err);
+    return false;
+  }
+}
+
+/**
  * Verify a Twilio webhook signature against the URL + form-body params.
  * In non-production we skip verification so the founder can hit the
  * webhook from the Replit dev URL during initial setup; in production
