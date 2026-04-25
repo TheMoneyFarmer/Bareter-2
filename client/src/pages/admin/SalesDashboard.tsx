@@ -36,6 +36,7 @@ import {
   ArrowLeft,
   ArrowUp,
   ArrowUpDown,
+  ExternalLink,
   Pencil,
   RefreshCw,
   Save,
@@ -509,7 +510,17 @@ export default function SalesDashboard() {
                             className="font-medium"
                             data-testid={`text-lead-name-${lead.id}`}
                           >
-                            {lead.fullName}
+                            <a
+                              href={`/users/${lead.userId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                              data-testid={`link-lead-profile-${lead.id}`}
+                              title="View profile"
+                            >
+                              <span className="truncate">{lead.fullName}</span>
+                              <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+                            </a>
                           </TableCell>
                           <TableCell
                             className="text-xs text-muted-foreground"
