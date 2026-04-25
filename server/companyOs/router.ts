@@ -48,6 +48,12 @@ import {
   runVatCheck,
   CONTRACT_SIGNED_URL_TTL_SEC,
 } from "./legalAgent";
+import {
+  captureDailySnapshot,
+  getDashboardData,
+  getRecentSnapshots as getRecentKpiSnapshots,
+  getSnapshotByDate as getKpiSnapshotByDate,
+} from "./dashboardAgent";
 import { z } from "zod";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
@@ -428,6 +434,77 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error("[companyOs] /legal/vat-check failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Dashboard Agent endpoints (admin-only). Backs /admin/company-os.
+  // We reuse the project's `requireAdmin` guard — admin role is the
+  // founder gate by convention, and the task brief explicitly asked us
+  // to reuse the existing middleware rather than introduce a new one.
+  //
+  //   • GET /dashboard/live          → live aggregation (polled every 60s).
+  //   • GET /dashboard/snapshots     → last N persisted snapshots.
+  //   • GET /dashboard/snapshot/:date → single snapshot (date OR date.json).
+  //   • POST /dashboard/snapshot     → manual snapshot trigger (debug helper).
+  // ---------------------------------------------------------------------------
+
+  router.get("/dashboard/live", opts.requireAdmin, async (_req, res) => {
+    try {
+      const data = await getDashboardData();
+      res.json(data);
+    } catch (err) {
+      console.error("[companyOs] /dashboard/live failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/dashboard/snapshots", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 30);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(180, limitRaw)) : 30;
+      const snapshots = await getRecentKpiSnapshots(limit);
+      res.json({ count: snapshots.length, snapshots });
+    } catch (err) {
+      console.error("[companyOs] /dashboard/snapshots failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/dashboard/snapshot/:date", opts.requireAdmin, async (req, res) => {
+    try {
+      // Accept both `2026-04-25` and `2026-04-25.json` so the JSON
+      // download button can use a friendly filename.
+      const raw = String(req.params.date || "");
+      const wantsJsonDownload = raw.endsWith(".json");
+      const date = wantsJsonDownload ? raw.slice(0, -5) : raw;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: "Invalid date — expected YYYY-MM-DD" });
+      }
+      const snap = await getKpiSnapshotByDate(date);
+      if (!snap) return res.status(404).json({ message: "Snapshot not found" });
+      if (wantsJsonDownload) {
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="kpi-snapshot-${date}.json"`,
+        );
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        return res.send(JSON.stringify(snap, null, 2));
+      }
+      res.json(snap);
+    } catch (err) {
+      console.error("[companyOs] /dashboard/snapshot/:date failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post("/dashboard/snapshot", opts.requireAdmin, async (_req, res) => {
+    try {
+      const r = await captureDailySnapshot();
+      res.json({ ok: true, ...r });
+    } catch (err) {
+      console.error("[companyOs] /dashboard/snapshot failed:", err);
       res.status(500).json({ ok: false, message: "Internal error" });
     }
   });

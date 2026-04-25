@@ -36,6 +36,7 @@ import {
   handleDisputeRiskCommand,
   handleVatCheckCommand,
 } from "./legalAgent";
+import { getKpiSummary } from "./dashboardAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -54,6 +55,7 @@ const HELP_TEXT = [
   "• `contract <partyA> | <partyB> | <exchange> | <valueAed>` — UAE-jurisdiction barter contract PDF",
   "• `dispute risk` — weekly dispute / report rollup with risk callouts",
   "• `vat check` — UAE VAT registration threshold check (per user, last 12 months)",
+  "• `dashboard` — KPI snapshot (users, posts, deals, GMV, AI spend) · alias `kpis`",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -348,6 +350,19 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
   }
   if (normalized === "vat check" || normalized === "vat" || normalized === "vat threshold") {
     return handleVatCheckCommand(text);
+  }
+
+  // Dashboard Agent surface — short KPI summary. LLM-free.
+  if (normalized === "dashboard" || normalized === "kpis" || normalized === "kpi") {
+    const out = await getKpiSummary();
+    await logLlmCall({
+      agentName: "manager",
+      command: "dashboard",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
   }
 
   return answerFreeform(text);

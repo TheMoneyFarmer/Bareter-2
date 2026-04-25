@@ -81,6 +81,7 @@ import {
   FileCheck,
   Bot,
   Sparkles,
+  Building2,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { Link, useLocation } from "wouter";
@@ -1424,6 +1425,16 @@ export function AdminPage() {
               {!sidebarCollapsed && <span>{item.label}</span>}
             </Button>
           ))}
+          <Link href="/admin/company-os">
+            <Button
+              variant="ghost"
+              className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-2" : ""}`}
+              data-testid="nav-company-os"
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              {!sidebarCollapsed && <span>Company OS</span>}
+            </Button>
+          </Link>
         </nav>
 
         <div className="p-2 border-t">

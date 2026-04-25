@@ -13,6 +13,7 @@ import { getBudgetVerdict } from "./costTracker";
 import { generateAndStoreBrief, BRIEF_SIGNED_URL_TTL_SEC } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
+import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -115,6 +116,17 @@ async function weeklyDisputeRiskJob(): Promise<void> {
   }
 }
 
+async function dailyDashboardSnapshotJob(): Promise<void> {
+  try {
+    const r = await captureDailySnapshot();
+    console.log(
+      `[companyOs.scheduler] dailyDashboardSnapshot: date=${r.date} inserted=${r.inserted}`,
+    );
+  } catch (err) {
+    console.error("[companyOs.scheduler] dailyDashboardSnapshot failed:", err);
+  }
+}
+
 async function dailySalesJob(): Promise<void> {
   try {
     const r = await runDailySalesSync();
@@ -175,6 +187,10 @@ export function startScheduler(): void {
   // 10:00 Dubai every Friday (== 06:00 UTC) — Legal Agent dispute risk
   // summary. Persists a `dispute_summary` row and pings the founder.
   schedule("weeklyDisputeRisk", "0 10 * * 5", weeklyDisputeRiskJob);
+  // 02:00 Dubai daily — Dashboard Agent KPI snapshot. Quiet hour,
+  // no founder notification — just persists a `kpi_snapshots` row so
+  // the admin page has 30-day history to chart.
+  schedule("dailyDashboardSnapshot", "0 2 * * *", dailyDashboardSnapshotJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

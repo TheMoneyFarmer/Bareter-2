@@ -804,6 +804,32 @@ export const legalDocuments = pgTable("legal_documents", {
   createdAtIdx: index("legal_documents_created_at_idx").on(table.createdAt),
 }));
 
+// KPI snapshots - one row per Dubai-day, captured by the Dashboard Agent
+// at 02:00 Asia/Dubai. Powers the WhatsApp `dashboard` short summary,
+// the /admin/company-os page (30-day trends), and the JSON export.
+// `extras` is a free-form blob for things we don't want columns for yet
+// (top-3 categories list, top-3 cities list, agent-by-agent cost map, etc).
+export const kpiSnapshots = pgTable("kpi_snapshots", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  snapshotDate: text("snapshot_date").notNull().unique(), // YYYY-MM-DD in Asia/Dubai
+  totalUsers: integer("total_users").notNull().default(0),
+  newUsersToday: integer("new_users_today").notNull().default(0),
+  activeUsers7d: integer("active_users_7d").notNull().default(0),
+  totalPosts: integer("total_posts").notNull().default(0),
+  postsToday: integer("posts_today").notNull().default(0),
+  totalDeals: integer("total_deals").notNull().default(0),
+  dealsCompletedToday: integer("deals_completed_today").notNull().default(0),
+  gmvAed7d: decimal("gmv_aed_7d", { precision: 12, scale: 2 }).notNull().default("0"),
+  completionRatePct: decimal("completion_rate_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  topCategory: text("top_category"),
+  topCity: text("top_city"),
+  aiCostAedMonthToDate: decimal("ai_cost_aed_month_to_date", { precision: 12, scale: 2 }).notNull().default("0"),
+  extras: jsonb("extras").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  snapshotDateIdx: index("kpi_snapshots_date_idx").on(table.snapshotDate),
+}));
+
 // Sales leads - DB-backed CRM for the Sales Agent. One row per Bareter user
 // that has been ingested by the agent. Replaces a third-party CRM (Airtable)
 // so the founder can filter / sort / edit from the Company OS admin page
@@ -1155,6 +1181,13 @@ export const insertSalesLeadSchema = createInsertSchema(salesLeads).omit({
 });
 export type InsertSalesLead = z.infer<typeof insertSalesLeadSchema>;
 export type SalesLead = typeof salesLeads.$inferSelect;
+
+export const insertKpiSnapshotSchema = createInsertSchema(kpiSnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertKpiSnapshot = z.infer<typeof insertKpiSnapshotSchema>;
+export type KpiSnapshot = typeof kpiSnapshots.$inferSelect;
 
 // Waitlist
 export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)
