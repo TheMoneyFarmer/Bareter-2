@@ -25,6 +25,11 @@ import {
   DEFAULT_MODEL,
 } from "./costTracker";
 import { formatFinanceReport, getWeeklyRevenue, dubaiDateString } from "./financeAgent";
+import {
+  handleMarketingCommand,
+  handleCampaignUpdateCommand,
+  handleDraftPostCommand,
+} from "./marketingAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -35,6 +40,9 @@ const HELP_TEXT = [
   "• `status` — platform health snapshot",
   "• `agents` — AI agent activity (24h)",
   "• `costs` — AI spend vs monthly budget",
+  "• `marketing` — latest weekly brief + recent campaigns",
+  "• `draft post <topic>` — IG/LinkedIn/X-ready post draft",
+  "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -294,6 +302,18 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
     const out = await getCostsReport();
     await logLlmCall({ agentName: "manager", command: "costs", inputPreview: text, outputPreview: out, tokensUsed: 0 });
     return out;
+  }
+
+  // Marketing Agent surface — these branches must come BEFORE the
+  // free-form fallback so they don't accidentally consume LLM budget.
+  if (normalized === "marketing") {
+    return handleMarketingCommand(text);
+  }
+  if (normalized.startsWith("campaign update")) {
+    return handleCampaignUpdateCommand(text);
+  }
+  if (normalized.startsWith("draft post")) {
+    return handleDraftPostCommand(text);
   }
 
   return answerFreeform(text);

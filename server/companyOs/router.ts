@@ -10,6 +10,13 @@ import type Stripe from "stripe";
 import { desc } from "drizzle-orm";
 import { db } from "../db";
 import { companyOsLogs } from "@shared/schema";
+import {
+  generateAndStoreBrief,
+  getAllBriefs,
+  getBriefById,
+  getRecentCampaigns,
+} from "./marketingAgent";
+import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { handleManagerMessage, composeDailyBriefing } from "./managerAgent";
 import {
   handleStripePaymentSucceeded,
@@ -222,6 +229,64 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /test-briefing failed:", err);
       res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Marketing Agent endpoints (admin-only). Surfaces briefs + campaigns to
+  // the existing Admin Dashboard so the founder can see Monday-cron output
+  // and trigger ad-hoc briefs without waiting for the next Monday.
+  // ---------------------------------------------------------------------------
+
+  router.get("/briefs", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 50;
+      const briefs = await getAllBriefs(limit);
+      res.json({ count: briefs.length, briefs });
+    } catch (err) {
+      console.error("[companyOs] /briefs failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/briefs/:id/pdf", opts.requireAdmin, async (req, res) => {
+    try {
+      const brief = await getBriefById(req.params.id);
+      if (!brief) return res.status(404).json({ message: "Brief not found" });
+      if (!brief.pdfStorageKey) {
+        return res.status(404).json({ message: "Brief has no PDF (generation may have failed)" });
+      }
+      // Short 1h TTL for the dashboard download — different from the 7d
+      // TTL used in WhatsApp messages, since admins are already logged in
+      // and don't need a long-lived link.
+      const url = await getSignedDownloadUrl(brief.pdfStorageKey, 60 * 60);
+      res.json({ url });
+    } catch (err) {
+      console.error("[companyOs] /briefs/:id/pdf failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post("/generate-brief", opts.requireAdmin, async (_req, res) => {
+    try {
+      const brief = await generateAndStoreBrief();
+      res.json({ ok: true, brief });
+    } catch (err) {
+      console.error("[companyOs] /generate-brief failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error generating brief" });
+    }
+  });
+
+  router.get("/campaigns", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 50;
+      const campaigns = await getRecentCampaigns(limit);
+      res.json({ count: campaigns.length, campaigns });
+    } catch (err) {
+      console.error("[companyOs] /campaigns failed:", err);
+      res.status(500).json({ message: "Internal error" });
     }
   });
 

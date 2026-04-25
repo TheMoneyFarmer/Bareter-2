@@ -10,6 +10,8 @@ import { runDailyFinanceSnapshot } from "./financeAgent";
 import { composeDailyBriefing } from "./managerAgent";
 import { notifyFounder, isFounderConfigured } from "./twilio";
 import { getBudgetVerdict } from "./costTracker";
+import { generateAndStoreBrief, BRIEF_SIGNED_URL_TTL_SEC } from "./marketingAgent";
+import { getSignedDownloadUrl } from "./objectStorageHelpers";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
 const isProd = () => process.env.NODE_ENV === "production";
@@ -50,6 +52,37 @@ async function hourlyFinanceJob(): Promise<void> {
   await runDailyFinanceSnapshot();
 }
 
+async function weeklyMarketingBriefJob(): Promise<void> {
+  if (!isFounderConfigured()) {
+    console.log("[companyOs.scheduler] weeklyMarketingBrief skipped — founder number not set");
+    return;
+  }
+  try {
+    const brief = await generateAndStoreBrief();
+    let url = "";
+    if (brief.pdfStorageKey) {
+      try {
+        url = await getSignedDownloadUrl(brief.pdfStorageKey, BRIEF_SIGNED_URL_TTL_SEC);
+      } catch (err) {
+        console.error("[companyOs.scheduler] brief signed URL failed:", err);
+      }
+    }
+    const lines = [
+      `📣 *Weekly marketing brief — ${brief.weekStart}*`,
+      `*Theme:* ${brief.theme}`,
+      `*Suggested budget:* AED ${Number(brief.suggestedBudgetAed).toFixed(0)}`,
+    ];
+    if (Array.isArray(brief.hashtags) && brief.hashtags.length > 0) {
+      lines.push((brief.hashtags as string[]).join("  "));
+    }
+    if (url) lines.push(`PDF: ${url}`);
+    lines.push("", "Log results with `campaign update <name> ctr=X spend=Y conversions=Z`.");
+    await notifyFounder(lines.join("\n"));
+  } catch (err) {
+    console.error("[companyOs.scheduler] weeklyMarketingBrief failed:", err);
+  }
+}
+
 async function budgetWarningJob(): Promise<void> {
   if (!isFounderConfigured()) return;
   const v = await getBudgetVerdict();
@@ -86,6 +119,10 @@ export function startScheduler(): void {
   schedule("hourlyFinanceSnapshot", "0 8-22 * * *", hourlyFinanceJob);
   // 09:00 Dubai daily — budget warning when over 95%.
   schedule("budgetWarning", "0 9 * * *", budgetWarningJob);
+  // 09:30 Dubai every Monday — weekly marketing brief to the founder.
+  // Offset from the 09:00 budget warning so they don't compete for the
+  // same node-cron tick (and so the founder gets two distinct messages).
+  schedule("weeklyMarketingBrief", "30 9 * * 1", weeklyMarketingBriefJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing
