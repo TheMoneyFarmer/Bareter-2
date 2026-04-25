@@ -39,6 +39,16 @@ import {
 import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
 import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
 import { getLeads, getSalesReport, runDailySalesSync } from "./salesAgent";
+import {
+  generateContract,
+  parseContractCommand,
+  getRecentLegalDocuments,
+  getLegalDocumentById,
+  runDisputeRiskSummary,
+  runVatCheck,
+  CONTRACT_SIGNED_URL_TTL_SEC,
+} from "./legalAgent";
+import { z } from "zod";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
   const router = express.Router();
@@ -319,6 +329,105 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error("[companyOs] /sales/sync failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Legal Agent endpoints (admin-only). UAE-jurisdiction barter contracts,
+  // dispute-risk weekly rollup, and UAE VAT registration threshold check.
+  // ---------------------------------------------------------------------------
+
+  const contractInputSchema = z.object({
+    partyA: z.string().min(1).max(200),
+    partyB: z.string().min(1).max(200),
+    exchange: z.string().min(1).max(1000),
+    valueAed: z.coerce.number().positive().max(1_000_000_000),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  });
+
+  router.post("/legal/contract", opts.requireAdmin, async (req, res) => {
+    try {
+      // Accept either a structured JSON body or a raw `command` string
+      // matching the WhatsApp `contract a | b | exchange | value` syntax.
+      let parsed: z.infer<typeof contractInputSchema> | null = null;
+      if (typeof req.body?.command === "string") {
+        const m = parseContractCommand(req.body.command);
+        if (!m) {
+          return res
+            .status(400)
+            .json({ ok: false, message: "Invalid contract command format" });
+        }
+        parsed = { ...m };
+      } else {
+        const result = contractInputSchema.safeParse(req.body);
+        if (!result.success) {
+          return res
+            .status(400)
+            .json({ ok: false, message: result.error.message });
+        }
+        parsed = result.data;
+      }
+      const { document, signedUrl } = await generateContract(parsed);
+      res.json({ ok: true, document, signedUrl, ttlSec: CONTRACT_SIGNED_URL_TTL_SEC });
+    } catch (err) {
+      console.error("[companyOs] /legal/contract failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/documents", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 50;
+      const documents = await getRecentLegalDocuments(limit);
+      res.json({ count: documents.length, documents });
+    } catch (err) {
+      console.error("[companyOs] /legal/documents failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/documents/:id/pdf", opts.requireAdmin, async (req, res) => {
+    try {
+      const doc = await getLegalDocumentById(String(req.params.id));
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      if (!doc.objectStorageKey) {
+        return res
+          .status(404)
+          .json({ message: "Document has no PDF (only contracts have PDFs)" });
+      }
+      // 1h TTL for the dashboard download — admins are already logged in.
+      const url = await import("./objectStorageHelpers").then((m) =>
+        m.getSignedDownloadUrl(doc.objectStorageKey!, 60 * 60),
+      );
+      res.json({ url });
+    } catch (err) {
+      console.error("[companyOs] /legal/documents/:id/pdf failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/dispute-risk", opts.requireAdmin, async (req, res) => {
+    try {
+      const windowRaw = Number(req.query.windowDays ?? 7);
+      const windowDays = Number.isFinite(windowRaw)
+        ? Math.max(1, Math.min(90, windowRaw))
+        : 7;
+      const result = await runDisputeRiskSummary(windowDays);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[companyOs] /legal/dispute-risk failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/vat-check", opts.requireAdmin, async (_req, res) => {
+    try {
+      const result = await runVatCheck();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[companyOs] /legal/vat-check failed:", err);
       res.status(500).json({ ok: false, message: "Internal error" });
     }
   });

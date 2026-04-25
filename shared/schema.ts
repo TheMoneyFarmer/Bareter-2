@@ -779,6 +779,31 @@ export const campaignPerformance = pgTable("campaign_performance", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Legal documents - artifacts produced by the Legal Agent. Three flavours:
+//   • `contract` — UAE-jurisdiction barter contract PDF generated from
+//     a WhatsApp `contract` command. PDF lives in private object storage.
+//   • `dispute_summary` — the Friday weekly rollup of reports/disputes
+//     plus 3 LLM-authored risk callouts. Body stored on the row.
+//   • `vat_flag` — snapshot of users approaching / over the UAE VAT
+//     registration threshold (AED 187,500 rolling 12 months).
+export const legalDocuments = pgTable("legal_documents", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  documentType: text("document_type").notNull(), // 'contract' | 'dispute_summary' | 'vat_flag'
+  title: text("title").notNull(),
+  partyA: text("party_a"),
+  partyB: text("party_b"),
+  valueAed: decimal("value_aed", { precision: 12, scale: 2 }),
+  body: text("body"), // plain-text version (contract body OR summary text)
+  metadata: jsonb("metadata"), // structured details (exchange, callouts, flagged users, etc.)
+  objectStorageKey: text("object_storage_key"), // relative key under PRIVATE_OBJECT_DIR (PDFs only)
+  status: text("status").notNull().default("draft"), // 'draft' | 'generated' | 'sent' | 'archived'
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  typeIdx: index("legal_documents_type_idx").on(table.documentType),
+  createdAtIdx: index("legal_documents_created_at_idx").on(table.createdAt),
+}));
+
 // Sales leads - DB-backed CRM for the Sales Agent. One row per Bareter user
 // that has been ingested by the agent. Replaces a third-party CRM (Airtable)
 // so the founder can filter / sort / edit from the Company OS admin page
@@ -1114,6 +1139,14 @@ export const insertCampaignPerformanceSchema = createInsertSchema(campaignPerfor
 });
 export type InsertCampaignPerformance = z.infer<typeof insertCampaignPerformanceSchema>;
 export type CampaignPerformance = typeof campaignPerformance.$inferSelect;
+
+export const insertLegalDocumentSchema = createInsertSchema(legalDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertLegalDocument = z.infer<typeof insertLegalDocumentSchema>;
+export type LegalDocument = typeof legalDocuments.$inferSelect;
 
 export const insertSalesLeadSchema = createInsertSchema(salesLeads).omit({
   id: true,

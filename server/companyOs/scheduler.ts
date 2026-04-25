@@ -12,6 +12,7 @@ import { notifyFounder, isFounderConfigured } from "./twilio";
 import { getBudgetVerdict } from "./costTracker";
 import { generateAndStoreBrief, BRIEF_SIGNED_URL_TTL_SEC } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
+import { runDisputeRiskSummary } from "./legalAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -84,6 +85,36 @@ async function weeklyMarketingBriefJob(): Promise<void> {
   }
 }
 
+async function weeklyDisputeRiskJob(): Promise<void> {
+  if (!isFounderConfigured()) {
+    console.log("[companyOs.scheduler] weeklyDisputeRisk skipped — founder number not set");
+    return;
+  }
+  try {
+    const { snapshot, callouts } = await runDisputeRiskSummary(7);
+    const lines: string[] = [
+      `⚖️ *Dispute risk · last ${snapshot.windowDays} days*`,
+      `Total reports: ${snapshot.totalReports}`,
+    ];
+    if (snapshot.byReason.length > 0) {
+      lines.push("");
+      lines.push("*By reason*");
+      for (const r of snapshot.byReason) lines.push(`• ${r.reason}: ${r.count}`);
+    }
+    if (snapshot.byStatus.length > 0) {
+      lines.push("");
+      lines.push("*By status*");
+      for (const r of snapshot.byStatus) lines.push(`• ${r.status}: ${r.count}`);
+    }
+    lines.push("");
+    lines.push("*Risk callouts*");
+    for (const c of callouts) lines.push(`• ${c}`);
+    await notifyFounder(lines.join("\n"));
+  } catch (err) {
+    console.error("[companyOs.scheduler] weeklyDisputeRisk failed:", err);
+  }
+}
+
 async function dailySalesJob(): Promise<void> {
   try {
     const r = await runDailySalesSync();
@@ -141,6 +172,9 @@ export function startScheduler(): void {
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
   // job is idempotent if it ever runs more than once per day.
   schedule("dailySalesSync", "30 9 * * *", dailySalesJob);
+  // 10:00 Dubai every Friday (== 06:00 UTC) — Legal Agent dispute risk
+  // summary. Persists a `dispute_summary` row and pings the founder.
+  schedule("weeklyDisputeRisk", "0 10 * * 5", weeklyDisputeRiskJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

@@ -31,6 +31,11 @@ import {
   handleDraftPostCommand,
 } from "./marketingAgent";
 import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
+import {
+  handleContractCommand,
+  handleDisputeRiskCommand,
+  handleVatCheckCommand,
+} from "./legalAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -46,6 +51,9 @@ const HELP_TEXT = [
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
+  "• `contract <partyA> | <partyB> | <exchange> | <valueAed>` — UAE-jurisdiction barter contract PDF",
+  "• `dispute risk` — weekly dispute / report rollup with risk callouts",
+  "• `vat check` — UAE VAT registration threshold check (per user, last 12 months)",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -326,6 +334,20 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
   }
   if (normalized === "sync leads" || normalized === "sales sync" || normalized === "leads sync") {
     return handleSyncLeadsCommand(text);
+  }
+
+  // Legal Agent surface — `contract`, `dispute risk`, `vat check`. The
+  // contract command itself is LLM-free; dispute risk does call the LLM
+  // for the 3 callouts (and so respects the global budget gate inside
+  // chatCompletion).
+  if (normalized.startsWith("contract ") || normalized === "contract") {
+    return handleContractCommand(text);
+  }
+  if (normalized === "dispute risk" || normalized === "disputes" || normalized === "dispute") {
+    return handleDisputeRiskCommand(text);
+  }
+  if (normalized === "vat check" || normalized === "vat" || normalized === "vat threshold") {
+    return handleVatCheckCommand(text);
   }
 
   return answerFreeform(text);
