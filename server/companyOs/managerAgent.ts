@@ -35,6 +35,7 @@ import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
 import {
   handleContractCommand,
   handleDisputeRiskCommand,
+  handleSignCommand,
   handleVatCheckCommand,
 } from "./legalAgent";
 import { getKpiSummary } from "./dashboardAgent";
@@ -72,6 +73,7 @@ const HELP_TEXT = [
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
   "• `contract <partyA> | <partyB> | <exchange> | <valueAed> [| <lang>]` — UAE-jurisdiction barter contract PDF (`<lang>` = `en`, `ar`, or `bilingual`)",
+  "• `sign <token> <signer name>` — record a contract e-signature (token comes from the `contract` reply)",
   "• `dispute risk` — weekly dispute / report rollup with risk callouts",
   "• `vat check` — UAE VAT registration threshold check (per user, last 12 months)",
   "• `dashboard` — KPI snapshot (users, posts, deals, GMV, AI spend) · alias `kpis`",
@@ -391,6 +393,11 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
   // chatCompletion).
   if (normalized.startsWith("contract ") || normalized === "contract") {
     return handleContractCommand(text);
+  }
+  // `sign <token> <signer name>` — founder-side e-signature shortcut.
+  // LLM-free, doesn't burn budget. Routed before generic LLM fallback.
+  if (normalized.startsWith("sign ") || normalized === "sign") {
+    return handleSignCommand(text);
   }
   if (normalized === "dispute risk" || normalized === "disputes" || normalized === "dispute") {
     return handleDisputeRiskCommand(text);

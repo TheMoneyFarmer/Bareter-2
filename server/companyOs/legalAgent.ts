@@ -39,17 +39,22 @@
 //     numerals inside Arabic words are not perfect.
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import {
   and,
   desc,
   eq,
   gte,
+  or,
   sql as drizzleSql,
   count,
 } from "drizzle-orm";
 import { jsPDF } from "jspdf";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { ArabicShaper } = require("arabic-persian-reshaper") as {
+import { createRequire } from "node:module";
+// `arabic-persian-reshaper` ships only a CommonJS build, so we need a
+// CJS require shim — the file otherwise runs in ESM mode under tsx.
+const cjsRequire = createRequire(import.meta.url);
+const { ArabicShaper } = cjsRequire("arabic-persian-reshaper") as {
   ArabicShaper: { convertArabic: (text: string) => string };
 };
 import { db } from "../db";
@@ -102,11 +107,49 @@ export interface ContractBodies {
 }
 
 /**
+ * Optional signature block carried into the body builders / PDF renderer.
+ * When set on a side, the corresponding `____________________________`
+ * placeholder is replaced with the signer's typed name and the date the
+ * acceptance was recorded — this is what gets persisted as the signed
+ * PDF revision once both parties have e-signed.
+ */
+export interface ContractSignatureSide {
+  name: string;
+  date: string; // YYYY-MM-DD
+}
+
+export interface ContractSignatures {
+  partyA?: ContractSignatureSide;
+  partyB?: ContractSignatureSide;
+}
+
+const SIGNATURE_PLACEHOLDER = "____________________________";
+const SIGNATURE_DATE_PLACEHOLDER = "__________";
+
+function formatSignatureLine(
+  partyLabel: string,
+  side: ContractSignatureSide | undefined,
+  dateLabel: string,
+): string {
+  if (!side) {
+    return `${partyLabel}: ${SIGNATURE_PLACEHOLDER}   ${dateLabel}: ${SIGNATURE_DATE_PLACEHOLDER}`;
+  }
+  // The "(e-signed via Bareter)" marker is what makes the signed PDF
+  // legible as a non-wet-ink record at a glance — both for the founder
+  // skimming it on WhatsApp and for a UAE court asked to validate the
+  // electronic acceptance later.
+  return `${partyLabel}: ${side.name}   ${dateLabel}: ${side.date}   (e-signed via Bareter)`;
+}
+
+/**
  * English contract body — UAE-jurisdiction template + AI disclaimer.
  * Kept short on purpose; the whole point of the disclaimer is that this
  * is a starting point, not a finished legal document.
  */
-export function buildContractBody(input: ContractRenderInput): string {
+export function buildContractBody(
+  input: ContractRenderInput,
+  signatures?: ContractSignatures,
+): string {
   const { partyA, partyB, exchange, valueAed, date } = input;
   const valueStr = `AED ${Number(valueAed).toFixed(2)}`;
   return [
@@ -148,8 +191,8 @@ export function buildContractBody(input: ContractRenderInput): string {
     "This Agreement constitutes the entire understanding between the Parties on its subject matter and supersedes all prior discussions.",
     "",
     "SIGNATURES",
-    `${partyA}: ____________________________   Date: __________`,
-    `${partyB}: ____________________________   Date: __________`,
+    formatSignatureLine(partyA, signatures?.partyA, "Date"),
+    formatSignatureLine(partyB, signatures?.partyB, "Date"),
     "",
     AI_DISCLAIMER,
   ].join("\n");
@@ -165,7 +208,10 @@ const ARABIC_AI_DISCLAIMER =
  * is responsible for shaping (initial / medial / final glyph forms) and
  * bidi reordering so the final PDF reads right-to-left.
  */
-export function buildContractBodyArabic(input: ContractRenderInput): string {
+export function buildContractBodyArabic(
+  input: ContractRenderInput,
+  signatures?: ContractSignatures,
+): string {
   const { partyA, partyB, exchange, valueAed, date } = input;
   const valueStr = `AED ${Number(valueAed).toFixed(2)}`;
   return [
@@ -207,8 +253,8 @@ export function buildContractBodyArabic(input: ContractRenderInput): string {
     "تمثل هذه الاتفاقية مجمل التفاهم بين الطرفين بشأن موضوعها، وتحل محل جميع المناقشات والمراسلات السابقة.",
     "",
     "التوقيعات",
-    `${partyA}: ____________________________   التاريخ: __________`,
-    `${partyB}: ____________________________   التاريخ: __________`,
+    formatSignatureLine(partyA, signatures?.partyA, "التاريخ"),
+    formatSignatureLine(partyB, signatures?.partyB, "التاريخ"),
     "",
     ARABIC_AI_DISCLAIMER,
   ].join("\n");
@@ -219,19 +265,22 @@ export function buildContractBodyArabic(input: ContractRenderInput): string {
  * to English when `language` is unset or unrecognised so existing callers
  * (and the prior single-language tests) keep working unchanged.
  */
-export function buildContractBodies(input: ContractRenderInput): ContractBodies {
+export function buildContractBodies(
+  input: ContractRenderInput,
+  signatures?: ContractSignatures,
+): ContractBodies {
   const lang: ContractLanguage = input.language ?? "en";
   switch (lang) {
     case "ar":
-      return { ar: buildContractBodyArabic(input) };
+      return { ar: buildContractBodyArabic(input, signatures) };
     case "bilingual":
       return {
-        en: buildContractBody(input),
-        ar: buildContractBodyArabic(input),
+        en: buildContractBody(input, signatures),
+        ar: buildContractBodyArabic(input, signatures),
       };
     case "en":
     default:
-      return { en: buildContractBody(input) };
+      return { en: buildContractBody(input, signatures) };
   }
 }
 
@@ -504,6 +553,51 @@ export function renderContractPdf(
 export interface GeneratedContract {
   document: LegalDocument;
   signedUrl: string | null;
+  // Per-party public signing URLs ("/contract/sign/<token>"). Always
+  // returned even if the PDF upload failed — the founder can still
+  // share these with the parties to record acceptance, then re-render
+  // the PDF later with `contract …` once storage is back.
+  signingUrls: { partyA: string; partyB: string };
+}
+
+/**
+ * Generate a fresh, URL-safe e-signature token. We use 24 random bytes
+ * (192 bits, base64url-encoded → 32 chars) which is overkill for a
+ * 7-day signing link but cheap enough that there's no reason to skimp.
+ */
+export function newSignatureToken(): string {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+/**
+ * Server-trusted base URL for outbound signature links. Identical
+ * fallback chain to salesAgent.reEngagementBaseUrl so we never trust
+ * request-level headers and never accidentally point counter-parties
+ * at an attacker-controlled host.
+ */
+export function signingBaseUrl(): string {
+  const configured = process.env.PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (replitDomain) return `https://${replitDomain}`;
+  const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (devDomain) return `https://${devDomain}`;
+  return "https://bareter.com";
+}
+
+export function buildSigningUrl(token: string, baseUrl?: string): string {
+  const base = (baseUrl ?? signingBaseUrl()).replace(/\/+$/, "");
+  return `${base}/contract/sign/${encodeURIComponent(token)}`;
+}
+
+export function buildSigningUrlsForRow(
+  row: Pick<LegalDocument, "signatureTokenA" | "signatureTokenB">,
+  baseUrl?: string,
+): { partyA: string; partyB: string } {
+  return {
+    partyA: row.signatureTokenA ? buildSigningUrl(row.signatureTokenA, baseUrl) : "",
+    partyB: row.signatureTokenB ? buildSigningUrl(row.signatureTokenB, baseUrl) : "",
+  };
 }
 
 function normaliseLanguage(language: ContractLanguage | undefined): ContractLanguage {
@@ -546,6 +640,12 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
   );
   const title = `Barter contract: ${renderInput.partyA} ⇄ ${renderInput.partyB} (${date})${languageTitleSuffix(language)}`;
 
+  // Mint per-party signature tokens up-front so the row carries them
+  // even if the PDF upload later fails. The unique-index on each
+  // column protects us against the (vanishingly unlikely) collision.
+  const signatureTokenA = newSignatureToken();
+  const signatureTokenB = newSignatureToken();
+
   // Insert the row first so we have a UUID for the storage key.
   const insertedRows = await db
     .insert(legalDocuments)
@@ -559,6 +659,8 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
       metadata: { exchange: renderInput.exchange, date, language },
       objectStorageKey: null,
       status: "draft",
+      signatureTokenA,
+      signatureTokenB,
     })
     .returning();
   const row = insertedRows[0];
@@ -571,16 +673,19 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
     const key = `companyOs/legal/${row.id}.pdf`;
     await uploadPrivateBuffer(key, pdf, "application/pdf");
     signedUrl = await getSignedDownloadUrl(key, CONTRACT_SIGNED_URL_TTL_SEC);
+    // Lifecycle: draft → sent. The contract is now in the field with
+    // both parties expected to confirm acceptance via their signing
+    // links (or via a `sign <token>` WhatsApp reply by the founder).
     const updated = await db
       .update(legalDocuments)
       .set({
         objectStorageKey: key,
-        status: "generated",
+        status: "sent",
         updatedAt: new Date(),
       })
       .where(eq(legalDocuments.id, row.id))
       .returning();
-    finalRow = updated[0] ?? { ...row, objectStorageKey: key, status: "generated" };
+    finalRow = updated[0] ?? { ...row, objectStorageKey: key, status: "sent" };
   } catch (err) {
     console.error("[companyOs.legal] PDF render/upload failed:", err);
   }
@@ -593,7 +698,14 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
     tokensUsed: 0,
   });
 
-  return { document: finalRow, signedUrl };
+  // Build URLs from the freshly minted tokens (not from `finalRow`):
+  // we're authoritative about what we just inserted, and partial
+  // RETURNING clauses or test mocks may strip the token columns.
+  const signingUrls = buildSigningUrlsForRow({
+    signatureTokenA,
+    signatureTokenB,
+  });
+  return { document: finalRow, signedUrl, signingUrls };
 }
 
 // ---------------------------------------------------------------------------
@@ -975,6 +1087,234 @@ function formatVatBody(snapshot: VatSnapshot): string {
 }
 
 // ---------------------------------------------------------------------------
+// E-signature flow
+// ---------------------------------------------------------------------------
+
+export type ContractParty = "partyA" | "partyB";
+
+export interface ContractByTokenResult {
+  document: LegalDocument;
+  party: ContractParty;
+}
+
+/**
+ * Look up a contract by either party's signature token. Returns null if
+ * no row matches — callers should treat that as a 404 to avoid leaking
+ * which tokens exist via timing differences.
+ */
+export async function getContractByToken(
+  token: string,
+): Promise<ContractByTokenResult | null> {
+  if (!token) return null;
+  const rows = await db
+    .select()
+    .from(legalDocuments)
+    .where(
+      or(
+        eq(legalDocuments.signatureTokenA, token),
+        eq(legalDocuments.signatureTokenB, token),
+      ),
+    )
+    .limit(1);
+  const doc = rows[0];
+  if (!doc) return null;
+  // Only contracts have signature tokens — defensive guard against the
+  // (impossible-by-data-model) case of a non-contract row matching.
+  if (doc.documentType !== "contract") return null;
+  const party: ContractParty =
+    doc.signatureTokenA === token ? "partyA" : "partyB";
+  return { document: doc, party };
+}
+
+export type SignContractError =
+  | "not_found"
+  | "already_signed"
+  | "wrong_status"
+  | "missing_name";
+
+export interface SignContractResult {
+  ok: true;
+  document: LegalDocument;
+  party: ContractParty;
+  bothSigned: boolean;
+  signedPdfKey: string | null;
+  signedPdfUrl: string | null;
+}
+export interface SignContractFailure {
+  ok: false;
+  error: SignContractError;
+  document?: LegalDocument;
+  party?: ContractParty;
+}
+
+/**
+ * Record a single party's e-signature. Idempotent at the per-party
+ * level: signing twice as the same party returns `already_signed`.
+ *
+ * Once both parties have signed, we re-render the contract with the
+ * signature placeholders filled in, upload it as `<id>-signed.pdf`,
+ * and flip the row to `status: 'active'` with `signedObjectStorageKey`
+ * pointing at the new revision.
+ */
+export async function signContract(opts: {
+  token: string;
+  signerName: string;
+  signerIp?: string | null;
+}): Promise<SignContractResult | SignContractFailure> {
+  const lookup = await getContractByToken(opts.token);
+  if (!lookup) return { ok: false, error: "not_found" };
+  const { document, party } = lookup;
+
+  const cleanName = (opts.signerName ?? "").trim().slice(0, 200);
+  if (!cleanName) {
+    return { ok: false, error: "missing_name", document, party };
+  }
+
+  // Lifecycle guard. The signature flow is only meaningful between
+  // 'sent' (waiting for both) and 'signed' (one party in, waiting for
+  // the other). 'draft' shouldn't be sign-able because the PDF upload
+  // hasn't completed yet; 'active' means both parties already signed.
+  if (
+    document.status !== "sent" &&
+    document.status !== "signed" &&
+    // Allow the legacy "generated" value during the lifecycle migration
+    // window — old rows in the DB pre-date the rename to "sent".
+    document.status !== "generated"
+  ) {
+    return { ok: false, error: "wrong_status", document, party };
+  }
+
+  if (party === "partyA" && document.partyASignedAt) {
+    return { ok: false, error: "already_signed", document, party };
+  }
+  if (party === "partyB" && document.partyBSignedAt) {
+    return { ok: false, error: "already_signed", document, party };
+  }
+
+  const signerIp = (opts.signerIp ?? "").toString().slice(0, 64) || null;
+  const now = new Date();
+
+  // Per-party update only — set the signature columns and bump status
+  // to "signed" optimistically. The "active" decision is made *after*
+  // the write returns, based on the actual row state, so two parties
+  // signing simultaneously can't both walk away thinking the other
+  // half wasn't done yet (see finalize block below).
+  const update: Partial<LegalDocument> = {
+    status: "signed",
+    updatedAt: now,
+  };
+  if (party === "partyA") {
+    update.partyASignedAt = now;
+    update.partyASignedName = cleanName;
+    update.partyASignedIp = signerIp;
+  } else {
+    update.partyBSignedAt = now;
+    update.partyBSignedName = cleanName;
+    update.partyBSignedIp = signerIp;
+  }
+
+  const updated = await db
+    .update(legalDocuments)
+    .set(update)
+    .where(eq(legalDocuments.id, document.id))
+    .returning();
+  let row = updated[0] ?? ({ ...document, ...update } as LegalDocument);
+
+  // Race-safe both-signed detection: read from the row that came back
+  // from the DB rather than the pre-update snapshot. If party A and
+  // party B sign almost simultaneously, both updates run, both rows
+  // come back with both timestamps populated, and both branches will
+  // correctly try to finalize to "active" (the conditional WHERE on
+  // the finalize update makes the second one a no-op).
+  const bothSigned = !!row.partyASignedAt && !!row.partyBSignedAt;
+
+  let signedPdfKey: string | null = null;
+  let signedPdfUrl: string | null = null;
+  if (bothSigned) {
+    try {
+      // Re-render the contract with the signatures filled in and
+      // upload as a separate "<id>-signed.pdf" key so the original
+      // unsigned draft is still available for diffing if needed.
+      const meta = (row.metadata ?? {}) as {
+        exchange?: string;
+        date?: string;
+        language?: ContractLanguage;
+      };
+      const renderInput: ContractRenderInput = {
+        partyA: row.partyA ?? "Party A",
+        partyB: row.partyB ?? "Party B",
+        exchange: meta.exchange ?? "",
+        valueAed: Number(row.valueAed ?? 0),
+        date: meta.date ?? dubaiDateString(),
+        language: normaliseLanguage(meta.language),
+      };
+      const signatures: ContractSignatures = {
+        partyA: {
+          name: row.partyASignedName ?? "Party A",
+          date: dubaiDateString(row.partyASignedAt ?? now),
+        },
+        partyB: {
+          name: row.partyBSignedName ?? "Party B",
+          date: dubaiDateString(row.partyBSignedAt ?? now),
+        },
+      };
+      const bodies = buildContractBodies(renderInput, signatures);
+      const pdf = renderContractPdf(renderInput, bodies);
+      signedPdfKey = `companyOs/legal/${row.id}-signed.pdf`;
+      await uploadPrivateBuffer(signedPdfKey, pdf, "application/pdf");
+      signedPdfUrl = await getSignedDownloadUrl(
+        signedPdfKey,
+        CONTRACT_SIGNED_URL_TTL_SEC,
+      );
+      const patched = await db
+        .update(legalDocuments)
+        .set({
+          status: "active",
+          signedObjectStorageKey: signedPdfKey,
+          updatedAt: new Date(),
+        })
+        .where(eq(legalDocuments.id, row.id))
+        .returning();
+      row =
+        patched[0] ??
+        ({ ...row, status: "active", signedObjectStorageKey: signedPdfKey } as LegalDocument);
+    } catch (err) {
+      console.error(
+        "[companyOs.legal] signed PDF render/upload failed:",
+        err,
+      );
+      // Lifecycle still flips to 'active' — we don't want the inability
+      // to render the signed revision to block the contract from being
+      // marked as both-parties-accepted. The founder can re-render via
+      // the admin endpoint later.
+      const patched = await db
+        .update(legalDocuments)
+        .set({ status: "active", updatedAt: new Date() })
+        .where(eq(legalDocuments.id, row.id))
+        .returning();
+      row = patched[0] ?? ({ ...row, status: "active" } as LegalDocument);
+    }
+  }
+
+  await logLlmCall({
+    agentName: AGENT,
+    command: "contract_sign",
+    inputPreview: `${row.partyA} ⇄ ${row.partyB} (${party})`,
+    outputPreview: bothSigned ? "active" : "signed",
+    tokensUsed: 0,
+  });
+
+  return {
+    ok: true,
+    document: row,
+    party,
+    bothSigned,
+    signedPdfKey,
+    signedPdfUrl,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Read helpers — admin router uses these.
 // ---------------------------------------------------------------------------
 
@@ -1062,11 +1402,12 @@ export async function handleContractCommand(rawText: string): Promise<string> {
     ].join("\n");
   }
   try {
-    const { document, signedUrl } = await generateContract(parsed);
+    const { document, signedUrl, signingUrls } = await generateContract(parsed);
     const lines: string[] = [
       `📝 *Contract drafted* — ${document.partyA} ⇄ ${document.partyB}`,
       `Value: AED ${Number(document.valueAed ?? 0).toFixed(2)}`,
       `Language: ${languageLabel(parsed.language)}`,
+      `Status: ${document.status}`,
     ];
     if (signedUrl) {
       lines.push(`PDF (7-day signed link): ${signedUrl}`);
@@ -1075,11 +1416,112 @@ export async function handleContractCommand(rawText: string): Promise<string> {
         "(PDF upload failed — the contract row is saved; check object storage logs.)",
       );
     }
-    lines.push("", "_AI-generated. Both parties should consult a UAE-qualified lawyer before signing._");
+    // Per-party e-signing — share each link with the matching party
+    // (or reply `sign <token> <your name>` from this chat to record
+    // acceptance yourself when the founder is one of the parties).
+    lines.push(
+      "",
+      "*E-sign links* — share each with the matching party:",
+      `• ${document.partyA}: ${signingUrls.partyA}`,
+      `• ${document.partyB}: ${signingUrls.partyB}`,
+      "Or reply `sign <token> <your name>` to record acceptance from WhatsApp.",
+    );
+    lines.push(
+      "",
+      "_AI-generated. Both parties should consult a UAE-qualified lawyer before signing._",
+    );
     return lines.join("\n");
   } catch (err) {
     console.error("[companyOs.legal] contract command failed:", err);
     return "Couldn't draft that contract — check the server logs.";
+  }
+}
+
+// `sign <token> <signer name>` — founder-side WhatsApp shortcut for
+// recording acceptance against a contract without opening the web link.
+// The token is whatever was issued in the `contract` reply; signer name
+// is free text (typically the party's representative). Anyone with the
+// token can sign — this matches the link's security model (knowledge of
+// the token == capability), and the WhatsApp sender check upstream
+// ensures only the founder can use this command.
+const SIGN_RE = /^sign\s+(\S+)(?:\s+(.+))?$/i;
+
+export interface ParsedSignCommand {
+  token: string;
+  signerName: string;
+}
+
+export function parseSignCommand(text: string): ParsedSignCommand | null {
+  const m = text.trim().match(SIGN_RE);
+  if (!m) return null;
+  const token = (m[1] ?? "").trim();
+  const signerName = (m[2] ?? "").trim();
+  if (!token || !signerName) return null;
+  return { token, signerName: signerName.slice(0, 200) };
+}
+
+export async function handleSignCommand(rawText: string): Promise<string> {
+  const parsed = parseSignCommand(rawText);
+  if (!parsed) {
+    return [
+      "Usage: `sign <token> <signer name>`",
+      "The token is the `…/contract/sign/<token>` value from the `contract` reply.",
+      "Example: `sign abc123XYZ Acme Studios`",
+    ].join("\n");
+  }
+  try {
+    const result = await signContract({
+      token: parsed.token,
+      signerName: parsed.signerName,
+      signerIp: "whatsapp",
+    });
+    if (!result.ok) {
+      switch (result.error) {
+        case "not_found":
+          return "Couldn't find a contract for that token. Double-check it from the `contract` reply.";
+        case "already_signed":
+          return `That party has already signed (${result.party === "partyA" ? result.document?.partyA : result.document?.partyB}).`;
+        case "wrong_status":
+          return `Contract status is *${result.document?.status}* — can't accept new signatures.`;
+        case "missing_name":
+          return "Add the signer's name after the token.";
+      }
+    }
+    const partyLabel =
+      result.party === "partyA"
+        ? (result.document.partyA ?? "Party A")
+        : (result.document.partyB ?? "Party B");
+    const lines: string[] = [
+      `✅ *Signed* — ${partyLabel} (${parsed.signerName})`,
+      `Status: ${result.document.status}`,
+    ];
+    if (result.bothSigned) {
+      lines.push("Both parties have signed — contract is now *active*.");
+      if (result.signedPdfUrl) {
+        lines.push(`Signed PDF (7-day link): ${result.signedPdfUrl}`);
+      } else {
+        lines.push(
+          "(Signed PDF upload failed — check object storage logs; the row is still marked active.)",
+        );
+      }
+    } else {
+      const otherParty: ContractParty = result.party === "partyA" ? "partyB" : "partyA";
+      const otherToken =
+        otherParty === "partyA"
+          ? result.document.signatureTokenA
+          : result.document.signatureTokenB;
+      const otherLabel =
+        otherParty === "partyA"
+          ? (result.document.partyA ?? "Party A")
+          : (result.document.partyB ?? "Party B");
+      lines.push(
+        `Waiting on ${otherLabel} — share: ${otherToken ? buildSigningUrl(otherToken) : "(no link available)"}`,
+      );
+    }
+    return lines.join("\n");
+  } catch (err) {
+    console.error("[companyOs.legal] sign command failed:", err);
+    return "Couldn't record that signature — check the server logs.";
   }
 }
 

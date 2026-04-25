@@ -49,6 +49,9 @@ import {
   parseContractCommand,
   getRecentLegalDocuments,
   getLegalDocumentById,
+  getContractByToken,
+  signContract,
+  buildSigningUrlsForRow,
   runDisputeRiskSummary,
   runVatCheck,
   CONTRACT_SIGNED_URL_TTL_SEC,
@@ -435,8 +438,14 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
         }
         parsed = result.data;
       }
-      const { document, signedUrl } = await generateContract(parsed);
-      res.json({ ok: true, document, signedUrl, ttlSec: CONTRACT_SIGNED_URL_TTL_SEC });
+      const { document, signedUrl, signingUrls } = await generateContract(parsed);
+      res.json({
+        ok: true,
+        document,
+        signedUrl,
+        signingUrls,
+        ttlSec: CONTRACT_SIGNED_URL_TTL_SEC,
+      });
     } catch (err) {
       console.error("[companyOs] /legal/contract failed:", err);
       res.status(500).json({ ok: false, message: "Internal error" });

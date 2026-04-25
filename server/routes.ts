@@ -1717,6 +1717,19 @@ export async function registerRoutes(
   const { handleSalesTrackingRequest } = await import("./companyOs/salesAgent");
   app.get("/api/sales/track/:token", handleSalesTrackingRequest);
 
+  // GET/POST /contract/sign/:token — public per-party e-signature page.
+  // Mounted outside `/api/` on purpose: the page is meant to be opened
+  // from a WhatsApp/email link by an external counterparty, and our
+  // origin-CSRF guard only applies to /api/* routes. Capability is the
+  // 24-byte URL-safe token itself; we never expose any contract data
+  // without a valid token, and the response leaks no information about
+  // tokens that don't exist (404 in both branches).
+  const { handleContractSignPage, handleContractSignSubmit } = await import(
+    "./companyOs/contractSignRoute"
+  );
+  app.get("/contract/sign/:token", handleContractSignPage);
+  app.post("/contract/sign/:token", handleContractSignSubmit);
+
   app.patch("/api/users/account-type", requireAuth, async (req, res) => {
     try {
       const { accountType } = req.body;

@@ -795,13 +795,39 @@ export const legalDocuments = pgTable("legal_documents", {
   valueAed: decimal("value_aed", { precision: 12, scale: 2 }),
   body: text("body"), // plain-text version (contract body OR summary text)
   metadata: jsonb("metadata"), // structured details (exchange, callouts, flagged users, etc.)
-  objectStorageKey: text("object_storage_key"), // relative key under PRIVATE_OBJECT_DIR (PDFs only)
-  status: text("status").notNull().default("draft"), // 'draft' | 'generated' | 'sent' | 'archived'
+  objectStorageKey: text("object_storage_key"), // relative key under PRIVATE_OBJECT_DIR (unsigned PDF)
+  // Contract lifecycle:
+  //   contract:        'draft' → 'sent' → 'signed' → 'active' → 'archived'
+  //   dispute_summary: 'generated'
+  //   vat_flag:        'generated'
+  status: text("status").notNull().default("draft"),
+  // Per-party e-signature fields (contracts only). Each party gets a
+  // unique random token they can use to confirm acceptance from a
+  // public link (no login required) or that the founder can quote in a
+  // `sign <token>` WhatsApp reply.
+  signatureTokenA: text("signature_token_a"),
+  signatureTokenB: text("signature_token_b"),
+  partyASignedAt: timestamp("party_a_signed_at"),
+  partyBSignedAt: timestamp("party_b_signed_at"),
+  partyASignedName: text("party_a_signed_name"),
+  partyBSignedName: text("party_b_signed_name"),
+  partyASignedIp: text("party_a_signed_ip"),
+  partyBSignedIp: text("party_b_signed_ip"),
+  // Object-storage key for the *signed* PDF revision, written once both
+  // parties have e-signed. Original `objectStorageKey` keeps pointing at
+  // the unsigned draft so admins can still see the original.
+  signedObjectStorageKey: text("signed_object_storage_key"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   typeIdx: index("legal_documents_type_idx").on(table.documentType),
   createdAtIdx: index("legal_documents_created_at_idx").on(table.createdAt),
+  signatureTokenAIdx: uniqueIndex("legal_documents_signature_token_a_idx").on(
+    table.signatureTokenA,
+  ),
+  signatureTokenBIdx: uniqueIndex("legal_documents_signature_token_b_idx").on(
+    table.signatureTokenB,
+  ),
 }));
 
 // KPI snapshots - one row per Dubai-day, captured by the Dashboard Agent
