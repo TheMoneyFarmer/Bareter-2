@@ -62,6 +62,12 @@ export interface LiveKpis {
     documentType: string;
     createdAt: string | null;
   }[];
+  latestDisputeSummaries: {
+    id: string;
+    title: string;
+    createdAt: string | null;
+    hasPdf: boolean;
+  }[];
   latestContentBriefs: {
     id: string;
     weekStart: string;
@@ -180,6 +186,13 @@ interface LegalDocRow {
   createdAt: Date | string | null;
 }
 
+interface DisputeSummaryRow {
+  id: string;
+  title: string | null;
+  createdAt: Date | string | null;
+  objectStorageKey: string | null;
+}
+
 interface ContentBriefRow {
   id: string;
   weekStart: string | null;
@@ -247,6 +260,7 @@ export async function getLiveKpis(): Promise<LiveKpis> {
     agentRunsHourly,
     salesPipelineRows,
     legalDocs,
+    disputeSummaries,
     briefs,
     campaigns,
     recentPosts,
@@ -437,6 +451,21 @@ export async function getLiveKpis(): Promise<LiveKpis> {
     safe(
       db
         .select({
+          id: legalDocuments.id,
+          title: legalDocuments.title,
+          createdAt: legalDocuments.createdAt,
+          objectStorageKey: legalDocuments.objectStorageKey,
+        })
+        .from(legalDocuments)
+        .where(eq(legalDocuments.documentType, "dispute_summary"))
+        .orderBy(desc(legalDocuments.createdAt))
+        .limit(5),
+      [] as DisputeSummaryRow[],
+      "legal.disputeSummaries",
+    ),
+    safe(
+      db
+        .select({
           id: contentBriefs.id,
           weekStart: contentBriefs.weekStart,
           theme: contentBriefs.theme,
@@ -588,6 +617,12 @@ export async function getLiveKpis(): Promise<LiveKpis> {
       title: String(d.title ?? ""),
       documentType: String(d.documentType ?? ""),
       createdAt: d.createdAt ? new Date(d.createdAt).toISOString() : null,
+    })),
+    latestDisputeSummaries: disputeSummaries.map((d) => ({
+      id: String(d.id),
+      title: String(d.title ?? ""),
+      createdAt: d.createdAt ? new Date(d.createdAt).toISOString() : null,
+      hasPdf: Boolean(d.objectStorageKey),
     })),
     latestContentBriefs: briefs.map((b) => ({
       id: String(b.id),

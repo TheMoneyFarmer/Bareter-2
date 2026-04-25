@@ -1629,6 +1629,29 @@ export async function getLegalDocumentById(id: string): Promise<LegalDocument | 
   return rows[0] ?? null;
 }
 
+export async function getRecentDisputeSummaries(limit = 12): Promise<LegalDocument[]> {
+  return db
+    .select()
+    .from(legalDocuments)
+    .where(eq(legalDocuments.documentType, "dispute_summary"))
+    .orderBy(desc(legalDocuments.createdAt))
+    .limit(limit);
+}
+
+export async function getDisputeSummaryById(id: string): Promise<LegalDocument | null> {
+  const rows = await db
+    .select()
+    .from(legalDocuments)
+    .where(
+      and(
+        eq(legalDocuments.id, id),
+        eq(legalDocuments.documentType, "dispute_summary"),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // WhatsApp command surface
 // ---------------------------------------------------------------------------

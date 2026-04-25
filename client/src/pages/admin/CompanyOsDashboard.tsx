@@ -74,6 +74,12 @@ interface LiveKpis {
     documentType: string;
     createdAt: string | null;
   }[];
+  latestDisputeSummaries: {
+    id: string;
+    title: string;
+    createdAt: string | null;
+    hasPdf: boolean;
+  }[];
   latestContentBriefs: {
     id: string;
     weekStart: string;
@@ -339,6 +345,39 @@ export default function CompanyOsDashboard() {
       });
     },
   });
+
+  async function downloadDisputeSummaryPdf(id: string) {
+    try {
+      const res = await fetch(
+        `/api/company-os/legal/dispute-summaries/${encodeURIComponent(id)}/pdf`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: "Download failed",
+          description: `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const j: { url?: string } = await res.json();
+      if (j.url) {
+        window.open(j.url, "_blank", "noopener,noreferrer");
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Download failed",
+          description: "No URL returned",
+        });
+      }
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: (err as Error).message,
+      });
+    }
+  }
 
   async function downloadBoardReport(month: string) {
     try {
@@ -1062,6 +1101,50 @@ export default function CompanyOsDashboard() {
                       ? new Date(doc.createdAt).toLocaleDateString()
                       : "—"}
                   </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-dispute-summaries">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <FileText className="h-4 w-4" /> Recent dispute summaries
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(live?.latestDisputeSummaries ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="text-dispute-summaries-empty">
+                  No dispute summaries yet.
+                </p>
+              )}
+              {(live?.latestDisputeSummaries ?? []).map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-start justify-between gap-2 text-xs"
+                  data-testid={`row-dispute-summary-${d.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium" data-testid={`text-dispute-summary-title-${d.id}`}>
+                      {d.title}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {d.createdAt
+                        ? new Date(d.createdAt).toLocaleDateString()
+                        : "—"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 text-xs"
+                    disabled={!d.hasPdf}
+                    onClick={() => downloadDisputeSummaryPdf(d.id)}
+                    data-testid={`button-download-dispute-summary-${d.id}`}
+                  >
+                    <Download className="mr-1 h-3 w-3" />
+                    PDF
+                  </Button>
                 </div>
               ))}
             </CardContent>

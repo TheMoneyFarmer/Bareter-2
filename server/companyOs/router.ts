@@ -50,6 +50,8 @@ import {
   parseContractCommand,
   getRecentLegalDocuments,
   getLegalDocumentById,
+  getRecentDisputeSummaries,
+  getDisputeSummaryById,
   getContractByToken,
   signContract,
   buildSigningUrlsForRow,
@@ -495,6 +497,45 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ url });
     } catch (err) {
       console.error("[companyOs] /legal/documents/:id/pdf failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/dispute-summaries", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 12);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 12;
+      const summaries = await getRecentDisputeSummaries(limit);
+      res.json({
+        count: summaries.length,
+        summaries: summaries.map((s) => ({
+          id: s.id,
+          title: s.title,
+          createdAt: s.createdAt,
+          hasPdf: Boolean(s.objectStorageKey),
+        })),
+      });
+    } catch (err) {
+      console.error("[companyOs] /legal/dispute-summaries failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.get("/legal/dispute-summaries/:id/pdf", opts.requireAdmin, async (req, res) => {
+    try {
+      const doc = await getDisputeSummaryById(String(req.params.id));
+      if (!doc) return res.status(404).json({ message: "Dispute summary not found" });
+      if (!doc.objectStorageKey) {
+        return res
+          .status(404)
+          .json({ message: "Dispute summary has no PDF (generation may have failed)" });
+      }
+      // 1h TTL for the dashboard download — admins are already logged in
+      // and don't need a long-lived link.
+      const url = await getSignedDownloadUrl(doc.objectStorageKey, 60 * 60);
+      res.json({ url });
+    } catch (err) {
+      console.error("[companyOs] /legal/dispute-summaries/:id/pdf failed:", err);
       res.status(500).json({ message: "Internal error" });
     }
   });
