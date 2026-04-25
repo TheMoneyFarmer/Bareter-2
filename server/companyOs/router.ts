@@ -125,7 +125,7 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
 
       void (async () => {
         try {
-          const reply = await handleManagerMessage(body);
+          const reply = await handleManagerMessage(body, from);
           if (reply) {
             await sendWhatsApp(from, reply);
           }

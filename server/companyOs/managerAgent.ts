@@ -30,6 +30,8 @@ import {
   handleCampaignUpdateCommand,
   handleDraftPostCommand,
   handlePublishPostCommand,
+  handleConfirmPublishSend,
+  handleConfirmPublishSkip,
 } from "./marketingAgent";
 import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
 import {
@@ -68,7 +70,8 @@ const HELP_TEXT = [
   "• `costs` — AI spend vs monthly budget",
   "• `marketing` — latest weekly brief + recent campaigns",
   "• `draft post <topic>` — IG/LinkedIn/X-ready post draft",
-  "• `publish post <topic>` — draft + auto-publish via the configured social channel",
+  "• `publish post <topic>` — draft a post, then reply `send` to publish or `skip` to discard",
+  "• `send` / `skip` — confirm or cancel the last `publish post` draft (10 min window)",
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
@@ -326,8 +329,16 @@ async function answerFreeform(question: string): Promise<string> {
 /**
  * Route an inbound WhatsApp message to the right report. Returns a
  * WhatsApp-ready string (≤ 4000 chars).
+ *
+ * `senderId` is the Twilio `From` (e.g. `whatsapp:+9715XXXXXXXX`) and is
+ * threaded through to per-founder handlers (currently the Task #86
+ * `publish post` confirmation slot). It's optional so callers that
+ * don't have a sender (cron jobs, tests) can keep working.
  */
-export async function handleManagerMessage(rawText: string): Promise<string> {
+export async function handleManagerMessage(
+  rawText: string,
+  senderId?: string,
+): Promise<string> {
   const text = (rawText || "").trim();
   if (!text) return HELP_TEXT;
   const normalized = text.toLowerCase();
@@ -375,7 +386,33 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
     return handleDraftPostCommand(text);
   }
   if (normalized.startsWith("publish post")) {
-    return handlePublishPostCommand(text);
+    return handlePublishPostCommand(text, senderId);
+  }
+  // Confirmation replies for the `publish post` draft (Task #86). LLM-free
+  // and exact-match so they never collide with longer phrases like
+  // `sign <token>` or `quiet alerts`. `senderId` is threaded through so
+  // each founder only sees / acts on their own parked draft.
+  if (normalized === "send" || normalized === "yes" || normalized === "publish") {
+    const out = await handleConfirmPublishSend(senderId);
+    await logLlmCall({
+      agentName: "manager",
+      command: "publish_send",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+  if (normalized === "skip" || normalized === "cancel" || normalized === "discard") {
+    const out = await handleConfirmPublishSkip(senderId);
+    await logLlmCall({
+      agentName: "manager",
+      command: "publish_skip",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
   }
 
   // Sales Agent surface — also LLM-free at the entry point so they

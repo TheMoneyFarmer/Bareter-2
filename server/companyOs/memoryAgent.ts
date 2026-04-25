@@ -337,6 +337,40 @@ export async function forgetMemory(agent: string, key: string): Promise<number> 
 }
 
 /**
+ * Precise delete by `(agent, memoryType, key)`. Use this when the caller
+ * owns a specific slot (e.g. Marketing Agent's `pending_publish` draft)
+ * and shouldn't accidentally wipe other memoryTypes that happen to
+ * share the same key. Returns the number of rows deleted (0 when
+ * nothing matched).
+ */
+export async function forgetMemoryTyped(
+  agent: string,
+  type: string,
+  key: string,
+): Promise<number> {
+  const agentName = sanitizeKey(agent);
+  const memoryType = sanitizeKey(type);
+  const k = sanitizeKey(key);
+  if (!agentName || !memoryType || !k) return 0;
+  try {
+    const deleted = await db
+      .delete(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.agentName, agentName),
+          eq(agentMemory.memoryType, memoryType),
+          eq(agentMemory.key, k),
+        ),
+      )
+      .returning({ id: agentMemory.id });
+    return deleted.length;
+  } catch (err) {
+    console.error("[companyOs.memory] forgetMemoryTyped failed:", err);
+    return 0;
+  }
+}
+
+/**
  * Delete a single memory by primary key. Used by `DELETE /memory/:id`.
  * Returns true when a row was removed.
  */

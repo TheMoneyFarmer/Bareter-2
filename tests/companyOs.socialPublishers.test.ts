@@ -239,6 +239,11 @@ beforeEach(() => {
   delete process.env.META_AD_ACCOUNT_ID;
   delete process.env.META_INSIGHTS_DATE_PRESET;
   delete process.env.META_AD_CURRENCY;
+  // Task #86 — confirmation-step env. Most legacy tests assert the
+  // immediate auto-publish behaviour, so default the suite to opt-out
+  // and let the new describe block flip it back on.
+  process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "false";
+  delete process.env.MARKETING_PUBLISH_CONFIRM_TIMEOUT_MIN;
 });
 
 // Imports AFTER mocks.
@@ -254,6 +259,10 @@ import {
 import {
   publishPostFromTopic,
   handlePublishPostCommand,
+  handleConfirmPublishSend,
+  handleConfirmPublishSkip,
+  storePendingPublishDraft,
+  getPendingPublishDraft,
   runMetaCampaignSync,
 } from "../server/companyOs/marketingAgent";
 import { createCompanyOsRouter } from "../server/companyOs/router";
@@ -867,5 +876,212 @@ describe("handlePublishPostCommand (direct)", () => {
     expect(out).toContain("buffer");
     // Draft body still surfaces as a copy-paste backup.
     expect(out).toContain("#UAEBusiness");
+  });
+});
+
+// ===========================================================================
+// Task #86 — `publish post` confirmation step (`send` / `skip`).
+// ===========================================================================
+describe("Task #86 — publish post confirmation flow", () => {
+  beforeEach(() => {
+    // Re-enable confirmation for this block (the suite default opts out).
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "true";
+  });
+
+  it("`publish post <topic>` drafts and asks for confirmation instead of publishing", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    // Pre-load the agentMemory upsert.returning() result so remember()
+    // returns an id without throwing.
+    dbState.returningQueue.push([{ id: "mem-1" }]);
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "publish post Eid barter offers",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain('Draft for "Eid barter offers"');
+    expect(reply).toContain("#UAEBusiness");
+    expect(reply).toMatch(/Reply \*send\*.*to publish.*\*skip\*/);
+    // Critically: NO publish should have happened yet.
+    expect(fetchState.calls.some((c) => c.url.includes("buffer"))).toBe(false);
+  });
+
+  it("`send` reply publishes the parked draft via the configured channel", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Hook line\nValue prop sentence.\nCTA — try Bareter today.\n#barter #cashlesstrade #UAEBusiness",
+    );
+    expect(stored.expiresAt).toBeDefined();
+    // recallByKey returns the draft we just stored.
+    dbState.selectQueue.push([
+      {
+        id: "mem-1",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: stored.expiresAt && "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    fetchState.handler = async () => ({
+      body: {
+        success: true,
+        updates: [{ id: "u-99", service_link: "https://example/posted-99" }],
+      },
+    });
+    const out = await handleConfirmPublishSend();
+    expect(out).toContain("Posted to buffer");
+    expect(out).toContain("https://example/posted-99");
+    // Confirmed publish actually hit Buffer.
+    expect(fetchState.calls.some((c) => c.url.includes("buffer"))).toBe(true);
+  });
+
+  it("`skip` reply discards the draft without publishing", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Hook line\nValue prop sentence.\nCTA — try Bareter today.\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-1",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const out = await handleConfirmPublishSkip();
+    expect(out).toContain("Skipped the draft");
+    expect(out).toContain("Eid barter offers");
+    // Crucially: skip never calls the publisher.
+    expect(fetchState.calls.some((c) => c.url.includes("buffer"))).toBe(false);
+  });
+
+  it("`send` with no draft waiting returns a friendly hint", async () => {
+    // No selectQueue entry → recallByKey returns [] → null draft.
+    const out = await handleConfirmPublishSend();
+    expect(out).toContain("No draft is waiting");
+    expect(out).toContain("publish post");
+  });
+
+  it("expired drafts are ignored and swept", async () => {
+    const expired = {
+      topic: "stale topic",
+      postBody: "old body",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    };
+    dbState.selectQueue.push([
+      {
+        id: "mem-stale",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: expired,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const draft = await getPendingPublishDraft();
+    expect(draft).toBeNull();
+  });
+
+  it("two distinct sender ids do not share confirmation state", async () => {
+    const founderA = "whatsapp:+971500000001";
+    const founderB = "whatsapp:+971500000002";
+    const draftA = await storePendingPublishDraft(
+      founderA,
+      "Topic A",
+      "Body A — #UAEBusiness",
+    );
+    const draftB = await storePendingPublishDraft(
+      founderB,
+      "Topic B",
+      "Body B — #UAEBusiness",
+    );
+    // Each founder should only see their own draft.
+    dbState.selectQueue.push([
+      {
+        id: "mem-a",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000001",
+        value: draftA,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const seenA = await getPendingPublishDraft(founderA);
+    expect(seenA?.topic).toBe("Topic A");
+    expect(seenA?.postBody).toContain("Body A");
+
+    dbState.selectQueue.push([
+      {
+        id: "mem-b",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000002",
+        value: draftB,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const seenB = await getPendingPublishDraft(founderB);
+    expect(seenB?.topic).toBe("Topic B");
+    expect(seenB?.postBody).toContain("Body B");
+  });
+
+  it("opt-out env restores immediate auto-publish behaviour", async () => {
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "false";
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    fetchState.handler = async () => ({
+      body: {
+        success: true,
+        updates: [{ id: "u-direct", service_link: "https://example/direct" }],
+      },
+    });
+    const out = await handlePublishPostCommand("publish post Direct topic");
+    expect(out).toContain("Posted to buffer");
+    expect(out).toContain("https://example/direct");
+  });
+});
+
+// `help` should advertise the new confirmation reply keywords.
+describe("Task #86 — help text mentions confirmation", () => {
+  it("`help` lists `send` / `skip`", async () => {
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(app, "help");
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("`send`");
+    expect(reply).toContain("`skip`");
   });
 });

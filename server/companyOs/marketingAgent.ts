@@ -41,7 +41,13 @@ import { jsonCompletion, chatCompletion, type ChatMessage } from "../agents/llm"
 import { logLlmCall, DEFAULT_MODEL } from "./costTracker";
 import { uploadPrivateBuffer, getSignedDownloadUrl } from "./objectStorageHelpers";
 import { dubaiDateString } from "./financeAgent";
-import { buildAgentContext, rememberInBackground } from "./memoryAgent";
+import {
+  buildAgentContext,
+  rememberInBackground,
+  recallByKey,
+  remember,
+  forgetMemoryTyped,
+} from "./memoryAgent";
 import {
   publishPost as dispatchPublishPost,
   getConfiguredChannels,
@@ -538,12 +544,107 @@ export async function handleDraftPostCommand(rawText: string): Promise<string> {
 // ---------------------------------------------------------------------------
 // Auto-publish (Task #69) — draft + push through the configured
 // socialPublishers connector.
+//
+// Task #86 — Confirmation step: by default `publish post <topic>` only
+// drafts the post and asks the founder to confirm with `send` (within
+// `MARKETING_PUBLISH_CONFIRM_TIMEOUT_MIN` minutes, default 10) before it
+// actually goes live. Set `MARKETING_PUBLISH_REQUIRE_CONFIRMATION=false`
+// to opt out and restore the previous one-tap auto-publish behaviour.
+// The pending draft is parked in the existing `agentMemory` table so
+// founder restarts / pod restarts don't lose it.
 // ---------------------------------------------------------------------------
 
 export interface PublishPostResult {
   topic: string;
   postBody: string;
   outcome: PublishOutcome;
+}
+
+const PUBLISH_CONFIRM_MEMORY_TYPE = "pending_publish";
+const DEFAULT_CONFIRM_TIMEOUT_MIN = 10;
+
+interface PendingPublishDraft {
+  topic: string;
+  postBody: string;
+  expiresAt: string; // ISO timestamp
+}
+
+function publishConfirmationEnabled(): boolean {
+  const raw = (process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION ?? "true")
+    .toString()
+    .trim()
+    .toLowerCase();
+  return !["false", "0", "off", "no"].includes(raw);
+}
+
+function publishConfirmTimeoutMs(): number {
+  const raw = Number(process.env.MARKETING_PUBLISH_CONFIRM_TIMEOUT_MIN);
+  const minutes =
+    Number.isFinite(raw) && raw > 0 ? Math.min(raw, 60 * 24) : DEFAULT_CONFIRM_TIMEOUT_MIN;
+  return minutes * 60 * 1000;
+}
+
+function publishConfirmTimeoutMin(): number {
+  return Math.round(publishConfirmTimeoutMs() / 60000);
+}
+
+/**
+ * Identify the founder slot for confirmation state. We keep a single
+ * key per env (the founder's WhatsApp number, or "default") so the
+ * pending draft survives router restarts via the agentMemory table.
+ */
+function pendingPublishKey(senderId?: string): string {
+  const id = (senderId || process.env.FOUNDER_WHATSAPP_NUMBER || "default").trim();
+  // Strip the "whatsapp:" prefix Twilio uses so the key is more readable
+  // in `memory` listings.
+  return id.replace(/^whatsapp:/i, "") || "default";
+}
+
+export async function storePendingPublishDraft(
+  senderId: string | undefined,
+  topic: string,
+  postBody: string,
+): Promise<PendingPublishDraft> {
+  const draft: PendingPublishDraft = {
+    topic,
+    postBody,
+    expiresAt: new Date(Date.now() + publishConfirmTimeoutMs()).toISOString(),
+  };
+  await remember({
+    agentName: AGENT,
+    memoryType: PUBLISH_CONFIRM_MEMORY_TYPE,
+    key: pendingPublishKey(senderId),
+    value: draft,
+    confidence: 1,
+  });
+  return draft;
+}
+
+export async function getPendingPublishDraft(
+  senderId?: string,
+): Promise<PendingPublishDraft | null> {
+  const row = await recallByKey(AGENT, PUBLISH_CONFIRM_MEMORY_TYPE, pendingPublishKey(senderId));
+  if (!row) return null;
+  const v = row.value as Partial<PendingPublishDraft> | null;
+  if (!v || typeof v.postBody !== "string" || typeof v.expiresAt !== "string") return null;
+  // Graceful timeout — expired drafts are ignored AND swept from storage
+  // so the founder doesn't accidentally publish a stale draft after
+  // replying `send` an hour later.
+  if (Date.parse(v.expiresAt) <= Date.now()) {
+    void clearPendingPublishDraft(senderId);
+    return null;
+  }
+  return {
+    topic: typeof v.topic === "string" ? v.topic : "",
+    postBody: v.postBody,
+    expiresAt: v.expiresAt,
+  };
+}
+
+export async function clearPendingPublishDraft(senderId?: string): Promise<void> {
+  // Typed delete so we only drop the `pending_publish` slot — never any
+  // other memoryType that happens to share the same per-founder key.
+  await forgetMemoryTyped(AGENT, PUBLISH_CONFIRM_MEMORY_TYPE, pendingPublishKey(senderId));
 }
 
 export async function publishPostFromTopic(topic: string): Promise<PublishPostResult> {
@@ -572,7 +673,10 @@ export async function publishPostFromTopic(topic: string): Promise<PublishPostRe
   return { topic: cleanTopic, postBody, outcome };
 }
 
-export async function handlePublishPostCommand(rawText: string): Promise<string> {
+export async function handlePublishPostCommand(
+  rawText: string,
+  senderId?: string,
+): Promise<string> {
   const topic = rawText.replace(/^publish\s+post\s*/i, "").trim();
   if (!topic) {
     const channels = getConfiguredChannels();
@@ -586,6 +690,49 @@ export async function handlePublishPostCommand(rawText: string): Promise<string>
       status,
     ].join("\n");
   }
+
+  // Confirmation flow (default ON) — draft the post, park it for the
+  // founder, and return a preview with `send` / `skip` instructions
+  // instead of publishing immediately. This is the safety net Task #86
+  // adds so off-brand or factually wrong drafts don't go live before
+  // the founder sees them.
+  if (publishConfirmationEnabled()) {
+    let postBody: string;
+    try {
+      postBody = await draftPost(topic);
+    } catch (err) {
+      console.error("[companyOs.marketing] publish post draft failed:", err);
+      return "Drafting failed (likely the AI budget gate). Try `costs` to see remaining budget.";
+    }
+    if (!postBody) {
+      return "I couldn't draft a post — try again with a more specific topic.";
+    }
+    try {
+      await storePendingPublishDraft(senderId, topic, postBody);
+    } catch (err) {
+      console.error("[companyOs.marketing] storePendingPublishDraft failed:", err);
+      // Fall through to a copy-paste reply — better than crashing.
+      return [
+        "📝 *Draft ready* (couldn't save the confirmation slot — copy/paste manually):",
+        "",
+        postBody,
+      ].join("\n");
+    }
+    const channels = getConfiguredChannels();
+    const channelLine =
+      channels.length > 0
+        ? `Will publish to: ${channels.join(", ")}.`
+        : "No publisher configured yet — `send` will draft a copy-paste reply only.";
+    return [
+      `📝 *Draft for "${topic}"* — review before it goes live:`,
+      "",
+      postBody,
+      "",
+      `Reply *send* within ${publishConfirmTimeoutMin()} min to publish, or *skip* to discard.`,
+      channelLine,
+    ].join("\n");
+  }
+
   let result: PublishPostResult;
   try {
     result = await publishPostFromTopic(topic);
@@ -593,6 +740,15 @@ export async function handlePublishPostCommand(rawText: string): Promise<string>
     console.error("[companyOs.marketing] publish post failed:", err);
     return "Drafting failed (likely the AI budget gate). Try `costs` to see remaining budget.";
   }
+  return formatPublishOutcomeReply(result);
+}
+
+/**
+ * Render the WhatsApp body for a finished publish attempt — extracted so
+ * both the legacy auto-publish path and the Task #86 confirmation path
+ * (`send` reply) emit identical messages.
+ */
+function formatPublishOutcomeReply(result: PublishPostResult): string {
   const { postBody, outcome } = result;
   if (!outcome.ok) {
     if (outcome.reason === "not_configured") {
@@ -624,6 +780,66 @@ export async function handlePublishPostCommand(rawText: string): Promise<string>
   if (outcome.externalUrl) lines.push(outcome.externalUrl);
   lines.push("", postBody);
   return lines.join("\n");
+}
+
+/**
+ * Handle the founder's `send` reply — publishes whatever draft is sitting
+ * in the per-founder confirmation slot. Returns a friendly hint when no
+ * draft is parked (or the slot has timed out). Idempotent: the slot is
+ * cleared whether the publish succeeds or fails so a stale reply later
+ * doesn't double-post.
+ */
+export async function handleConfirmPublishSend(senderId?: string): Promise<string> {
+  const draft = await getPendingPublishDraft(senderId);
+  if (!draft) {
+    return [
+      "No draft is waiting for confirmation.",
+      `Drafts expire after ${publishConfirmTimeoutMin()} min — start a new one with \`publish post <topic>\`.`,
+    ].join("\n");
+  }
+  // Clear up-front so a parallel `send` retry can't double-publish, and
+  // a stored expired draft can't leak back if the publisher hangs.
+  await clearPendingPublishDraft(senderId);
+  const outcome = await dispatchPublishPost(draft.postBody);
+  await logLlmCall({
+    agentName: AGENT,
+    command: "publish_post_confirmed",
+    inputPreview: `topic=${draft.topic.slice(0, 120)} channel=${
+      outcome.ok ? outcome.channel : outcome.channel ?? "none"
+    }`,
+    outputPreview: outcome.ok
+      ? `published id=${outcome.externalId ?? "?"} url=${outcome.externalUrl ?? "?"}`
+      : `${outcome.reason}: ${outcome.detail}`,
+    tokensUsed: 0,
+    status: outcome.ok ? "ok" : "error",
+    errorMessage: outcome.ok ? null : outcome.detail.slice(0, 400),
+  });
+  return formatPublishOutcomeReply({
+    topic: draft.topic,
+    postBody: draft.postBody,
+    outcome,
+  });
+}
+
+/**
+ * Handle the founder's `skip` reply — discard the parked draft.
+ * Always returns a confirmation, including when no draft was waiting
+ * (so a misfired `skip` doesn't fail silently).
+ */
+export async function handleConfirmPublishSkip(senderId?: string): Promise<string> {
+  const draft = await getPendingPublishDraft(senderId);
+  if (!draft) {
+    return "No draft was waiting — nothing to skip.";
+  }
+  await clearPendingPublishDraft(senderId);
+  await logLlmCall({
+    agentName: AGENT,
+    command: "publish_post_skipped",
+    inputPreview: `topic=${draft.topic.slice(0, 120)}`,
+    outputPreview: "skipped",
+    tokensUsed: 0,
+  });
+  return `🗑️ Skipped the draft for "${draft.topic.slice(0, 120)}".`;
 }
 
 // ---------------------------------------------------------------------------
