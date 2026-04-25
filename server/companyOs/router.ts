@@ -73,7 +73,7 @@ import {
   runIntelligenceSweep,
   getAlertsSnoozedUntil,
 } from "./intelligenceAgent";
-import { getAllAgentSpendsAed } from "./costTracker";
+import { getAllAgentSpendsAed, setAgentBudgetOverride } from "./costTracker";
 import {
   generateMonthlyReport,
   getRecentReports,
@@ -759,6 +759,33 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ count: verdicts.length, verdicts });
     } catch (err) {
       console.error("[companyOs] /alerts/budgets failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // Persist a per-agent monthly cap override and refresh the in-memory
+  // cache used by the LLM gate. Body shape: `{ monthlyCapAed: number }`
+  // — a positive finite number, capped at 5,000 AED so a typo can't
+  // silently disable the per-agent gate. Returns the canonical agent
+  // name + applied cap so the client can re-render under the same
+  // identity it already shows.
+  router.patch("/alerts/budgets/:agent", opts.requireAdmin, async (req, res) => {
+    try {
+      const agent = String(req.params.agent || "").trim();
+      if (!agent) return res.status(400).json({ message: "Agent name required" });
+      const raw = Number(req.body?.monthlyCapAed);
+      if (!Number.isFinite(raw) || raw <= 0) {
+        return res.status(400).json({ message: "monthlyCapAed must be a positive number" });
+      }
+      if (raw > 5000) {
+        return res
+          .status(400)
+          .json({ message: "monthlyCapAed must be 5000 AED or less" });
+      }
+      const result = await setAgentBudgetOverride(agent, raw);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[companyOs] PATCH /alerts/budgets/:agent failed:", err);
       res.status(500).json({ message: "Internal error" });
     }
   });

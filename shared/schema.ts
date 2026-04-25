@@ -1032,6 +1032,17 @@ export const boardReports = pgTable("board_reports", {
   monthIdx: index("board_reports_month_idx").on(table.reportMonth),
 }));
 
+// Per-agent monthly AED cap overrides edited from the admin dashboard.
+// One row per canonical agent name (e.g. "marketing", "sales"). Read by
+// the cost tracker on every getAgentBudgetAed() call (via in-memory
+// cache) and falls back to the hardcoded AGENT_LIMITS_AED map when no
+// row exists.
+export const agentBudgets = pgTable("agent_budgets", {
+  agentName: text("agent_name").primaryKey(), // canonical short name
+  monthlyCapAed: decimal("monthly_cap_aed", { precision: 10, scale: 2 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const proactiveAlerts = pgTable("proactive_alerts", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   alertType: text("alert_type").notNull(), // e.g. "revenue_drop_wow", "dispute_spike_wow"

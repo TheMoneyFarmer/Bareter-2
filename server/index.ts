@@ -130,6 +130,18 @@ app.use((req, res, next) => {
     console.error("[startup] Failed to start Company OS scheduler:", err);
   }
 
+  // Warm the per-agent budget override cache so the LLM gate hits a hot
+  // cache on the very first request after a restart instead of falling
+  // back to the hardcoded map for the brief window before the lazy
+  // load resolves. Failures are non-fatal — getAgentBudgetAed degrades
+  // gracefully to the hardcoded defaults.
+  try {
+    const { ensureAgentBudgetOverridesLoaded } = await import("./companyOs/costTracker");
+    void ensureAgentBudgetOverridesLoaded();
+  } catch (err) {
+    console.error("[startup] Failed to warm agent-budget cache:", err);
+  }
+
   // Register object storage routes (depend on session middleware above)
   registerObjectStorageRoutes(app);
 

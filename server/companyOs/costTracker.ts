@@ -7,7 +7,7 @@
 
 import { and, gte, lte, sql, count, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { companyOsLogs } from "@shared/schema";
+import { agentBudgets, companyOsLogs } from "@shared/schema";
 
 export const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
@@ -172,14 +172,110 @@ export function aliasesForAgent(agent: string): string[] {
   return Array.from(out).filter(Boolean);
 }
 
+// In-memory cache of DB-stored per-agent overrides, keyed by canonical
+// agent name. Populated lazily on first access and refreshed whenever
+// `setAgentBudgetOverride` is called from the admin PATCH route. Falls
+// back to the hardcoded `AGENT_LIMITS_AED` map when no row exists.
+//
+// The cache exists because `getAgentBudgetAed` is called inline by the
+// LLM gate on every chat/jsonCompletion call — making it async would
+// require touching every wrapper. Refreshes are explicit (PATCH route)
+// so a single edit takes effect immediately for all subsequent calls.
+const agentBudgetOverrideCache: Map<string, number> = new Map();
+let overrideCacheReady = false;
+let overrideCacheLoadPromise: Promise<void> | null = null;
+
+async function loadOverrideCache(): Promise<void> {
+  try {
+    const rows = await db
+      .select({
+        agentName: agentBudgets.agentName,
+        monthlyCapAed: agentBudgets.monthlyCapAed,
+      })
+      .from(agentBudgets);
+    agentBudgetOverrideCache.clear();
+    for (const r of rows) {
+      const n = Number(r.monthlyCapAed);
+      if (Number.isFinite(n) && n > 0) {
+        agentBudgetOverrideCache.set(r.agentName, n);
+      }
+    }
+  } catch (err) {
+    console.error("[companyOs] loadOverrideCache failed:", err);
+  } finally {
+    overrideCacheReady = true;
+  }
+}
+
+/**
+ * Eagerly load the per-agent override cache. Safe to call multiple
+ * times — concurrent calls share a single in-flight promise.
+ *
+ * Called once from the server bootstrap so the LLM gate hits a hot
+ * cache on the very first request after a restart.
+ */
+export function ensureAgentBudgetOverridesLoaded(): Promise<void> {
+  if (overrideCacheReady) return Promise.resolve();
+  if (!overrideCacheLoadPromise) {
+    overrideCacheLoadPromise = loadOverrideCache().finally(() => {
+      overrideCacheLoadPromise = null;
+    });
+  }
+  return overrideCacheLoadPromise;
+}
+
+/**
+ * Persist a per-agent monthly cap override and refresh the in-memory
+ * cache so all subsequent `getAgentBudgetAed` calls see the new value
+ * immediately. Returns the canonical agent name + applied cap.
+ *
+ * Called from the admin PATCH route after admin auth + validation.
+ */
+export async function setAgentBudgetOverride(
+  agent: string,
+  monthlyCapAed: number,
+): Promise<{ agentName: string; monthlyCapAed: number }> {
+  if (!Number.isFinite(monthlyCapAed) || monthlyCapAed <= 0) {
+    throw new Error("monthlyCapAed must be a positive finite number");
+  }
+  const canonical = canonicalAgentName(agent);
+  await db
+    .insert(agentBudgets)
+    .values({
+      agentName: canonical,
+      monthlyCapAed: monthlyCapAed.toFixed(2),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: agentBudgets.agentName,
+      set: {
+        monthlyCapAed: monthlyCapAed.toFixed(2),
+        updatedAt: new Date(),
+      },
+    });
+  agentBudgetOverrideCache.set(canonical, monthlyCapAed);
+  overrideCacheReady = true;
+  return { agentName: canonical, monthlyCapAed };
+}
+
 export function getAgentBudgetAed(agent: string): number {
   const key = normalizeAgentKey(agent);
-  return (
-    envOverride(agent) ??
-    envOverride(key) ??
-    AGENT_LIMITS_AED[key] ??
-    DEFAULT_AGENT_LIMIT_AED
-  );
+  const canonical = canonicalAgentName(agent);
+  // env > DB override > hardcoded > default. Env wins so an operator
+  // can still pin a runaway agent at deploy time even if the DB row
+  // says otherwise.
+  const envHit = envOverride(agent) ?? envOverride(key);
+  if (envHit !== null) return envHit;
+  // Trigger a lazy load on first access; until the cache is ready we
+  // fall through to the hardcoded map so the LLM gate never blocks
+  // on I/O. Subsequent calls (post-bootstrap) hit the hot cache.
+  if (!overrideCacheReady) {
+    void ensureAgentBudgetOverridesLoaded();
+  }
+  const dbHit =
+    agentBudgetOverrideCache.get(canonical) ?? agentBudgetOverrideCache.get(key);
+  if (dbHit !== undefined) return dbHit;
+  return AGENT_LIMITS_AED[key] ?? DEFAULT_AGENT_LIMIT_AED;
 }
 
 // USD price per 1K tokens, blended (input/output averaged for simplicity).

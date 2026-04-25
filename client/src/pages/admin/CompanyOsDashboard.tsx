@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -14,6 +16,7 @@ import {
   BellOff,
   Check,
   Download,
+  Pencil,
   RefreshCw,
   TrendingUp,
   Users,
@@ -182,6 +185,166 @@ const PIE_COLORS = [
 function formatAed(n: number | null | undefined): string {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
   return `AED ${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+// Inline-editable row inside the per-agent budget card. Pulled out so
+// the popover open/close + draft input state stays scoped to a single
+// agent — otherwise editing one row would re-render every other row.
+function AgentBudgetRow({
+  agentName,
+  spentAed,
+  budgetAed,
+  pctUsed,
+  onSubmit,
+  isPending,
+}: {
+  agentName: string;
+  spentAed: number;
+  budgetAed: number;
+  pctUsed: number;
+  onSubmit: (next: number) => void;
+  isPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(budgetAed.toFixed(2));
+  const [submitting, setSubmitting] = useState(false);
+
+  const pctRaw = Number.isFinite(pctUsed) ? pctUsed : 0;
+  const pctDisplay = Math.round(pctRaw * 100);
+  const barWidth = Math.min(100, Math.max(0, pctRaw * 100));
+  const barColor =
+    pctRaw >= 0.95
+      ? "bg-destructive"
+      : pctRaw >= 0.8
+        ? "bg-amber-500"
+        : "bg-emerald-500";
+
+  function handleSave() {
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n <= 0) return;
+    if (n > 5000) return;
+    setSubmitting(true);
+    try {
+      onSubmit(n);
+      setOpen(false);
+    } finally {
+      // The mutation runs async; we close the popover optimistically
+      // and let the toast confirm/deny success. Re-enable the button
+      // immediately so a quick re-edit isn't blocked.
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="space-y-1"
+      data-testid={`row-agent-budget-${agentName}`}
+    >
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span
+          className="truncate font-medium"
+          data-testid={`text-agent-budget-name-${agentName}`}
+        >
+          {agentName}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className="font-mono text-muted-foreground"
+            data-testid={`text-agent-budget-amount-${agentName}`}
+          >
+            {formatAed(spentAed)} / {formatAed(budgetAed)}
+            <span className="ml-2 font-semibold text-foreground">
+              {pctDisplay}%
+            </span>
+          </span>
+          <Popover
+            open={open}
+            onOpenChange={(v) => {
+              setOpen(v);
+              if (v) setDraft(budgetAed.toFixed(2));
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                data-testid={`button-edit-agent-budget-${agentName}`}
+                aria-label={`Edit monthly cap for ${agentName}`}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-60 space-y-2"
+              data-testid={`popover-edit-agent-budget-${agentName}`}
+            >
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Monthly cap (AED)</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Positive number, max 5000.
+                </p>
+              </div>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={1}
+                max={5000}
+                step={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSave();
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                data-testid={`input-agent-budget-${agentName}`}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOpen(false)}
+                  data-testid={`button-cancel-agent-budget-${agentName}`}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={
+                    submitting ||
+                    isPending ||
+                    !Number.isFinite(Number(draft)) ||
+                    Number(draft) <= 0 ||
+                    Number(draft) > 5000
+                  }
+                  data-testid={`button-save-agent-budget-${agentName}`}
+                >
+                  {isPending ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={Math.min(100, Math.max(0, pctDisplay))}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${agentName} budget usage`}
+      >
+        <div
+          className={`h-full ${barColor} transition-all`}
+          style={{ width: `${barWidth}%` }}
+          data-testid={`bar-agent-budget-${agentName}`}
+        />
+      </div>
+    </div>
+  );
 }
 
 function shortDate(iso: string): string {
@@ -448,6 +611,37 @@ export default function CompanyOsDashboard() {
       toast({
         variant: "destructive",
         title: "Snooze failed",
+        description: err.message,
+      });
+    },
+  });
+
+  const updateBudgetMutation = useMutation<
+    { ok: boolean; agentName: string; monthlyCapAed: number },
+    Error,
+    { agent: string; monthlyCapAed: number }
+  >({
+    mutationFn: async ({ agent, monthlyCapAed }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/company-os/alerts/budgets/${encodeURIComponent(agent)}`,
+        { monthlyCapAed },
+      );
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/alerts/budgets"],
+      });
+      toast({
+        title: "Cap updated",
+        description: `${data.agentName} now capped at AED ${data.monthlyCapAed.toFixed(2)}/month.`,
+      });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
         description: err.message,
       });
     },
@@ -938,61 +1132,25 @@ export default function CompanyOsDashboard() {
                   No agent spend recorded yet this month.
                 </p>
               )}
-              {budgetVerdicts.map((v) => {
-                // pctUsed is a fraction (0–1+) per the server contract; clamp the
-                // visual bar to 100% so an over-cap agent still renders cleanly.
-                const pctRaw = Number.isFinite(v.pctUsed) ? v.pctUsed : 0;
-                const pctDisplay = Math.round(pctRaw * 100);
-                const barWidth = Math.min(100, Math.max(0, pctRaw * 100));
-                // Mirror the colour thresholds called out in the task brief:
-                // green < 80%, amber 80–95%, red ≥ 95%. We use Tailwind tokens
-                // that already adapt for dark mode via the design system.
-                const barColor =
-                  pctRaw >= 0.95
-                    ? "bg-destructive"
-                    : pctRaw >= 0.8
-                      ? "bg-amber-500"
-                      : "bg-emerald-500";
-                return (
-                  <div
-                    key={v.agentName}
-                    className="space-y-1"
-                    data-testid={`row-agent-budget-${v.agentName}`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2 text-xs">
-                      <span
-                        className="truncate font-medium"
-                        data-testid={`text-agent-budget-name-${v.agentName}`}
-                      >
-                        {v.agentName}
-                      </span>
-                      <span
-                        className="shrink-0 font-mono text-muted-foreground"
-                        data-testid={`text-agent-budget-amount-${v.agentName}`}
-                      >
-                        {formatAed(v.spentAed)} / {formatAed(v.budgetAed)}
-                        <span className="ml-2 font-semibold text-foreground">
-                          {pctDisplay}%
-                        </span>
-                      </span>
-                    </div>
-                    <div
-                      className="h-2 w-full overflow-hidden rounded-full bg-muted"
-                      role="progressbar"
-                      aria-valuenow={Math.min(100, Math.max(0, pctDisplay))}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`${v.agentName} budget usage`}
-                    >
-                      <div
-                        className={`h-full ${barColor} transition-all`}
-                        style={{ width: `${barWidth}%` }}
-                        data-testid={`bar-agent-budget-${v.agentName}`}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+              {budgetVerdicts.map((v) => (
+                <AgentBudgetRow
+                  key={v.agentName}
+                  agentName={v.agentName}
+                  spentAed={v.spentAed}
+                  budgetAed={v.budgetAed}
+                  pctUsed={v.pctUsed}
+                  isPending={
+                    updateBudgetMutation.isPending &&
+                    updateBudgetMutation.variables?.agent === v.agentName
+                  }
+                  onSubmit={(next) =>
+                    updateBudgetMutation.mutate({
+                      agent: v.agentName,
+                      monthlyCapAed: next,
+                    })
+                  }
+                />
+              ))}
             </CardContent>
           </Card>
 
