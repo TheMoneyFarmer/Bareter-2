@@ -71,7 +71,7 @@ const HELP_TEXT = [
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
-  "• `contract <partyA> | <partyB> | <exchange> | <valueAed>` — UAE-jurisdiction barter contract PDF",
+  "• `contract <partyA> | <partyB> | <exchange> | <valueAed> [| <lang>]` — UAE-jurisdiction barter contract PDF (`<lang>` = `en`, `ar`, or `bilingual`)",
   "• `dispute risk` — weekly dispute / report rollup with risk callouts",
   "• `vat check` — UAE VAT registration threshold check (per user, last 12 months)",
   "• `dashboard` — KPI snapshot (users, posts, deals, GMV, AI spend) · alias `kpis`",

@@ -410,6 +410,7 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     exchange: z.string().min(1).max(1000),
     valueAed: z.coerce.number().positive().max(1_000_000_000),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    language: z.enum(["en", "ar", "bilingual"]).optional(),
   });
 
   router.post("/legal/contract", opts.requireAdmin, async (req, res) => {

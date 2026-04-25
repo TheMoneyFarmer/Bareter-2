@@ -2,10 +2,17 @@
 //
 // What this ships:
 //   • `buildContractBody` returns a deterministic UAE-jurisdiction barter
-//     contract template (DIFC seat + UAE Federal Law No. 5 of 1985).
+//     contract template (DIFC seat + UAE Federal Law No. 5 of 1985) in
+//     English. `buildContractBodyArabic` returns the Arabic mirror, and
+//     `buildContractBodies` dispatches by language ("en" | "ar" |
+//     "bilingual"). Language defaults to "en" for backward compatibility.
 //   • `generateContract` renders the contract to PDF via jsPDF, uploads
 //     it to private object storage, persists a `legal_documents` row of
-//     type `contract`, and returns the row + a 7-day signed download URL.
+//     type `contract` (with `metadata.language` set), and returns the
+//     row + a 7-day signed download URL. Arabic / bilingual PDFs embed
+//     a Noto Sans Arabic TTF (~190 KB) and reshape the Arabic text to
+//     presentation forms with simple bidi reordering so the rendered
+//     page reads right-to-left correctly.
 //   • `runDisputeRiskSummary` aggregates last-week reports (the only
 //     reports/disputes table that actually exists in `shared/schema.ts`),
 //     asks the LLM for 3 plain-English risk callouts, and persists a
@@ -15,7 +22,9 @@
 //     soft (AED 150k) and hard (AED 187,500) thresholds, and persists a
 //     `vat_flag` row.
 //   • Each helper has a `handle…Command` wrapper that returns a
-//     WhatsApp-shaped string for the Manager Agent to dispatch.
+//     WhatsApp-shaped string for the Manager Agent to dispatch. The
+//     `contract` command accepts an optional trailing `| <lang>` flag
+//     (e.g. `contract A | B | x for y | 100 | ar`).
 //
 // What this DOES NOT do (and why):
 //   • No DocuSign / Adobe Sign integration — the contracts are AI-drafted
@@ -23,9 +32,13 @@
 //     the signed PDF separately once both parties have wet-inked it.
 //   • No FTA portal auto-filing — UAE FTA registration is a manual
 //     e-services flow per user; the agent only flags candidates.
-//   • No Arabic translation — English-only template for now (planned
-//     follow-up, see legal_documents.metadata.language for forward-compat).
+//   • No full Unicode Bidi Algorithm (UAX#9) implementation — we run a
+//     run-level reorder over Arabic vs. non-Arabic spans which is
+//     sufficient for the contract template (mostly Arabic with embedded
+//     party names, dates, and AED figures). Edge cases like nested
+//     numerals inside Arabic words are not perfect.
 
+import fs from "node:fs";
 import {
   and,
   desc,
@@ -35,6 +48,10 @@ import {
   count,
 } from "drizzle-orm";
 import { jsPDF } from "jspdf";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { ArabicShaper } = require("arabic-persian-reshaper") as {
+  ArabicShaper: { convertArabic: (text: string) => string };
+};
 import { db } from "../db";
 import {
   legalDocuments,
@@ -62,20 +79,30 @@ const AI_DISCLAIMER =
 // Contract template + PDF
 // ---------------------------------------------------------------------------
 
+export type ContractLanguage = "en" | "ar" | "bilingual";
+export const CONTRACT_LANGUAGES: ContractLanguage[] = ["en", "ar", "bilingual"];
+
 export interface ContractInput {
   partyA: string;
   partyB: string;
   exchange: string; // free text — e.g. "10 hours photography for 1 week stay"
   valueAed: number;
   date?: string; // YYYY-MM-DD; defaults to today (Asia/Dubai)
+  language?: ContractLanguage; // defaults to "en"
 }
 
 export interface ContractRenderInput extends ContractInput {
   date: string;
+  language?: ContractLanguage;
+}
+
+export interface ContractBodies {
+  en?: string;
+  ar?: string;
 }
 
 /**
- * Pure function — returns the contract body (plain text, ~1 page).
+ * English contract body — UAE-jurisdiction template + AI disclaimer.
  * Kept short on purpose; the whole point of the disclaimer is that this
  * is a starting point, not a finished legal document.
  */
@@ -128,29 +155,222 @@ export function buildContractBody(input: ContractRenderInput): string {
   ].join("\n");
 }
 
-export function renderContractPdf(
+const ARABIC_AI_DISCLAIMER =
+  "إخلاء مسؤولية: تم إعداد هذا المستند بواسطة الذكاء الاصطناعي. على الطرفين استشارة محامٍ مؤهل في دولة الإمارات قبل التوقيع.";
+
+/**
+ * Arabic mirror of `buildContractBody` — same UAE jurisdiction template,
+ * translated for use in courts and with local users that prefer Arabic.
+ * Note: the body is returned in *logical* (Unicode) order; the renderer
+ * is responsible for shaping (initial / medial / final glyph forms) and
+ * bidi reordering so the final PDF reads right-to-left.
+ */
+export function buildContractBodyArabic(input: ContractRenderInput): string {
+  const { partyA, partyB, exchange, valueAed, date } = input;
+  const valueStr = `AED ${Number(valueAed).toFixed(2)}`;
+  return [
+    "اتفاقية تبادل مقايضة",
+    "",
+    `التاريخ: ${date}`,
+    "الاختصاص القضائي: دولة الإمارات العربية المتحدة",
+    "القانون الحاكم: القانون الاتحادي رقم (5) لسنة 1985 بإصدار قانون المعاملات المدنية لدولة الإمارات العربية المتحدة وما يرتبط به من تشريعات تجارية اتحادية.",
+    "مقر تسوية النزاعات: محاكم مركز دبي المالي العالمي (DIFC)؛ وفي حال تعذر ذلك، المحاكم الاتحادية المختصة بدولة الإمارات.",
+    "",
+    "الأطراف",
+    `الطرف الأول: ${partyA}`,
+    `الطرف الثاني: ${partyB}`,
+    "",
+    "1. موضوع التبادل",
+    `يتفق الطرفان على تبادل السلع و/أو الخدمات التالية على أساس مقايضة غير نقدية: ${exchange}.`,
+    `يقر الطرفان بأن القيمة السوقية العادلة المتفق عليها للتبادل، لأغراض المحاسبة والضرائب، تبلغ ${valueStr}.`,
+    "",
+    "2. التسليم والتنفيذ",
+    "يلتزم كل طرف بتنفيذ التزاماته بحسن نية وفقاً للجدول الزمني المتفق عليه كتابياً (بما في ذلك من خلال نظام المراسلة على منصة بارتر).",
+    "ينتقل عبء الهلاك لأي سلع مادية يتم تبادلها إلى الطرف المستلم عند التسليم الفعلي.",
+    "",
+    "3. الإقرارات والضمانات",
+    "يقر كل طرف بأن (أ) لديه الأهلية القانونية الكاملة لإبرام هذه الاتفاقية؛ و(ب) أن السلع و/أو الخدمات التي يقدمها مملوكة له بالكامل أو مرخصة قانونياً؛ و(ج) أن التبادل لا يخالف أي قانون اتحادي بدولة الإمارات أو أي حق لطرف ثالث.",
+    "",
+    "4. ضريبة القيمة المضافة",
+    "في حال كان أي من الطرفين مسجلاً لضريبة القيمة المضافة في دولة الإمارات، فعليه إصدار فاتورة ضريبية للطرف الآخر وفقاً للمرسوم بقانون اتحادي رقم (8) لسنة 2017 واللوائح التنفيذية للهيئة الاتحادية للضرائب، باعتبار القيمة السوقية العادلة المذكورة أعلاه هي المقابل.",
+    "",
+    "5. السرية",
+    "لا يجوز الإفصاح عن المعلومات المتبادلة لأغراض تنفيذ هذه الاتفاقية، التي تكون موسومة بالسرية أو يفهم بشكل معقول أنها سرية، إلى أي طرف ثالث دون موافقة كتابية مسبقة.",
+    "",
+    "6. تسوية النزاعات",
+    "أي نزاع ينشأ عن أو يتعلق بهذه الاتفاقية، بما في ذلك أي مسألة تتعلق بوجودها أو صحتها أو إنهائها، تتم إحالته للفصل النهائي إلى محاكم مركز دبي المالي العالمي. ويجوز للطرفين بالاتفاق المتبادل محاولة تسوية النزاع أولاً عبر الوساطة لدى مركز وساطة مرخص في دولة الإمارات.",
+    "",
+    "7. القوة القاهرة",
+    "لا يتحمل أي طرف المسؤولية عن إخفاقه في التنفيذ متى كان ذلك ناتجاً عن حدث خارج عن إرادته المعقولة، بما في ذلك على سبيل المثال لا الحصر، أعمال الحكومات أو الكوارث الطبيعية أو انقطاع المرافق الأساسية.",
+    "",
+    "8. مجمل الاتفاقية",
+    "تمثل هذه الاتفاقية مجمل التفاهم بين الطرفين بشأن موضوعها، وتحل محل جميع المناقشات والمراسلات السابقة.",
+    "",
+    "التوقيعات",
+    `${partyA}: ____________________________   التاريخ: __________`,
+    `${partyB}: ____________________________   التاريخ: __________`,
+    "",
+    ARABIC_AI_DISCLAIMER,
+  ].join("\n");
+}
+
+/**
+ * Dispatch to one or both bodies based on the requested language. Defaults
+ * to English when `language` is unset or unrecognised so existing callers
+ * (and the prior single-language tests) keep working unchanged.
+ */
+export function buildContractBodies(input: ContractRenderInput): ContractBodies {
+  const lang: ContractLanguage = input.language ?? "en";
+  switch (lang) {
+    case "ar":
+      return { ar: buildContractBodyArabic(input) };
+    case "bilingual":
+      return {
+        en: buildContractBody(input),
+        ar: buildContractBodyArabic(input),
+      };
+    case "en":
+    default:
+      return { en: buildContractBody(input) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Arabic font + bidi helpers
+// ---------------------------------------------------------------------------
+
+const ARABIC_FONT_NAME = "NotoSansArabic";
+const ARABIC_FONT_FILE = "NotoSansArabic-Regular.ttf";
+
+let cachedArabicFontBase64: string | null | undefined;
+
+/**
+ * Load the Noto Sans Arabic TTF from `node_modules` once per process and
+ * cache as base64 for jsPDF's VFS. Returns `null` if the font is not
+ * available (e.g. node_modules pruned in some deployment), in which case
+ * the renderer falls back to helvetica — Arabic glyphs won't render but
+ * the page structure is still produced so the founder can re-generate.
+ */
+function loadArabicFontBase64(): string | null {
+  if (cachedArabicFontBase64 !== undefined) return cachedArabicFontBase64;
+  try {
+    const fontPath = require.resolve(
+      "@expo-google-fonts/noto-sans-arabic/400Regular/NotoSansArabic_400Regular.ttf",
+    );
+    cachedArabicFontBase64 = fs.readFileSync(fontPath).toString("base64");
+    return cachedArabicFontBase64;
+  } catch (err) {
+    console.warn("[companyOs.legal] Arabic font not available:", err);
+    cachedArabicFontBase64 = null;
+    return null;
+  }
+}
+
+function ensureArabicFont(doc: jsPDF): boolean {
+  const b64 = loadArabicFontBase64();
+  if (!b64) return false;
+  try {
+    doc.addFileToVFS(ARABIC_FONT_FILE, b64);
+    doc.addFont(ARABIC_FONT_FILE, ARABIC_FONT_NAME, "normal");
+    return true;
+  } catch (err) {
+    console.warn("[companyOs.legal] Arabic font registration failed:", err);
+    return false;
+  }
+}
+
+function isArabicChar(code: number): boolean {
+  return (
+    (code >= 0x0600 && code <= 0x06ff) || // Arabic
+    (code >= 0xfb50 && code <= 0xfdff) || // Arabic Presentation Forms-A
+    (code >= 0xfe70 && code <= 0xfeff) // Arabic Presentation Forms-B
+  );
+}
+
+/**
+ * Run-level RTL reorder over a *shaped* (presentation-form) Arabic line.
+ * Splits into Arabic vs. non-Arabic spans, reverses the order of the
+ * spans (so what should appear rightmost is rendered first by jsPDF's
+ * left-to-right text engine), and reverses the Arabic spans' character
+ * order. Latin / digit spans keep their natural reading order. This is
+ * a deliberate simplification of UAX#9 sufficient for our template.
+ */
+function bidiReorder(shaped: string): string {
+  if (!shaped) return shaped;
+  type Run = { ar: boolean; text: string };
+  const runs: Run[] = [];
+  let cur: Run | null = null;
+  for (const ch of shaped) {
+    const ar = isArabicChar(ch.codePointAt(0) ?? 0);
+    if (!cur || cur.ar !== ar) {
+      cur = { ar, text: ch };
+      runs.push(cur);
+    } else {
+      cur.text += ch;
+    }
+  }
+  const out: string[] = [];
+  for (let i = runs.length - 1; i >= 0; i--) {
+    const r = runs[i];
+    out.push(r.ar ? Array.from(r.text).reverse().join("") : r.text);
+  }
+  return out.join("");
+}
+
+/**
+ * Reshape Arabic Unicode (U+06xx) into Arabic Presentation Forms
+ * (U+FExx) so jsPDF — which doesn't itself do letter-form joining —
+ * renders connected Arabic letters. Then run our run-level bidi reorder
+ * so the final string can be written by jsPDF in left-to-right order
+ * but display right-to-left on the page.
+ */
+function prepareArabicLine(text: string): string {
+  return bidiReorder(ArabicShaper.convertArabic(text));
+}
+
+const ARABIC_HEADER_TITLES = new Set([
+  "اتفاقية تبادل مقايضة",
+  "الأطراف",
+  "التوقيعات",
+]);
+
+function isHeaderLine(rawLine: string, isArabic: boolean): boolean {
+  const trimmed = rawLine.trim();
+  if (!trimmed) return false;
+  // Numbered section start (works in both languages).
+  if (/^\d+\.\s+/.test(trimmed)) return true;
+  if (isArabic) return ARABIC_HEADER_TITLES.has(trimmed);
+  // English: all-caps Latin-only headers (existing behaviour).
+  return /^[A-Z0-9 .&]+$/.test(trimmed);
+}
+
+function renderEnglishSection(
+  doc: jsPDF,
   input: ContractRenderInput,
   body: string,
-): Buffer {
-  const doc = new jsPDF();
+  startNewPage: boolean,
+): void {
+  if (startNewPage) doc.addPage();
   const left = 18;
   const right = 192;
   const maxWidth = right - left;
   let y = 22;
 
-  doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
   doc.text("Bareter — Barter Exchange Agreement", left, y);
   y += 8;
-  doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
   doc.text(`${input.partyA}  ⇄  ${input.partyB}`, left, y);
   y += 5;
-  doc.text(`Value: AED ${Number(input.valueAed).toFixed(2)} · Date: ${input.date}`, left, y);
+  doc.text(
+    `Value: AED ${Number(input.valueAed).toFixed(2)} · Date: ${input.date}`,
+    left,
+    y,
+  );
   y += 8;
 
-  // Body — splitTextToSize wraps, so we iterate paragraphs to keep page breaks
-  // clean and to bold any line that's clearly a section header.
   doc.setFontSize(11);
   for (const rawLine of body.split("\n")) {
     if (y > 275) {
@@ -161,14 +381,121 @@ export function renderContractPdf(
       y += 3;
       continue;
     }
-    // Bold all-caps headers and numbered section titles (e.g. "1. SUBJECT OF EXCHANGE").
-    const isHeader =
-      /^[A-Z0-9 .&]+$/.test(rawLine.trim()) ||
-      /^\d+\.\s+[A-Z]/.test(rawLine.trim());
-    doc.setFont("helvetica", isHeader ? "bold" : "normal");
+    doc.setFont("helvetica", isHeaderLine(rawLine, false) ? "bold" : "normal");
     const wrapped = doc.splitTextToSize(rawLine, maxWidth);
     doc.text(wrapped, left, y);
     y += wrapped.length * 5 + 1;
+  }
+}
+
+function renderArabicSection(
+  doc: jsPDF,
+  input: ContractRenderInput,
+  body: string,
+  startNewPage: boolean,
+  arabicFontReady: boolean,
+): void {
+  if (startNewPage) doc.addPage();
+  const left = 18;
+  const right = 192;
+  const maxWidth = right - left;
+  let y = 22;
+
+  // Header strip — bilingual title so an English-only reader still knows
+  // what they're looking at; helvetica works for the Latin half.
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("Bareter — اتفاقية تبادل مقايضة", left, y);
+  y += 7;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(
+    `Value: AED ${Number(input.valueAed).toFixed(2)} · Date: ${input.date}`,
+    left,
+    y,
+  );
+  y += 7;
+
+  // Switch to the embedded Arabic font for the body. jsPDF's helvetica
+  // can't render Arabic glyphs at all, so without the embedded TTF the
+  // body would come out as boxes — the early return logs a warning and
+  // leaves the section header so the page isn't blank.
+  if (!arabicFontReady) {
+    doc.text(
+      "(Arabic font not available — re-render once node_modules is restored.)",
+      left,
+      y,
+    );
+    return;
+  }
+
+  doc.setFont(ARABIC_FONT_NAME, "normal");
+  doc.setFontSize(12);
+  for (const rawLine of body.split("\n")) {
+    if (y > 275) {
+      doc.addPage();
+      y = 22;
+      doc.setFont(ARABIC_FONT_NAME, "normal");
+      doc.setFontSize(12);
+    }
+    if (rawLine.trim().length === 0) {
+      y += 3;
+      continue;
+    }
+    const isHeader = isHeaderLine(rawLine, true);
+    doc.setFontSize(isHeader ? 13 : 12);
+    const visual = prepareArabicLine(rawLine);
+    const wrapped = doc.splitTextToSize(visual, maxWidth);
+    // Right-align the wrapped lines individually so each visual line
+    // hugs the right margin of the page.
+    for (const line of wrapped as string[]) {
+      doc.text(line, right, y, { align: "right" });
+      y += 6;
+    }
+    y += 1;
+  }
+}
+
+/**
+ * Render the contract PDF. `bodies` may carry an English body, an Arabic
+ * body, or both (bilingual). For bilingual contracts we render English
+ * pages first followed by Arabic pages; this keeps the English signature
+ * block on its own pages so a non-Arabic-reading counter-party can still
+ * sign without flipping pages.
+ */
+export function renderContractPdf(
+  input: ContractRenderInput,
+  bodies: ContractBodies | string,
+): Buffer {
+  const doc = new jsPDF();
+  // Backwards compatibility: a string `bodies` arg is treated as the
+  // English body (matches the previous single-language signature).
+  const normalised: ContractBodies =
+    typeof bodies === "string" ? { en: bodies } : bodies;
+
+  const arabicFontReady = normalised.ar ? ensureArabicFont(doc) : false;
+
+  let needNewPage = false;
+  if (normalised.en) {
+    renderEnglishSection(doc, input, normalised.en, false);
+    needNewPage = true;
+  }
+  if (normalised.ar) {
+    renderArabicSection(
+      doc,
+      input,
+      normalised.ar,
+      needNewPage,
+      arabicFontReady,
+    );
+  }
+
+  // If neither body was supplied (shouldn't happen via the public API),
+  // produce a 1-line stub so the output isn't a totally empty PDF.
+  if (!normalised.en && !normalised.ar) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text("(empty contract)", 18, 22);
   }
 
   return Buffer.from(doc.output("arraybuffer"));
@@ -179,6 +506,22 @@ export interface GeneratedContract {
   signedUrl: string | null;
 }
 
+function normaliseLanguage(language: ContractLanguage | undefined): ContractLanguage {
+  if (language === "ar" || language === "bilingual") return language;
+  return "en";
+}
+
+function languageTitleSuffix(language: ContractLanguage): string {
+  switch (language) {
+    case "ar":
+      return " [AR]";
+    case "bilingual":
+      return " [EN+AR]";
+    default:
+      return "";
+  }
+}
+
 /**
  * End-to-end: render PDF → upload → insert row → return signed URL.
  * The PDF upload is best-effort; if it fails the row still exists with
@@ -186,15 +529,22 @@ export interface GeneratedContract {
  */
 export async function generateContract(input: ContractInput): Promise<GeneratedContract> {
   const date = input.date || dubaiDateString();
+  const language = normaliseLanguage(input.language);
   const renderInput: ContractRenderInput = {
     partyA: input.partyA.trim().slice(0, 200),
     partyB: input.partyB.trim().slice(0, 200),
     exchange: input.exchange.trim().slice(0, 1000),
     valueAed: Number(input.valueAed),
     date,
+    language,
   };
-  const body = buildContractBody(renderInput);
-  const title = `Barter contract: ${renderInput.partyA} ⇄ ${renderInput.partyB} (${date})`;
+  const bodies = buildContractBodies(renderInput);
+  // Persisted body keeps both languages for easy admin review when
+  // bilingual; for single-language contracts only that language goes in.
+  const persistedBody = [bodies.en, bodies.ar].filter(Boolean).join(
+    "\n\n--------------------\n\n",
+  );
+  const title = `Barter contract: ${renderInput.partyA} ⇄ ${renderInput.partyB} (${date})${languageTitleSuffix(language)}`;
 
   // Insert the row first so we have a UUID for the storage key.
   const insertedRows = await db
@@ -205,8 +555,8 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
       partyA: renderInput.partyA,
       partyB: renderInput.partyB,
       valueAed: renderInput.valueAed.toFixed(2),
-      body,
-      metadata: { exchange: renderInput.exchange, date },
+      body: persistedBody,
+      metadata: { exchange: renderInput.exchange, date, language },
       objectStorageKey: null,
       status: "draft",
     })
@@ -217,7 +567,7 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
   let signedUrl: string | null = null;
   let finalRow: LegalDocument = row;
   try {
-    const pdf = renderContractPdf(renderInput, body);
+    const pdf = renderContractPdf(renderInput, bodies);
     const key = `companyOs/legal/${row.id}.pdf`;
     await uploadPrivateBuffer(key, pdf, "application/pdf");
     signedUrl = await getSignedDownloadUrl(key, CONTRACT_SIGNED_URL_TTL_SEC);
@@ -238,7 +588,7 @@ export async function generateContract(input: ContractInput): Promise<GeneratedC
   await logLlmCall({
     agentName: AGENT,
     command: "contract",
-    inputPreview: `${renderInput.partyA} ⇄ ${renderInput.partyB} for AED ${renderInput.valueAed}`,
+    inputPreview: `${renderInput.partyA} ⇄ ${renderInput.partyB} for AED ${renderInput.valueAed} [${language}]`,
     outputPreview: title,
     tokensUsed: 0,
   });
@@ -649,15 +999,26 @@ export async function getLegalDocumentById(id: string): Promise<LegalDocument | 
 // WhatsApp command surface
 // ---------------------------------------------------------------------------
 
-// `contract <partyA> | <partyB> | <exchange> | <valueAed>`
+// `contract <partyA> | <partyB> | <exchange> | <valueAed> [| <lang>]`
+// where <lang> is one of `en` (default), `ar`, or `bilingual` (also `bi`).
 const CONTRACT_RE =
-  /^contract\s+(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*([\d.]+)\s*$/i;
+  /^contract\s+(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*([\d.]+)(?:\s*\|\s*([A-Za-z]+))?\s*$/i;
 
 export interface ParsedContractCommand {
   partyA: string;
   partyB: string;
   exchange: string;
   valueAed: number;
+  language: ContractLanguage;
+}
+
+function parseLanguageFlag(raw: string | undefined): ContractLanguage | null {
+  if (!raw) return "en";
+  const lower = raw.trim().toLowerCase();
+  if (lower === "en" || lower === "english") return "en";
+  if (lower === "ar" || lower === "arabic") return "ar";
+  if (lower === "bilingual" || lower === "bi" || lower === "both") return "bilingual";
+  return null;
 }
 
 export function parseContractCommand(text: string): ParsedContractCommand | null {
@@ -667,22 +1028,37 @@ export function parseContractCommand(text: string): ParsedContractCommand | null
   const partyB = m[2].trim();
   const exchange = m[3].trim();
   const value = Number(m[4]);
+  const language = parseLanguageFlag(m[5]);
   if (!partyA || !partyB || !exchange) return null;
   if (!Number.isFinite(value) || value <= 0 || value > 1_000_000_000) return null;
+  if (language === null) return null;
   return {
     partyA: partyA.slice(0, 200),
     partyB: partyB.slice(0, 200),
     exchange: exchange.slice(0, 1000),
     valueAed: value,
+    language,
   };
+}
+
+function languageLabel(language: ContractLanguage): string {
+  switch (language) {
+    case "ar":
+      return "Arabic";
+    case "bilingual":
+      return "Bilingual (EN + AR)";
+    default:
+      return "English";
+  }
 }
 
 export async function handleContractCommand(rawText: string): Promise<string> {
   const parsed = parseContractCommand(rawText);
   if (!parsed) {
     return [
-      "Usage: `contract <partyA> | <partyB> | <exchange> | <valueAed>`",
-      "Example: `contract Acme Studios | Palm Hotel | 10 hours photography for 1 week stay | 8500`",
+      "Usage: `contract <partyA> | <partyB> | <exchange> | <valueAed> [| <lang>]`",
+      "`<lang>` is `en` (default), `ar`, or `bilingual`.",
+      "Example: `contract Acme Studios | Palm Hotel | 10 hours photography for 1 week stay | 8500 | ar`",
     ].join("\n");
   }
   try {
@@ -690,6 +1066,7 @@ export async function handleContractCommand(rawText: string): Promise<string> {
     const lines: string[] = [
       `📝 *Contract drafted* — ${document.partyA} ⇄ ${document.partyB}`,
       `Value: AED ${Number(document.valueAed ?? 0).toFixed(2)}`,
+      `Language: ${languageLabel(parsed.language)}`,
     ];
     if (signedUrl) {
       lines.push(`PDF (7-day signed link): ${signedUrl}`);

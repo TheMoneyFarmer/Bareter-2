@@ -212,6 +212,8 @@ vi.mock("../server/companyOs/twilio", async () => {
 import {
   parseContractCommand,
   buildContractBody,
+  buildContractBodyArabic,
+  buildContractBodies,
   generateContract,
   gatherDisputeData,
   runDisputeRiskSummary,
@@ -277,7 +279,7 @@ afterAll(() => {
 // parseContractCommand
 // ===========================================================================
 describe("parseContractCommand", () => {
-  it("parses a well-formed command", () => {
+  it("parses a well-formed command (defaults to English)", () => {
     const r = parseContractCommand(
       "contract Acme Studios | Palm Hotel | 10 hours photography for 1 week stay | 8500",
     );
@@ -286,6 +288,7 @@ describe("parseContractCommand", () => {
       partyB: "Palm Hotel",
       exchange: "10 hours photography for 1 week stay",
       valueAed: 8500,
+      language: "en",
     });
   });
 
@@ -295,6 +298,7 @@ describe("parseContractCommand", () => {
     );
     expect(r?.partyA).toBe("A");
     expect(r?.valueAed).toBe(100);
+    expect(r?.language).toBe("en");
   });
 
   it("trims surrounding whitespace in each field", () => {
@@ -319,6 +323,29 @@ describe("parseContractCommand", () => {
     expect(parseContractCommand("contract A | B | x | 0")).toBeNull();
     // The regex itself rejects negatives (no `-` in the value capture).
     expect(parseContractCommand("contract A | B | x | -10")).toBeNull();
+  });
+
+  it("parses an `ar` language flag", () => {
+    const r = parseContractCommand("contract A | B | x | 100 | ar");
+    expect(r?.language).toBe("ar");
+    expect(r?.valueAed).toBe(100);
+  });
+
+  it("parses a `bilingual` language flag (and the `bi` alias)", () => {
+    const a = parseContractCommand("contract A | B | x | 100 | bilingual");
+    expect(a?.language).toBe("bilingual");
+    const b = parseContractCommand("contract A | B | x | 100 | bi");
+    expect(b?.language).toBe("bilingual");
+  });
+
+  it("accepts long-form `english` / `arabic`", () => {
+    expect(parseContractCommand("contract A | B | x | 100 | English")?.language).toBe("en");
+    expect(parseContractCommand("contract A | B | x | 100 | Arabic")?.language).toBe("ar");
+  });
+
+  it("rejects an unrecognised language flag", () => {
+    expect(parseContractCommand("contract A | B | x | 100 | fr")).toBeNull();
+    expect(parseContractCommand("contract A | B | x | 100 | xx")).toBeNull();
   });
 });
 
@@ -346,6 +373,67 @@ describe("buildContractBody", () => {
     // Non-AI disclaimer is mandatory per the task spec.
     expect(body).toContain("AI-generated");
     expect(body).toContain("UAE-qualified lawyer");
+  });
+});
+
+// ===========================================================================
+// buildContractBodyArabic + buildContractBodies — Arabic / bilingual templates
+// ===========================================================================
+describe("buildContractBodyArabic", () => {
+  it("includes Arabic UAE jurisdiction wording, parties, value, and disclaimer", () => {
+    const body = buildContractBodyArabic({
+      partyA: "Acme",
+      partyB: "Beta",
+      exchange: "X for Y",
+      valueAed: 1000,
+      date: "2026-04-25",
+      language: "ar",
+    });
+    // Title and major Arabic legal anchors.
+    expect(body).toContain("اتفاقية تبادل مقايضة");
+    expect(body).toContain("الإمارات العربية المتحدة");
+    expect(body).toContain("القانون الاتحادي رقم (5) لسنة 1985");
+    expect(body).toContain("DIFC");
+    expect(body).toContain("ضريبة القيمة المضافة");
+    // Parties + value + date carried through.
+    expect(body).toContain("Acme");
+    expect(body).toContain("Beta");
+    expect(body).toContain("X for Y");
+    expect(body).toContain("AED 1000.00");
+    expect(body).toContain("2026-04-25");
+    // AI disclaimer (Arabic).
+    expect(body).toContain("الذكاء الاصطناعي");
+    expect(body).toContain("محامٍ مؤهل");
+  });
+});
+
+describe("buildContractBodies", () => {
+  const sample = {
+    partyA: "Acme",
+    partyB: "Beta",
+    exchange: "X for Y",
+    valueAed: 1000,
+    date: "2026-04-25",
+  };
+
+  it("defaults to English when no language is passed", () => {
+    const b = buildContractBodies({ ...sample });
+    expect(b.en).toBeDefined();
+    expect(b.ar).toBeUndefined();
+    expect(b.en).toContain("BARTER EXCHANGE AGREEMENT");
+  });
+
+  it("returns only the Arabic body for `ar`", () => {
+    const b = buildContractBodies({ ...sample, language: "ar" });
+    expect(b.en).toBeUndefined();
+    expect(b.ar).toBeDefined();
+    expect(b.ar).toContain("اتفاقية تبادل مقايضة");
+  });
+
+  it("returns both bodies for `bilingual`", () => {
+    const b = buildContractBodies({ ...sample, language: "bilingual" });
+    expect(b.en).toContain("BARTER EXCHANGE AGREEMENT");
+    expect(b.ar).toContain("اتفاقية تبادل مقايضة");
   });
 });
 
@@ -417,6 +505,146 @@ describe("generateContract", () => {
     const updated = dbState.updatedSets[0];
     expect(updated.objectStorageKey).toBe("companyOs/legal/doc-abc.pdf");
     expect(updated.status).toBe("generated");
+
+    // Default language is English — metadata records it explicitly so
+    // the admin dashboard can group / filter by language.
+    expect((contractInsert!.metadata as { language?: string }).language).toBe("en");
+  });
+
+  it("renders an Arabic-only contract (PDF embeds the Arabic font)", async () => {
+    const initialRow = {
+      id: "doc-ar",
+      documentType: "contract",
+      title: "Barter contract: A ⇄ B (2026-04-25) [AR]",
+      partyA: "A",
+      partyB: "B",
+      valueAed: "200.00",
+      body: "...",
+      metadata: { exchange: "x for y", date: "2026-04-25", language: "ar" },
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [
+        {
+          ...initialRow,
+          objectStorageKey: "companyOs/legal/doc-ar.pdf",
+          status: "generated",
+        },
+      ],
+    ];
+
+    const result = await generateContract({
+      partyA: "A",
+      partyB: "B",
+      exchange: "x for y",
+      valueAed: 200,
+      date: "2026-04-25",
+      language: "ar",
+    });
+
+    expect(result.document.id).toBe("doc-ar");
+    expect(result.document.title).toContain("[AR]");
+    const contractInsert = dbState.insertedValues.find(
+      (r) => r.documentType === "contract",
+    );
+    expect(contractInsert).toBeDefined();
+    // Persisted body holds the Arabic template.
+    expect(String(contractInsert!.body)).toContain("اتفاقية تبادل مقايضة");
+    expect((contractInsert!.metadata as { language?: string }).language).toBe("ar");
+    expect(uploadCalls).toHaveLength(1);
+    // Arabic PDFs embed the Noto Sans Arabic TTF (~190 KB) so the file
+    // is materially larger than the English-only output.
+    expect(uploadCalls[0].size).toBeGreaterThan(50_000);
+  });
+
+  it("renders a bilingual contract (both English and Arabic bodies persisted)", async () => {
+    const initialRow = {
+      id: "doc-bi",
+      documentType: "contract",
+      title: "Barter contract: A ⇄ B (2026-04-25) [EN+AR]",
+      partyA: "A",
+      partyB: "B",
+      valueAed: "200.00",
+      body: "...",
+      metadata: { exchange: "x for y", date: "2026-04-25", language: "bilingual" },
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [
+        {
+          ...initialRow,
+          objectStorageKey: "companyOs/legal/doc-bi.pdf",
+          status: "generated",
+        },
+      ],
+    ];
+
+    const result = await generateContract({
+      partyA: "A",
+      partyB: "B",
+      exchange: "x for y",
+      valueAed: 200,
+      language: "bilingual",
+      date: "2026-04-25",
+    });
+
+    expect(result.document.title).toContain("[EN+AR]");
+    const contractInsert = dbState.insertedValues.find(
+      (r) => r.documentType === "contract",
+    );
+    expect(contractInsert).toBeDefined();
+    const persistedBody = String(contractInsert!.body);
+    expect(persistedBody).toContain("BARTER EXCHANGE AGREEMENT");
+    expect(persistedBody).toContain("اتفاقية تبادل مقايضة");
+    expect((contractInsert!.metadata as { language?: string }).language).toBe(
+      "bilingual",
+    );
+    expect(uploadCalls[0].size).toBeGreaterThan(50_000);
+  });
+
+  it("falls back to English when an unknown language is forced", async () => {
+    const initialRow = {
+      id: "doc-fallback",
+      documentType: "contract",
+      title: "Barter contract: A ⇄ B (2026-04-25)",
+      partyA: "A",
+      partyB: "B",
+      valueAed: "100.00",
+      body: "...",
+      metadata: {},
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [{ ...initialRow, objectStorageKey: "companyOs/legal/doc-fallback.pdf", status: "generated" }],
+    ];
+    await generateContract({
+      partyA: "A",
+      partyB: "B",
+      exchange: "x for y",
+      valueAed: 100,
+      // Type-cast to simulate a stale / corrupted value flowing in from
+      // an external caller — we want to land on English, not crash.
+      language: "fr" as unknown as "en",
+      date: "2026-04-25",
+    });
+    const contractInsert = dbState.insertedValues.find(
+      (r) => r.documentType === "contract",
+    );
+    expect((contractInsert!.metadata as { language?: string }).language).toBe("en");
+    expect(String(contractInsert!.body)).toContain("BARTER EXCHANGE AGREEMENT");
+    expect(String(contractInsert!.body)).not.toContain("اتفاقية");
   });
 });
 
@@ -675,10 +903,90 @@ describe("Manager Agent — legal commands via WhatsApp webhook", () => {
     expect(reply).toContain("Contract drafted");
     expect(reply).toContain("A ⇄ B");
     expect(reply).toContain("AED 200.00");
+    expect(reply).toContain("Language: English");
     expect(reply).toContain("https://signed.example/companyOs/legal/doc-wa.pdf");
     expect(reply).toContain("UAE-qualified lawyer");
     expect(uploadCalls).toHaveLength(1);
     expect(uploadCalls[0].contentType).toBe("application/pdf");
+  });
+
+  it("`contract ... | ar` drafts an Arabic-only contract", async () => {
+    const initialRow = {
+      id: "doc-wa-ar",
+      documentType: "contract",
+      title: "Barter contract: A ⇄ B [AR]",
+      partyA: "A",
+      partyB: "B",
+      valueAed: "200.00",
+      body: "...",
+      metadata: { language: "ar" },
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [
+        {
+          ...initialRow,
+          objectStorageKey: "companyOs/legal/doc-wa-ar.pdf",
+          status: "generated",
+        },
+      ],
+    ];
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "contract A | B | x for y | 200 | ar",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Contract drafted");
+    expect(reply).toContain("Language: Arabic");
+    expect(reply).toContain("https://signed.example/companyOs/legal/doc-wa-ar.pdf");
+    const contractInsert = dbState.insertedValues.find(
+      (r) => r.documentType === "contract",
+    );
+    expect((contractInsert!.metadata as { language?: string }).language).toBe("ar");
+    expect(String(contractInsert!.body)).toContain("اتفاقية تبادل مقايضة");
+  });
+
+  it("`contract ... | bilingual` drafts an EN+AR contract", async () => {
+    const initialRow = {
+      id: "doc-wa-bi",
+      documentType: "contract",
+      title: "Barter contract: A ⇄ B [EN+AR]",
+      partyA: "A",
+      partyB: "B",
+      valueAed: "200.00",
+      body: "...",
+      metadata: { language: "bilingual" },
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [
+        {
+          ...initialRow,
+          objectStorageKey: "companyOs/legal/doc-wa-bi.pdf",
+          status: "generated",
+        },
+      ],
+    ];
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "contract A | B | x for y | 200 | bilingual",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Language: Bilingual (EN + AR)");
   });
 
   it("`contract` with bad syntax returns the usage hint without DB write", async () => {
@@ -843,6 +1151,58 @@ describe("HTTP routes — /api/company-os/legal/*", () => {
     const res = await request(app)
       .post("/api/company-os/legal/contract")
       .send({ partyA: "", partyB: "x", exchange: "", valueAed: -1 });
+    expect(res.status).toBe(400);
+    expect(res.body.ok).toBe(false);
+  });
+
+  it("POST /legal/contract accepts a `language` field and persists it", async () => {
+    const initialRow = {
+      id: "doc-http-ar",
+      documentType: "contract",
+      title: "Barter contract [AR]",
+      partyA: "Foo",
+      partyB: "Bar",
+      valueAed: "100.00",
+      body: "...",
+      metadata: { language: "ar" },
+      objectStorageKey: null,
+      status: "draft",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    dbState.returningQueue = [
+      [initialRow],
+      [{ ...initialRow, objectStorageKey: "companyOs/legal/doc-http-ar.pdf", status: "generated" }],
+    ];
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/legal/contract")
+      .send({
+        partyA: "Foo",
+        partyB: "Bar",
+        exchange: "x for y",
+        valueAed: 100,
+        language: "ar",
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    const contractInsert = dbState.insertedValues.find(
+      (r) => r.documentType === "contract",
+    );
+    expect((contractInsert!.metadata as { language?: string }).language).toBe("ar");
+  });
+
+  it("POST /legal/contract rejects an unknown `language` value", async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/legal/contract")
+      .send({
+        partyA: "Foo",
+        partyB: "Bar",
+        exchange: "x for y",
+        valueAed: 100,
+        language: "fr",
+      });
     expect(res.status).toBe(400);
     expect(res.body.ok).toBe(false);
   });

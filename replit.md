@@ -77,5 +77,5 @@ The end-to-end behaviour above is also covered by `tests/companyOs.whatsapp.test
 - **Email Services**: Nodemailer.
 - **AI Integration**: OpenAI for various AI agents.
 - **File Handling**: Multer for uploads.
-- **Document Generation**: jsPDF for barter contracts.
+- **Document Generation**: jsPDF for barter contracts. The Legal Agent supports English, Arabic (RTL with Noto Sans Arabic + arabic-persian-reshaper for letter joining and run-level bidi), and bilingual (EN+AR) PDFs. WhatsApp `contract <a> | <b> | <exchange> | <value> [| <lang>]` accepts `en` (default), `ar`, or `bilingual`.
 - **Third-Party UI Libraries**: Radix UI, react-icons, embla-carousel, react-day-picker, recharts.
