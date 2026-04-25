@@ -23,6 +23,9 @@ interface MockState {
   budgetVerdict: { spentAed: number; budgetAed: number; remainingAed: number; pctUsed: number; safe: boolean } | null;
   agentBudgetSafe: boolean;
   notifyCalls: string[];
+  notifyReturn: boolean;
+  emailCalls: Array<{ to: string; opts: Record<string, unknown> }>;
+  emailReturn: boolean;
   rememberCalls: Array<Record<string, unknown>>;
   recallReturn: Record<string, unknown> | null;
   insertCount: number;
@@ -40,6 +43,9 @@ const state: MockState = {
   budgetVerdict: null,
   agentBudgetSafe: true,
   notifyCalls: [],
+  notifyReturn: true,
+  emailCalls: [],
+  emailReturn: true,
   rememberCalls: [],
   recallReturn: null,
   insertCount: 0,
@@ -114,7 +120,14 @@ vi.mock("../server/db", () => ({
 vi.mock("../server/companyOs/twilio", () => ({
   notifyFounder: vi.fn(async (body: string) => {
     state.notifyCalls.push(body);
-    return true;
+    return state.notifyReturn;
+  }),
+}));
+
+vi.mock("../server/emailService", () => ({
+  sendCriticalAlertEmail: vi.fn(async (to: string, opts: Record<string, unknown>) => {
+    state.emailCalls.push({ to, opts });
+    return state.emailReturn;
   }),
 }));
 
@@ -188,6 +201,9 @@ beforeEach(() => {
   state.budgetVerdict = null;
   state.agentBudgetSafe = true;
   state.notifyCalls = [];
+  state.notifyReturn = true;
+  state.emailCalls = [];
+  state.emailReturn = true;
   state.rememberCalls = [];
   state.recallReturn = null;
   state.insertCount = 0;
@@ -550,5 +566,126 @@ describe("Intelligence Agent — runIntelligenceSweep", () => {
     expect(result.skippedSnoozed).toBeGreaterThanOrEqual(1);
     expect(result.notified).toBe(0);
     expect(state.notifyCalls).toHaveLength(0);
+  });
+
+  it("email fallback: critical alert falls back to FOUNDER_EMAIL when WhatsApp returns false", async () => {
+    // Force the dispute-spike (CRITICAL) detector to fire while keeping
+    // the others quiet, then arrange notifyFounder to return false (Twilio
+    // down / mis-configured / rate-limited) so the sweep MUST fall back to
+    // the email channel.
+    state.selectQueue = [
+      [{ total: "0" }],     // revenueDrop.last
+      [{ total: "0" }],     // revenueDrop.prev
+      [{ c: 18 }],          // disputeSpike.last → fires CRITICAL
+      [{ c: 5 }],           // disputeSpike.prev
+      [{ c: 0 }],           // zeroDeals.deals
+      [{ c: 0 }],           // zeroDeals.active (low → no alert)
+    ];
+    const inserted = {
+      id: "deadbeef-aaaa-bbbb-cccc-1234567890ab",
+      alertType: "dispute_spike_wow",
+      severity: "critical",
+      title: "Dispute volume spiked week-over-week",
+      body: "18 reports filed in the last 7 days vs 5 the prior 7.",
+      dataJson: {},
+      dayKey: "2026-04-25",
+      acknowledgedAt: null,
+      createdAt: new Date(),
+    };
+    state.insertReturn = [inserted];
+    state.notifyReturn = false; // Twilio is down — WhatsApp send fails.
+    state.emailReturn = true;   // Email fallback succeeds.
+    const prevFounderEmail = process.env.FOUNDER_EMAIL;
+    process.env.FOUNDER_EMAIL = "founder@example.com";
+    try {
+      const result = await runIntelligenceSweep();
+      expect(result.newAlerts.length).toBeGreaterThanOrEqual(1);
+      // notifyFounder was attempted (and returned false).
+      expect(state.notifyCalls.length).toBeGreaterThanOrEqual(1);
+      // Email fallback fired exactly once for the critical alert.
+      expect(state.emailCalls).toHaveLength(1);
+      expect(state.emailCalls[0].to).toBe("founder@example.com");
+      expect(state.emailCalls[0].opts.alertType).toBe("dispute_spike_wow");
+      expect(state.emailCalls[0].opts.alertId).toBe(inserted.id);
+      expect(state.emailCalls[0].opts.title).toBe(inserted.title);
+      // The sweep counts the email-delivered alert as notified, and
+      // tags the channel via notifiedViaEmail.
+      expect(result.notified).toBeGreaterThanOrEqual(1);
+      expect(result.notifiedViaEmail).toBe(1);
+      expect(result.notifyFailures).toBe(0);
+    } finally {
+      if (prevFounderEmail === undefined) delete process.env.FOUNDER_EMAIL;
+      else process.env.FOUNDER_EMAIL = prevFounderEmail;
+    }
+  });
+
+  it("email fallback: when WhatsApp AND email both fail, sweep records a notifyFailure", async () => {
+    state.selectQueue = [
+      [{ total: "0" }],
+      [{ total: "0" }],
+      [{ c: 18 }],          // dispute spike fires CRITICAL
+      [{ c: 5 }],
+      [{ c: 0 }],
+      [{ c: 0 }],
+    ];
+    state.insertReturn = [{
+      id: "feedface-aaaa-bbbb-cccc-1234567890ab",
+      alertType: "dispute_spike_wow",
+      severity: "critical",
+      title: "Dispute volume spiked week-over-week",
+      body: "...",
+      dataJson: {},
+      dayKey: "2026-04-25",
+      acknowledgedAt: null,
+      createdAt: new Date(),
+    }];
+    state.notifyReturn = false;
+    state.emailReturn = false;
+    const prevFounderEmail = process.env.FOUNDER_EMAIL;
+    process.env.FOUNDER_EMAIL = "founder@example.com";
+    try {
+      const result = await runIntelligenceSweep();
+      expect(state.emailCalls).toHaveLength(1);
+      expect(result.notified).toBe(0);
+      expect(result.notifiedViaEmail).toBe(0);
+      expect(result.notifyFailures).toBeGreaterThanOrEqual(1);
+    } finally {
+      if (prevFounderEmail === undefined) delete process.env.FOUNDER_EMAIL;
+      else process.env.FOUNDER_EMAIL = prevFounderEmail;
+    }
+  });
+
+  it("email fallback: skipped when FOUNDER_EMAIL is unset (still records notifyFailure)", async () => {
+    state.selectQueue = [
+      [{ total: "0" }],
+      [{ total: "0" }],
+      [{ c: 18 }],
+      [{ c: 5 }],
+      [{ c: 0 }],
+      [{ c: 0 }],
+    ];
+    state.insertReturn = [{
+      id: "cafebabe-aaaa-bbbb-cccc-1234567890ab",
+      alertType: "dispute_spike_wow",
+      severity: "critical",
+      title: "Dispute volume spiked week-over-week",
+      body: "...",
+      dataJson: {},
+      dayKey: "2026-04-25",
+      acknowledgedAt: null,
+      createdAt: new Date(),
+    }];
+    state.notifyReturn = false;
+    const prevFounderEmail = process.env.FOUNDER_EMAIL;
+    delete process.env.FOUNDER_EMAIL;
+    try {
+      const result = await runIntelligenceSweep();
+      // Email never attempted because FOUNDER_EMAIL was unset.
+      expect(state.emailCalls).toHaveLength(0);
+      expect(result.notified).toBe(0);
+      expect(result.notifyFailures).toBeGreaterThanOrEqual(1);
+    } finally {
+      if (prevFounderEmail !== undefined) process.env.FOUNDER_EMAIL = prevFounderEmail;
+    }
   });
 });

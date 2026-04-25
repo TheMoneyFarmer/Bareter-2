@@ -32,6 +32,7 @@ import { notifyFounder } from "./twilio";
 import { logLlmCall, isAgentBudgetSafe, getBudgetVerdict } from "./costTracker";
 import { recallByKey, remember } from "./memoryAgent";
 import { chatCompletion } from "../agents/llm";
+import { sendCriticalAlertEmail } from "../emailService";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,7 +52,12 @@ export interface SweepResult {
   ranAt: string;
   detectorsRun: number;
   newAlerts: ProactiveAlert[];
+  /** Total alerts that reached the founder via *any* channel (WhatsApp or email fallback). */
   notified: number;
+  /** Critical alerts that fell back to the founder email after WhatsApp returned false. */
+  notifiedViaEmail: number;
+  /** Critical alerts where both WhatsApp and the email fallback failed (or email was unconfigured). */
+  notifyFailures: number;
   skippedSnoozed: number;
   errors: string[];
 }
@@ -508,6 +514,8 @@ export async function runIntelligenceSweep(): Promise<SweepResult> {
     detectorsRun: 0,
     newAlerts: [],
     notified: 0,
+    notifiedViaEmail: 0,
+    notifyFailures: 0,
     skippedSnoozed: 0,
     errors: [],
   };
@@ -548,7 +556,59 @@ export async function runIntelligenceSweep(): Promise<SweepResult> {
       console.error("[companyOs.intelligence] notifyFounder failed:", err);
       return false;
     });
-    if (sent) result.notified += 1;
+    if (sent) {
+      result.notified += 1;
+      console.log(
+        `[companyOs.intelligence] alert ${shortId(inserted.id)} (${inserted.alertType}) notifiedVia=whatsapp`,
+      );
+      continue;
+    }
+
+    // WhatsApp failed. For *critical* alerts, fall back to email so the
+    // founder is paged via at least one channel — warnings + info stay
+    // WhatsApp-only because they're already noisy and the dashboard
+    // surface catches them.
+    if (!isCritical) {
+      result.notifyFailures += 1;
+      console.warn(
+        `[companyOs.intelligence] alert ${shortId(inserted.id)} (${inserted.alertType}) notifiedVia=none (non-critical, no email fallback)`,
+      );
+      continue;
+    }
+
+    const founderEmail = process.env.FOUNDER_EMAIL?.trim();
+    if (!founderEmail) {
+      result.notifyFailures += 1;
+      console.warn(
+        `[companyOs.intelligence] alert ${shortId(inserted.id)} (${inserted.alertType}) notifiedVia=none (FOUNDER_EMAIL not set)`,
+      );
+      continue;
+    }
+
+    const emailed = await sendCriticalAlertEmail(founderEmail, {
+      title: inserted.title,
+      body: inserted.body,
+      alertType: inserted.alertType,
+      alertId: inserted.id,
+    }).catch((err) => {
+      console.error(
+        "[companyOs.intelligence] sendCriticalAlertEmail failed:",
+        err,
+      );
+      return false;
+    });
+    if (emailed) {
+      result.notified += 1;
+      result.notifiedViaEmail += 1;
+      console.log(
+        `[companyOs.intelligence] alert ${shortId(inserted.id)} (${inserted.alertType}) notifiedVia=email (whatsapp fallback)`,
+      );
+    } else {
+      result.notifyFailures += 1;
+      console.error(
+        `[companyOs.intelligence] alert ${shortId(inserted.id)} (${inserted.alertType}) notifiedVia=none (whatsapp + email both failed)`,
+      );
+    }
   }
 
   // Audit row so the OS log surface shows when the watcher last ran.
@@ -556,7 +616,7 @@ export async function runIntelligenceSweep(): Promise<SweepResult> {
     agentName: "intelligenceAgent",
     command: "sweep",
     inputPreview: `detectors=${result.detectorsRun} snoozed=${snoozedUntil ? snoozedUntil.toISOString() : "no"}`,
-    outputPreview: `new=${result.newAlerts.length} notified=${result.notified} skipped=${result.skippedSnoozed} errors=${result.errors.length}`,
+    outputPreview: `new=${result.newAlerts.length} notified=${result.notified} viaEmail=${result.notifiedViaEmail} failed=${result.notifyFailures} skipped=${result.skippedSnoozed} errors=${result.errors.length}`,
     tokensUsed: 0,
     status: result.errors.length === 0 ? "ok" : "error",
     errorMessage: result.errors.length === 0 ? null : result.errors.join("; "),

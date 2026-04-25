@@ -378,6 +378,68 @@ export async function sendDisputeRiskEmail(
   });
 }
 
+/**
+ * Send a critical-severity proactive alert to the founder via email. This is
+ * the fallback channel for the Intelligence Agent: WhatsApp (Twilio) is the
+ * primary pager, but if Twilio is down / mis-configured / rate-limited the
+ * sweep falls back here so a critical alert is never silently buried in the
+ * database.
+ *
+ * Returns true if the underlying send succeeded; false if email is not
+ * configured or both Resend and SMTP failed.
+ */
+export async function sendCriticalAlertEmail(
+  toEmail: string,
+  opts: {
+    title: string;
+    body: string;
+    alertType: string;
+    alertId: string;
+  },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(
+      `[EMAIL] Critical alert email skipped for ${toEmail} (email not configured).`,
+    );
+    return false;
+  }
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const subject = `🚨 Critical alert: ${opts.title}`;
+  const escapedTitle = escapeHtml(opts.title);
+  const escapedBody = escapeHtml(opts.body);
+  const escapedType = escapeHtml(opts.alertType);
+  const shortId = (opts.alertId || "").slice(0, 8);
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><title>${escapeHtml(subject)}</title></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 560px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <p style="margin: 0 0 8px; color: #b91c1c; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;">🚨 Critical · ${escapedType}</p>
+    <h1 style="margin: 0 0 12px; font-size: 20px; color: #1a1a2e;">${escapedTitle}</h1>
+    <p style="color: #374151; font-size: 14px; line-height: 1.55; white-space: pre-wrap; margin: 0 0 20px;">${escapedBody}</p>
+    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px; color: #7f1d1d; font-size: 13px;">
+      WhatsApp delivery failed for this alert, so it was sent via email as a fallback. Ack with <code>ack ${escapeHtml(shortId)}</code> in WhatsApp once Twilio is healthy again.
+    </div>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Intelligence Agent · alert ${escapeHtml(shortId)}</p>
+  </div>
+</body>
+</html>`;
+  const text = `🚨 CRITICAL ALERT (${opts.alertType})\n\n${opts.title}\n\n${opts.body}\n\nWhatsApp delivery failed — this alert was sent via email as a fallback.\nAck with: ack ${shortId}\n\n— ${APP_NAME} Intelligence Agent`;
+  return sendMail({
+    to: toEmail,
+    subject,
+    html,
+    text,
+  });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);
