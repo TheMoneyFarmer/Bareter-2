@@ -86,6 +86,20 @@ export function startScheduler(): void {
   schedule("hourlyFinanceSnapshot", "0 8-22 * * *", hourlyFinanceJob);
   // 09:00 Dubai daily — budget warning when over 95%.
   schedule("budgetWarning", "0 9 * * *", budgetWarningJob);
+
+  // One-shot startup briefing — fires once a few seconds after boot when
+  // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing
+  // a new deployment to confirm the WhatsApp path works, without waiting
+  // until 08:00 the next morning. Safe to leave on permanently — it only
+  // sends a single message per process startup.
+  if (process.env.COMPANY_OS_SEND_STARTUP_BRIEFING === "true") {
+    setTimeout(() => {
+      console.log("[companyOs.scheduler] firing one-shot startup briefing");
+      dailyBriefingJob().catch((err) =>
+        console.error("[companyOs.scheduler] startup briefing failed:", err),
+      );
+    }, 5_000);
+  }
 }
 
 export function stopScheduler(): void {

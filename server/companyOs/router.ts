@@ -10,7 +10,7 @@ import type Stripe from "stripe";
 import { desc } from "drizzle-orm";
 import { db } from "../db";
 import { companyOsLogs } from "@shared/schema";
-import { handleManagerMessage } from "./managerAgent";
+import { handleManagerMessage, composeDailyBriefing } from "./managerAgent";
 import {
   handleStripePaymentSucceeded,
   handleStripeChargeRefunded,
@@ -18,9 +18,17 @@ import {
   formatFinanceReport,
   getWeeklyRevenue,
   dubaiDateString,
+  runDailyFinanceSnapshot,
 } from "./financeAgent";
 import { getStatusJson } from "./managerAgent";
-import { sendWhatsApp, validateTwilioRequest, isFromFounder } from "./twilio";
+import {
+  sendWhatsApp,
+  validateTwilioRequest,
+  isFromFounder,
+  notifyFounder,
+  isFounderConfigured,
+  isTwilioConfigured,
+} from "./twilio";
 import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
 import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
 
@@ -175,6 +183,45 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /finance failed:", err);
       res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/company-os/test-briefing — manual trigger for the daily briefing.
+  //
+  // Sends one briefing to the configured founder WhatsApp number right now,
+  // bypassing the 08:00 cron. Admin-gated so it can't be hit anonymously.
+  // Use it after publishing to confirm the WhatsApp delivery path works
+  // without waiting until tomorrow morning.
+  // ---------------------------------------------------------------------------
+  router.post("/test-briefing", opts.requireAdmin, async (_req, res) => {
+    try {
+      if (!isTwilioConfigured()) {
+        return res
+          .status(400)
+          .json({ ok: false, message: "Twilio is not configured (missing TWILIO_* secrets)" });
+      }
+      if (!isFounderConfigured()) {
+        return res
+          .status(400)
+          .json({ ok: false, message: "FOUNDER_WHATSAPP_NUMBER is not set" });
+      }
+      try {
+        await runDailyFinanceSnapshot();
+      } catch (err) {
+        console.warn("[companyOs] /test-briefing snapshot refresh failed:", err);
+      }
+      const body = await composeDailyBriefing();
+      const sent = await notifyFounder(`🧪 *Test briefing* (manually triggered)\n\n${body}`);
+      res.json({
+        ok: sent,
+        message: sent
+          ? "Briefing sent to founder WhatsApp"
+          : "Twilio call failed — check server logs",
+      });
+    } catch (err) {
+      console.error("[companyOs] /test-briefing failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
     }
   });
 
