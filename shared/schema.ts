@@ -886,6 +886,42 @@ export const agentMemory = pgTable("agent_memory", {
   usageIdx: index("agent_memory_usage_idx").on(table.usageCount),
 }));
 
+// Proactive Alerts — written by the Intelligence Agent when a heuristic
+// detector trips (revenue drop, dispute spike, AI burn rate, hot
+// category, zero-deals window). Each alert is shown in the WhatsApp
+// `alerts` command and on the admin dashboard's alerts feed; ack-ing
+// stamps `acknowledgedAt` so it drops out of the open list.
+//
+// Dedupe: `dayKey` is a UTC YYYY-MM-DD computed by the agent before
+// insert. Combined with `alertType` it forms a unique index — a second
+// detector firing on the same day no-ops via `onConflictDoNothing` so
+// the founder never gets the same alert twice on the same day.
+//
+// NOTE: this is functionally equivalent to a `UNIQUE(alert_type,
+// DATE(created_at))` expression index, but we materialise the day in
+// its own `text` column instead so (a) the index works on every
+// Postgres version without needing an immutable expression, and
+// (b) we control the timezone explicitly (always UTC) instead of
+// inheriting the server's `timezone` setting via `DATE()`.
+export const proactiveAlerts = pgTable("proactive_alerts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  alertType: text("alert_type").notNull(), // e.g. "revenue_drop_wow", "dispute_spike_wow"
+  severity: text("severity").notNull(),    // "info" | "warning" | "critical"
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  dataJson: jsonb("data_json").$type<Record<string, unknown>>().default({}),
+  dayKey: text("day_key").notNull(),       // UTC YYYY-MM-DD — dedupe partner
+  acknowledgedAt: timestamp("acknowledged_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  typeDayUniqueIdx: uniqueIndex("proactive_alerts_type_day_unique_idx").on(
+    table.alertType,
+    table.dayKey,
+  ),
+  createdAtIdx: index("proactive_alerts_created_at_idx").on(table.createdAt),
+  ackIdx: index("proactive_alerts_ack_idx").on(table.acknowledgedAt),
+}));
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -1228,6 +1264,14 @@ export const insertAgentMemorySchema = createInsertSchema(agentMemory).omit({
 });
 export type InsertAgentMemory = z.infer<typeof insertAgentMemorySchema>;
 export type AgentMemory = typeof agentMemory.$inferSelect;
+
+export const insertProactiveAlertSchema = createInsertSchema(proactiveAlerts).omit({
+  id: true,
+  createdAt: true,
+  acknowledgedAt: true,
+});
+export type InsertProactiveAlert = z.infer<typeof insertProactiveAlertSchema>;
+export type ProactiveAlert = typeof proactiveAlerts.$inferSelect;
 
 // Waitlist
 export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)

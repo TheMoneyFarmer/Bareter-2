@@ -1,13 +1,18 @@
 import { useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
+  AlertTriangle,
   ArrowLeft,
+  BellOff,
+  Check,
   Download,
   RefreshCw,
   TrendingUp,
@@ -93,6 +98,26 @@ interface SnapshotsResponse {
     gmvAed7d: string | number;
     aiCostAedMonthToDate: string | number;
   }>;
+}
+
+// Mirrors `ProactiveAlert` from `shared/schema.ts` — kept local to keep
+// the admin bundle from pulling in the server schema.
+interface ProactiveAlertRow {
+  id: string;
+  alertType: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  body: string;
+  dataJson?: Record<string, unknown> | null;
+  dayKey: string;
+  acknowledgedAt: string | null;
+  createdAt: string | null;
+}
+
+interface AlertsResponse {
+  count: number;
+  snoozedUntil: string | null;
+  alerts: ProactiveAlertRow[];
 }
 
 const PIE_COLORS = [
@@ -214,10 +239,77 @@ export default function CompanyOsDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  // Open alerts feed — surfaces the Intelligence Agent's anomaly findings
+  // directly on the dashboard so the founder doesn't need to chase the
+  // WhatsApp thread to triage. Polled at the same 60s cadence as the
+  // KPIs so freshly-fired alerts appear without a manual refresh.
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  // Server defaults to status=open, so a flat URL keyed query works with
+  // the project's default queryFn (which joins queryKey segments with "/").
+  const alertsQuery = useQuery<AlertsResponse>({
+    queryKey: ["/api/company-os/alerts"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const ackMutation = useMutation<unknown, Error, string>({
+    mutationFn: async (alertId: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/company-os/alerts/${alertId}/ack`,
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/alerts"],
+      });
+      toast({ title: "Alert acknowledged" });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Acknowledge failed",
+        description: err.message,
+      });
+    },
+  });
+
+  const snoozeMutation = useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/company-os/alerts/snooze`, {
+        hours: 24,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/alerts"],
+      });
+      toast({ title: "Alerts snoozed for 24h", description: "Critical alerts will still page you." });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Snooze failed",
+        description: err.message,
+      });
+    },
+  });
+
   const live = liveQuery.data;
   const isLoading = liveQuery.isLoading;
-  const isFetching = liveQuery.isFetching || snapshotsQuery.isFetching;
+  const isFetching =
+    liveQuery.isFetching || snapshotsQuery.isFetching || alertsQuery.isFetching;
   const error = liveQuery.error ?? snapshotsQuery.error;
+  const openAlerts = alertsQuery.data?.alerts ?? [];
+  const snoozedUntilDate = alertsQuery.data?.snoozedUntil
+    ? new Date(alertsQuery.data.snoozedUntil)
+    : null;
+  const snoozeActive =
+    !!snoozedUntilDate && snoozedUntilDate.getTime() > Date.now();
 
   // Chart series come straight from the live aggregation — no client-side
   // re-bucketing needed. Memoised so chart re-renders are cheap. The
@@ -464,6 +556,113 @@ export default function CompanyOsDashboard() {
             hint={live ? `Top city: ${live.topCity ?? "—"}` : undefined}
           />
         </div>
+
+        {/* Intelligence Agent — open anomaly alerts. Only renders when
+            there are open rows (or while loading) so a quiet system
+            doesn't waste vertical space on the dashboard. */}
+        {(alertsQuery.isLoading || openAlerts.length > 0) && (
+          <Card data-testid="card-alerts">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Open alerts
+                  <Badge
+                    variant="secondary"
+                    data-testid="badge-alerts-count"
+                  >
+                    {openAlerts.length}
+                  </Badge>
+                  {snoozeActive && snoozedUntilDate && (
+                    <Badge
+                      variant="outline"
+                      className="gap-1"
+                      data-testid="badge-alerts-snoozed"
+                    >
+                      <BellOff className="h-3 w-3" />
+                      snoozed until {snoozedUntilDate.toLocaleTimeString()}
+                    </Badge>
+                  )}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => snoozeMutation.mutate()}
+                  disabled={snoozeMutation.isPending || snoozeActive}
+                  data-testid="button-snooze-alerts"
+                >
+                  <BellOff className="mr-2 h-4 w-4" />
+                  Snooze 24h
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {alertsQuery.isLoading && (
+                <Skeleton className="h-16 w-full" data-testid="skeleton-alerts" />
+              )}
+              {!alertsQuery.isLoading && openAlerts.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No open alerts.
+                </p>
+              )}
+              {openAlerts.map((alert) => {
+                const sev = alert.severity;
+                const sevColor =
+                  sev === "critical"
+                    ? "destructive"
+                    : sev === "warning"
+                      ? "default"
+                      : "secondary";
+                return (
+                  <div
+                    key={alert.id}
+                    className="flex items-start justify-between gap-3 rounded-md border p-3 hover-elevate"
+                    data-testid={`row-alert-${alert.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={sevColor as "destructive" | "default" | "secondary"}
+                          data-testid={`badge-alert-severity-${alert.id}`}
+                        >
+                          {sev}
+                        </Badge>
+                        <span
+                          className="truncate text-sm font-medium"
+                          data-testid={`text-alert-title-${alert.id}`}
+                        >
+                          {alert.title}
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {alert.alertType} · {alert.id.slice(0, 8)}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground"
+                        data-testid={`text-alert-body-${alert.id}`}
+                      >
+                        {alert.body}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => ackMutation.mutate(alert.id)}
+                      disabled={
+                        ackMutation.isPending &&
+                        ackMutation.variables === alert.id
+                      }
+                      data-testid={`button-ack-alert-${alert.id}`}
+                    >
+                      <Check className="mr-1 h-3 w-3" />
+                      Ack
+                    </Button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Charts */}
         <div className="grid gap-3 lg:grid-cols-2">

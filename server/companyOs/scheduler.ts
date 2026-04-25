@@ -15,6 +15,7 @@ import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
+import { runIntelligenceSweep } from "./intelligenceAgent";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
 const isProd = () => process.env.NODE_ENV === "production";
@@ -139,6 +140,45 @@ async function dailySalesJob(): Promise<void> {
   }
 }
 
+/**
+ * Return the current hour-of-day in the Asia/Dubai timezone (0-23).
+ * Used as a defence-in-depth guard so a misconfigured cron expression
+ * (or a future move to UTC ticks) can never page the founder outside
+ * of business hours.
+ */
+function dubaiHour(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hh = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const n = Number(hh);
+  return Number.isFinite(n) ? n % 24 : 0;
+}
+
+async function intelligenceSweepJob(): Promise<void> {
+  // Defence-in-depth: even though the cron expression already pins
+  // ticks to 06/10/14/18/22, double-check we're inside the Dubai
+  // 06:00–22:00 window before running. Allows the manual `POST
+  // /alerts/sweep` route to opt out via COMPANY_OS_SCHEDULER_FORCE.
+  const hour = dubaiHour();
+  if ((hour < 6 || hour > 22) && process.env.COMPANY_OS_SCHEDULER_FORCE !== "true") {
+    console.log(
+      `[companyOs.scheduler] intelligenceSweep skipped (Dubai hour=${hour} outside 06–22 window)`,
+    );
+    return;
+  }
+  try {
+    const r = await runIntelligenceSweep();
+    console.log(
+      `[companyOs.scheduler] intelligenceSweep: detectors=${r.detectorsRun} new=${r.newAlerts.length} notified=${r.notified} snoozed=${r.skippedSnoozed} errors=${r.errors.length}`,
+    );
+  } catch (err) {
+    console.error("[companyOs.scheduler] intelligenceSweep failed:", err);
+  }
+}
+
 async function budgetWarningJob(): Promise<void> {
   if (!isFounderConfigured()) return;
   const v = await getBudgetVerdict();
@@ -191,6 +231,11 @@ export function startScheduler(): void {
   // no founder notification — just persists a `kpi_snapshots` row so
   // the admin page has 30-day history to chart.
   schedule("dailyDashboardSnapshot", "0 2 * * *", dailyDashboardSnapshotJob);
+  // Every 4 hours from 06:00 to 22:00 Dubai — Intelligence Agent sweep.
+  // Daytime only so the founder isn't woken by warnings. Detectors are
+  // dedup'd at the SQL level (alertType + dayKey) so multiple ticks per
+  // day are safe — at most one alert of each type per UTC day.
+  schedule("intelligenceSweep", "0 6,10,14,18,22 * * *", intelligenceSweepJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

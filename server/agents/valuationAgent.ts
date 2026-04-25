@@ -58,6 +58,16 @@ export async function getValuation(
       agentName: "valuation",
       temperature: 0.4,
       maxTokens: 512,
+      // Per-agent budget breach: return a neutral, low-confidence
+      // valuation so the form still renders something usable.
+      agentBudgetJsonFallback: {
+        estimatedRange: { min: 0, max: 0 },
+        fairValue: 0,
+        confidence: 0.1,
+        reasoning: "AI valuation paused: monthly valuation-agent budget reached.",
+        tips: [],
+        marketComparison: "",
+      },
     });
 
     if (userId) {

@@ -152,6 +152,18 @@ export async function generateBriefDraft(snapshot: TrendingSnapshot): Promise<Br
     model: DEFAULT_MODEL,
     temperature: 0.6,
     maxTokens: 700,
+    // Per-agent budget breach: emit a placeholder brief so the cron
+    // job still inserts a row (and the founder sees something
+    // explaining why this week's brief is sparse).
+    agentBudgetJsonFallback: {
+      theme: "Marketing brief paused (budget reached)",
+      audience: "UAE/GCC SMEs and freelancers",
+      hooks: [],
+      hashtags: [],
+      suggestedBudgetAed: 0,
+      recommendations:
+        "Marketing AI budget for the month has been reached. Resume next month or raise the cap via env override.",
+    },
   });
   // Defensive normalisation — if the LLM returns malformed shapes we patch
   // rather than crash, so the cron job still produces a row.

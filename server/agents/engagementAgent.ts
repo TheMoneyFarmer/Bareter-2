@@ -54,6 +54,9 @@ export async function getEngagementSuggestions(
       agentName: "engagement",
       temperature: 0.7,
       maxTokens: 512,
+      // Per-agent budget breach: return an empty list so the panel
+      // simply renders no suggestions instead of erroring.
+      agentBudgetJsonFallback: [],
     });
 
     try {

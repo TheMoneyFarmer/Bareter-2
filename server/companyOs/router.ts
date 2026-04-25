@@ -55,6 +55,14 @@ import {
   getSnapshotByDate as getKpiSnapshotByDate,
 } from "./dashboardAgent";
 import { listMemories, deleteMemoryById } from "./memoryAgent";
+import {
+  getRecentAlerts,
+  acknowledgeAlert,
+  snoozeAlerts,
+  runIntelligenceSweep,
+  getAlertsSnoozedUntil,
+} from "./intelligenceAgent";
+import { getAllAgentSpendsAed } from "./costTracker";
 import { z } from "zod";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
@@ -554,6 +562,86 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ ok: true });
     } catch (err) {
       console.error("[companyOs] DELETE /memory/:id failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Intelligence Agent — anomaly alerts. Founder-only via requireAdmin.
+  //   • GET  /alerts[?status=open|acked|all&limit=]  — list rows.
+  //   • POST /alerts/:id/ack                         — mark one acknowledged.
+  //   • POST /alerts/snooze                          — 24h non-critical snooze.
+  //   • POST /alerts/sweep                           — manual sweep trigger.
+  //   • GET  /alerts/budgets                         — per-agent AED caps + MTD spend.
+  // The list never throws (returns [] on DB failure); ack returns 404 when
+  // the alert prefix doesn't match any open row so dashboards can render
+  // the right toast.
+  // ---------------------------------------------------------------------------
+  router.get("/alerts", opts.requireAdmin, async (req, res) => {
+    try {
+      const statusRaw = String(req.query.status ?? "open");
+      const allowedStatuses = ["open", "acked", "all"] as const;
+      type AlertStatus = typeof allowedStatuses[number];
+      const status: AlertStatus = (allowedStatuses as readonly string[]).includes(statusRaw)
+        ? (statusRaw as AlertStatus)
+        : "open";
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, limitRaw)) : 50;
+      const [alerts, snoozedUntil] = await Promise.all([
+        getRecentAlerts({ status, limit }),
+        getAlertsSnoozedUntil(),
+      ]);
+      res.json({
+        count: alerts.length,
+        snoozedUntil: snoozedUntil ? snoozedUntil.toISOString() : null,
+        alerts,
+      });
+    } catch (err) {
+      console.error("[companyOs] /alerts failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post("/alerts/:id/ack", opts.requireAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id || "");
+      const ack = await acknowledgeAlert(id);
+      if (!ack) return res.status(404).json({ ok: false, message: "No open alert matched" });
+      res.json({ ok: true, alert: ack });
+    } catch (err) {
+      console.error("[companyOs] POST /alerts/:id/ack failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.post("/alerts/snooze", opts.requireAdmin, async (req, res) => {
+    try {
+      const hoursRaw = Number(req.body?.hours ?? 24);
+      const hours = Number.isFinite(hoursRaw) ? Math.max(1, Math.min(168, hoursRaw)) : 24;
+      const until = await snoozeAlerts(hours);
+      res.json({ ok: true, snoozedUntil: until.toISOString() });
+    } catch (err) {
+      console.error("[companyOs] /alerts/snooze failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.post("/alerts/sweep", opts.requireAdmin, async (_req, res) => {
+    try {
+      const result = await runIntelligenceSweep();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[companyOs] /alerts/sweep failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  router.get("/alerts/budgets", opts.requireAdmin, async (_req, res) => {
+    try {
+      const verdicts = await getAllAgentSpendsAed();
+      res.json({ count: verdicts.length, verdicts });
+    } catch (err) {
+      console.error("[companyOs] /alerts/budgets failed:", err);
       res.status(500).json({ message: "Internal error" });
     }
   });

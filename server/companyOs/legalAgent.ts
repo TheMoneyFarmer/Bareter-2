@@ -348,6 +348,10 @@ export async function generateDisputeCallouts(
       model: DEFAULT_MODEL,
       temperature: 0.3,
       maxTokens: 400,
+      // Per-agent budget breach: hand back an empty callouts array
+      // so the caller still falls into its "review the raw counts"
+      // copy below instead of throwing.
+      agentBudgetJsonFallback: { callouts: [] },
     });
     const callouts = Array.isArray(data?.callouts)
       ? data.callouts.map((c) => String(c).slice(0, 400)).filter(Boolean)

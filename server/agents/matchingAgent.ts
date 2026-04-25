@@ -58,6 +58,10 @@ export async function findMatches(
       agentName: "matching",
       temperature: 0.3,
       maxTokens: 512,
+      // Per-agent budget breach: return an empty match list so the
+      // caller still resolves cleanly (the UI will fall back to its
+      // standard "no AI matches yet" empty state).
+      agentBudgetJsonFallback: [],
     });
 
     try {

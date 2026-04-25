@@ -44,6 +44,12 @@ import {
   parseForgetCommand,
   forgetMemory,
 } from "./memoryAgent";
+import {
+  formatAlertsListForWhatsApp,
+  parseAckCommand,
+  acknowledgeAlert,
+  snoozeAlerts,
+} from "./intelligenceAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -65,6 +71,9 @@ const HELP_TEXT = [
   "• `dashboard` — KPI snapshot (users, posts, deals, GMV, AI spend) · alias `kpis`",
   "• `memory` — list what each agent has remembered (top 3 keys per agent)",
   "• `forget <agent> <key>` — delete one stored memory",
+  "• `alerts` — open anomaly alerts from the Intelligence Agent",
+  "• `ack <id>` — acknowledge an alert by short id (8-char prefix)",
+  "• `quiet alerts` — snooze non-critical alerts for 24h",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -406,6 +415,52 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
     });
     return out;
   }
+  // Intelligence Agent surface — open alerts, ack, snooze. All LLM-free.
+  if (normalized === "alerts" || normalized === "alert" || normalized === "open alerts") {
+    const out = await formatAlertsListForWhatsApp();
+    await logLlmCall({
+      agentName: "manager",
+      command: "alerts",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+  {
+    const ackId = parseAckCommand(text);
+    if (ackId) {
+      const ack = await acknowledgeAlert(ackId);
+      const out = ack
+        ? `Acknowledged *${ack.title}* (id ${ack.id.slice(0, 8)}).`
+        : `No open alert matched \`${ackId}\`. Use a longer id prefix or check \`alerts\`.`;
+      await logLlmCall({
+        agentName: "manager",
+        command: "ack",
+        inputPreview: text,
+        outputPreview: out,
+        tokensUsed: 0,
+      });
+      return out;
+    }
+  }
+  if (
+    normalized === "quiet alerts" ||
+    normalized === "snooze alerts" ||
+    normalized === "mute alerts"
+  ) {
+    const until = await snoozeAlerts(24);
+    const out = `Snoozed non-critical alerts until ${until.toISOString()}. Critical alerts will still come through.`;
+    await logLlmCall({
+      agentName: "manager",
+      command: "quiet_alerts",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+
   if (normalized.startsWith("forget ")) {
     const parsed = parseForgetCommand(text);
     if (!parsed) {

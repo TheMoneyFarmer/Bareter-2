@@ -53,6 +53,13 @@ export async function getAdminInsights(
       command: "insight",
       temperature: 0.3,
       maxTokens: 512,
+      // Per-agent budget breach: degrade to an "unavailable" insight
+      // rather than throwing — the caller still renders something.
+      agentBudgetJsonFallback: {
+        summary: "AI insights paused: monthly admin-agent budget reached.",
+        alerts: [],
+        recommendations: [],
+      },
     });
 
     if (adminUserId) {
