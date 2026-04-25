@@ -38,7 +38,12 @@ import {
 } from "./twilio";
 import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
 import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
-import { getLeads, getSalesReport, runDailySalesSync } from "./salesAgent";
+import {
+  getLeads,
+  getSalesReport,
+  runDailySalesSync,
+  updateLead,
+} from "./salesAgent";
 import {
   generateContract,
   parseContractCommand,
@@ -351,6 +356,45 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error("[companyOs] /sales/sync failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  // Edit the freeform `notes` and/or override the lifecycle `status` for a
+  // single lead from the admin page. Anything else (score, email, …) is
+  // owned by the agent and intentionally not exposed here.
+  const leadStatusEnum = z.enum([
+    "new",
+    "active",
+    "engaged",
+    "re_engaged",
+    "converted",
+    "dormant",
+  ]);
+  const leadPatchSchema = z
+    .object({
+      notes: z.string().max(4000).nullable().optional(),
+      status: leadStatusEnum.optional(),
+    })
+    .refine((v) => v.notes !== undefined || v.status !== undefined, {
+      message: "Provide at least one of: notes, status",
+    });
+
+  router.patch("/sales/leads/:id", opts.requireAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id || "");
+      if (!id) return res.status(400).json({ ok: false, message: "Missing id" });
+      const parsed = leadPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res
+          .status(400)
+          .json({ ok: false, message: parsed.error.issues[0]?.message ?? "Invalid body" });
+      }
+      const updated = await updateLead(id, parsed.data);
+      if (!updated) return res.status(404).json({ ok: false, message: "Lead not found" });
+      res.json({ ok: true, lead: updated });
+    } catch (err) {
+      console.error("[companyOs] PATCH /sales/leads/:id failed:", err);
       res.status(500).json({ ok: false, message: "Internal error" });
     }
   });

@@ -208,6 +208,7 @@ import {
   formatSalesReport,
   runReEngagementCampaign,
   syncNewLeads,
+  updateLead,
 } from "../server/companyOs/salesAgent";
 import { createCompanyOsRouter } from "../server/companyOs/router";
 
@@ -764,5 +765,133 @@ describe("Manager Agent — sales commands via WhatsApp webhook", () => {
     expect(reply).toContain("Sales");
     expect(reply).toContain("Ingested:");
     expect(reply).toContain("Re-engagement:");
+  });
+});
+
+// ===========================================================================
+// updateLead — admin editor for notes / status (Task #70)
+// ===========================================================================
+describe("updateLead", () => {
+  const sampleRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+    id: "lead-1",
+    userId: "u-1",
+    email: "alex@example.com",
+    fullName: "Alex Rahman",
+    userType: "asset_owner",
+    location: "Dubai",
+    leadScore: 75,
+    status: "engaged",
+    lastActivityAt: new Date(),
+    firstDealAt: null,
+    reEngagementSentAt: null,
+    notes: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  });
+
+  it("updates notes and bumps updatedAt", async () => {
+    dbState.returningQueue = [[sampleRow({ notes: "VIP follow-up" })]];
+    const updated = await updateLead("lead-1", { notes: "VIP follow-up" });
+    expect(updated?.notes).toBe("VIP follow-up");
+    expect(dbState.updatedSets).toHaveLength(1);
+    expect(dbState.updatedSets[0].notes).toBe("VIP follow-up");
+    expect(dbState.updatedSets[0].updatedAt).toBeInstanceOf(Date);
+  });
+
+  it("clears notes when an empty string is supplied", async () => {
+    dbState.returningQueue = [[sampleRow({ notes: null })]];
+    await updateLead("lead-1", { notes: "" });
+    expect(dbState.updatedSets[0].notes).toBeNull();
+  });
+
+  it("updates status without touching notes when only status is provided", async () => {
+    dbState.returningQueue = [[sampleRow({ status: "converted" })]];
+    const updated = await updateLead("lead-1", { status: "converted" });
+    expect(updated?.status).toBe("converted");
+    expect(dbState.updatedSets[0].status).toBe("converted");
+    expect("notes" in dbState.updatedSets[0]).toBe(false);
+  });
+
+  it("rejects an invalid status value", async () => {
+    await expect(
+      // @ts-expect-error — exercising the runtime guard
+      updateLead("lead-1", { status: "pending_review" }),
+    ).rejects.toThrow(/Invalid lead status/);
+    expect(dbState.updatedSets).toHaveLength(0);
+  });
+
+  it("returns null when the row does not exist", async () => {
+    dbState.returningQueue = [[]];
+    const updated = await updateLead("missing", { status: "active" });
+    expect(updated).toBeNull();
+  });
+
+  it("truncates oversize notes to 4000 chars", async () => {
+    const big = "x".repeat(5000);
+    dbState.returningQueue = [[sampleRow({ notes: "x".repeat(4000) })]];
+    await updateLead("lead-1", { notes: big });
+    expect((dbState.updatedSets[0].notes as string).length).toBe(4000);
+  });
+});
+
+// ===========================================================================
+// PATCH /api/company-os/sales/leads/:id — HTTP route wrapper
+// ===========================================================================
+describe("PATCH /sales/leads/:id", () => {
+  it("400s when the body has neither notes nor status", async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .patch("/api/company-os/sales/leads/lead-1")
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("400s on an invalid status value", async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .patch("/api/company-os/sales/leads/lead-1")
+      .send({ status: "lol" });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s when no row matches the id", async () => {
+    dbState.returningQueue = [[]];
+    const app = buildApp();
+    const res = await request(app)
+      .patch("/api/company-os/sales/leads/missing")
+      .send({ notes: "anything" });
+    expect(res.status).toBe(404);
+  });
+
+  it("200s and returns the updated row on success", async () => {
+    dbState.returningQueue = [
+      [
+        {
+          id: "lead-1",
+          userId: "u-1",
+          email: "x@example.com",
+          fullName: "X",
+          userType: "asset_owner",
+          location: "Dubai",
+          leadScore: 60,
+          status: "converted",
+          lastActivityAt: new Date(),
+          firstDealAt: null,
+          reEngagementSentAt: null,
+          notes: "Closed!",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    ];
+    const app = buildApp();
+    const res = await request(app)
+      .patch("/api/company-os/sales/leads/lead-1")
+      .send({ status: "converted", notes: "Closed!" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.lead.status).toBe("converted");
+    expect(res.body.lead.notes).toBe("Closed!");
   });
 });

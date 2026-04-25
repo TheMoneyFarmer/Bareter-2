@@ -202,11 +202,13 @@ function ChartCard(props: {
   title: string;
   testId: string;
   children: React.ReactElement;
+  headerExtra?: React.ReactNode;
 }) {
   return (
     <Card data-testid={props.testId}>
-      <CardHeader className="pb-2">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 space-y-0">
         <CardTitle className="text-sm font-medium">{props.title}</CardTitle>
+        {props.headerExtra}
       </CardHeader>
       <CardContent className="h-72">
         <ResponsiveContainer width="100%" height="100%">
@@ -800,7 +802,22 @@ export default function CompanyOsDashboard() {
             </BarChart>
           </ChartCard>
 
-          <ChartCard title="Sales pipeline" testId="chart-pipeline">
+          <ChartCard
+            title="Sales pipeline"
+            testId="chart-pipeline"
+            headerExtra={
+              <Link href="/admin/sales">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  data-testid="link-sales-leads"
+                >
+                  View leads
+                </Button>
+              </Link>
+            }
+          >
             <FunnelChart>
               <Tooltip />
               <Funnel dataKey="value" data={funnelData} isAnimationActive>

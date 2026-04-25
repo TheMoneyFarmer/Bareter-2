@@ -700,6 +700,63 @@ export async function getLeads(opts: { limit?: number; status?: string } = {}): 
   return filtered.orderBy(desc(salesLeads.leadScore), desc(salesLeads.createdAt)).limit(limit);
 }
 
+// ---------------------------------------------------------------------------
+// updateLead — admin-side editor for the Company OS sales page.
+//
+// Lets the founder edit the freeform `notes` and/or override the lifecycle
+// `status` from the browser (PATCH /api/company-os/sales/leads/:id).
+//
+// Only the two fields we want to expose are accepted; everything else
+// (score, email, lastActivityAt, …) is owned by the agent and must not
+// be hand-edited from the UI. `notes` is null-able so an empty string
+// from the editor clears the field. A bumped `updatedAt` keeps the
+// stale-leads refresh pass deterministic — manually-edited rows go to
+// the back of the refresh queue rather than being re-scored on the next
+// cron tick.
+// ---------------------------------------------------------------------------
+
+const ALLOWED_LEAD_STATUSES: readonly LeadStatus[] = [
+  "new",
+  "active",
+  "engaged",
+  "re_engaged",
+  "converted",
+  "dormant",
+];
+
+export interface LeadUpdateInput {
+  notes?: string | null;
+  status?: LeadStatus;
+}
+
+export async function updateLead(
+  id: string,
+  patch: LeadUpdateInput,
+): Promise<SalesLead | null> {
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.notes !== undefined) {
+    const trimmed = (patch.notes ?? "").toString();
+    set.notes = trimmed.length === 0 ? null : trimmed.slice(0, 4000);
+  }
+  if (patch.status !== undefined) {
+    if (!ALLOWED_LEAD_STATUSES.includes(patch.status)) {
+      throw new Error(`Invalid lead status: ${patch.status}`);
+    }
+    set.status = patch.status;
+  }
+  // Only `updatedAt` was set → caller asked for nothing actionable.
+  if (Object.keys(set).length === 1) {
+    const [row] = await db.select().from(salesLeads).where(eq(salesLeads.id, id)).limit(1);
+    return row ?? null;
+  }
+  const rows = await db
+    .update(salesLeads)
+    .set(set)
+    .where(eq(salesLeads.id, id))
+    .returning();
+  return rows[0] ?? null;
+}
+
 export function formatSalesReport(r: SalesReport): string {
   return [
     "*Sales · leads snapshot*",
