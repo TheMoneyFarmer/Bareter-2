@@ -135,6 +135,25 @@ interface AlertsResponse {
   alerts: ProactiveAlertRow[];
 }
 
+// Mirrors `AgentBudgetVerdict` from `server/companyOs/costTracker.ts`.
+// The dashboard renders one progress bar per row; colour thresholds
+// (green < 80%, amber 80–95%, red ≥ 95%) are duplicated client-side
+// so the visual cue doesn't depend on the server-side `safe` flag,
+// which only flips at 95%.
+interface AgentBudgetVerdict {
+  agentName: string;
+  spentAed: number;
+  budgetAed: number;
+  remainingAed: number;
+  pctUsed: number;
+  safe: boolean;
+}
+
+interface AgentBudgetsResponse {
+  count: number;
+  verdicts: AgentBudgetVerdict[];
+}
+
 const PIE_COLORS = [
   "hsl(var(--primary))",
   "#0ea5e9",
@@ -271,6 +290,17 @@ export default function CompanyOsDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  // Per-agent monthly budget verdicts — refreshed on the same 60s
+  // cadence as the rest of the dashboard so the founder sees an agent
+  // creep toward its cap before throttling kicks in. Server already
+  // returns the canonical agent name, so no client-side dedupe needed.
+  const budgetsQuery = useQuery<AgentBudgetsResponse>({
+    queryKey: ["/api/company-os/alerts/budgets"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   // Board reports — last 12 months of generated PDFs. Refreshed on the
   // KPI cadence so a fresh cron run shows up without a manual reload.
   const boardReportsQuery = useQuery<BoardReportsResponse>({
@@ -381,6 +411,7 @@ export default function CompanyOsDashboard() {
     liveQuery.isFetching ||
     snapshotsQuery.isFetching ||
     alertsQuery.isFetching ||
+    budgetsQuery.isFetching ||
     boardReportsQuery.isFetching;
   const boardReports = boardReportsQuery.data?.reports ?? [];
   const error = liveQuery.error ?? snapshotsQuery.error;
@@ -473,6 +504,16 @@ export default function CompanyOsDashboard() {
     }));
   }, [live?.salesPipeline]);
 
+  // Sort budgets by pct used (highest first) so the founder's eye lands
+  // on the agents closest to throttling. Server returns the canonical
+  // agent name, so no client-side dedupe needed.
+  const budgetVerdicts = useMemo(() => {
+    const verdicts = budgetsQuery.data?.verdicts ?? [];
+    return verdicts
+      .slice()
+      .sort((a, b) => b.pctUsed - a.pctUsed);
+  }, [budgetsQuery.data?.verdicts]);
+
   const topCategoriesData = useMemo(
     () =>
       (live?.topCategories ?? []).map((c, i) => ({
@@ -559,6 +600,9 @@ export default function CompanyOsDashboard() {
               onClick={() => {
                 liveQuery.refetch();
                 snapshotsQuery.refetch();
+                alertsQuery.refetch();
+                budgetsQuery.refetch();
+                boardReportsQuery.refetch();
               }}
               disabled={isFetching}
               data-testid="button-refresh"
@@ -830,6 +874,79 @@ export default function CompanyOsDashboard() {
               </Funnel>
             </FunnelChart>
           </ChartCard>
+
+          <Card data-testid="card-agent-budgets">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Wallet className="h-4 w-4" /> Per-agent AI spend (this month)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {budgetsQuery.isLoading && (
+                <Skeleton className="h-16 w-full" data-testid="skeleton-agent-budgets" />
+              )}
+              {!budgetsQuery.isLoading && budgetVerdicts.length === 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="text-agent-budgets-empty">
+                  No agent spend recorded yet this month.
+                </p>
+              )}
+              {budgetVerdicts.map((v) => {
+                // pctUsed is a fraction (0–1+) per the server contract; clamp the
+                // visual bar to 100% so an over-cap agent still renders cleanly.
+                const pctRaw = Number.isFinite(v.pctUsed) ? v.pctUsed : 0;
+                const pctDisplay = Math.round(pctRaw * 100);
+                const barWidth = Math.min(100, Math.max(0, pctRaw * 100));
+                // Mirror the colour thresholds called out in the task brief:
+                // green < 80%, amber 80–95%, red ≥ 95%. We use Tailwind tokens
+                // that already adapt for dark mode via the design system.
+                const barColor =
+                  pctRaw >= 0.95
+                    ? "bg-destructive"
+                    : pctRaw >= 0.8
+                      ? "bg-amber-500"
+                      : "bg-emerald-500";
+                return (
+                  <div
+                    key={v.agentName}
+                    className="space-y-1"
+                    data-testid={`row-agent-budget-${v.agentName}`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2 text-xs">
+                      <span
+                        className="truncate font-medium"
+                        data-testid={`text-agent-budget-name-${v.agentName}`}
+                      >
+                        {v.agentName}
+                      </span>
+                      <span
+                        className="shrink-0 font-mono text-muted-foreground"
+                        data-testid={`text-agent-budget-amount-${v.agentName}`}
+                      >
+                        {formatAed(v.spentAed)} / {formatAed(v.budgetAed)}
+                        <span className="ml-2 font-semibold text-foreground">
+                          {pctDisplay}%
+                        </span>
+                      </span>
+                    </div>
+                    <div
+                      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                      role="progressbar"
+                      aria-valuenow={Math.min(100, Math.max(0, pctDisplay))}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${v.agentName} budget usage`}
+                    >
+                      <div
+                        className={`h-full ${barColor} transition-all`}
+                        style={{ width: `${barWidth}%` }}
+                        data-testid={`bar-agent-budget-${v.agentName}`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
           <ChartCard title="Top categories" testId="chart-top-categories">
             <PieChart>
