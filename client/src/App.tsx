@@ -20,6 +20,7 @@ import { DealsPage } from "@/pages/deals";
 import { DealDetailPage } from "@/pages/deal-detail";
 import { AdminPage } from "@/pages/admin";
 import CompanyOsDashboard from "@/pages/admin/CompanyOsDashboard";
+import MarketingDashboard from "@/pages/admin/MarketingDashboard";
 import { HowItWorksPage } from "@/pages/how-it-works";
 import { PricingPage } from "@/pages/pricing";
 import { HelpPage } from "@/pages/help";
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/deals/:id" component={DealDetailPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/company-os" component={CompanyOsDashboard} />
+      <Route path="/admin/marketing" component={MarketingDashboard} />
       <Route path="/how-it-works" component={HowItWorksPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route path="/help" component={HelpPage} />

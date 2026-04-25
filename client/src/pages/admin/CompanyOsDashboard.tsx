@@ -925,10 +925,20 @@ export default function CompanyOsDashboard() {
           </Card>
 
           <Card data-testid="card-briefs">
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Megaphone className="h-4 w-4" /> Latest content briefs
               </CardTitle>
+              <Link href="/admin/marketing">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  data-testid="link-marketing-briefs"
+                >
+                  View all
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-2">
               {(live?.latestContentBriefs ?? []).length === 0 && (
@@ -953,10 +963,20 @@ export default function CompanyOsDashboard() {
           </Card>
 
           <Card data-testid="card-campaigns">
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Bot className="h-4 w-4" /> Latest campaigns
               </CardTitle>
+              <Link href="/admin/marketing">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  data-testid="link-marketing-campaigns"
+                >
+                  View all
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-2">
               {(live?.latestCampaigns ?? []).length === 0 && (
