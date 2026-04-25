@@ -54,6 +54,7 @@ import {
   getRecentSnapshots as getRecentKpiSnapshots,
   getSnapshotByDate as getKpiSnapshotByDate,
 } from "./dashboardAgent";
+import { listMemories, deleteMemoryById } from "./memoryAgent";
 import { z } from "zod";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
@@ -521,6 +522,38 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.json({ count: rows.length, logs: rows });
     } catch (err) {
       console.error("[companyOs] /logs failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Memory Agent — admin surface. Founder-only via requireAdmin.
+  //   • GET    /memory[?agent=&type=&limit=]  — list rows, hot rows first.
+  //   • DELETE /memory/:id                    — delete one memory by PK.
+  // The list never throws (returns [] on DB failure); the delete returns
+  // 404 when nothing matched so dashboards can render the right toast.
+  // ---------------------------------------------------------------------------
+  router.get("/memory", opts.requireAdmin, async (req, res) => {
+    try {
+      const agent = typeof req.query.agent === "string" ? req.query.agent : undefined;
+      const type = typeof req.query.type === "string" ? req.query.type : undefined;
+      const limitRaw = Number(req.query.limit ?? 100);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, limitRaw)) : 100;
+      const rows = await listMemories({ agent, type, limit });
+      res.json({ count: rows.length, memories: rows });
+    } catch (err) {
+      console.error("[companyOs] /memory failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.delete("/memory/:id", opts.requireAdmin, async (req, res) => {
+    try {
+      const ok = await deleteMemoryById(String(req.params.id || ""));
+      if (!ok) return res.status(404).json({ ok: false, message: "Not found" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[companyOs] DELETE /memory/:id failed:", err);
       res.status(500).json({ message: "Internal error" });
     }
   });

@@ -856,6 +856,36 @@ export const salesLeads = pgTable("sales_leads", {
   lastActivityIdx: index("sales_leads_last_activity_idx").on(table.lastActivityAt),
 }));
 
+// Agent memory - shared cross-agent learnings persisted by the Memory
+// Agent. Every Company OS agent can write `remember()` after a meaningful
+// output (preference, learning, pattern) and read `buildAgentContext()`
+// before its next LLM call so future replies get measurably smarter
+// without retraining anything.
+//
+// Unique index on (agentName, memoryType, key) so `remember()` upserts
+// instead of duplicating. `value` is a JSON blob; the helper enforces
+// a 4 KB ceiling so a runaway agent can't bloat the table.
+export const agentMemory = pgTable("agent_memory", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  agentName: text("agent_name").notNull(),       // "manager" | "finance" | "marketing" | "sales" | "dashboard" | "legal"
+  memoryType: text("memory_type").notNull(),     // "preference" | "learning" | "pattern" | ...
+  key: text("key").notNull(),                    // exact-match lookup key (e.g. "top_ctr_campaign")
+  value: jsonb("value").notNull(),               // arbitrary JSON, capped at 4 KB by the helper
+  confidence: decimal("confidence", { precision: 4, scale: 3 }).notNull().default("0.500"), // 0.000–1.000
+  usageCount: integer("usage_count").notNull().default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  agentTypeKeyUniqueIdx: uniqueIndex("agent_memory_agent_type_key_unique_idx").on(
+    table.agentName,
+    table.memoryType,
+    table.key,
+  ),
+  agentIdx: index("agent_memory_agent_idx").on(table.agentName),
+  usageIdx: index("agent_memory_usage_idx").on(table.usageCount),
+}));
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -1188,6 +1218,16 @@ export const insertKpiSnapshotSchema = createInsertSchema(kpiSnapshots).omit({
 });
 export type InsertKpiSnapshot = z.infer<typeof insertKpiSnapshotSchema>;
 export type KpiSnapshot = typeof kpiSnapshots.$inferSelect;
+
+export const insertAgentMemorySchema = createInsertSchema(agentMemory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastUsedAt: true,
+  usageCount: true,
+});
+export type InsertAgentMemory = z.infer<typeof insertAgentMemorySchema>;
+export type AgentMemory = typeof agentMemory.$inferSelect;
 
 // Waitlist
 export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)

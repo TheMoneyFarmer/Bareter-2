@@ -12,6 +12,7 @@ import { financeSnapshots } from "@shared/schema";
 import { getStripeClient } from "./stripeClient";
 import { notifyFounder } from "./twilio";
 import { logLlmCall } from "./costTracker";
+import { rememberInBackground } from "./memoryAgent";
 import type Stripe from "stripe";
 
 const DUBAI_TZ = "Asia/Dubai";
@@ -174,6 +175,36 @@ export async function runDailyFinanceSnapshot(): Promise<{
       });
   } catch (err) {
     console.error("[companyOs.finance] runDailyFinanceSnapshot upsert failed:", err);
+  }
+
+  // Seed memory: revenue trend direction (up/flat/down vs the previous
+  // day). Cheap derived signal that other agents can read to colour
+  // their copy.
+  try {
+    const [prev] = await db
+      .select()
+      .from(financeSnapshots)
+      .where(drizzleSql`${financeSnapshots.snapshotDate} < ${date}`)
+      .orderBy(desc(financeSnapshots.snapshotDate))
+      .limit(1);
+    const prevAed = prev ? Number(prev.totalRevenueAed) || 0 : 0;
+    const delta = agg.totalAed - prevAed;
+    const direction = delta > 0.01 ? "up" : delta < -0.01 ? "down" : "flat";
+    rememberInBackground({
+      agentName: "finance",
+      memoryType: "learning",
+      key: "revenue_trend_direction",
+      value: {
+        date,
+        direction,
+        todayAed: Number(agg.totalAed.toFixed(2)),
+        previousAed: Number(prevAed.toFixed(2)),
+        deltaAed: Number(delta.toFixed(2)),
+      },
+      confidence: 0.65,
+    });
+  } catch (err) {
+    console.warn("[companyOs.finance] revenue trend memory seed failed:", err);
   }
 
   return { date, totalAed: agg.totalAed, count: agg.count };

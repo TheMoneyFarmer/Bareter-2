@@ -38,6 +38,7 @@ import { jsonCompletion, chatCompletion, type ChatMessage } from "../agents/llm"
 import { logLlmCall, DEFAULT_MODEL } from "./costTracker";
 import { uploadPrivateBuffer, getSignedDownloadUrl } from "./objectStorageHelpers";
 import { dubaiDateString } from "./financeAgent";
+import { buildAgentContext, rememberInBackground } from "./memoryAgent";
 
 const AGENT = "marketingAgent";
 export const BRIEF_SIGNED_URL_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
@@ -134,8 +135,12 @@ Rules:
 Output strict JSON: { theme, audience, hooks (3-5 strings), hashtags (5-8 strings), suggestedBudgetAed (number), recommendations (string) }.`;
 
 export async function generateBriefDraft(snapshot: TrendingSnapshot): Promise<BriefDraft> {
+  const memoryBlock = await buildAgentContext("marketing");
+  const systemContent = memoryBlock
+    ? `${memoryBlock}\n\n${BRIEF_SYSTEM_PROMPT}`
+    : BRIEF_SYSTEM_PROMPT;
   const messages: ChatMessage[] = [
-    { role: "system", content: BRIEF_SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     {
       role: "user",
       content: `Real Bareter activity (last ${snapshot.windowDays} days):\n${JSON.stringify(snapshot, null, 2)}\n\nDraft this week's marketing brief.`,
@@ -243,6 +248,21 @@ export async function generateAndStoreBrief(): Promise<ContentBrief> {
     throw new Error("Failed to insert content brief row");
   }
 
+  // Seed memory: remember the brief's theme + budget so the next
+  // weekly brief can build on the founder's most recent direction.
+  rememberInBackground({
+    agentName: "marketing",
+    memoryType: "learning",
+    key: "latest_brief_theme",
+    value: {
+      weekStart: brief.weekStart,
+      theme: draft.theme,
+      suggestedBudgetAed: draft.suggestedBudgetAed,
+      hashtags: draft.hashtags.slice(0, 5),
+    },
+    confidence: 0.7,
+  });
+
   // PDF is best-effort — if object storage is misconfigured the brief
   // still exists in Postgres and is reachable via /api/company-os/briefs.
   try {
@@ -331,8 +351,12 @@ Constraints:
 - Output ONLY the post text. No commentary, no quotes, no labels.`;
 
 export async function draftPost(topic: string): Promise<string> {
+  const memoryBlock = await buildAgentContext("marketing");
+  const systemContent = memoryBlock
+    ? `${memoryBlock}\n\n${DRAFT_POST_SYSTEM}`
+    : DRAFT_POST_SYSTEM;
   const messages: ChatMessage[] = [
-    { role: "system", content: DRAFT_POST_SYSTEM },
+    { role: "system", content: systemContent },
     { role: "user", content: `Topic: ${topic.slice(0, 200)}` },
   ];
   const { content } = await chatCompletion(messages, {
@@ -343,7 +367,17 @@ export async function draftPost(topic: string): Promise<string> {
     temperature: 0.85,
     maxTokens: 200,
   });
-  return content.trim();
+  const post = content.trim();
+  // Seed memory: track which topics the founder has drafted so the next
+  // brief can pick up on them.
+  rememberInBackground({
+    agentName: "marketing",
+    memoryType: "pattern",
+    key: "recent_draft_topic",
+    value: { topic: topic.slice(0, 200), generatedChars: post.length },
+    confidence: 0.5,
+  });
+  return post;
 }
 
 // ---------------------------------------------------------------------------

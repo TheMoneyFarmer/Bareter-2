@@ -41,6 +41,7 @@ import {
   type SalesLead,
 } from "@shared/schema";
 import { chatCompletion, type ChatMessage } from "../agents/llm";
+import { buildAgentContext, rememberInBackground } from "./memoryAgent";
 import { logLlmCall, getBudgetVerdict, DEFAULT_MODEL } from "./costTracker";
 import { sendReEngagementEmail } from "../emailService";
 
@@ -397,8 +398,12 @@ Rules:
 - Output ONLY the email body text. No subject line, no signature, no markdown.`;
 
 async function draftReEngagementBodyText(lead: SalesLead): Promise<string | null> {
+  const memoryBlock = await buildAgentContext("sales");
+  const systemContent = memoryBlock
+    ? `${memoryBlock}\n\n${REENGAGE_SYSTEM_PROMPT}`
+    : REENGAGE_SYSTEM_PROMPT;
   const messages: ChatMessage[] = [
-    { role: "system", content: REENGAGE_SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     {
       role: "user",
       content: `Lead context (JSON):\n${JSON.stringify({
@@ -602,6 +607,41 @@ export interface DailySalesResult {
 export async function runDailySalesSync(): Promise<DailySalesResult> {
   const sync = await syncNewLeads({ limit: DEFAULT_INGEST_BATCH });
   const reEngagement = await runReEngagementCampaign({ capacity: DEFAULT_REENGAGE_CAP });
+
+  // Seed memory: which user-type / location is currently producing the
+  // highest-scoring leads. The next re-engagement draft will see this
+  // in its system prompt and tilt copy toward that segment.
+  try {
+    const top = await db
+      .select({
+        userType: salesLeads.userType,
+        location: salesLeads.location,
+        avgScore: drizzleSql<string>`COALESCE(AVG(${salesLeads.leadScore}), 0)`,
+        c: count(),
+      })
+      .from(salesLeads)
+      .groupBy(salesLeads.userType, salesLeads.location)
+      .orderBy(desc(drizzleSql`AVG(${salesLeads.leadScore})`))
+      .limit(1);
+    const t = top[0];
+    if (t && (t.userType || t.location)) {
+      rememberInBackground({
+        agentName: "sales",
+        memoryType: "learning",
+        key: "top_converting_segment",
+        value: {
+          userType: t.userType,
+          location: t.location,
+          avgScore: Math.round(Number(t.avgScore)),
+          leadCount: t.c,
+        },
+        confidence: 0.7,
+      });
+    }
+  } catch (err) {
+    console.warn("[companyOs.sales] top segment memory seed failed:", err);
+  }
+
   return { sync, reEngagement };
 }
 

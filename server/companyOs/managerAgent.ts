@@ -37,6 +37,13 @@ import {
   handleVatCheckCommand,
 } from "./legalAgent";
 import { getKpiSummary } from "./dashboardAgent";
+import {
+  buildAgentContext,
+  rememberInBackground,
+  getMemorySummary,
+  parseForgetCommand,
+  forgetMemory,
+} from "./memoryAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -56,6 +63,8 @@ const HELP_TEXT = [
   "• `dispute risk` — weekly dispute / report rollup with risk callouts",
   "• `vat check` — UAE VAT registration threshold check (per user, last 12 months)",
   "• `dashboard` — KPI snapshot (users, posts, deals, GMV, AI spend) · alias `kpis`",
+  "• `memory` — list what each agent has remembered (top 3 keys per agent)",
+  "• `forget <agent> <key>` — delete one stored memory",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -247,8 +256,16 @@ async function answerFreeform(question: string): Promise<string> {
   }
 
   const ctx = await gatherFreeformContext();
+  // Prepend prior cross-agent learnings (e.g. founder reply-style
+  // preferences) so the Manager Agent's free-form replies get smarter
+  // over time. `buildAgentContext` never throws and returns "" when
+  // there are no memories yet.
+  const memoryBlock = await buildAgentContext("manager");
+  const systemContent = memoryBlock
+    ? `${memoryBlock}\n\n${FREEFORM_SYSTEM_PROMPT}`
+    : FREEFORM_SYSTEM_PROMPT;
   const messages: ChatMessage[] = [
-    { role: "system", content: FREEFORM_SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     {
       role: "user",
       content: `Context (JSON):\n${JSON.stringify(ctx)}\n\nFounder asked: ${question}`,
@@ -270,7 +287,17 @@ async function answerFreeform(question: string): Promise<string> {
       maxTokens: 400,
       skipBudgetCheck: true,
     });
-    return (content || "").trim() || "I don't have an answer for that right now.";
+    const reply = (content || "").trim() || "I don't have an answer for that right now.";
+    // Seed memory: track the founder's most recent free-form question
+    // so future replies can echo their preferred topics + style.
+    rememberInBackground({
+      agentName: "manager",
+      memoryType: "preference",
+      key: "last_freeform_question",
+      value: { question: question.slice(0, 280), replyChars: reply.length },
+      confidence: 0.6,
+    });
+    return reply;
   } catch (err) {
     console.error("[companyOs.manager] answerFreeform LLM call failed:", err);
     return "I'm having trouble answering right now. Try again in a minute.";
@@ -358,6 +385,39 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
     await logLlmCall({
       agentName: "manager",
       command: "dashboard",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+
+  // Memory Agent surface — read-only listing + targeted delete. Both
+  // are LLM-free so they don't consume budget. Founder ACL is already
+  // enforced upstream at the WhatsApp router.
+  if (normalized === "memory" || normalized === "memories") {
+    const out = await getMemorySummary();
+    await logLlmCall({
+      agentName: "manager",
+      command: "memory",
+      inputPreview: text,
+      outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+  if (normalized.startsWith("forget ")) {
+    const parsed = parseForgetCommand(text);
+    if (!parsed) {
+      return "Usage: `forget <agent> <key>` — e.g. `forget marketing top_ctr_campaign`";
+    }
+    const removed = await forgetMemory(parsed.agent, parsed.key);
+    const out = removed > 0
+      ? `Forgot ${removed} ${removed === 1 ? "memory" : "memories"} for *${parsed.agent}* / \`${parsed.key}\`.`
+      : `No memory found for *${parsed.agent}* / \`${parsed.key}\`.`;
+    await logLlmCall({
+      agentName: "manager",
+      command: "forget",
       inputPreview: text,
       outputPreview: out,
       tokensUsed: 0,

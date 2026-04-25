@@ -24,6 +24,7 @@ import {
 } from "@shared/schema";
 import { dubaiDateString } from "./financeAgent";
 import { getMonthSpendAed, getMonthSpendByAgent } from "./costTracker";
+import { rememberInBackground } from "./memoryAgent";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -639,6 +640,23 @@ export async function captureDailySnapshot(): Promise<{
           },
         },
       });
+    // Seed memory: which KPI segment the dashboard is currently
+    // surfacing. Other agents (marketing, sales) read this so their
+    // copy can lean into the strongest category/city.
+    rememberInBackground({
+      agentName: "dashboard",
+      memoryType: "learning",
+      key: "latest_top_segment",
+      value: {
+        date: live.date,
+        topCategory: live.topCategory,
+        topCity: live.topCity,
+        completionRatePct: Number(live.completionRatePct.toFixed(2)),
+        gmvAed7d: Number(live.gmvAed7d.toFixed(2)),
+      },
+      confidence: 0.8,
+    });
+
     return { date: live.date, inserted: true };
   } catch (err) {
     console.error("[companyOs.dashboard] captureDailySnapshot upsert failed:", err);
@@ -729,6 +747,18 @@ export async function getKpiSummary(): Promise<string> {
     `• Top city: ${latest.topCity ?? "—"}`,
     `• AI spend MTD: AED ${safeNum(latest.aiCostAedMonthToDate).toFixed(2)}`,
   ];
+
+  // Seed memory: each `dashboard` invocation bumps the founder's
+  // most-asked KPI surface. usageCount on this row tells the rest of
+  // the OS which summary the founder relies on most.
+  rememberInBackground({
+    agentName: "dashboard",
+    memoryType: "preference",
+    key: "founder_asked_kpi_summary",
+    value: { lastShownDate: latest.snapshotDate },
+    confidence: 0.5,
+  });
+
   return lines.join("\n");
 }
 
