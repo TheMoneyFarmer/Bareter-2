@@ -15,13 +15,16 @@
 //   • `formatMarketingReport` is the WhatsApp-shaped report behind the
 //     `marketing` command and the Monday cron message.
 //
-// What this DOES NOT do (and why):
-//   • No Buffer / Meta / Instagram / TikTok auto-posting — the founder
-//     does not yet have those API credentials. Once they do, plug in a
-//     single connector file (`bufferClient.ts`, `metaClient.ts`, …) that
-//     calls `draftPost` and posts the result. No schema change required.
-//   • No Meta Graph campaign-performance pull — same reason. The manual
-//     `campaign update` command keeps the metrics flowing in the meantime.
+// Auto-publishing (Task #69):
+//   • `publishPostFromTopic(topic)` drafts via `draftPost` and routes
+//     through the `socialPublishers/` connector picked from env config
+//     (Buffer, LinkedIn, or Meta IG/FB). The WhatsApp surface is
+//     `publish post <topic>`. When no connector is wired, the helper
+//     surfaces a friendly "not configured" reply rather than crashing.
+//   • `runMetaCampaignSync()` pulls Meta Marketing API insights at the
+//     campaign level and upserts into `campaign_performance`. The
+//     scheduler runs it daily; manual `campaign update` stays as the
+//     fallback for ad accounts not connected through Meta yet.
 
 import { and, gte, eq, count, desc, sql as drizzleSql } from "drizzle-orm";
 import { jsPDF } from "jspdf";
@@ -39,6 +42,12 @@ import { logLlmCall, DEFAULT_MODEL } from "./costTracker";
 import { uploadPrivateBuffer, getSignedDownloadUrl } from "./objectStorageHelpers";
 import { dubaiDateString } from "./financeAgent";
 import { buildAgentContext, rememberInBackground } from "./memoryAgent";
+import {
+  publishPost as dispatchPublishPost,
+  getConfiguredChannels,
+  type PublishOutcome,
+} from "./socialPublishers";
+import { fetchCampaignInsights } from "./socialPublishers/metaClient";
 
 const AGENT = "marketingAgent";
 export const BRIEF_SIGNED_URL_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
@@ -524,4 +533,105 @@ export async function handleDraftPostCommand(rawText: string): Promise<string> {
     console.error("[companyOs.marketing] draft post failed:", err);
     return "Drafting failed (likely the AI budget gate). Try `costs` to see remaining budget.";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-publish (Task #69) — draft + push through the configured
+// socialPublishers connector.
+// ---------------------------------------------------------------------------
+
+export interface PublishPostResult {
+  topic: string;
+  postBody: string;
+  outcome: PublishOutcome;
+}
+
+export async function publishPostFromTopic(topic: string): Promise<PublishPostResult> {
+  const cleanTopic = topic.trim();
+  if (!cleanTopic) {
+    return {
+      topic: cleanTopic,
+      postBody: "",
+      outcome: { ok: false, reason: "publish_failed", detail: "Empty topic" },
+    };
+  }
+  const postBody = await draftPost(cleanTopic);
+  const outcome = await dispatchPublishPost(postBody);
+  // Cost log so the founder sees publish attempts in `agents` / `costs`.
+  await logLlmCall({
+    agentName: AGENT,
+    command: "publish_post",
+    inputPreview: `topic=${cleanTopic.slice(0, 120)} channel=${outcome.ok ? outcome.channel : (outcome.channel ?? "none")}`,
+    outputPreview: outcome.ok
+      ? `published id=${outcome.externalId ?? "?"} url=${outcome.externalUrl ?? "?"}`
+      : `${outcome.reason}: ${outcome.detail}`,
+    tokensUsed: 0,
+    status: outcome.ok ? "ok" : "error",
+    errorMessage: outcome.ok ? null : outcome.detail.slice(0, 400),
+  });
+  return { topic: cleanTopic, postBody, outcome };
+}
+
+export async function handlePublishPostCommand(rawText: string): Promise<string> {
+  const topic = rawText.replace(/^publish\s+post\s*/i, "").trim();
+  if (!topic) {
+    const channels = getConfiguredChannels();
+    const status =
+      channels.length > 0
+        ? `Configured: ${channels.join(", ")}.`
+        : "No publisher configured. Set SOCIAL_PUBLISH_CHANNEL + matching credentials.";
+    return [
+      "Usage: `publish post <topic>`",
+      "Example: `publish post Ramadan barter offers for restaurants`",
+      status,
+    ].join("\n");
+  }
+  let result: PublishPostResult;
+  try {
+    result = await publishPostFromTopic(topic);
+  } catch (err) {
+    console.error("[companyOs.marketing] publish post failed:", err);
+    return "Drafting failed (likely the AI budget gate). Try `costs` to see remaining budget.";
+  }
+  const { postBody, outcome } = result;
+  if (!outcome.ok) {
+    if (outcome.reason === "not_configured") {
+      return [
+        "📝 *Drafted but not published* — no social publisher configured.",
+        "",
+        postBody,
+        "",
+        "Set `SOCIAL_PUBLISH_CHANNEL=buffer|linkedin|meta` and the matching credentials, then resend.",
+      ].join("\n");
+    }
+    if (outcome.reason === "channel_unavailable") {
+      return [
+        `📝 *Drafted but not published* — ${outcome.detail}`,
+        "",
+        postBody,
+      ].join("\n");
+    }
+    return [
+      `❌ *Publish failed* on ${outcome.channel ?? "unknown"}: ${outcome.detail}`,
+      "",
+      "Draft (copy-paste backup):",
+      postBody,
+    ].join("\n");
+  }
+  const lines = [
+    `✅ *Posted to ${outcome.channel}* — ${outcome.message}`,
+  ];
+  if (outcome.externalUrl) lines.push(outcome.externalUrl);
+  lines.push("", postBody);
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Meta campaign performance auto-fetch (Task #69) — replaces the
+// founder's manual `campaign update` for connected ad accounts. The
+// manual command stays available as a fallback.
+// ---------------------------------------------------------------------------
+
+export async function runMetaCampaignSync() {
+  return fetchCampaignInsights();
 }

@@ -1,0 +1,871 @@
+// Unit + integration tests for Task #69 (auto-publish marketing posts).
+//
+// Coverage:
+//   • `publishPost` dispatcher — picks the right channel by env config,
+//     surfaces friendly "not configured" / "channel unavailable" /
+//     "publish failed" outcomes without throwing.
+//   • Buffer / LinkedIn / Meta connectors — happy paths POST the
+//     expected payload to the right URL with the right Authorization.
+//   • `runMetaCampaignSync` — pulls Meta insights, upserts into
+//     `campaign_performance`, returns scanned/upserted counts; degrades
+//     to a zero-count `skipped: not_configured` result when env is
+//     missing.
+//   • Manager Agent integration — `publish post <topic>` routes to the
+//     right handler and surfaces both success + "no publisher" replies.
+//
+// All HTTP / DB calls are mocked so the suite runs offline.
+
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
+import express from "express";
+import request from "supertest";
+import crypto from "node:crypto";
+
+// ---------------------------------------------------------------------------
+// Env — set BEFORE the modules under test load.
+// ---------------------------------------------------------------------------
+const ORIGINAL_ENV = { ...process.env };
+process.env.TWILIO_ACCOUNT_SID = "ACtest00000000000000000000000000000";
+process.env.TWILIO_AUTH_TOKEN = "test_auth_token_for_signing";
+process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886";
+process.env.FOUNDER_WHATSAPP_NUMBER = "whatsapp:+971500000000";
+process.env.COMPANY_OS_MONTHLY_BUDGET_AED = "400";
+process.env.USD_TO_AED_RATE = "3.6725";
+process.env.PRIVATE_OBJECT_DIR = "/test-bucket/.private";
+
+const FOUNDER_FROM = process.env.FOUNDER_WHATSAPP_NUMBER!;
+const TWILIO_TO = process.env.TWILIO_WHATSAPP_FROM!;
+const FORWARDED_HOST = "bareter.test";
+const WEBHOOK_PATH = "/api/company-os/whatsapp";
+
+// ---------------------------------------------------------------------------
+// DB mock — programmable per-test, mirroring the marketing test pattern.
+// ---------------------------------------------------------------------------
+type AnyRow = Record<string, unknown>;
+
+interface DbState {
+  selectQueue: AnyRow[][];
+  returningQueue: AnyRow[][];
+  selectShouldThrow: boolean;
+  insertedValues: AnyRow[];
+  updatedSets: AnyRow[];
+}
+
+const dbState: DbState = {
+  selectQueue: [],
+  returningQueue: [],
+  selectShouldThrow: false,
+  insertedValues: [],
+  updatedSets: [],
+};
+
+function resetDbState() {
+  dbState.selectQueue = [];
+  dbState.returningQueue = [];
+  dbState.selectShouldThrow = false;
+  dbState.insertedValues = [];
+  dbState.updatedSets = [];
+}
+
+function makeSelectChain(): any {
+  const next = (): AnyRow[] => {
+    if (dbState.selectShouldThrow) throw new Error("simulated db failure");
+    return dbState.selectQueue.shift() ?? [];
+  };
+  const chain: any = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => chain,
+    limit: () => chain,
+    groupBy: () => chain,
+    then: (onF: any, onR: any) => {
+      try {
+        return Promise.resolve(next()).then(onF, onR);
+      } catch (err) {
+        return Promise.reject(err).catch(onR);
+      }
+    },
+    catch: (onR: any) => {
+      try {
+        return Promise.resolve(next()).catch(onR);
+      } catch (err) {
+        return Promise.reject(err).catch(onR);
+      }
+    },
+    finally: (onF: any) => Promise.resolve(next()).finally(onF),
+  };
+  return chain;
+}
+
+function makeWriteChain(captureInto: AnyRow[], captured: AnyRow): any {
+  const chain: any = {
+    values: (v: AnyRow) => {
+      captureInto.push({ ...captured, ...v });
+      return chain;
+    },
+    set: (v: AnyRow) => {
+      captureInto.push({ ...captured, ...v });
+      return chain;
+    },
+    where: () => chain,
+    onConflictDoUpdate: () => chain,
+    returning: () => Promise.resolve(dbState.returningQueue.shift() ?? []),
+    then: (onF: any, onR: any) =>
+      Promise.resolve(dbState.returningQueue.shift() ?? []).then(onF, onR),
+  };
+  return chain;
+}
+
+vi.mock("../server/db", () => ({
+  db: {
+    select: () => makeSelectChain(),
+    insert: () => makeWriteChain(dbState.insertedValues, { __op: "insert" }),
+    update: () => makeWriteChain(dbState.updatedSets, { __op: "update" }),
+    delete: () => makeWriteChain([], { __op: "delete" }),
+  },
+}));
+
+// Object storage helpers — never called by these tests but the marketing
+// agent imports them.
+vi.mock("../server/companyOs/objectStorageHelpers", () => ({
+  uploadPrivateBuffer: vi.fn(async (key: string) => key),
+  getSignedDownloadUrl: vi.fn(async (key: string) => `https://signed.example/${key}`),
+}));
+
+// LLM stub — return canned post text so `draftPost` is deterministic.
+vi.mock("../server/agents/llm", () => ({
+  chatCompletion: vi.fn(async () => ({
+    content:
+      "Hook line\nValue prop sentence.\nCTA — try Bareter today.\n#barter #cashlesstrade #UAEBusiness",
+    tokensUsed: 33,
+  })),
+  jsonCompletion: vi.fn(async () => ({ data: {}, tokensUsed: 0 })),
+}));
+
+vi.mock("../server/companyOs/stripeClient", () => ({
+  getStripeClient: vi.fn(async () => null),
+  getStripeWebhookSecret: vi.fn(async () => null),
+}));
+
+// Twilio REST capture.
+const hoisted = vi.hoisted(() => {
+  const sendCalls: Array<{ to: string; body: string }> = [];
+  const state: { resolveNextSend: (() => void) | null } = {
+    resolveNextSend: null,
+  };
+  return { sendCalls, state };
+});
+vi.mock("../server/companyOs/twilio", async () => {
+  const actual = await vi.importActual<
+    typeof import("../server/companyOs/twilio")
+  >("../server/companyOs/twilio");
+  return {
+    ...actual,
+    sendWhatsApp: vi.fn(async (to: string, body: string) => {
+      hoisted.sendCalls.push({ to, body });
+      const r = hoisted.state.resolveNextSend;
+      hoisted.state.resolveNextSend = null;
+      if (r) r();
+      return true;
+    }),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// fetch mock — programmable per-test.
+// ---------------------------------------------------------------------------
+type FetchHandler = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ status?: number; body: any; headers?: Record<string, string> }>;
+
+const fetchState: { handler: FetchHandler | null; calls: Array<{ url: string; init?: RequestInit }> } = {
+  handler: null,
+  calls: [],
+};
+
+const realFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = (async (url: any, init?: RequestInit) => {
+    const u = typeof url === "string" ? url : url?.url ?? String(url);
+    fetchState.calls.push({ url: u, init });
+    if (!fetchState.handler) {
+      throw new Error(`Unexpected fetch call to ${u}`);
+    }
+    const resp = await fetchState.handler(u, init);
+    const status = resp.status ?? 200;
+    const bodyText =
+      typeof resp.body === "string" ? resp.body : JSON.stringify(resp.body ?? {});
+    return new Response(bodyText, {
+      status,
+      headers: { "Content-Type": "application/json", ...(resp.headers || {}) },
+    });
+  }) as typeof global.fetch;
+});
+
+afterAll(() => {
+  global.fetch = realFetch;
+  for (const k of Object.keys(process.env)) {
+    if (!(k in ORIGINAL_ENV)) delete process.env[k];
+  }
+  for (const [k, v] of Object.entries(ORIGINAL_ENV)) {
+    process.env[k] = v;
+  }
+});
+
+beforeEach(() => {
+  resetDbState();
+  fetchState.calls.length = 0;
+  fetchState.handler = null;
+  hoisted.sendCalls.length = 0;
+  hoisted.state.resolveNextSend = null;
+  // Reset publisher env per test.
+  delete process.env.SOCIAL_PUBLISH_CHANNEL;
+  delete process.env.BUFFER_ACCESS_TOKEN;
+  delete process.env.BUFFER_PROFILE_IDS;
+  delete process.env.LINKEDIN_ACCESS_TOKEN;
+  delete process.env.LINKEDIN_AUTHOR_URN;
+  delete process.env.META_ACCESS_TOKEN;
+  delete process.env.META_IG_USER_ID;
+  delete process.env.META_PAGE_ID;
+  delete process.env.META_PUBLISH_IMAGE_URL;
+  delete process.env.META_AD_ACCOUNT_ID;
+  delete process.env.META_INSIGHTS_DATE_PRESET;
+  delete process.env.META_AD_CURRENCY;
+});
+
+// Imports AFTER mocks.
+import {
+  publishPost,
+  selectChannel,
+  getConfiguredChannels,
+} from "../server/companyOs/socialPublishers";
+import {
+  fetchCampaignInsights,
+  isMetaInsightsConfigured,
+} from "../server/companyOs/socialPublishers/metaClient";
+import {
+  publishPostFromTopic,
+  handlePublishPostCommand,
+  runMetaCampaignSync,
+} from "../server/companyOs/marketingAgent";
+import { createCompanyOsRouter } from "../server/companyOs/router";
+
+function buildApp() {
+  const app = express();
+  app.use(WEBHOOK_PATH, express.urlencoded({ extended: false }));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
+  app.use(
+    "/api/company-os",
+    createCompanyOsRouter({
+      requireAdmin: (_req, _res, next) => next(),
+    }),
+  );
+  return app;
+}
+
+async function postWebhook(app: express.Express, body: string, from = FOUNDER_FROM) {
+  const params: Record<string, string> = {
+    AccountSid: process.env.TWILIO_ACCOUNT_SID!,
+    From: from,
+    To: TWILIO_TO,
+    Body: body,
+    NumMedia: "0",
+    MessageSid: `SM${crypto.randomBytes(16).toString("hex")}`,
+  };
+  const sendPromise = new Promise<void>((resolve) => {
+    hoisted.state.resolveNextSend = resolve;
+  });
+  const httpRes = await request(app)
+    .post(WEBHOOK_PATH)
+    .set("X-Forwarded-Proto", "https")
+    .set("X-Forwarded-Host", FORWARDED_HOST)
+    .set("Host", FORWARDED_HOST)
+    .type("form")
+    .send(new URLSearchParams(params).toString());
+  return { httpRes, sendPromise };
+}
+
+// ===========================================================================
+// Dispatcher — channel selection + outcome surfaces
+// ===========================================================================
+describe("publishPost dispatcher", () => {
+  it("returns not_configured when no env is set", async () => {
+    expect(selectChannel()).toBeNull();
+    expect(getConfiguredChannels()).toEqual([]);
+    const out = await publishPost("hi there");
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.reason).toBe("not_configured");
+      expect(out.detail).toMatch(/SOCIAL_PUBLISH_CHANNEL/);
+    }
+  });
+
+  it("returns channel_unavailable when SOCIAL_PUBLISH_CHANNEL is set but creds are missing", async () => {
+    process.env.SOCIAL_PUBLISH_CHANNEL = "buffer";
+    const out = await publishPost("hi");
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.reason).toBe("channel_unavailable");
+    }
+  });
+
+  it("auto-picks Buffer when its env is configured", () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1,p2";
+    expect(selectChannel()).toBe("buffer");
+    expect(getConfiguredChannels()).toEqual(["buffer"]);
+  });
+
+  it("falls back to LinkedIn when Buffer is missing but LinkedIn is configured", () => {
+    process.env.LINKEDIN_ACCESS_TOKEN = "li_token";
+    process.env.LINKEDIN_AUTHOR_URN = "urn:li:person:abc";
+    expect(selectChannel()).toBe("linkedin");
+  });
+
+  it("respects an explicit SOCIAL_PUBLISH_CHANNEL=meta override", () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "1234";
+    process.env.META_PUBLISH_IMAGE_URL = "https://img.example/x.jpg";
+    process.env.SOCIAL_PUBLISH_CHANNEL = "meta";
+    expect(selectChannel()).toBe("meta");
+  });
+
+  it("does not auto-pick Meta when only token + IG user id are set (no image, no page)", () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "1234";
+    // No image URL, no page id — isMetaConfigured() must report false
+    // so the dispatcher doesn't pick Meta and then crash at publish time.
+    expect(selectChannel()).toBeNull();
+    expect(getConfiguredChannels()).toEqual([]);
+  });
+
+  it("returns channel_unavailable when the explicit override has no creds", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    process.env.SOCIAL_PUBLISH_CHANNEL = "linkedin"; // no LI creds set
+    const out = await publishPost("hi");
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toBe("channel_unavailable");
+  });
+});
+
+// ===========================================================================
+// Buffer connector
+// ===========================================================================
+describe("Buffer connector", () => {
+  it("POSTs to /1/updates/create.json with all profile ids and returns the new update id", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "profile-A,profile-B";
+    fetchState.handler = async (url, init) => {
+      expect(url).toBe("https://api.bufferapp.com/1/updates/create.json");
+      expect(init?.method).toBe("POST");
+      const body = String(init?.body ?? "");
+      expect(body).toContain("access_token=buf_token");
+      expect(body).toContain("profile_ids%5B%5D=profile-A");
+      expect(body).toContain("profile_ids%5B%5D=profile-B");
+      expect(body).toContain("now=true");
+      return {
+        body: {
+          success: true,
+          updates: [{ id: "update-1", service_link: "https://twitter.com/foo/123" }],
+        },
+      };
+    };
+    const out = await publishPost("hello world");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.channel).toBe("buffer");
+      expect(out.externalId).toBe("update-1");
+      expect(out.externalUrl).toBe("https://twitter.com/foo/123");
+      expect(out.message).toContain("2 profiles");
+    }
+  });
+
+  it("surfaces a publish_failed outcome on Buffer 4xx", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "profile-A";
+    fetchState.handler = async () => ({ status: 403, body: { code: 1004, message: "Access token invalid" } });
+    const out = await publishPost("hi");
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.reason).toBe("publish_failed");
+      expect(out.channel).toBe("buffer");
+      expect(out.detail).toMatch(/HTTP 403/);
+    }
+  });
+});
+
+// ===========================================================================
+// LinkedIn connector
+// ===========================================================================
+describe("LinkedIn connector", () => {
+  it("POSTs the UGC payload with the bearer token and parses the post id from x-restli-id", async () => {
+    process.env.LINKEDIN_ACCESS_TOKEN = "li_token";
+    process.env.LINKEDIN_AUTHOR_URN = "urn:li:person:abc";
+    fetchState.handler = async (url, init) => {
+      expect(url).toBe("https://api.linkedin.com/v2/ugcPosts");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["Authorization"]).toBe("Bearer li_token");
+      expect(headers["X-Restli-Protocol-Version"]).toBe("2.0.0");
+      const payload = JSON.parse(String(init?.body));
+      expect(payload.author).toBe("urn:li:person:abc");
+      expect(payload.lifecycleState).toBe("PUBLISHED");
+      expect(
+        payload.specificContent["com.linkedin.ugc.ShareContent"].shareCommentary.text,
+      ).toBe("hello LinkedIn");
+      return {
+        body: {},
+        headers: { "x-restli-id": "urn:li:share:9876" },
+      };
+    };
+    const out = await publishPost("hello LinkedIn");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.channel).toBe("linkedin");
+      expect(out.externalId).toBe("urn:li:share:9876");
+      expect(out.externalUrl).toContain("urn:li:share:9876");
+    }
+  });
+});
+
+// ===========================================================================
+// Meta connector — IG image post + FB fallback
+// ===========================================================================
+describe("Meta connector", () => {
+  it("creates an IG media container then publishes when META_PUBLISH_IMAGE_URL is set", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "ig123";
+    process.env.META_PUBLISH_IMAGE_URL = "https://img.example/x.jpg";
+
+    let step = 0;
+    fetchState.handler = async (url, init) => {
+      step++;
+      if (step === 1) {
+        expect(url).toContain("/ig123/media");
+        const body = String(init?.body ?? "");
+        expect(body).toContain("image_url=https%3A%2F%2Fimg.example%2Fx.jpg");
+        expect(body).toContain("caption=hello+IG");
+        return { body: { id: "container-1" } };
+      }
+      if (step === 2) {
+        expect(url).toContain("/ig123/media_publish");
+        const body = String(init?.body ?? "");
+        expect(body).toContain("creation_id=container-1");
+        return { body: { id: "ig-post-9" } };
+      }
+      throw new Error(`unexpected step ${step}`);
+    };
+    const out = await publishPost("hello IG");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.channel).toBe("meta");
+      expect(out.externalId).toBe("ig-post-9");
+      // We intentionally omit externalUrl for IG — see metaClient.ts.
+      expect(out.externalUrl).toBeUndefined();
+    }
+  });
+
+  it("falls back to a Facebook page text post when no image URL is set", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "ig123";
+    process.env.META_PAGE_ID = "page-77";
+    fetchState.handler = async (url, init) => {
+      expect(url).toContain("/page-77/feed");
+      expect(String(init?.body)).toContain("message=Hello+FB");
+      return { body: { id: "fbpost-1" } };
+    };
+    const out = await publishPost("Hello FB");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.channel).toBe("meta");
+      expect(out.externalId).toBe("fbpost-1");
+      expect(out.externalUrl).toContain("facebook.com");
+    }
+  });
+
+  it("publishes via FB page even when META_IG_USER_ID is unset (FB-only mode)", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_PAGE_ID = "page-77";
+    // No META_IG_USER_ID, no META_PUBLISH_IMAGE_URL — FB-only mode.
+    fetchState.handler = async (url, init) => {
+      expect(url).toContain("/page-77/feed");
+      expect(String(init?.body)).toContain("message=FB+only");
+      return { body: { id: "fbpost-2" } };
+    };
+    const out = await publishPost("FB only");
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.channel).toBe("meta");
+      expect(out.externalId).toBe("fbpost-2");
+    }
+  });
+
+  it("auto-dispatch reports not_configured when only token + IG user id are set", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "ig123";
+    // No META_PUBLISH_IMAGE_URL, no META_PAGE_ID — dispatcher refuses
+    // to pick Meta because the publish call would fail.
+    const out = await publishPost("nope");
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toBe("not_configured");
+  });
+
+  it("explicit Meta override surfaces a clear publish error when image+page are missing", async () => {
+    process.env.SOCIAL_PUBLISH_CHANNEL = "meta";
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_IG_USER_ID = "ig123";
+    // The override skips dispatcher gating, but isMetaConfigured() now
+    // requires either image URL or page id — so the override surfaces
+    // channel_unavailable.
+    const out = await publishPost("nope");
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toBe("channel_unavailable");
+  });
+});
+
+// ===========================================================================
+// Meta insights — fetch + upsert
+// ===========================================================================
+describe("fetchCampaignInsights", () => {
+  it("returns skipped:not_configured when env is missing", async () => {
+    expect(isMetaInsightsConfigured()).toBe(false);
+    const r = await fetchCampaignInsights();
+    expect(r.skipped).toBe("not_configured");
+    expect(r.scanned).toBe(0);
+  });
+
+  it("upserts each campaign and converts USD spend to AED when META_AD_CURRENCY=USD", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_AD_ACCOUNT_ID = "9999";
+    process.env.META_INSIGHTS_DATE_PRESET = "yesterday";
+    process.env.META_AD_CURRENCY = "USD";
+    process.env.USD_TO_AED_RATE = "3.6725";
+
+    fetchState.handler = async (url) => {
+      expect(url).toContain("/act_9999/insights");
+      expect(url).toContain("level=campaign");
+      expect(url).toContain("date_preset=yesterday");
+      return {
+        body: {
+          data: [
+            {
+              campaign_id: "c1",
+              campaign_name: "Ramadan2026",
+              ctr: "2.50",
+              spend: "100",
+              actions: [
+                { action_type: "purchase", value: "3" },
+                { action_type: "lead", value: "2" },
+                { action_type: "page_view", value: "999" },
+              ],
+            },
+            {
+              campaign_id: "c2",
+              campaign_name: "Q2-push",
+              ctr: "1.10",
+              spend: "50.5",
+              conversions: "7",
+            },
+          ],
+        },
+      };
+    };
+
+    // Two upserts → two `returning` payloads + one log insert.
+    dbState.returningQueue = [
+      [
+        {
+          id: "row-1",
+          campaignName: "Ramadan2026",
+          channel: "meta",
+          ctr: "2.50",
+          spendAed: "367.25",
+          conversions: 5,
+          notes: "auto-fetch yesterday (campaign_id=c1)",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      [
+        {
+          id: "row-2",
+          campaignName: "Q2-push",
+          channel: "meta",
+          ctr: "1.10",
+          spendAed: "185.46",
+          conversions: 7,
+          notes: "auto-fetch yesterday (campaign_id=c2)",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      [], // logLlmCall insert
+    ];
+
+    const r = await fetchCampaignInsights();
+    expect(r.skipped).toBeUndefined();
+    expect(r.scanned).toBe(2);
+    expect(r.upserted).toBe(2);
+    expect(r.errors).toEqual([]);
+
+    // Verify the AED conversion + extracted conversions.
+    const ramadan = dbState.insertedValues.find((v) => v.campaignName === "Ramadan2026");
+    expect(ramadan).toBeDefined();
+    expect(ramadan?.channel).toBe("meta");
+    expect(ramadan?.conversions).toBe(5); // 3 + 2
+    expect(ramadan?.spendAed).toBe("367.25"); // 100 USD * 3.6725
+
+    const q2 = dbState.insertedValues.find((v) => v.campaignName === "Q2-push");
+    expect(q2?.conversions).toBe(7);
+    expect(q2?.spendAed).toBe("185.46");
+  });
+
+  it("aggregates errors per row without aborting the whole sync", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_AD_ACCOUNT_ID = "9999";
+    fetchState.handler = async () => ({
+      body: {
+        data: [
+          { campaign_id: "c1", campaign_name: "OK", ctr: "1", spend: "10" },
+          { campaign_id: "c2", campaign_name: "BadRow", ctr: "1", spend: "20" },
+        ],
+      },
+    });
+
+    let calls = 0;
+    // Override the insert chain so the second insert throws.
+    const origInsert = (await import("../server/db")).db.insert;
+    (await import("../server/db")).db.insert = (() => {
+      calls++;
+      if (calls === 2) {
+        // Build a chain that throws on `.returning()`.
+        const chain: any = {
+          values: () => chain,
+          set: () => chain,
+          where: () => chain,
+          onConflictDoUpdate: () => chain,
+          returning: () => Promise.reject(new Error("boom")),
+          then: (_f: any, r: any) => Promise.reject(new Error("boom")).catch(r),
+        };
+        return chain;
+      }
+      // Default chain — succeed.
+      const chain: any = {
+        values: (v: AnyRow) => {
+          dbState.insertedValues.push({ __op: "insert", ...v });
+          return chain;
+        },
+        set: () => chain,
+        where: () => chain,
+        onConflictDoUpdate: () => chain,
+        returning: () =>
+          Promise.resolve([
+            {
+              id: "row-1",
+              campaignName: "OK",
+              channel: "meta",
+              ctr: "1.00",
+              spendAed: "10.00",
+              conversions: 0,
+              notes: "auto-fetch",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ]),
+        then: (f: any, _r: any) => Promise.resolve([]).then(f),
+      };
+      return chain;
+    }) as any;
+
+    try {
+      const r = await fetchCampaignInsights();
+      expect(r.scanned).toBe(2);
+      expect(r.upserted).toBe(1);
+      expect(r.errors).toHaveLength(1);
+      expect(r.errors[0]).toMatch(/BadRow/);
+    } finally {
+      (await import("../server/db")).db.insert = origInsert;
+    }
+  });
+
+  it("follows paging.next so accounts with multiple pages are fully synced", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_AD_ACCOUNT_ID = "9999";
+
+    let call = 0;
+    fetchState.handler = async (url) => {
+      call++;
+      if (call === 1) {
+        expect(url).toContain("/act_9999/insights");
+        return {
+          body: {
+            data: [{ campaign_id: "p1c1", campaign_name: "P1-A", ctr: "1", spend: "10" }],
+            paging: { next: "https://graph.facebook.com/v19.0/act_9999/insights?after=cursor1" },
+          },
+        };
+      }
+      if (call === 2) {
+        expect(url).toContain("after=cursor1");
+        return {
+          body: {
+            data: [{ campaign_id: "p2c1", campaign_name: "P2-A", ctr: "1", spend: "20" }],
+          },
+        };
+      }
+      throw new Error(`unexpected meta call #${call}`);
+    };
+
+    // Two upserts → two `returning` payloads + one log insert.
+    dbState.returningQueue = [
+      [{ id: "r1", campaignName: "P1-A", channel: "meta", ctr: "1.00", spendAed: "10.00", conversions: 0, notes: "auto-fetch", createdAt: new Date(), updatedAt: new Date() }],
+      [{ id: "r2", campaignName: "P2-A", channel: "meta", ctr: "1.00", spendAed: "20.00", conversions: 0, notes: "auto-fetch", createdAt: new Date(), updatedAt: new Date() }],
+      [],
+    ];
+
+    const r = await fetchCampaignInsights();
+    expect(r.scanned).toBe(2);
+    expect(r.upserted).toBe(2);
+    expect(call).toBe(2);
+  });
+
+  it("returns an error result without throwing when Meta returns 4xx", async () => {
+    process.env.META_ACCESS_TOKEN = "meta_token";
+    process.env.META_AD_ACCOUNT_ID = "9999";
+    fetchState.handler = async () => ({
+      status: 400,
+      body: { error: { message: "Invalid OAuth access token" } },
+    });
+    const r = await fetchCampaignInsights();
+    expect(r.scanned).toBe(0);
+    expect(r.upserted).toBe(0);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/Invalid OAuth/);
+  });
+});
+
+// ===========================================================================
+// publishPostFromTopic — drafts then publishes
+// ===========================================================================
+describe("publishPostFromTopic", () => {
+  it("drafts via LLM and routes the post body through the dispatcher", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    fetchState.handler = async () => ({
+      body: {
+        success: true,
+        updates: [{ id: "u-1", service_link: "https://example/post" }],
+      },
+    });
+    const result = await publishPostFromTopic("Ramadan barter");
+    expect(result.outcome.ok).toBe(true);
+    if (result.outcome.ok) {
+      expect(result.outcome.externalId).toBe("u-1");
+    }
+    expect(result.postBody).toContain("#UAEBusiness");
+  });
+
+  it("returns the LLM-drafted body alongside a not_configured outcome", async () => {
+    const result = await publishPostFromTopic("anything");
+    expect(result.outcome.ok).toBe(false);
+    expect(result.postBody).toContain("#UAEBusiness");
+  });
+});
+
+// ===========================================================================
+// runMetaCampaignSync — scheduler entry point
+// ===========================================================================
+describe("runMetaCampaignSync", () => {
+  it("delegates to fetchCampaignInsights (skipped when not configured)", async () => {
+    const r = await runMetaCampaignSync();
+    expect(r.skipped).toBe("not_configured");
+  });
+});
+
+// ===========================================================================
+// WhatsApp surface — `publish post <topic>` + help text
+// ===========================================================================
+describe("Manager Agent — publish post via WhatsApp", () => {
+  it("`help` lists the new `publish post` command", async () => {
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(app, "help");
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("`publish post <topic>`");
+  });
+
+  it("`publish post` without topic prints usage + configured channels", async () => {
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(app, "publish post");
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Usage: `publish post <topic>`");
+    expect(reply).toContain("No publisher configured");
+  });
+
+  it("`publish post <topic>` drafts and publishes through Buffer when configured", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    fetchState.handler = async () => ({
+      body: {
+        success: true,
+        updates: [{ id: "u-77", service_link: "https://example/posted" }],
+      },
+    });
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "publish post Eid barter offers",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Posted to buffer");
+    expect(reply).toContain("https://example/posted");
+    expect(reply).toContain("#UAEBusiness");
+  });
+
+  it("`publish post <topic>` returns the draft + a not_configured note when no channel is wired", async () => {
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "publish post Eid barter offers",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Drafted but not published");
+    expect(reply).toContain("#UAEBusiness");
+    expect(reply).toContain("SOCIAL_PUBLISH_CHANNEL");
+  });
+});
+
+// Light direct-call test of the handler so we don't require the webhook
+// path for every assertion.
+describe("handlePublishPostCommand (direct)", () => {
+  it("returns publish_failed on Buffer error", async () => {
+    process.env.BUFFER_ACCESS_TOKEN = "buf_token";
+    process.env.BUFFER_PROFILE_IDS = "p1";
+    fetchState.handler = async () => ({
+      status: 500,
+      body: { error: "internal" },
+    });
+    const out = await handlePublishPostCommand("publish post test topic");
+    expect(out).toContain("Publish failed");
+    expect(out).toContain("buffer");
+    // Draft body still surfaces as a copy-paste backup.
+    expect(out).toContain("#UAEBusiness");
+  });
+});

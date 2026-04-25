@@ -10,7 +10,11 @@ import { runDailyFinanceSnapshot } from "./financeAgent";
 import { composeDailyBriefing } from "./managerAgent";
 import { notifyFounder, isFounderConfigured } from "./twilio";
 import { getBudgetVerdict } from "./costTracker";
-import { generateAndStoreBrief, BRIEF_SIGNED_URL_TTL_SEC } from "./marketingAgent";
+import {
+  generateAndStoreBrief,
+  BRIEF_SIGNED_URL_TTL_SEC,
+  runMetaCampaignSync,
+} from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
 import { captureDailySnapshot } from "./dashboardAgent";
@@ -134,6 +138,23 @@ async function dailyDashboardSnapshotJob(): Promise<void> {
     );
   } catch (err) {
     console.error("[companyOs.scheduler] dailyDashboardSnapshot failed:", err);
+  }
+}
+
+async function dailyMetaCampaignSyncJob(): Promise<void> {
+  try {
+    const r = await runMetaCampaignSync();
+    if (r.skipped === "not_configured") {
+      console.log(
+        "[companyOs.scheduler] dailyMetaCampaignSync: skipped (META_ACCESS_TOKEN / META_AD_ACCOUNT_ID not set)",
+      );
+      return;
+    }
+    console.log(
+      `[companyOs.scheduler] dailyMetaCampaignSync: scanned=${r.scanned} upserted=${r.upserted} errors=${r.errors.length}`,
+    );
+  } catch (err) {
+    console.error("[companyOs.scheduler] dailyMetaCampaignSync failed:", err);
   }
 }
 
@@ -263,6 +284,12 @@ export function startScheduler(): void {
   // but node-cron dispatches them as separate jobs, so the founder gets
   // two distinct messages on Monday mornings.
   schedule("weeklyMarketingBrief", "0 9 * * 1", weeklyMarketingBriefJob);
+  // 03:30 Dubai daily — Meta Marketing API insights pull. Upserts into
+  // `campaign_performance` for accounts connected via META_ACCESS_TOKEN
+  // + META_AD_ACCOUNT_ID; the manual `campaign update` command stays as
+  // a fallback for everything else. Skips silently if no Meta creds are
+  // wired so dev environments don't see noisy errors.
+  schedule("dailyMetaCampaignSync", "30 3 * * *", dailyMetaCampaignSyncJob);
   // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
   // job is idempotent if it ever runs more than once per day.

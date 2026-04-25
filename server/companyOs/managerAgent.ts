@@ -29,6 +29,7 @@ import {
   handleMarketingCommand,
   handleCampaignUpdateCommand,
   handleDraftPostCommand,
+  handlePublishPostCommand,
 } from "./marketingAgent";
 import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
 import {
@@ -66,6 +67,7 @@ const HELP_TEXT = [
   "• `costs` — AI spend vs monthly budget",
   "• `marketing` — latest weekly brief + recent campaigns",
   "• `draft post <topic>` — IG/LinkedIn/X-ready post draft",
+  "• `publish post <topic>` — draft + auto-publish via the configured social channel",
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
@@ -369,6 +371,9 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
   }
   if (normalized.startsWith("draft post")) {
     return handleDraftPostCommand(text);
+  }
+  if (normalized.startsWith("publish post")) {
+    return handlePublishPostCommand(text);
   }
 
   // Sales Agent surface — also LLM-free at the entry point so they
