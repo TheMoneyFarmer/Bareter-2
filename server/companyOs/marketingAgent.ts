@@ -39,7 +39,7 @@ import { logLlmCall, DEFAULT_MODEL } from "./costTracker";
 import { uploadPrivateBuffer, getSignedDownloadUrl } from "./objectStorageHelpers";
 import { dubaiDateString } from "./financeAgent";
 
-const AGENT = "marketing";
+const AGENT = "marketingAgent";
 export const BRIEF_SIGNED_URL_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 
 // ---------------------------------------------------------------------------
@@ -389,7 +389,7 @@ export async function formatMarketingReport(): Promise<string> {
   const lines: string[] = ["*Marketing · latest brief*"];
 
   if (!latest) {
-    lines.push("No brief generated yet. Trigger one from the dashboard or wait for Monday 09:30 (Asia/Dubai).");
+    lines.push("No brief generated yet. Trigger one from the dashboard or wait for Monday 09:00 (Asia/Dubai).");
   } else {
     lines.push(`Week of ${latest.weekStart}`);
     lines.push(`*${latest.theme}*`);

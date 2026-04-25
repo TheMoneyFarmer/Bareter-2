@@ -119,10 +119,11 @@ export function startScheduler(): void {
   schedule("hourlyFinanceSnapshot", "0 8-22 * * *", hourlyFinanceJob);
   // 09:00 Dubai daily — budget warning when over 95%.
   schedule("budgetWarning", "0 9 * * *", budgetWarningJob);
-  // 09:30 Dubai every Monday — weekly marketing brief to the founder.
-  // Offset from the 09:00 budget warning so they don't compete for the
-  // same node-cron tick (and so the founder gets two distinct messages).
-  schedule("weeklyMarketingBrief", "30 9 * * 1", weeklyMarketingBriefJob);
+  // 09:00 Dubai every Monday (== 05:00 UTC) — weekly marketing brief
+  // to the founder. Shares the 09:00 tick with the daily budget warning
+  // but node-cron dispatches them as separate jobs, so the founder gets
+  // two distinct messages on Monday mornings.
+  schedule("weeklyMarketingBrief", "0 9 * * 1", weeklyMarketingBriefJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing
