@@ -779,6 +779,32 @@ export const campaignPerformance = pgTable("campaign_performance", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Sales leads - DB-backed CRM for the Sales Agent. One row per Bareter user
+// that has been ingested by the agent. Replaces a third-party CRM (Airtable)
+// so the founder can filter / sort / edit from the Company OS admin page
+// without paying for or wiring up an external service.
+export const salesLeads = pgTable("sales_leads", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  email: text("email").notNull(),
+  fullName: text("full_name").notNull(),
+  userType: text("user_type").notNull(), // "asset_owner" | "business" | "freelancer"
+  location: text("location"), // city or country fallback
+  leadScore: integer("lead_score").notNull().default(0), // 0-100
+  status: text("status").notNull().default("new"), // new | active | engaged | re_engaged | converted | dormant
+  lastActivityAt: timestamp("last_activity_at"),
+  firstDealAt: timestamp("first_deal_at"),
+  reEngagementSentAt: timestamp("re_engagement_sent_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdUniqueIdx: uniqueIndex("sales_leads_user_id_unique_idx").on(table.userId),
+  statusIdx: index("sales_leads_status_idx").on(table.status),
+  scoreIdx: index("sales_leads_lead_score_idx").on(table.leadScore),
+  lastActivityIdx: index("sales_leads_last_activity_idx").on(table.lastActivityAt),
+}));
+
 // Category template details type
 export type CategoryDetails = {
   numberOfOutfits?: number;
@@ -1088,6 +1114,14 @@ export const insertCampaignPerformanceSchema = createInsertSchema(campaignPerfor
 });
 export type InsertCampaignPerformance = z.infer<typeof insertCampaignPerformanceSchema>;
 export type CampaignPerformance = typeof campaignPerformance.$inferSelect;
+
+export const insertSalesLeadSchema = createInsertSchema(salesLeads).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSalesLead = z.infer<typeof insertSalesLeadSchema>;
+export type SalesLead = typeof salesLeads.$inferSelect;
 
 // Waitlist
 export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)

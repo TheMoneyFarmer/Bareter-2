@@ -30,6 +30,7 @@ import {
   handleCampaignUpdateCommand,
   handleDraftPostCommand,
 } from "./marketingAgent";
+import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
 
 const HELP_TEXT = [
   "*Bareter Company OS*",
@@ -43,6 +44,8 @@ const HELP_TEXT = [
   "• `marketing` — latest weekly brief + recent campaigns",
   "• `draft post <topic>` — IG/LinkedIn/X-ready post draft",
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
+  "• `leads` — sales leads snapshot (totals, avg score, new this week)",
+  "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
   "",
   "Or just ask me anything in plain English (subject to monthly AED budget).",
 ].join("\n");
@@ -314,6 +317,15 @@ export async function handleManagerMessage(rawText: string): Promise<string> {
   }
   if (normalized.startsWith("draft post")) {
     return handleDraftPostCommand(text);
+  }
+
+  // Sales Agent surface — also LLM-free at the entry point so they
+  // can be triggered without consuming budget.
+  if (normalized === "leads" || normalized === "sales") {
+    return handleLeadsCommand(text);
+  }
+  if (normalized === "sync leads" || normalized === "sales sync" || normalized === "leads sync") {
+    return handleSyncLeadsCommand(text);
   }
 
   return answerFreeform(text);

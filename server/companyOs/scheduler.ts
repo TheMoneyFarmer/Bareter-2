@@ -11,6 +11,7 @@ import { composeDailyBriefing } from "./managerAgent";
 import { notifyFounder, isFounderConfigured } from "./twilio";
 import { getBudgetVerdict } from "./costTracker";
 import { generateAndStoreBrief, BRIEF_SIGNED_URL_TTL_SEC } from "./marketingAgent";
+import { runDailySalesSync } from "./salesAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -83,6 +84,18 @@ async function weeklyMarketingBriefJob(): Promise<void> {
   }
 }
 
+async function dailySalesJob(): Promise<void> {
+  try {
+    const r = await runDailySalesSync();
+    console.log(
+      `[companyOs.scheduler] dailySales: scanned=${r.sync.scanned} new=${r.sync.inserted} updated=${r.sync.updated} ` +
+      `re-engaged sent=${r.reEngagement.sent} (llm=${r.reEngagement.llmDrafted} static=${r.reEngagement.fallbackUsed} skipped=${r.reEngagement.skipped})`,
+    );
+  } catch (err) {
+    console.error("[companyOs.scheduler] dailySales failed:", err);
+  }
+}
+
 async function budgetWarningJob(): Promise<void> {
   if (!isFounderConfigured()) return;
   const v = await getBudgetVerdict();
@@ -124,6 +137,10 @@ export function startScheduler(): void {
   // but node-cron dispatches them as separate jobs, so the founder gets
   // two distinct messages on Monday mornings.
   schedule("weeklyMarketingBrief", "0 9 * * 1", weeklyMarketingBriefJob);
+  // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
+  // Re-engagement is deduped at the SQL level (14-day cooldown) so the
+  // job is idempotent if it ever runs more than once per day.
+  schedule("dailySalesSync", "30 9 * * *", dailySalesJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

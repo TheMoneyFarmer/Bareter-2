@@ -263,6 +263,30 @@ export async function sendDealCompletedEmail(
   });
 }
 
+/**
+ * Send a re-engagement email for the Sales Agent. Caller supplies a
+ * pre-rendered HTML body (typically LLM-drafted) and a fallback plain-text
+ * version. Returns true if the underlying send succeeded.
+ *
+ * Centralised here so the agent never imports the Resend SDK directly —
+ * retries / fallbacks / readiness checks all stay in one place.
+ */
+export async function sendReEngagementEmail(
+  toEmail: string,
+  opts: { subject: string; html: string; text: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Re-engagement skipped for ${toEmail} (email not configured).`);
+    return false;
+  }
+  return sendMail({
+    to: toEmail,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

@@ -38,6 +38,7 @@ import {
 } from "./twilio";
 import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
 import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
+import { getLeads, getSalesReport, runDailySalesSync } from "./salesAgent";
 
 export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): Router {
   const router = express.Router();
@@ -287,6 +288,38 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /campaigns failed:", err);
       res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sales Agent endpoints (admin-only). Surfaces leads + ad-hoc sync
+  // for the Company OS admin page. Read endpoint supports optional
+  // status filter and capped limit.
+  // ---------------------------------------------------------------------------
+
+  router.get("/sales/leads", opts.requireAdmin, async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, limitRaw)) : 50;
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const [leads, summary] = await Promise.all([
+        getLeads({ limit, status }),
+        getSalesReport(),
+      ]);
+      res.json({ count: leads.length, summary, leads });
+    } catch (err) {
+      console.error("[companyOs] /sales/leads failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post("/sales/sync", opts.requireAdmin, async (_req, res) => {
+    try {
+      const result = await runDailySalesSync();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[companyOs] /sales/sync failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
     }
   });
 
