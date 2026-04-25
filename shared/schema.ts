@@ -856,6 +856,41 @@ export const salesLeads = pgTable("sales_leads", {
   lastActivityIdx: index("sales_leads_last_activity_idx").on(table.lastActivityAt),
 }));
 
+// Sales re-engagement events - lightweight outcome tracking for the Sales
+// Agent's re-engagement campaign. One row is written per email sent (event
+// "sent") with a per-lead `linkToken` embedded in the CTA URL. When the
+// recipient clicks the tracked link, a second row is written ("return_visit")
+// for the same token. The reporting query joins these against `posts` and
+// `deals` to surface a "X of last 50 emails brought the user back within
+// 7 days" conversion rate on the WhatsApp `leads` command and the
+// /api/company-os/sales/leads admin endpoint.
+//
+// `linkToken` is unique per (token, eventType) so the return_visit insert
+// is naturally idempotent — a recipient who clicks the link twice is only
+// counted once.
+export const salesReengagementEvents = pgTable("sales_reengagement_events", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id", { length: 36 }).notNull().references(() => salesLeads.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  eventType: text("event_type").notNull(), // "sent" | "return_visit"
+  linkToken: varchar("link_token", { length: 64 }).notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  tokenEventIdx: uniqueIndex("sales_reengage_token_event_idx").on(
+    table.linkToken,
+    table.eventType,
+  ),
+  userCreatedIdx: index("sales_reengage_user_created_idx").on(
+    table.userId,
+    table.createdAt,
+  ),
+  eventCreatedIdx: index("sales_reengage_event_created_idx").on(
+    table.eventType,
+    table.createdAt,
+  ),
+}));
+
 // Agent memory - shared cross-agent learnings persisted by the Memory
 // Agent. Every Company OS agent can write `remember()` after a meaningful
 // output (preference, learning, pattern) and read `buildAgentContext()`
@@ -1266,6 +1301,18 @@ export const insertSalesLeadSchema = createInsertSchema(salesLeads).omit({
 });
 export type InsertSalesLead = z.infer<typeof insertSalesLeadSchema>;
 export type SalesLead = typeof salesLeads.$inferSelect;
+
+export const insertSalesReengagementEventSchema = createInsertSchema(
+  salesReengagementEvents,
+).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSalesReengagementEvent = z.infer<
+  typeof insertSalesReengagementEventSchema
+>;
+export type SalesReengagementEvent =
+  typeof salesReengagementEvents.$inferSelect;
 
 export const insertKpiSnapshotSchema = createInsertSchema(kpiSnapshots).omit({
   id: true,

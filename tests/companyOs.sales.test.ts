@@ -124,6 +124,11 @@ function makeWriteChain(captureInto: AnyRow[], captured: AnyRow): any {
     },
     where: () => chain,
     onConflictDoUpdate: () => chain,
+    // Mirror onConflictDoUpdate — the recordReEngagementReturnVisit
+    // path uses `.onConflictDoNothing` to make repeat clicks idempotent.
+    // Without this on the mock chain, `await db.insert(...).values(...)
+    // .onConflictDoNothing(...)` would dereference `undefined.then`.
+    onConflictDoNothing: () => chain,
     // Only `.returning(...)` consumes `dbState.returningQueue`. A
     // bare `await db.insert(...).values({...})` (e.g. logLlmCall) must
     // resolve to [] without touching the queue, otherwise unrelated
@@ -206,6 +211,9 @@ import {
   deriveUserType,
   deriveStatus,
   formatSalesReport,
+  getReEngagementConversion,
+  handleSalesTrackingRequest,
+  recordReEngagementReturnVisit,
   runReEngagementCampaign,
   syncNewLeads,
   updateLead,
@@ -400,6 +408,13 @@ describe("formatSalesReport", () => {
       reEngaged: 4,
       avgScore: 38,
       newThisWeek: 9,
+      reEngagementConversion: {
+        sent: 50,
+        returned: 12,
+        rate: 24,
+        windowSize: 50,
+        windowDays: 7,
+      },
     });
     expect(out).toContain("Sales");
     expect(out).toContain("Total: 42");
@@ -408,6 +423,29 @@ describe("formatSalesReport", () => {
     expect(out).toContain("Re-engaged: 4");
     expect(out).toContain("Avg score: 38");
     expect(out).toContain("New this week: 9");
+    // Re-engagement ROI line is the whole point of Task #71 — assert
+    // both the headline counts and the percentage are surfaced.
+    expect(out).toContain("Re-engagement: 12 of last 50 returned within 7d (24%)");
+  });
+
+  it("renders a friendly placeholder when there have been no sends", () => {
+    const out = formatSalesReport({
+      total: 1,
+      new: 0,
+      active: 0,
+      reEngaged: 0,
+      avgScore: 0,
+      newThisWeek: 0,
+      reEngagementConversion: {
+        sent: 0,
+        returned: 0,
+        rate: 0,
+        windowSize: 50,
+        windowDays: 7,
+      },
+    });
+    expect(out).toContain("Re-engagement: no sends in last 50");
+    expect(out).not.toContain("returned within");
   });
 });
 
@@ -582,6 +620,300 @@ describe("runReEngagementCampaign — dedupe", () => {
     expect(emailSends[0].text).toContain("100% cashless");
 
     budgetSpy.mockRestore();
+  });
+
+  it("embeds a tracked CTA URL with a per-send token and records a 'sent' event", async () => {
+    // Task #71 — verify the conversion-tracking plumbing is wired into
+    // every successful re-engagement send:
+    //   1. The email body includes the tracked URL (so recipients can
+    //      click it and produce a return_visit event).
+    //   2. A `salesReengagementEvents` row of type 'sent' is inserted
+    //      with the same token that's in the URL — the (linkToken,
+    //      eventType) join is what powers the conversion metric.
+    const eligible = [
+      {
+        id: "lead-track",
+        userId: "user-track",
+        email: "track@example.com",
+        fullName: "Trace Tracy",
+        userType: "asset_owner",
+        location: "Dubai",
+        leadScore: 80,
+        status: "engaged",
+        lastActivityAt: new Date(Date.now() - 21 * 86_400_000),
+        firstDealAt: null,
+        reEngagementSentAt: null,
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ];
+    dbState.selectQueue = [eligible];
+    dbState.returningQueue = [[{ id: "lead-track" }]];
+    // Force the deterministic fallback so the body is predictable —
+    // the static template still has to include the tracked URL.
+    const budgetModule = await import("../server/companyOs/costTracker");
+    const budgetSpy = vi
+      .spyOn(budgetModule, "getBudgetVerdict")
+      .mockResolvedValueOnce({
+        safe: false,
+        spentAed: 0,
+        budgetAed: 400,
+        usageRatio: 0,
+        verdict: "kill_switch",
+      } as any);
+
+    const result = await runReEngagementCampaign({ capacity: 1 });
+    budgetSpy.mockRestore();
+
+    expect(result.sent).toBe(1);
+    expect(emailSends).toHaveLength(1);
+    // Tracked URL pattern: /api/sales/track/<token>?utm_source=reengage…
+    const trackMatch = emailSends[0].text.match(
+      /\/api\/sales\/track\/([A-Za-z0-9_-]{8,64})\?[^\s)]*utm_source=reengage/,
+    );
+    expect(trackMatch, "email body must contain the tracked CTA URL").not.toBeNull();
+    const tokenInUrl = trackMatch![1];
+
+    // The 'sent' event must have been written with the same token. We
+    // capture all inserts via dbState.insertedValues; the sales-event
+    // row is the only one carrying eventType='sent'.
+    const sentEvent = dbState.insertedValues.find(
+      (v) => v.eventType === "sent" && typeof v.linkToken === "string",
+    );
+    expect(sentEvent, "must record a 'sent' re-engagement event").toBeTruthy();
+    expect(sentEvent!.linkToken).toBe(tokenInUrl);
+    expect(sentEvent!.leadId).toBe("lead-track");
+    expect(sentEvent!.userId).toBe("user-track");
+  });
+});
+
+// ===========================================================================
+// Task #71 — re-engagement conversion tracking
+// ===========================================================================
+describe("recordReEngagementReturnVisit", () => {
+  it("rejects empty / oversized tokens without touching the DB", async () => {
+    dbState.selectQueue = [];
+    expect(await recordReEngagementReturnVisit("")).toBeNull();
+    expect(await recordReEngagementReturnVisit("x".repeat(65))).toBeNull();
+    expect(dbState.selectCalls).toBe(0);
+    expect(dbState.insertedValues).toHaveLength(0);
+  });
+
+  it("returns null for an unknown token and does not insert a return_visit", async () => {
+    // No matching 'sent' row → the lookup select returns []. We must
+    // bail out without writing a return_visit (otherwise we'd inflate
+    // the conversion numerator with random URL hits).
+    dbState.selectQueue = [[]];
+    const result = await recordReEngagementReturnVisit("abcdef1234567890");
+    expect(result).toBeNull();
+    expect(dbState.insertedValues).toHaveLength(0);
+  });
+
+  it("looks up the originating send and inserts a return_visit + bumps lastActivityAt", async () => {
+    // The lookup select returns one row matching (linkToken, 'sent').
+    dbState.selectQueue = [[{ leadId: "lead-z", userId: "user-z" }]];
+    const result = await recordReEngagementReturnVisit("token-abcdef12", {
+      ip: "1.2.3.4",
+    });
+    expect(result).toEqual({ leadId: "lead-z", userId: "user-z" });
+
+    const visit = dbState.insertedValues.find(
+      (v) => v.eventType === "return_visit",
+    );
+    expect(visit, "must insert a return_visit event").toBeTruthy();
+    expect(visit!.linkToken).toBe("token-abcdef12");
+    expect(visit!.leadId).toBe("lead-z");
+    expect(visit!.userId).toBe("user-z");
+    expect(visit!.metadata).toEqual({ ip: "1.2.3.4" });
+
+    // lastActivityAt bump → exactly one update with a Date in the
+    // updated set (the insert/upsert path doesn't push to updatedSets,
+    // only `db.update(...).set(...)` does).
+    const bump = dbState.updatedSets.find(
+      (u) => u.lastActivityAt instanceof Date,
+    );
+    expect(bump, "must bump lastActivityAt on the lead").toBeTruthy();
+  });
+});
+
+describe("getReEngagementConversion", () => {
+  it("returns a zeroed result with a friendly window when no sends exist", async () => {
+    // First select (sentEvents) → []. Function must short-circuit and
+    // not issue the secondary returnEvents/posts/deals selects, so a
+    // single empty queue entry is sufficient.
+    dbState.selectQueue = [[]];
+    const r = await getReEngagementConversion();
+    expect(r).toEqual({
+      sent: 0,
+      returned: 0,
+      rate: 0,
+      windowSize: 50,
+      windowDays: 7,
+    });
+  });
+
+  it("counts a return as converted only when a same-token visit lands inside the 7-day window", async () => {
+    const now = Date.now();
+    const sentEvents = [
+      // Within window — recipient clicked the link 2 days after the email.
+      {
+        linkToken: "tok-converted",
+        userId: "user-A",
+        sentAt: new Date(now - 3 * 86_400_000),
+      },
+      // Outside window — visit happened, but 10 days after the send.
+      {
+        linkToken: "tok-late",
+        userId: "user-B",
+        sentAt: new Date(now - 20 * 86_400_000),
+      },
+      // Never returned at all.
+      {
+        linkToken: "tok-cold",
+        userId: "user-C",
+        sentAt: new Date(now - 1 * 86_400_000),
+      },
+    ];
+    const returnEvents = [
+      // Within 7d of tok-converted's send → counts.
+      { linkToken: "tok-converted", createdAt: new Date(now - 1 * 86_400_000) },
+      // 10 days after tok-late's send → outside the window, doesn't count.
+      { linkToken: "tok-late", createdAt: new Date(now - 10 * 86_400_000) },
+    ];
+    // Queue order matches Promise.all evaluation:
+    //   1. sentEvents
+    //   2. returnEvents
+    //   3. userPosts (none)
+    //   4. userDeals (none)
+    dbState.selectQueue = [sentEvents, returnEvents, [], []];
+
+    const r = await getReEngagementConversion();
+    expect(r.sent).toBe(3);
+    expect(r.returned).toBe(1);
+    expect(r.rate).toBe(33); // 1/3 → 33%
+    expect(r.windowSize).toBe(50);
+    expect(r.windowDays).toBe(7);
+  });
+
+  it("counts a new post by the recipient inside the window as a conversion (no click required)", async () => {
+    const now = Date.now();
+    const sentEvents = [
+      {
+        linkToken: "tok-poster",
+        userId: "user-poster",
+        sentAt: new Date(now - 5 * 86_400_000),
+      },
+    ];
+    const userPosts = [
+      // Posted 2 days after the email — counts even though they
+      // didn't click the tracked link.
+      {
+        userId: "user-poster",
+        createdAt: new Date(now - 3 * 86_400_000),
+      },
+    ];
+    dbState.selectQueue = [sentEvents, [], userPosts, []];
+
+    const r = await getReEngagementConversion();
+    expect(r.sent).toBe(1);
+    expect(r.returned).toBe(1);
+    expect(r.rate).toBe(100);
+  });
+
+  it("falls back to a zeroed result when the underlying query throws", async () => {
+    dbState.selectShouldThrow = true;
+    const r = await getReEngagementConversion();
+    expect(r.sent).toBe(0);
+    expect(r.returned).toBe(0);
+    expect(r.rate).toBe(0);
+    dbState.selectShouldThrow = false;
+  });
+});
+
+describe("/api/sales/track/:token route", () => {
+  // Mounts the real handler from salesAgent — same one that
+  // server/routes.ts wires up — onto a minimal express app, so we
+  // exercise the full request → recordReEngagementReturnVisit → 302
+  // redirect path against the existing DB mock.
+  function buildTrackingApp() {
+    const app = express();
+    app.get("/api/sales/track/:token", handleSalesTrackingRequest as any);
+    return app;
+  }
+
+  it("302-redirects with default UTMs and re_t marker on a valid token", async () => {
+    // The handler's lookup select returns a known sent event, so the
+    // return_visit insert must run.
+    dbState.selectQueue = [[{ leadId: "lead-r", userId: "user-r" }]];
+    const res = await request(buildTrackingApp()).get(
+      "/api/sales/track/abcdef1234567890",
+    );
+    expect(res.status).toBe(302);
+    const loc = res.headers.location ?? "";
+    expect(loc.startsWith("/?")).toBe(true);
+    expect(loc).toContain("utm_source=reengage");
+    expect(loc).toContain("utm_medium=email");
+    expect(loc).toContain("utm_campaign=sales_reengagement");
+    // Marker only present for valid tokens — used by the SPA to
+    // distinguish a re-engagement landing from an organic visit.
+    expect(loc).toContain("re_t=1");
+
+    // The route must have written a return_visit event for the token.
+    const visit = dbState.insertedValues.find(
+      (v) => v.eventType === "return_visit",
+    );
+    expect(visit, "valid token must produce a return_visit insert").toBeTruthy();
+    expect(visit!.linkToken).toBe("abcdef1234567890");
+  });
+
+  it("preserves caller-supplied UTMs over the defaults", async () => {
+    dbState.selectQueue = [[{ leadId: "lead-r", userId: "user-r" }]];
+    const res = await request(buildTrackingApp()).get(
+      "/api/sales/track/abcdef1234567890" +
+        "?utm_source=mailchimp&utm_campaign=spring2026",
+    );
+    expect(res.status).toBe(302);
+    const loc = res.headers.location ?? "";
+    expect(loc).toContain("utm_source=mailchimp");
+    expect(loc).toContain("utm_campaign=spring2026");
+    // The default for unset utm_medium still fills in.
+    expect(loc).toContain("utm_medium=email");
+  });
+
+  it("still 302-redirects on a malformed token but does NOT record a visit", async () => {
+    dbState.selectQueue = []; // would throw if a select were issued
+    const res = await request(buildTrackingApp()).get(
+      "/api/sales/track/bad!token",
+    );
+    expect(res.status).toBe(302);
+    const loc = res.headers.location ?? "";
+    expect(loc.startsWith("/?")).toBe(true);
+    // Default UTMs still applied so the user-visible behaviour is
+    // indistinguishable from a real click — but no attribution marker.
+    expect(loc).toContain("utm_source=reengage");
+    expect(loc).not.toContain("re_t=1");
+    // No DB write should have happened.
+    expect(dbState.insertedValues).toHaveLength(0);
+  });
+
+  it("is idempotent: a second click with the same token still 302s and the conflict-do-nothing path swallows the duplicate insert", async () => {
+    // First click: lookup finds the sent event, inserts return_visit.
+    // Second click: lookup again finds the sent event, attempts another
+    // insert which the (linkToken, eventType) unique index would
+    // collapse via ON CONFLICT DO NOTHING. The mock chain just no-ops
+    // on .onConflictDoNothing — what matters is the response stays 302
+    // and the user is never bounced.
+    dbState.selectQueue = [
+      [{ leadId: "lead-r", userId: "user-r" }],
+      [{ leadId: "lead-r", userId: "user-r" }],
+    ];
+    const app = buildTrackingApp();
+    const r1 = await request(app).get("/api/sales/track/abcdef1234567890");
+    const r2 = await request(app).get("/api/sales/track/abcdef1234567890");
+    expect(r1.status).toBe(302);
+    expect(r2.status).toBe(302);
+    expect(r1.headers.location).toBe(r2.headers.location);
   });
 });
 

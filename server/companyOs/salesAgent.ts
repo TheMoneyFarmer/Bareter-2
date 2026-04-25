@@ -19,6 +19,7 @@
 //     admin route.
 //   • `handleLeadsCommand` / `handleSyncLeadsCommand` — WhatsApp surface.
 
+import crypto from "node:crypto";
 import {
   and,
   asc,
@@ -26,6 +27,7 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNull,
   lt,
   lte,
@@ -38,6 +40,7 @@ import {
   posts,
   deals,
   salesLeads,
+  salesReengagementEvents,
   type SalesLead,
 } from "@shared/schema";
 import { chatCompletion, type ChatMessage } from "../agents/llm";
@@ -51,6 +54,19 @@ const RE_ENGAGEMENT_INACTIVE_DAYS = 7;
 const RE_ENGAGEMENT_COOLDOWN_DAYS = 14;
 const DEFAULT_INGEST_BATCH = 50;
 const DEFAULT_REENGAGE_CAP = 20;
+// Conversion-tracking window: of the most recent N "sent" events, how many
+// brought the user back within `RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS` days.
+// Tunable via the `getReEngagementConversion` helper for tests / future
+// admin filters.
+const DEFAULT_CONVERSION_SAMPLE = 50;
+const RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS = 7;
+// UTM tags applied to every tracked re-engagement link so analytics tools
+// (and our own admin UI) can attribute downstream traffic to this campaign.
+const REENGAGE_UTM = {
+  utm_source: "reengage",
+  utm_medium: "email",
+  utm_campaign: "sales_reengagement",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Pure helpers — unit tested.
@@ -442,11 +458,15 @@ Take 2 minutes to post what you have or browse what others are offering — it's
 See you on ${APP_NAME}.`;
 }
 
-function renderReEngagementHtml(bodyText: string): string {
+function renderReEngagementHtml(bodyText: string, ctaUrl: string): string {
   const html = bodyText
     .split(/\n\n+/)
     .map((p) => `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 14px;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
     .join("");
+  // The CTA URL is escaped both as href and as visible text — the visible
+  // copy lets recipients see (and trust) the destination before clicking,
+  // and the href is the same tracked URL so we can attribute the click.
+  const safeUrl = escapeHtml(ctaUrl);
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family:Arial,sans-serif;background:#f4f4f5;margin:0;padding:24px;">
@@ -455,10 +475,41 @@ function renderReEngagementHtml(bodyText: string): string {
       <h1 style="margin:0;font-size:22px;color:#136c68;">${APP_NAME}</h1>
     </div>
     ${html}
+    <a href="${safeUrl}" style="display:block;text-align:center;background:#136c68;color:white;text-decoration:none;padding:14px 24px;border-radius:8px;font-size:15px;font-weight:600;margin:24px 0 8px;">
+      Visit ${APP_NAME}
+    </a>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0;" />
     <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0;">${APP_NAME} · UAE Barter Marketplace</p>
   </div>
 </body></html>`;
+}
+
+/**
+ * Server-trusted base URL for outbound re-engagement links. Mirrors the
+ * pattern used by waitlistRoutes.baseUrlOf so we never trust request
+ * headers (no req here — this runs from the cron) and never accidentally
+ * point recipients at an attacker-controlled host.
+ */
+function reEngagementBaseUrl(): string {
+  const configured = process.env.PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (replitDomain) return `https://${replitDomain}`;
+  const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (devDomain) return `https://${devDomain}`;
+  return "https://bareter.com";
+}
+
+/**
+ * Build the tracked CTA URL embedded in every re-engagement email. The
+ * `token` is per-send (and unique in `sales_reengagement_events`), so the
+ * server can attribute a click back to the exact send row even though no
+ * user_id is in the URL. UTM params are appended for downstream analytics.
+ */
+export function buildTrackedReEngagementUrl(token: string, baseUrl?: string): string {
+  const base = (baseUrl ?? reEngagementBaseUrl()).replace(/\/+$/, "");
+  const params = new URLSearchParams(REENGAGE_UTM as Record<string, string>);
+  return `${base}/api/sales/track/${encodeURIComponent(token)}?${params.toString()}`;
 }
 
 function escapeHtml(s: string): string {
@@ -550,16 +601,47 @@ export async function runReEngagementCampaign(
         bodyText = staticReEngagementBodyText(lead);
         usedFallback = true;
       }
+      // One UUID per send — embedded in the CTA URL so the eventual
+      // /api/sales/track/:token click maps back to this exact row in
+      // sales_reengagement_events. Recording happens AFTER the send
+      // succeeds so a failed Resend call doesn't leave a phantom "sent"
+      // event that would skew the conversion rate downward.
+      const linkToken = crypto.randomUUID();
+      const ctaUrl = buildTrackedReEngagementUrl(linkToken);
+      const trackedText = `${bodyText}\n\nVisit ${APP_NAME}: ${ctaUrl}`;
       const subject = `We miss you on ${APP_NAME}`;
       const ok = await sendReEngagementEmail(lead.email, {
         subject,
-        html: renderReEngagementHtml(bodyText),
-        text: bodyText,
+        html: renderReEngagementHtml(bodyText, ctaUrl),
+        text: trackedText,
       });
       if (ok) {
         result.sent++;
         if (usedFallback) result.fallbackUsed++;
         else result.llmDrafted++;
+        // Outcome-tracking event — one row per successful send. Failures
+        // here are logged but never crash the campaign loop; without
+        // this row a return click can't be attributed, but the email
+        // already went out so we'd rather lose the analytics signal
+        // than re-send the email.
+        try {
+          await db.insert(salesReengagementEvents).values({
+            leadId: lead.id,
+            userId: lead.userId,
+            eventType: "sent",
+            linkToken,
+            metadata: {
+              draftSource: usedFallback ? "static" : "llm",
+              subject,
+            },
+          });
+        } catch (err) {
+          console.error(
+            "[companyOs.sales] failed to record 'sent' event for",
+            lead.email,
+            err,
+          );
+        }
         // Single semantic event per send — chatCompletion already logs
         // the LLM draft itself, so logging a separate zero-token line
         // here would inflate per-agent call counts without adding
@@ -656,6 +738,251 @@ export interface SalesReport {
   reEngaged: number;
   avgScore: number;
   newThisWeek: number;
+  reEngagementConversion: ReEngagementConversion;
+}
+
+export interface ReEngagementConversion {
+  /** Number of "sent" events sampled (most recent first, capped at sample). */
+  sent: number;
+  /** Of those, how many had a return-visit click, post, or completed deal
+   *  by the same user inside the conversion window. */
+  returned: number;
+  /** Conversion rate, 0..100, rounded to the nearest whole percent. */
+  rate: number;
+  /** Sample size used for the calculation (defaults to 50). */
+  windowSize: number;
+  /** Days after send within which a return must occur to count. */
+  windowDays: number;
+}
+
+const ZERO_CONVERSION: ReEngagementConversion = {
+  sent: 0,
+  returned: 0,
+  rate: 0,
+  windowSize: DEFAULT_CONVERSION_SAMPLE,
+  windowDays: RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS,
+};
+
+/**
+ * Compute the re-engagement conversion rate over the most recent N "sent"
+ * events. A send is considered "converted" if any of the following happened
+ * within `RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS` days after it:
+ *   1. The recipient clicked the tracked link (return_visit event with
+ *      the same linkToken — persisted in `salesReengagementEvents`).
+ *   2. The recipient posted a new listing (live join against `posts`).
+ *   3. A deal involving the recipient (seeker or provider) flipped to
+ *      `completed` (live join against `deals`).
+ *
+ * Design note — why posts/deals are *inferred live* and not persisted as
+ * extra event rows: Task #71 scopes `salesReengagementEvents` to the
+ * email-attribution surface (sent + return_visit). Posts and completed
+ * deals already live in their own tables with their own timestamps; we
+ * intentionally do NOT shadow-write `post`/`deal_completed` rows into
+ * the events table because (a) they'd be redundant with the source-of-
+ * truth tables, (b) backfilling existing posts/deals would require a
+ * one-shot migration, and (c) the conversion query stays correct and
+ * cheap (≤50 sent rows × bounded post/deal scan inside the earliest
+ * send window). If a future task wants a single unified events feed
+ * for the admin UI, materialize posts/deals into the events table at
+ * write time and adjust this query to read only from
+ * `salesReengagementEvents`.
+ *
+ * Implementation note: we don't push the entire calculation into a single
+ * SQL query because the "win window per row" predicate is awkward in
+ * Drizzle's query builder and the dataset is bounded (≤50 rows by
+ * default). Instead we do four bounded selects and join in JS. The
+ * bounded fan-out keeps this O(N) and naturally degrades to a no-op
+ * when no sends have happened yet.
+ */
+export async function getReEngagementConversion(opts: {
+  windowSize?: number;
+  windowDays?: number;
+} = {}): Promise<ReEngagementConversion> {
+  const windowSize = Math.max(
+    1,
+    Math.min(500, opts.windowSize ?? DEFAULT_CONVERSION_SAMPLE),
+  );
+  const windowDays = Math.max(
+    1,
+    Math.min(60, opts.windowDays ?? RE_ENGAGEMENT_CONVERSION_WINDOW_DAYS),
+  );
+  try {
+    const sentEvents = await db
+      .select({
+        linkToken: salesReengagementEvents.linkToken,
+        userId: salesReengagementEvents.userId,
+        sentAt: salesReengagementEvents.createdAt,
+      })
+      .from(salesReengagementEvents)
+      .where(eq(salesReengagementEvents.eventType, "sent"))
+      .orderBy(desc(salesReengagementEvents.createdAt))
+      .limit(windowSize);
+
+    if (sentEvents.length === 0) {
+      return { ...ZERO_CONVERSION, windowSize, windowDays };
+    }
+
+    const tokens = sentEvents.map((e) => e.linkToken);
+    const userIds = Array.from(new Set(sentEvents.map((e) => e.userId)));
+    // Earliest send timestamp bounds the post / deal window so we don't
+    // pull the entire posts/deals tables — only rows that could possibly
+    // be inside any one send's conversion window.
+    const earliestSent = new Date(
+      Math.min(...sentEvents.map((e) => new Date(e.sentAt as unknown as string).getTime())),
+    );
+    const winMs = windowDays * 86_400_000;
+
+    const [returnEvents, userPosts, userDeals] = await Promise.all([
+      db
+        .select({
+          linkToken: salesReengagementEvents.linkToken,
+          createdAt: salesReengagementEvents.createdAt,
+        })
+        .from(salesReengagementEvents)
+        .where(
+          and(
+            eq(salesReengagementEvents.eventType, "return_visit"),
+            inArray(salesReengagementEvents.linkToken, tokens),
+          ),
+        ),
+      db
+        .select({ userId: posts.userId, createdAt: posts.createdAt })
+        .from(posts)
+        .where(and(inArray(posts.userId, userIds), gte(posts.createdAt, earliestSent))),
+      db
+        .select({
+          seekerId: deals.seekerId,
+          providerId: deals.providerId,
+          updatedAt: deals.updatedAt,
+        })
+        .from(deals)
+        .where(
+          and(
+            or(inArray(deals.seekerId, userIds), inArray(deals.providerId, userIds)),
+            eq(deals.state, "completed"),
+            gte(deals.updatedAt, earliestSent),
+          ),
+        ),
+    ]);
+
+    const returnByToken = new Map<string, number>();
+    for (const r of returnEvents) {
+      const ts = new Date(r.createdAt as unknown as string).getTime();
+      const existing = returnByToken.get(r.linkToken);
+      if (existing === undefined || ts < existing) {
+        returnByToken.set(r.linkToken, ts);
+      }
+    }
+
+    let returned = 0;
+    for (const s of sentEvents) {
+      const sentMs = new Date(s.sentAt as unknown as string).getTime();
+      const cutoff = sentMs + winMs;
+      const visit = returnByToken.get(s.linkToken);
+      if (visit !== undefined && visit >= sentMs && visit <= cutoff) {
+        returned++;
+        continue;
+      }
+      const postHit = userPosts.some((p) => {
+        if (p.userId !== s.userId) return false;
+        const t = new Date(p.createdAt as unknown as string).getTime();
+        return t > sentMs && t <= cutoff;
+      });
+      if (postHit) {
+        returned++;
+        continue;
+      }
+      const dealHit = userDeals.some((d) => {
+        if (d.seekerId !== s.userId && d.providerId !== s.userId) return false;
+        const t = new Date(d.updatedAt as unknown as string).getTime();
+        return t > sentMs && t <= cutoff;
+      });
+      if (dealHit) {
+        returned++;
+      }
+    }
+
+    return {
+      sent: sentEvents.length,
+      returned,
+      rate:
+        sentEvents.length === 0
+          ? 0
+          : Math.round((returned / sentEvents.length) * 100),
+      windowSize,
+      windowDays,
+    };
+  } catch (err) {
+    console.error("[companyOs.sales] getReEngagementConversion failed:", err);
+    return { ...ZERO_CONVERSION, windowSize, windowDays };
+  }
+}
+
+/**
+ * Record a click on the tracked re-engagement CTA URL. Idempotent on
+ * `linkToken` thanks to the (linkToken, eventType) unique index — a
+ * recipient who clicks the link 5 times still produces a single
+ * "return_visit" row, so the conversion rate isn't inflated by repeat
+ * opens of the same email.
+ *
+ * Returns the lead/user ids of the originating send when the token is
+ * known, or `null` when it's unknown (random hits, expired tokens).
+ */
+export async function recordReEngagementReturnVisit(
+  token: string,
+  metadata?: Record<string, unknown>,
+): Promise<{ leadId: string; userId: string } | null> {
+  if (!token || token.length > 64) return null;
+  try {
+    const [sentEvent] = await db
+      .select({
+        leadId: salesReengagementEvents.leadId,
+        userId: salesReengagementEvents.userId,
+      })
+      .from(salesReengagementEvents)
+      .where(
+        and(
+          eq(salesReengagementEvents.linkToken, token),
+          eq(salesReengagementEvents.eventType, "sent"),
+        ),
+      )
+      .limit(1);
+    if (!sentEvent) return null;
+
+    // ON CONFLICT DO NOTHING on the (linkToken, eventType) unique index
+    // makes repeat clicks a no-op — exactly what we want for a fair
+    // "X of last 50 returned" metric.
+    await db
+      .insert(salesReengagementEvents)
+      .values({
+        leadId: sentEvent.leadId,
+        userId: sentEvent.userId,
+        eventType: "return_visit",
+        linkToken: token,
+        metadata: metadata ?? null,
+      })
+      .onConflictDoNothing({
+        target: [salesReengagementEvents.linkToken, salesReengagementEvents.eventType],
+      });
+
+    // Bump lastActivityAt on the lead so the next sync sees the visit
+    // (and the cron's "still inactive" filter doesn't immediately re-queue
+    // them for another email). Best-effort — failure here doesn't matter
+    // for the conversion metric.
+    try {
+      await db
+        .update(salesLeads)
+        .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+        .where(eq(salesLeads.id, sentEvent.leadId));
+    } catch (err) {
+      console.warn("[companyOs.sales] lastActivityAt bump failed:", err);
+    }
+
+    return sentEvent;
+  } catch (err) {
+    console.error("[companyOs.sales] recordReEngagementReturnVisit failed:", err);
+    return null;
+  }
 }
 
 export async function getSalesReport(): Promise<SalesReport> {
@@ -672,6 +999,20 @@ export async function getSalesReport(): Promise<SalesReport> {
         .from(salesLeads),
       db.select({ c: count() }).from(salesLeads).where(gte(salesLeads.createdAt, sevenDaysAgo)),
     ]);
+    // Conversion stats run as a separate awaited call (not folded into the
+    // Promise.all above) so a future caller adding a new aggregate doesn't
+    // interleave its inner selects with these four counters. Keeping the
+    // sequential break also means the function still returns sensible
+    // numbers when the conversion read happens to fail — we wrap it with
+    // a fallback so the leads command never goes silent on an analytics
+    // hiccup.
+    let reEngagementConversion: ReEngagementConversion;
+    try {
+      reEngagementConversion = await getReEngagementConversion();
+    } catch (err) {
+      console.error("[companyOs.sales] conversion read failed:", err);
+      reEngagementConversion = { ...ZERO_CONVERSION };
+    }
     const total = tot[0]?.c ?? 0;
     const newCount = byStatus.find((r) => r.status === "new")?.c ?? 0;
     const activeCount = byStatus.find((r) => r.status === "active")?.c ?? 0;
@@ -684,10 +1025,19 @@ export async function getSalesReport(): Promise<SalesReport> {
       reEngaged,
       avgScore,
       newThisWeek: weekly[0]?.c ?? 0,
+      reEngagementConversion,
     };
   } catch (err) {
     console.error("[companyOs.sales] getSalesReport failed:", err);
-    return { total: 0, new: 0, active: 0, reEngaged: 0, avgScore: 0, newThisWeek: 0 };
+    return {
+      total: 0,
+      new: 0,
+      active: 0,
+      reEngaged: 0,
+      avgScore: 0,
+      newThisWeek: 0,
+      reEngagementConversion: { ...ZERO_CONVERSION },
+    };
   }
 }
 
@@ -757,7 +1107,69 @@ export async function updateLead(
   return rows[0] ?? null;
 }
 
+/**
+ * Express handler for `GET /api/sales/track/:token`.
+ *
+ * Extracted from `server/routes.ts` so it can be exercised in isolation
+ * without booting the entire app. The behaviour is intentionally
+ * forgiving: even if the DB write fails (or the token is malformed) we
+ * still 302-redirect to the home page so the recipient never sees an
+ * error — protecting a metric is never worth bouncing the user out of
+ * Bareter.
+ *
+ * The shape (string token in/out, query-param preservation, default UTM
+ * tags, `re_t=1` marker only on valid tokens) is locked down by
+ * `tests/companyOs.sales.test.ts → "/api/sales/track/:token route"`.
+ */
+const TRACKING_TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
+export async function handleSalesTrackingRequest(
+  req: {
+    params: { token?: string };
+    query: Record<string, unknown>;
+    ip?: string;
+    get(name: string): string | undefined;
+  },
+  res: { redirect(status: number, url: string): void },
+): Promise<void> {
+  const rawToken = String(req.params.token || "");
+  let validToken = false;
+  if (TRACKING_TOKEN_RE.test(rawToken)) {
+    validToken = true;
+    try {
+      await recordReEngagementReturnVisit(rawToken, {
+        ip: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      });
+    } catch (err) {
+      console.error("[sales] return_visit recording failed:", err);
+    }
+  } else {
+    console.warn("[sales] tracked link hit with invalid token shape");
+  }
+
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(req.query ?? {})) {
+    if (typeof v === "string" && k.startsWith("utm_")) params.set(k, v);
+  }
+  if (!params.has("utm_source")) params.set("utm_source", REENGAGE_UTM.utm_source);
+  if (!params.has("utm_medium")) params.set("utm_medium", REENGAGE_UTM.utm_medium);
+  if (!params.has("utm_campaign")) {
+    params.set("utm_campaign", REENGAGE_UTM.utm_campaign);
+  }
+  // Only set the attribution marker for valid tokens — bogus tokens
+  // shouldn't contribute to "this load was a re-engagement click".
+  if (validToken) params.set("re_t", "1");
+  res.redirect(302, `/?${params.toString()}`);
+}
+
 export function formatSalesReport(r: SalesReport): string {
+  // The conversion line is only meaningful once at least one re-engagement
+  // email has gone out. Before then, render a friendlier "no sends yet"
+  // string instead of "0 of 0 returned (0%)" which looks like a failure.
+  const conv = r.reEngagementConversion;
+  const convLine = conv.sent === 0
+    ? `• Re-engagement: no sends in last ${conv.windowSize}`
+    : `• Re-engagement: ${conv.returned} of last ${conv.sent} returned within ${conv.windowDays}d (${conv.rate}%)`;
   return [
     "*Sales · leads snapshot*",
     `• Total: ${r.total}`,
@@ -766,6 +1178,7 @@ export function formatSalesReport(r: SalesReport): string {
     `• Re-engaged: ${r.reEngaged}`,
     `• Avg score: ${r.avgScore}`,
     `• New this week: ${r.newThisWeek}`,
+    convLine,
   ].join("\n");
 }
 

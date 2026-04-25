@@ -1709,6 +1709,14 @@ export async function registerRoutes(
   const { createCompanyOsRouter } = await import("./companyOs/router");
   app.use("/api/company-os", createCompanyOsRouter({ requireAdmin }));
 
+  // GET /api/sales/track/:token — re-engagement-email click tracker.
+  // Public, unauthenticated, idempotent. The handler logic lives in
+  // `salesAgent.handleSalesTrackingRequest` so it can be unit-tested in
+  // isolation; this thin wrapper exists only so the route registration
+  // stays alongside the rest of the app's routes.
+  const { handleSalesTrackingRequest } = await import("./companyOs/salesAgent");
+  app.get("/api/sales/track/:token", handleSalesTrackingRequest);
+
   app.patch("/api/users/account-type", requireAuth, async (req, res) => {
     try {
       const { accountType } = req.body;
