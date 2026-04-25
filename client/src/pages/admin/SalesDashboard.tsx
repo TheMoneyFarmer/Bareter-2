@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -38,6 +39,7 @@ import {
   Pencil,
   RefreshCw,
   Save,
+  Search,
   Users,
   X,
 } from "lucide-react";
@@ -106,11 +108,40 @@ export default function SalesDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
+  // Hydrate filter + search from the URL so reload / deep-link works.
+  const initialParams =
+    typeof window === "undefined"
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search);
+  const initialStatus = initialParams.get("status");
+  const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>(
+    STATUS_OPTIONS.includes(initialStatus as LeadStatus)
+      ? (initialStatus as LeadStatus)
+      : "all",
+  );
+  const [searchTerm, setSearchTerm] = useState<string>(
+    initialParams.get("q") ?? "",
+  );
   const [sortKey, setSortKey] = useState<SortKey>("leadScore");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftNotes, setDraftNotes] = useState<string>("");
+
+  // Mirror search + status in the URL query string without triggering a wouter
+  // re-route (we just want a shareable / reloadable URL, not a navigation).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (searchTerm) params.set("q", searchTerm);
+    else params.delete("q");
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    else params.delete("status");
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+    if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [searchTerm, statusFilter]);
 
   // Founder gate — admin role is reserved for the founder, mirroring the
   // server's `requireAdmin` middleware on /api/company-os/*.
@@ -204,8 +235,16 @@ export default function SalesDashboard() {
 
   const filteredSorted = useMemo(() => {
     const all = leadsQuery.data?.leads ?? [];
-    const filtered =
+    const byStatus =
       statusFilter === "all" ? all : all.filter((l) => l.status === statusFilter);
+    const needle = searchTerm.trim().toLowerCase();
+    const filtered = needle
+      ? byStatus.filter((l) => {
+          const name = (l.fullName ?? "").toLowerCase();
+          const email = (l.email ?? "").toLowerCase();
+          return name.includes(needle) || email.includes(needle);
+        })
+      : byStatus;
     const dirMul = sortDir === "asc" ? 1 : -1;
     const sorted = [...filtered].sort((a, b) => {
       const av = a[sortKey];
@@ -224,7 +263,7 @@ export default function SalesDashboard() {
       return String(av).localeCompare(String(bv)) * dirMul;
     });
     return sorted;
-  }, [leadsQuery.data, statusFilter, sortKey, sortDir]);
+  }, [leadsQuery.data, statusFilter, searchTerm, sortKey, sortDir]);
 
   if (!user) {
     return (
@@ -360,7 +399,29 @@ export default function SalesDashboard() {
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Users className="h-4 w-4" /> Leads
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search name or email…"
+                  className="h-8 w-[220px] pl-7 pr-7 text-xs"
+                  data-testid="input-search-leads"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover-elevate active-elevate-2"
+                    data-testid="button-clear-search"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               <span className="text-xs text-muted-foreground">Filter:</span>
               <Select
                 value={statusFilter}
@@ -406,9 +467,15 @@ export default function SalesDashboard() {
                 className="py-6 text-center text-xs text-muted-foreground"
                 data-testid="text-leads-empty"
               >
-                {statusFilter === "all"
-                  ? 'No leads yet. Click "Sync now" to ingest the first batch.'
-                  : `No leads with status "${formatStatus(statusFilter)}".`}
+                {searchTerm
+                  ? `No leads match "${searchTerm}"${
+                      statusFilter !== "all"
+                        ? ` with status "${formatStatus(statusFilter)}"`
+                        : ""
+                    }.`
+                  : statusFilter === "all"
+                    ? 'No leads yet. Click "Sync now" to ingest the first batch.'
+                    : `No leads with status "${formatStatus(statusFilter)}".`}
               </p>
             )}
             {filteredSorted.length > 0 && (
