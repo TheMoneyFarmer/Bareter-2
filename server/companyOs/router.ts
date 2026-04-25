@@ -252,7 +252,7 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
 
   router.get("/briefs/:id/pdf", opts.requireAdmin, async (req, res) => {
     try {
-      const brief = await getBriefById(req.params.id);
+      const brief = await getBriefById(String(req.params.id));
       if (!brief) return res.status(404).json({ message: "Brief not found" });
       if (!brief.pdfStorageKey) {
         return res.status(404).json({ message: "Brief has no PDF (generation may have failed)" });
