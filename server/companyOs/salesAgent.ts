@@ -752,6 +752,87 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Per-lead delivery: draft → send → record event/log. Assumes the lead has
+ * already been claimed (i.e. `reEngagementSentAt` was just stamped on it
+ * by an atomic UPDATE … RETURNING). Returns whether the send succeeded
+ * and which draft source was used so callers can update their counters.
+ *
+ * Failures here mean the lead stays "claimed" for the full cooldown — see
+ * the trade-off note in `runReEngagementCampaign`. Surfaced as `ok=false`
+ * so callers can label the outcome appropriately (cron vs manual).
+ */
+async function deliverReEngagementToClaimedLead(
+  lead: SalesLead,
+  opts: {
+    verdict: { safe: boolean };
+    trigger: "cron" | "manual";
+    force?: boolean;
+  },
+): Promise<{ ok: boolean; usedFallback: boolean; linkToken: string }> {
+  let bodyText: string | null = null;
+  if (opts.verdict.safe) {
+    bodyText = await draftReEngagementBodyText(lead);
+  }
+  let usedFallback = false;
+  if (!bodyText) {
+    bodyText = staticReEngagementBodyText(lead);
+    usedFallback = true;
+  }
+  // One UUID per send — embedded in the CTA URL so the eventual
+  // /api/sales/track/:token click maps back to this exact row in
+  // sales_reengagement_events. Recording happens AFTER the send
+  // succeeds so a failed Resend call doesn't leave a phantom "sent"
+  // event that would skew the conversion rate downward.
+  const linkToken = crypto.randomUUID();
+  const ctaUrl = buildTrackedReEngagementUrl(linkToken);
+  const trackedText = `${bodyText}\n\nVisit ${APP_NAME}: ${ctaUrl}`;
+  const subject = `We miss you on ${APP_NAME}`;
+  const ok = await sendReEngagementEmail(lead.email, {
+    subject,
+    html: renderReEngagementHtml(bodyText, ctaUrl),
+    text: trackedText,
+  });
+  if (!ok) {
+    return { ok: false, usedFallback, linkToken };
+  }
+  // Outcome-tracking event — one row per successful send. Failures
+  // here are logged but never crash the caller; without this row a
+  // return click can't be attributed, but the email already went out
+  // so we'd rather lose the analytics signal than re-send the email.
+  try {
+    await db.insert(salesReengagementEvents).values({
+      leadId: lead.id,
+      userId: lead.userId,
+      eventType: "sent",
+      linkToken,
+      metadata: {
+        draftSource: usedFallback ? "static" : "llm",
+        subject,
+        trigger: opts.trigger,
+        ...(opts.force ? { force: true } : {}),
+      },
+    });
+  } catch (err) {
+    console.error(
+      "[companyOs.sales] failed to record 'sent' event for",
+      lead.email,
+      err,
+    );
+  }
+  // Single semantic event per send — chatCompletion already logs the
+  // LLM draft itself, so logging a separate zero-token line here would
+  // inflate per-agent call counts without adding information.
+  await logLlmCall({
+    agentName: AGENT,
+    command: opts.trigger === "manual" ? "reengage_send_manual" : "reengage_send",
+    inputPreview: lead.email,
+    outputPreview: usedFallback ? "static" : "llm",
+    tokensUsed: 0,
+  });
+  return { ok: true, usedFallback, linkToken };
+}
+
 export async function runReEngagementCampaign(
   opts: { capacity?: number } = {},
 ): Promise<ReEngagementResult> {
@@ -824,67 +905,14 @@ export async function runReEngagementCampaign(
         continue;
       }
 
-      let bodyText: string | null = null;
-      if (verdict.safe) {
-        bodyText = await draftReEngagementBodyText(lead);
-      }
-      let usedFallback = false;
-      if (!bodyText) {
-        bodyText = staticReEngagementBodyText(lead);
-        usedFallback = true;
-      }
-      // One UUID per send — embedded in the CTA URL so the eventual
-      // /api/sales/track/:token click maps back to this exact row in
-      // sales_reengagement_events. Recording happens AFTER the send
-      // succeeds so a failed Resend call doesn't leave a phantom "sent"
-      // event that would skew the conversion rate downward.
-      const linkToken = crypto.randomUUID();
-      const ctaUrl = buildTrackedReEngagementUrl(linkToken);
-      const trackedText = `${bodyText}\n\nVisit ${APP_NAME}: ${ctaUrl}`;
-      const subject = `We miss you on ${APP_NAME}`;
-      const ok = await sendReEngagementEmail(lead.email, {
-        subject,
-        html: renderReEngagementHtml(bodyText, ctaUrl),
-        text: trackedText,
+      const delivered = await deliverReEngagementToClaimedLead(lead, {
+        verdict,
+        trigger: "cron",
       });
-      if (ok) {
+      if (delivered.ok) {
         result.sent++;
-        if (usedFallback) result.fallbackUsed++;
+        if (delivered.usedFallback) result.fallbackUsed++;
         else result.llmDrafted++;
-        // Outcome-tracking event — one row per successful send. Failures
-        // here are logged but never crash the campaign loop; without
-        // this row a return click can't be attributed, but the email
-        // already went out so we'd rather lose the analytics signal
-        // than re-send the email.
-        try {
-          await db.insert(salesReengagementEvents).values({
-            leadId: lead.id,
-            userId: lead.userId,
-            eventType: "sent",
-            linkToken,
-            metadata: {
-              draftSource: usedFallback ? "static" : "llm",
-              subject,
-            },
-          });
-        } catch (err) {
-          console.error(
-            "[companyOs.sales] failed to record 'sent' event for",
-            lead.email,
-            err,
-          );
-        }
-        // Single semantic event per send — chatCompletion already logs
-        // the LLM draft itself, so logging a separate zero-token line
-        // here would inflate per-agent call counts without adding
-        // information.
-        await logLlmCall({
-          agentName: AGENT,
-          command: "reengage_send",
-          inputPreview: lead.email,
-          outputPreview: usedFallback ? "static" : "llm",
-          tokensUsed: 0,
-        });
       } else {
         // Send failed AFTER the claim. Lead stays "claimed" for the
         // 14-day cooldown — see the trade-off note above.
@@ -896,6 +924,124 @@ export async function runReEngagementCampaign(
     }
   }
   return result;
+}
+
+/**
+ * Per-lead re-engagement entry point — what the founder triggers from
+ * the admin sales dashboard via POST /sales/leads/:id/re-engage. Mirrors
+ * the bulk campaign's claim/draft/send/record-event flow but for a single
+ * lead, with a `force` flag to bypass the 14-day cooldown.
+ *
+ * Status semantics let the route map outcomes to HTTP codes and lets the
+ * UI render distinguishable toasts:
+ *   • `sent`                  — email sent + event recorded (HTTP 200)
+ *   • `skipped_not_found`     — no lead with that id (HTTP 404)
+ *   • `skipped_converted`     — lead already converted, refuse (HTTP 409)
+ *   • `skipped_cooldown`      — within 14-day cooldown, no force (HTTP 409)
+ *   • `skipped_already_claimed` — race lost to another worker (HTTP 409)
+ *   • `skipped_send_failed`   — Resend rejected the send (HTTP 502)
+ */
+export type ReEngagementSingleStatus =
+  | "sent"
+  | "skipped_not_found"
+  | "skipped_converted"
+  | "skipped_cooldown"
+  | "skipped_already_claimed"
+  | "skipped_send_failed";
+
+export interface ReEngagementSingleResult {
+  ok: boolean;
+  status: ReEngagementSingleStatus;
+  message?: string;
+  draftSource?: "llm" | "static";
+  reEngagementSentAt?: Date;
+}
+
+export async function runReEngagementForLead(
+  leadId: string,
+  opts: { force?: boolean } = {},
+): Promise<ReEngagementSingleResult> {
+  const force = !!opts.force;
+  const now = new Date();
+  const cooldownBefore = new Date(now.getTime() - RE_ENGAGEMENT_COOLDOWN_DAYS * 86_400_000);
+
+  const found = await db
+    .select()
+    .from(salesLeads)
+    .where(eq(salesLeads.id, leadId))
+    .limit(1);
+  const lead = found[0] as SalesLead | undefined;
+  if (!lead) {
+    return { ok: false, status: "skipped_not_found", message: "Lead not found" };
+  }
+  if (lead.status === "converted") {
+    return {
+      ok: false,
+      status: "skipped_converted",
+      message: "Lead already converted — refusing to re-engage.",
+    };
+  }
+  if (
+    !force &&
+    lead.reEngagementSentAt &&
+    new Date(lead.reEngagementSentAt) > cooldownBefore
+  ) {
+    return {
+      ok: false,
+      status: "skipped_cooldown",
+      message: `Lead is still within the ${RE_ENGAGEMENT_COOLDOWN_DAYS}-day cooldown. Pass force=true to override.`,
+    };
+  }
+
+  // Atomic claim — when forced, drop the cooldown predicate; we still
+  // refuse to re-engage a converted lead at the SQL layer so a status
+  // flip mid-flight cannot bypass the converted guard.
+  const claimWhere = force
+    ? and(
+        eq(salesLeads.id, leadId),
+        drizzleSql`${salesLeads.status} <> 'converted'`,
+      )
+    : and(
+        eq(salesLeads.id, leadId),
+        drizzleSql`${salesLeads.status} <> 'converted'`,
+        or(
+          isNull(salesLeads.reEngagementSentAt),
+          lt(salesLeads.reEngagementSentAt, cooldownBefore),
+        ),
+      );
+  const claimed = await db
+    .update(salesLeads)
+    .set({ reEngagementSentAt: now, status: "re_engaged", updatedAt: now })
+    .where(claimWhere)
+    .returning({ id: salesLeads.id });
+  if (claimed.length === 0) {
+    return {
+      ok: false,
+      status: "skipped_already_claimed",
+      message: "Could not claim lead — another worker beat us to it.",
+    };
+  }
+
+  const verdict = await getBudgetVerdict();
+  const delivered = await deliverReEngagementToClaimedLead(lead, {
+    verdict,
+    trigger: "manual",
+    force,
+  });
+  if (!delivered.ok) {
+    return {
+      ok: false,
+      status: "skipped_send_failed",
+      message:
+        "Email send failed. Lead is now in the cooldown window for 14 days.",
+    };
+  }
+  return {
+    ok: true,
+    status: "sent",
+    draftSource: delivered.usedFallback ? "static" : "llm",
+    reEngagementSentAt: now,
+  };
 }
 
 // ---------------------------------------------------------------------------

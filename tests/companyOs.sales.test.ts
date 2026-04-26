@@ -215,6 +215,7 @@ import {
   handleSalesTrackingRequest,
   recordReEngagementReturnVisit,
   runReEngagementCampaign,
+  runReEngagementForLead,
   syncNewLeads,
   updateLead,
 } from "../server/companyOs/salesAgent";
@@ -685,6 +686,235 @@ describe("runReEngagementCampaign — dedupe", () => {
     expect(sentEvent!.linkToken).toBe(tokenInUrl);
     expect(sentEvent!.leadId).toBe("lead-track");
     expect(sentEvent!.userId).toBe("user-track");
+  });
+});
+
+// ===========================================================================
+// runReEngagementForLead — per-lead manual trigger (Task #91)
+// ===========================================================================
+describe("runReEngagementForLead — per-lead manual trigger", () => {
+  function makeLead(overrides: Partial<AnyRow> = {}): AnyRow {
+    return {
+      id: "lead-manual-1",
+      userId: "user-manual-1",
+      email: "manual@example.com",
+      fullName: "Manny Manual",
+      userType: "asset_owner",
+      location: "Dubai",
+      leadScore: 70,
+      status: "engaged",
+      lastActivityAt: new Date(Date.now() - 30 * 86_400_000),
+      firstDealAt: null,
+      reEngagementSentAt: null,
+      notes: null,
+      createdAt: new Date(Date.now() - 60 * 86_400_000),
+      updatedAt: new Date(Date.now() - 60 * 86_400_000),
+      ...overrides,
+    };
+  }
+
+  it("returns skipped_not_found when the lead does not exist", async () => {
+    dbState.selectQueue = [[]];
+    const r = await runReEngagementForLead("missing-id");
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe("skipped_not_found");
+    expect(emailSends).toHaveLength(0);
+    expect(dbState.updatedSets).toHaveLength(0);
+  });
+
+  it("refuses converted leads — never claims, never sends", async () => {
+    dbState.selectQueue = [[makeLead({ status: "converted" })]];
+    const r = await runReEngagementForLead("lead-manual-1");
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe("skipped_converted");
+    expect(emailSends).toHaveLength(0);
+    expect(dbState.updatedSets).toHaveLength(0);
+  });
+
+  it("refuses to re-send within the 14-day cooldown without force", async () => {
+    dbState.selectQueue = [
+      [
+        makeLead({
+          // Sent 5 days ago — well within the 14-day cooldown.
+          reEngagementSentAt: new Date(Date.now() - 5 * 86_400_000),
+        }),
+      ],
+    ];
+    const r = await runReEngagementForLead("lead-manual-1");
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe("skipped_cooldown");
+    expect(emailSends).toHaveLength(0);
+    expect(dbState.updatedSets).toHaveLength(0);
+  });
+
+  it("with force=true, bypasses cooldown and sends a fresh email", async () => {
+    dbState.selectQueue = [
+      [
+        makeLead({
+          reEngagementSentAt: new Date(Date.now() - 2 * 86_400_000),
+        }),
+      ],
+    ];
+    // Atomic claim returns the row → manual send proceeds.
+    dbState.returningQueue = [[{ id: "lead-manual-1" }]];
+
+    const r = await runReEngagementForLead("lead-manual-1", { force: true });
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe("sent");
+    expect(emailSends).toHaveLength(1);
+    expect(emailSends[0].to).toBe("manual@example.com");
+
+    // Status flipped + reEngagementSentAt stamped via the claim UPDATE.
+    expect(dbState.updatedSets).toHaveLength(1);
+    expect(dbState.updatedSets[0].status).toBe("re_engaged");
+    expect(dbState.updatedSets[0].reEngagementSentAt).toBeInstanceOf(Date);
+
+    // Manual sends are tagged with metadata.trigger='manual' (and force=true)
+    // so the bulk-vs-manual ratio can be measured later.
+    const sentEvent = dbState.insertedValues.find(
+      (v) => v.eventType === "sent",
+    );
+    expect(sentEvent).toBeTruthy();
+    const meta = sentEvent!.metadata as Record<string, unknown>;
+    expect(meta.trigger).toBe("manual");
+    expect(meta.force).toBe(true);
+  });
+
+  it("sends an eligible (cooldown-elapsed) lead without force", async () => {
+    dbState.selectQueue = [[makeLead()]]; // never emailed before
+    dbState.returningQueue = [[{ id: "lead-manual-1" }]];
+    const r = await runReEngagementForLead("lead-manual-1");
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe("sent");
+    expect(emailSends).toHaveLength(1);
+    const sentEvent = dbState.insertedValues.find(
+      (v) => v.eventType === "sent",
+    );
+    expect(sentEvent).toBeTruthy();
+    const meta = sentEvent!.metadata as Record<string, unknown>;
+    expect(meta.trigger).toBe("manual");
+    // No `force` field when the cooldown wasn't bypassed.
+    expect(meta.force).toBeUndefined();
+  });
+
+  it("returns skipped_already_claimed when the atomic claim loses the race", async () => {
+    dbState.selectQueue = [[makeLead()]];
+    dbState.returningQueue = [[]]; // claim returned no rows
+    const r = await runReEngagementForLead("lead-manual-1");
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe("skipped_already_claimed");
+    expect(emailSends).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// POST /api/company-os/sales/leads/:id/re-engage — admin route (Task #91)
+// ===========================================================================
+describe("POST /sales/leads/:id/re-engage — admin endpoint", () => {
+  it("returns 200 + ok=true when an eligible lead is sent", async () => {
+    dbState.selectQueue = [
+      [
+        {
+          id: "lead-route-1",
+          userId: "user-route-1",
+          email: "route@example.com",
+          fullName: "Routy Routy",
+          userType: "asset_owner",
+          location: "Dubai",
+          leadScore: 60,
+          status: "engaged",
+          lastActivityAt: new Date(Date.now() - 30 * 86_400_000),
+          reEngagementSentAt: null,
+          firstDealAt: null,
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    ];
+    dbState.returningQueue = [[{ id: "lead-route-1" }]];
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/sales/leads/lead-route-1/re-engage")
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe("sent");
+    expect(emailSends).toHaveLength(1);
+  });
+
+  it("returns 404 when the lead does not exist", async () => {
+    dbState.selectQueue = [[]];
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/sales/leads/no-such-lead/re-engage")
+      .send({});
+    expect(res.status).toBe(404);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.status).toBe("skipped_not_found");
+  });
+
+  it("returns 409 with status=skipped_cooldown when within cooldown and no force flag", async () => {
+    dbState.selectQueue = [
+      [
+        {
+          id: "lead-cool",
+          userId: "user-cool",
+          email: "cool@example.com",
+          fullName: "Cool Down",
+          userType: "asset_owner",
+          location: "Dubai",
+          leadScore: 50,
+          status: "re_engaged",
+          lastActivityAt: new Date(Date.now() - 30 * 86_400_000),
+          reEngagementSentAt: new Date(Date.now() - 3 * 86_400_000),
+          firstDealAt: null,
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    ];
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/sales/leads/lead-cool/re-engage")
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.status).toBe("skipped_cooldown");
+    expect(emailSends).toHaveLength(0);
+  });
+
+  it("with { force: true } body, retries past the cooldown and 200s", async () => {
+    dbState.selectQueue = [
+      [
+        {
+          id: "lead-force",
+          userId: "user-force",
+          email: "force@example.com",
+          fullName: "Force Override",
+          userType: "asset_owner",
+          location: "Dubai",
+          leadScore: 50,
+          status: "re_engaged",
+          lastActivityAt: new Date(Date.now() - 30 * 86_400_000),
+          reEngagementSentAt: new Date(Date.now() - 3 * 86_400_000),
+          firstDealAt: null,
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    ];
+    dbState.returningQueue = [[{ id: "lead-force" }]];
+    const app = buildApp();
+    const res = await request(app)
+      .post("/api/company-os/sales/leads/lead-force/re-engage")
+      .send({ force: true });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe("sent");
+    expect(emailSends).toHaveLength(1);
   });
 });
 

@@ -28,6 +28,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { SalesLead } from "@shared/schema";
@@ -37,6 +47,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   ExternalLink,
+  Mail,
   Pencil,
   RefreshCw,
   Save,
@@ -127,6 +138,14 @@ export default function SalesDashboard() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftNotes, setDraftNotes] = useState<string>("");
+  // When the API responds with `skipped_cooldown`, capture which lead it
+  // was so we can prompt the founder to override and re-trigger with
+  // `force=true`. `null` = no dialog open.
+  const [forceConfirm, setForceConfirm] = useState<{
+    leadId: string;
+    leadName: string;
+    cooldownMessage: string;
+  } | null>(null);
 
   // Mirror search + status in the URL query string without triggering a wouter
   // re-route (we just want a shareable / reloadable URL, not a navigation).
@@ -183,6 +202,126 @@ export default function SalesDashboard() {
       toast({
         variant: "destructive",
         title: "Sync failed",
+        description: err.message,
+      });
+    },
+  });
+
+  // Re-engage mutation — calls the new POST /sales/leads/:id/re-engage
+  // endpoint. We use raw fetch (not apiRequest) so we can read the
+  // structured `status` field even on 4xx responses; that lets us
+  // distinguish a cooldown 409 (offer the force-override dialog) from
+  // a converted 409 / 502 send failure (toast the message and stop).
+  type ReEngageStatus =
+    | "sent"
+    | "skipped_not_found"
+    | "skipped_converted"
+    | "skipped_cooldown"
+    | "skipped_already_claimed"
+    | "skipped_send_failed"
+    | "error";
+  interface ReEngageResponse {
+    ok: boolean;
+    status: ReEngageStatus;
+    message?: string;
+    draftSource?: "llm" | "static";
+    httpStatus: number;
+  }
+  function parseReEngageResponse(
+    raw: unknown,
+    httpStatus: number,
+  ): ReEngageResponse {
+    const isObj = (v: unknown): v is Record<string, unknown> =>
+      typeof v === "object" && v !== null;
+    if (!isObj(raw)) {
+      return {
+        ok: httpStatus >= 200 && httpStatus < 300,
+        status: httpStatus >= 200 && httpStatus < 300 ? "sent" : "error",
+        httpStatus,
+      };
+    }
+    const ok = typeof raw.ok === "boolean"
+      ? raw.ok
+      : httpStatus >= 200 && httpStatus < 300;
+    const knownStatuses: readonly ReEngageStatus[] = [
+      "sent",
+      "skipped_not_found",
+      "skipped_converted",
+      "skipped_cooldown",
+      "skipped_already_claimed",
+      "skipped_send_failed",
+      "error",
+    ];
+    const status: ReEngageStatus =
+      typeof raw.status === "string" &&
+      (knownStatuses as readonly string[]).includes(raw.status)
+        ? (raw.status as ReEngageStatus)
+        : ok
+          ? "sent"
+          : "error";
+    const message = typeof raw.message === "string" ? raw.message : undefined;
+    const draftSource =
+      raw.draftSource === "llm" || raw.draftSource === "static"
+        ? raw.draftSource
+        : undefined;
+    return { ok, status, message, draftSource, httpStatus };
+  }
+  const reEngageMutation = useMutation<
+    ReEngageResponse,
+    Error,
+    { id: string; force?: boolean; leadName: string }
+  >({
+    mutationFn: async ({ id, force }) => {
+      const res = await fetch(
+        `/api/company-os/sales/leads/${encodeURIComponent(id)}/re-engage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ force: !!force }),
+        },
+      );
+      let raw: unknown = null;
+      try {
+        raw = await res.json();
+      } catch {
+        raw = null;
+      }
+      return parseReEngageResponse(raw, res.status);
+    },
+    onSuccess: (data, variables) => {
+      if (data.ok) {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/company-os/sales/leads?limit=500"],
+        });
+        toast({
+          title: "Re-engagement email sent",
+          description: `Sent to ${variables.leadName}${
+            data.draftSource ? ` (${data.draftSource} draft)` : ""
+          }.`,
+        });
+        return;
+      }
+      // Cooldown 409 — offer to override unless we already used force.
+      if (data.status === "skipped_cooldown" && !variables.force) {
+        setForceConfirm({
+          leadId: variables.id,
+          leadName: variables.leadName,
+          cooldownMessage:
+            data.message ?? "Lead is still within the 14-day cooldown.",
+        });
+        return;
+      }
+      toast({
+        variant: "destructive",
+        title: "Re-engagement skipped",
+        description: data.message ?? `Status: ${data.status}`,
+      });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Re-engagement failed",
         description: err.message,
       });
     },
@@ -495,6 +634,9 @@ export default function SalesDashboard() {
                       <TableHead className="hidden md:table-cell">
                         <SortHeader k="lastActivityAt" label="Last activity" />
                       </TableHead>
+                      <TableHead className="w-[110px] text-xs font-medium text-muted-foreground">
+                        Actions
+                      </TableHead>
                       <TableHead className="min-w-[220px]">Notes</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -587,6 +729,43 @@ export default function SalesDashboard() {
                           >
                             {formatDateTime(lead.lastActivityAt)}
                           </TableCell>
+                          <TableCell data-testid={`cell-lead-actions-${lead.id}`}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              disabled={
+                                lead.status === "converted" ||
+                                (reEngageMutation.isPending &&
+                                  reEngageMutation.variables?.id === lead.id)
+                              }
+                              onClick={() =>
+                                reEngageMutation.mutate({
+                                  id: lead.id,
+                                  leadName: lead.fullName ?? lead.email,
+                                })
+                              }
+                              data-testid={`button-reengage-${lead.id}`}
+                              title={
+                                lead.status === "converted"
+                                  ? "Lead is already converted"
+                                  : "Send a re-engagement email"
+                              }
+                            >
+                              <Mail
+                                className={`mr-1 h-3 w-3 ${
+                                  reEngageMutation.isPending &&
+                                  reEngageMutation.variables?.id === lead.id
+                                    ? "animate-pulse"
+                                    : ""
+                                }`}
+                              />
+                              {reEngageMutation.isPending &&
+                              reEngageMutation.variables?.id === lead.id
+                                ? "Sending…"
+                                : "Re-engage"}
+                            </Button>
+                          </TableCell>
                           <TableCell data-testid={`cell-lead-notes-${lead.id}`}>
                             {isEditing ? (
                               <div className="flex flex-col gap-2">
@@ -664,6 +843,52 @@ export default function SalesDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cooldown override — shown when the API returns skipped_cooldown
+          on the first attempt. Confirming retries the call with
+          { force: true }, dismissing closes silently. */}
+      <AlertDialog
+        open={!!forceConfirm}
+        onOpenChange={(open) => {
+          if (!open) setForceConfirm(null);
+        }}
+      >
+        <AlertDialogContent
+          data-testid={`dialog-confirm-reengage-${forceConfirm?.leadId ?? ""}`}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="text-confirm-reengage-title">
+              Re-engage despite cooldown?
+            </AlertDialogTitle>
+            <AlertDialogDescription data-testid="text-confirm-reengage-message">
+              {forceConfirm?.cooldownMessage}
+              {forceConfirm
+                ? ` Send another email to ${forceConfirm.leadName}?`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-confirm-reengage-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-reengage-force"
+              onClick={() => {
+                if (!forceConfirm) return;
+                const { leadId, leadName } = forceConfirm;
+                setForceConfirm(null);
+                reEngageMutation.mutate({
+                  id: leadId,
+                  leadName,
+                  force: true,
+                });
+              }}
+            >
+              Send anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

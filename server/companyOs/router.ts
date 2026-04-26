@@ -43,6 +43,7 @@ import {
   getLeads,
   getSalesReport,
   runDailySalesSync,
+  runReEngagementForLead,
   updateLead,
 } from "./salesAgent";
 import {
@@ -418,6 +419,60 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.status(500).json({ ok: false, message: "Internal error" });
     }
   });
+
+  // POST /sales/leads/:id/re-engage — founder-driven, single-lead trigger
+  // for the same draft+send+record-event pipeline used by the daily cron
+  // campaign. The optional `force` flag bypasses the 14-day cooldown so
+  // the founder can re-send to a recently-emailed lead after fixing a
+  // bug or chasing a new conversation.
+  const reEngageBodySchema = z
+    .object({ force: z.boolean().optional() })
+    .partial()
+    .optional();
+
+  router.post(
+    "/sales/leads/:id/re-engage",
+    opts.requireAdmin,
+    async (req, res) => {
+      try {
+        const id = String(req.params.id || "");
+        if (!id) {
+          return res.status(400).json({ ok: false, message: "Missing id" });
+        }
+        const parsed = reEngageBodySchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return res.status(400).json({
+            ok: false,
+            message: parsed.error.issues[0]?.message ?? "Invalid body",
+          });
+        }
+        const force = !!parsed.data?.force;
+        const result = await runReEngagementForLead(id, { force });
+        if (result.ok) {
+          return res.json({
+            ok: true,
+            status: result.status,
+            draftSource: result.draftSource,
+            reEngagementSentAt: result.reEngagementSentAt,
+          });
+        }
+        const httpStatus =
+          result.status === "skipped_not_found"
+            ? 404
+            : result.status === "skipped_send_failed"
+              ? 502
+              : 409;
+        return res.status(httpStatus).json({
+          ok: false,
+          status: result.status,
+          message: result.message,
+        });
+      } catch (err) {
+        console.error("[companyOs] POST /sales/leads/:id/re-engage failed:", err);
+        res.status(500).json({ ok: false, message: "Internal error" });
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // Legal Agent endpoints (admin-only). UAE-jurisdiction barter contracts,
