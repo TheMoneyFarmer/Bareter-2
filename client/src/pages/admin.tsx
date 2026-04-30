@@ -218,22 +218,15 @@ export function AdminPage() {
     },
   });
 
-  if (!user?.isAdmin) {
-    return (
-      <div className="container px-4 py-16 mx-auto max-w-2xl text-center">
-        <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-          <Shield className="h-8 w-8 text-destructive" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-        <p className="text-muted-foreground mb-6">
-          You don't have permission to view this page.
-        </p>
-        <Link href="/">
-          <Button data-testid="button-go-home">Go Home</Button>
-        </Link>
-      </div>
-    );
-  }
+  // NOTE: do NOT early-return here. There are more hooks declared further
+  // down (useQuery for /api/admin/reports, /api/admin/behavioral-flags,
+  // /api/admin/ai-logs and a few useState hooks) and an early return on
+  // the loading-then-loaded transition for `user.isAdmin` would change
+  // the hook count between renders, blowing up with
+  // "Rendered more hooks than during the previous render." The actual
+  // gate now sits right before the main JSX return, after every hook
+  // has been declared. The server-side `requireAdmin` middleware is
+  // the real authority — this is just a friendly client-side message.
 
   const filteredUsers = users?.filter(
     (u) =>
@@ -1384,6 +1377,27 @@ export function AdminPage() {
         return renderDashboard();
     }
   };
+
+  // Friendly client-side gate. The real enforcement is the
+  // `requireAdmin` middleware on every /api/admin/* route. We delay
+  // this check until after every hook above so the hook order is
+  // stable across the auth-loading → auth-loaded transition.
+  if (!user?.isAdmin) {
+    return (
+      <div className="container px-4 py-16 mx-auto max-w-2xl text-center">
+        <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+          <Shield className="h-8 w-8 text-destructive" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-6">
+          You don't have permission to view this page.
+        </p>
+        <Link href="/">
+          <Button data-testid="button-go-home">Go Home</Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">

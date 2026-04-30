@@ -51,6 +51,42 @@ Preferred communication style: Simple, everyday language.
 - **Company OS (WhatsApp control plane)**: Founder-only WhatsApp number that exposes `help`, `revenue`, `revenue week`, `status`, `agents`, `costs`, `marketing`, `draft post <topic>`, `publish post <topic>` → `send`/`skip`/`edit <new body>`/`tweak <hint>` to iterate before publishing, `campaign update <name> ctr=X spend=Y conversions=Z`, plus free-form questions answered by the LLM (gated by a monthly AED budget). Inbound webhook lives at `/api/company-os/whatsapp`. The `edit` command swaps in a new body without spending tokens; `tweak` re-prompts the LLM with the parked draft + your hint. Parked drafts also surface in the admin Company OS dashboard ("Pending publish drafts" panel — Task #112) with topic, body, expiry countdown, and Send/Discard buttons so the founder can act when WhatsApp is unreliable; backed by `GET/POST /api/company-os/marketing/pending-publish` (admin-gated).
 - **Marketing Agent (Week 2a)**: Generates a weekly campaign brief from real platform data (post categories, top cities, listing/post counts, average value), renders it as a PDF stored in private object storage at `companyOs/briefs/<id>.pdf`, and pushes it to the founder over WhatsApp every Monday 09:30 Asia/Dubai. Manual campaign metric capture replaces Meta Graph auto-pull until Meta API access is approved. No Buffer/Meta/Airtable integrations — internal stubs only. Admin endpoints: `GET /api/company-os/briefs`, `GET /api/company-os/briefs/:id/pdf`, `POST /api/company-os/generate-brief`, `GET /api/company-os/campaigns`.
 
+## Founder admin account (single-tenant admin panel)
+
+The admin panel is single-tenant — only the founder (`thando@bareter.com`)
+can reach `/admin`, `/admin/company-os`, `/admin/marketing`, and any
+`/api/admin/*` or `/api/company-os/*` route. Two layers enforce this:
+
+1. **Bootstrap on startup** (`server/bootstrapAdmin.ts`): on every server
+   boot, reads `BOOTSTRAP_ADMIN_EMAIL` (env var) and
+   `BOOTSTRAP_ADMIN_PASSWORD` (secret). Upserts that user with
+   `isAdmin=true`, `role=super_admin`, `isVerified=true`,
+   `founderBadge=true`. Then **demotes every other admin** in the DB to
+   `isAdmin=false`, `role=user`. Idempotent. Refreshing the password
+   secret rotates the live password on the next deploy.
+2. **Allowlist gate** (`requireAdmin` middleware + `sanitizeAdminFlag`
+   helper in `server/routes.ts`): `ADMIN_EMAIL_ALLOWLIST`
+   (comma-separated, case-insensitive) is checked at request time. Even
+   if a stray row has `isAdmin=true`, the middleware rejects with 403
+   and `/api/auth/me` strips `isAdmin` from the response so the client
+   never shows the admin nav. When the allowlist env var is unset the
+   middleware falls back to the legacy `isAdmin`-only behavior so dev
+   environments without the env var keep working.
+
+Required env (shared, already set): `BOOTSTRAP_ADMIN_EMAIL=thando@bareter.com`,
+`ADMIN_EMAIL_ALLOWLIST=thando@bareter.com`.
+Required secret: `BOOTSTRAP_ADMIN_PASSWORD`.
+
+Waitlist mode does not block this account — the client-side waitlist gate
+(`client/src/lib/waitlist.tsx`) already exempts admins (`!user || !isAdmin`)
+and `/login` is always reachable regardless of waitlist state.
+
+If you need to give a second person admin access, add their email to
+`ADMIN_EMAIL_ALLOWLIST` (e.g. `thando@bareter.com,cofounder@bareter.com`)
+**and** manually flip `isAdmin=true` on their user row — the bootstrap
+script will not touch users whose email is in the allowlist but is not
+the bootstrap email.
+
 ## Why the scheduler needs production deploy
 
 The Company OS cron jobs in `server/companyOs/scheduler.ts` only start when `NODE_ENV === "production"` (or with the `COMPANY_OS_SCHEDULER_FORCE` flag). The Replit dev workflow runs in development, so the 08:00 Asia/Dubai daily briefing, the hourly Stripe finance snapshot, and the 09:00 budget-warning job will **not** fire from the dev preview — they only fire from a published deployment. Do not "fix" the dev-mode skip; it is intentional so dev restarts don't spam the founder phone.

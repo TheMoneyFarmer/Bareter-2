@@ -627,7 +627,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       const { password, ...userWithoutPassword } = updatedUser;
-      res.json(userWithoutPassword);
+      res.json(sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -666,7 +666,7 @@ export async function registerRoutes(
       }
 
       const { password, ...userWithoutPassword } = updatedUser;
-      res.json(userWithoutPassword);
+      res.json(sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       console.error("Update settings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1777,7 +1777,7 @@ export async function registerRoutes(
       }
 
       const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       console.error("Update account type error:", error);
       res.status(500).json({ message: "Internal server error" });
