@@ -271,6 +271,7 @@ function AgentBudgetRow({
                 className="h-6 w-6"
                 data-testid={`button-edit-agent-budget-${agentName}`}
                 aria-label={`Edit monthly cap for ${agentName}`}
+                title="Edit cap"
               >
                 <Pencil className="h-3 w-3" />
               </Button>
