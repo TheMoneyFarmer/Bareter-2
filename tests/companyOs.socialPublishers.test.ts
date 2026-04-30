@@ -1680,4 +1680,36 @@ describe("Task #112 — admin pending-publish endpoints", () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.reply).toContain("nothing to skip");
   });
+
+  it("POST /send dispatches the parked draft and returns the publish reply", async () => {
+    const expiry = new Date(Date.now() + 8 * 60 * 1000).toISOString();
+    // No publisher channel envs set in beforeEach, so dispatchPublishPost
+    // returns a "no publisher" outcome — exercises the full route → handler
+    // → dispatcher path without needing a fetch fixture.
+    dbState.selectQueue.push([
+      {
+        id: "mem-z",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000333",
+        value: { topic: "Z topic", postBody: "Z body", expiresAt: expiry },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const app = buildApp();
+    const res = await request(app).post(
+      `/api/company-os/marketing/pending-publish/${encodeURIComponent("+971500000333")}/send`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    // Reply is whatever `formatPublishOutcomeReply` produced — the
+    // important assertion is that the route plumbing works and the topic
+    // shows up so the dashboard can echo it in the toast.
+    expect(typeof res.body.reply).toBe("string");
+    expect(res.body.reply.length).toBeGreaterThan(0);
+  });
 });

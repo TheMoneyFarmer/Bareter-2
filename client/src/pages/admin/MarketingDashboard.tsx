@@ -35,6 +35,10 @@ interface CampaignsResponse {
   campaigns: CampaignPerformance[];
 }
 
+interface PendingPublishCountResponse {
+  count: number;
+}
+
 function toNumber(value: string | number | null | undefined): number {
   if (value == null) return 0;
   const n = typeof value === "number" ? value : Number(value);
@@ -84,6 +88,17 @@ export default function MarketingDashboard() {
   const campaignsQuery = useQuery<CampaignsResponse>({
     queryKey: ["/api/company-os/campaigns"],
     enabled: !!user?.isAdmin,
+    refetchOnWindowFocus: false,
+  });
+
+  // Surface pending publish-post drafts so the founder sees them on the
+  // Marketing page too — full Send/Discard controls live on the
+  // Company OS dashboard, this is just a one-line breadcrumb so they
+  // don't get lost.
+  const pendingPublishCountQuery = useQuery<PendingPublishCountResponse>({
+    queryKey: ["/api/company-os/marketing/pending-publish"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -213,6 +228,24 @@ export default function MarketingDashboard() {
             </Button>
           </div>
         </header>
+
+        {(pendingPublishCountQuery.data?.count ?? 0) > 0 && (
+          <Link
+            href="/admin/company-os"
+            className="flex items-center justify-between gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 text-sm hover-elevate"
+            data-testid="link-pending-publish-banner"
+          >
+            <span>
+              <strong data-testid="text-pending-publish-banner-count">
+                {pendingPublishCountQuery.data?.count}
+              </strong>{" "}
+              publish-post draft
+              {(pendingPublishCountQuery.data?.count ?? 0) === 1 ? "" : "s"}{" "}
+              waiting for `send` / `skip`. Open Company OS to review.
+            </span>
+            <span className="text-xs text-muted-foreground">View →</span>
+          </Link>
+        )}
 
         <Card data-testid="card-briefs">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2 space-y-0">
