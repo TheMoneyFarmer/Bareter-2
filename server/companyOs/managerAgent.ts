@@ -418,12 +418,9 @@ export async function handleManagerMessage(
     });
     return out;
   }
-  // `edit <new body>` — replace the parked draft body without spending
-  // another LLM token. We use the original `text` (case-preserved) so
-  // the founder's exact wording is what gets parked. The regex accepts
-  // any whitespace (including newlines) after the keyword so multi-line
-  // copy/paste edits route here instead of falling through to the
-  // free-form LLM (which would burn budget on a publish-control reply).
+  // `edit <new body>` — replace the parked draft body. Pass the original
+  // `text` so capitalisation is preserved. `\s` matches newlines too so
+  // multi-line edits route here instead of the free-form LLM fallback.
   if (/^edit(?:\s|$)/i.test(normalized)) {
     const out = await handleConfirmPublishEdit(text, senderId);
     await logLlmCall({
@@ -436,7 +433,6 @@ export async function handleManagerMessage(
     return out;
   }
   // `tweak <hint>` — re-prompt the LLM with the parked draft + hint.
-  // Costs LLM tokens (gated by the global budget inside chatCompletion).
   if (/^tweak(?:\s|$)/i.test(normalized)) {
     const out = await handleConfirmPublishTweak(text, senderId);
     await logLlmCall({

@@ -694,10 +694,8 @@ export async function storePendingPublishDraft(
     postBody,
     expiresAt: new Date(Date.now() + publishConfirmTimeoutMs()).toISOString(),
   };
-  // Surface persist failures (e.g. body > 4KB memory cap, DB write
-  // error). Returning the draft on a silent failure would tell the
-  // founder "Updated draft" while the OLD content is still parked —
-  // a subsequent `send` would then publish the wrong thing.
+  // Surface persist failures (4KB memory cap, DB write error) so an
+  // edit / tweak doesn't silently keep the OLD body parked.
   const result = await remember({
     agentName: AGENT,
     memoryType: PUBLISH_CONFIRM_MEMORY_TYPE,
@@ -821,7 +819,7 @@ export async function handlePublishPostCommand(
       "",
       postBody,
       "",
-      `Reply *send* within ${publishConfirmTimeoutMin()} min to publish, or *skip* to discard.`,
+      `Reply *send* within ${publishConfirmTimeoutMin()} min to publish, *skip* to discard, or *edit <new body>* / *tweak <hint>* to iterate.`,
       channelLine,
     ].join("\n");
   }
@@ -921,28 +919,19 @@ export async function handleConfirmPublishSend(senderId?: string): Promise<strin
   });
 }
 
-/**
- * Handle the founder's `edit <new body>` reply — replaces the parked
- * draft body with whatever follows the `edit ` keyword and resets the
- * confirmation expiry. Returns a friendly hint when no draft is
- * parked. Costs zero LLM tokens.
- */
-// Match `edit` followed by optional whitespace + body. Capture group 1
-// is the body (or undefined for bare `edit`). `[\s\S]+` lets the body
-// span newlines, tabs, etc. so multi-line copy/paste edits work.
+// `[\s\S]+` lets the body span newlines so multi-line edits paste cleanly.
 const EDIT_COMMAND_RE = /^edit(?:\s+([\s\S]+))?$/i;
 const TWEAK_COMMAND_RE = /^tweak(?:\s+([\s\S]+))?$/i;
 
+/**
+ * Handle the founder's `edit <new body>` reply — replaces the parked
+ * draft body and resets the confirmation expiry. Costs zero LLM tokens.
+ */
 export async function handleConfirmPublishEdit(
   rawText: string,
   senderId?: string,
 ): Promise<string> {
-  const trimmed = (rawText ?? "").trim();
-  const match = trimmed.match(EDIT_COMMAND_RE);
-  // Capture group is undefined for bare `edit` and empty/whitespace
-  // when the founder sends `edit    ` — both must be treated as a
-  // usage hint so we never accidentally overwrite the parked draft
-  // with the literal string "edit".
+  const match = (rawText ?? "").trim().match(EDIT_COMMAND_RE);
   const newBody = (match?.[1] ?? "").trim();
   if (!newBody) {
     return "Usage: `edit <new body>` — replaces the parked draft. Example: `edit Hook line\\nValue prop\\nCTA #UAEBusiness`";
@@ -958,9 +947,6 @@ export async function handleConfirmPublishEdit(
   try {
     updated = await storePendingPublishDraft(senderId, draft.topic, newBody);
   } catch (err) {
-    // Persist failure (DB write or 4KB memory cap). The OLD draft is
-    // still parked — tell the founder so they don't `send` thinking
-    // their new body is staged.
     console.error("[companyOs.marketing] storePendingPublishDraft (edit) failed:", err);
     return [
       "❌ Couldn't save your edit — the original draft is still parked.",
@@ -1000,8 +986,7 @@ Constraints:
 
 /**
  * Re-prompt the LLM with the parked draft + the founder's hint and
- * return the revised post body. Pulled out so it's easy to mock in
- * tests (we can vi.spyOn(marketingAgent, "tweakPostDraft")).
+ * return the revised post body.
  */
 export async function tweakPostDraft(
   topic: string,
@@ -1045,11 +1030,7 @@ export async function handleConfirmPublishTweak(
   rawText: string,
   senderId?: string,
 ): Promise<string> {
-  const trimmed = (rawText ?? "").trim();
-  const match = trimmed.match(TWEAK_COMMAND_RE);
-  // Same defensive parse as `edit`: bare `tweak` (no hint) must NOT
-  // hit the LLM — that would burn budget on a hint of literally
-  // "tweak", which produces garbage and costs money.
+  const match = (rawText ?? "").trim().match(TWEAK_COMMAND_RE);
   const hint = (match?.[1] ?? "").trim();
   if (!hint) {
     return "Usage: `tweak <hint>` — re-roll the parked draft using your hint. Example: `tweak make it more urgent and add a discount angle`";
@@ -1077,7 +1058,7 @@ export async function handleConfirmPublishTweak(
   } catch (err) {
     console.error("[companyOs.marketing] storePendingPublishDraft (tweak) failed:", err);
     return [
-      "📝 *Tweaked draft* (couldn't save the confirmation slot — copy/paste manually):",
+      "📝 *Tweaked draft* (couldn't save it — copy/paste manually):",
       "",
       revised,
     ].join("\n");

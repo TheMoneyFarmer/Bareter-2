@@ -1148,9 +1148,9 @@ describe("Task #114 — publish draft edit + tweak commands", () => {
   });
 
   it("bare `edit` (no whitespace, no body) returns usage even when a draft is parked", async () => {
-    // Pre-park a draft so we can prove the handler doesn't overwrite
-    // it with the literal string "edit". This is the regression the
-    // architect flagged.
+    // Park a draft so the missing-draft branch can't be the reason
+    // for the usage hint — bare `edit` must never overwrite the
+    // parked body with the literal string "edit".
     const stored = await storePendingPublishDraft(
       undefined,
       "Eid barter offers",
@@ -1334,9 +1334,8 @@ describe("Task #114 — publish draft edit + tweak commands", () => {
 
   it("bare `tweak` (no whitespace, no hint) returns usage and does NOT call the LLM", async () => {
     // Park a draft so the missing-draft branch can't be the reason
-    // we skipped the LLM. This is the architect's regression: bare
-    // `tweak` previously called the LLM with hint = "tweak", burning
-    // budget on a no-op.
+    // the LLM was skipped — bare `tweak` must never burn LLM budget
+    // by passing the literal string "tweak" as the hint.
     const stored = await storePendingPublishDraft(
       undefined,
       "Eid barter offers",
