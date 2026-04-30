@@ -17,12 +17,21 @@ const state: CaptureState = {
   upserts: [],
 };
 
+interface UpsertValues {
+  agentName: string;
+  monthlyCapAed: string | number;
+}
+interface InsertChain {
+  values: (v: UpsertValues) => InsertChain;
+  onConflictDoUpdate: () => Promise<void>;
+}
+
 vi.mock("../server/db", () => {
-  const selectChain: any = {
+  const selectChain = {
     from: () => Promise.resolve(state.selectRows),
   };
-  const insertChain: any = {
-    values: (v: any) => {
+  const insertChain: InsertChain = {
+    values: (v: UpsertValues) => {
       state.upserts.push({
         agentName: v.agentName,
         monthlyCapAed: String(v.monthlyCapAed),

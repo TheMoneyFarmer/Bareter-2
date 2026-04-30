@@ -13,10 +13,19 @@ interface DbState {
 }
 const dbState: DbState = { upserts: [], selectRows: [] };
 
+interface UpsertValues {
+  agentName: string;
+  monthlyCapAed: string | number;
+}
+interface InsertChain {
+  values: (v: UpsertValues) => InsertChain;
+  onConflictDoUpdate: () => Promise<void>;
+}
+
 vi.mock("../server/db", () => {
-  const selectChain: any = { from: () => Promise.resolve(dbState.selectRows) };
-  const insertChain: any = {
-    values: (v: any) => {
+  const selectChain = { from: () => Promise.resolve(dbState.selectRows) };
+  const insertChain: InsertChain = {
+    values: (v: UpsertValues) => {
       dbState.upserts.push({
         agentName: v.agentName,
         monthlyCapAed: String(v.monthlyCapAed),
