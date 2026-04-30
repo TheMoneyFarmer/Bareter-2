@@ -26,6 +26,10 @@ import {
 import { dubaiDateString } from "./financeAgent";
 import { getMonthSpendAed, getMonthSpendByAgent } from "./costTracker";
 import { rememberInBackground } from "./memoryAgent";
+import {
+  getFailureGroupSnoozedUntil,
+  snoozeFailureGroup as retrySnoozeFailureGroup,
+} from "./retry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -876,5 +880,158 @@ export async function getSnapshotByDate(date: string) {
     console.error("[companyOs.dashboard] getSnapshotByDate failed:", err);
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Recent agent failures (admin dashboard panel)
+//
+// Reads `companyOsLogs` rows with `status="error"` from the last N hours
+// and groups them by (agentName, opName) so the founder can triage at a
+// glance — count, last error message, last-seen timestamp, and the
+// per-group snooze status (if any). The op name is parsed from the
+// retry helper's `inputPreview` format (`op=<name> attempt=… …`); rows
+// whose preview doesn't follow that format fall back to the `command`
+// column, then the literal "unknown".
+//
+// Returns `[]` on any failure so the dashboard can render the empty
+// state instead of an error toast.
+// ---------------------------------------------------------------------------
+
+export interface RecentFailureGroup {
+  agentName: string;
+  opName: string;
+  count: number;
+  lastErrorMessage: string | null;
+  lastSeenAt: string | null;
+  snoozedUntil: string | null;
+}
+
+interface FailureLogRow {
+  agentName: string;
+  command: string | null;
+  inputPreview: string | null;
+  errorMessage: string | null;
+  createdAt: Date | string | null;
+}
+
+/**
+ * Pull the op name out of a retry-helper inputPreview row, e.g.
+ * `op=twilio.send attempt=2 class=http_503 final` → `twilio.send`.
+ * Returns `null` when the preview doesn't follow that format so the
+ * caller can fall back to the `command` column.
+ */
+function parseOpFromPreview(preview: string | null): string | null {
+  if (!preview) return null;
+  const m = preview.match(/(?:^|\s)op=(\S+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Fetch the last `hours` hours of `companyOsLogs` rows with
+ * `status="error"`, grouped by `(agentName, opName)`. Each group
+ * carries the count, last error message, last-seen timestamp, and the
+ * per-group snooze expiry (read from `agentMemory` via the retry
+ * helper). Hours is clamped to 1–168.
+ */
+export async function getRecentFailures(hours = 24): Promise<RecentFailureGroup[]> {
+  const safeHours = Math.max(1, Math.min(168, Math.floor(Number(hours) || 24)));
+  const since = new Date(Date.now() - safeHours * 60 * 60 * 1000);
+
+  let rows: FailureLogRow[] = [];
+  try {
+    rows = await db
+      .select({
+        agentName: companyOsLogs.agentName,
+        command: companyOsLogs.command,
+        inputPreview: companyOsLogs.inputPreview,
+        errorMessage: companyOsLogs.errorMessage,
+        createdAt: companyOsLogs.createdAt,
+      })
+      .from(companyOsLogs)
+      .where(
+        and(
+          eq(companyOsLogs.status, "error"),
+          gte(companyOsLogs.createdAt, since),
+        ),
+      )
+      .orderBy(desc(companyOsLogs.createdAt))
+      // Hard cap so a runaway error storm can't OOM the dashboard.
+      .limit(2000);
+  } catch (err) {
+    console.error("[companyOs.dashboard] getRecentFailures read failed:", err);
+    return [];
+  }
+
+  // Group in JS — the (agent, parsedOp) cardinality is bounded by the
+  // critical-path allow-list + a handful of stragglers, so the in-process
+  // map stays small even under a flapping upstream.
+  type Acc = {
+    agentName: string;
+    opName: string;
+    count: number;
+    lastErrorMessage: string | null;
+    lastSeenAtMs: number;
+  };
+  const groups = new Map<string, Acc>();
+  for (const r of rows) {
+    const agentName = String(r.agentName ?? "unknown");
+    const opName =
+      parseOpFromPreview(r.inputPreview) ?? (r.command ? String(r.command) : "unknown");
+    const key = `${agentName}|${opName}`;
+    const ts = r.createdAt
+      ? (r.createdAt instanceof Date ? r.createdAt.getTime() : new Date(r.createdAt).getTime())
+      : 0;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        agentName,
+        opName,
+        count: 1,
+        // rows are ordered DESC by createdAt, so the first row we see
+        // for each group already carries the freshest error message.
+        lastErrorMessage: r.errorMessage ?? null,
+        lastSeenAtMs: Number.isFinite(ts) ? ts : 0,
+      });
+    } else {
+      existing.count += 1;
+      if (Number.isFinite(ts) && ts > existing.lastSeenAtMs) {
+        existing.lastSeenAtMs = ts;
+        existing.lastErrorMessage = r.errorMessage ?? existing.lastErrorMessage;
+      }
+    }
+  }
+
+  // Look up snooze status per group in parallel — bounded fan-out
+  // matches the (agent, op) cardinality.
+  const list = Array.from(groups.values()).sort(
+    (a, b) => b.count - a.count || b.lastSeenAtMs - a.lastSeenAtMs,
+  );
+  const snoozeStatuses = await Promise.all(
+    list.map((g) => getFailureGroupSnoozedUntil(g.agentName, g.opName)),
+  );
+
+  return list.map((g, i) => ({
+    agentName: g.agentName,
+    opName: g.opName,
+    count: g.count,
+    lastErrorMessage: g.lastErrorMessage,
+    lastSeenAt: g.lastSeenAtMs > 0 ? new Date(g.lastSeenAtMs).toISOString() : null,
+    snoozedUntil: snoozeStatuses[i] ? snoozeStatuses[i]!.toISOString() : null,
+  }));
+}
+
+/**
+ * Persist a snooze for `(agentName, opName)`. Thin wrapper around the
+ * retry helper's snooze writer so the router doesn't need to know
+ * about retry.ts internals. `hours` defaults to 1 and is clamped
+ * 1–168 by the underlying helper.
+ */
+export async function snoozeFailureGroup(
+  agentName: string,
+  opName: string,
+  hours = 1,
+): Promise<{ snoozedUntil: string }> {
+  const until = await retrySnoozeFailureGroup(agentName, opName, hours);
+  return { snoozedUntil: until.toISOString() };
 }
 

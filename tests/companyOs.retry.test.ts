@@ -36,6 +36,42 @@ vi.mock("../server/db", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// memoryAgent mock — `withRetry` consults a per-(agent, op) snooze row
+// before paging the founder. The default mock returns `null` (no snooze
+// active) so existing paging tests behave as before. Tests that exercise
+// the snooze path rewrite `snoozeStore` directly.
+// ---------------------------------------------------------------------------
+const snoozeStore: Record<string, { value: { untilIso: string; hours: number } } | null> =
+  {};
+const remembered: Array<{
+  agentName: string;
+  memoryType: string;
+  key: string;
+  value: unknown;
+}> = [];
+vi.mock("../server/companyOs/memoryAgent", () => ({
+  recallByKey: vi.fn(async (agentName: string, memoryType: string, key: string) => {
+    const m = snoozeStore[`${agentName}|${memoryType}|${key}`];
+    return m ?? null;
+  }),
+  remember: vi.fn(async (entry: {
+    agentName: string;
+    memoryType: string;
+    key: string;
+    value: unknown;
+  }) => {
+    remembered.push(entry);
+    snoozeStore[`${entry.agentName}|${entry.memoryType}|${entry.key}`] = {
+      value: entry.value as { untilIso: string; hours: number },
+    };
+    // Mirrors `RememberResult` from server/companyOs/memoryAgent — the
+    // snooze writer now propagates `ok: false` as a thrown error so
+    // tests must return the same shape as the real helper.
+    return { ok: true as const, id: "fake" };
+  }),
+}));
+
+// ---------------------------------------------------------------------------
 // Twilio mock — captures every founder page so we can assert that
 // critical-path failures (Task #82) page the founder, non-critical
 // failures don't, and dedupe within a 1h window suppresses repeats.
@@ -57,12 +93,16 @@ import {
   withRetry,
   classifyError,
   _resetPageDedupeForTests,
+  getFailureGroupSnoozedUntil,
+  snoozeFailureGroup,
 } from "../server/companyOs/retry";
 
 beforeEach(() => {
   inserted.length = 0;
   pages.length = 0;
   pageFounderResponse = true;
+  remembered.length = 0;
+  for (const k of Object.keys(snoozeStore)) delete snoozeStore[k];
   _resetPageDedupeForTests();
   vi.useRealTimers();
 });
@@ -513,6 +553,76 @@ describe("withRetry — founder paging", () => {
     expect(pages).toHaveLength(2);
   });
 
+  it("suppresses the founder page when an active snooze covers the failing (agent, op)", async () => {
+    // Pre-seed an active snooze for (twilio, sendWhatsApp) — the
+    // dashboard's "Snooze 1h" button writes exactly this row.
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    snoozeStore["retry|failure_snooze|twilio|sendWhatsApp"] = {
+      value: { untilIso: future, hours: 1 },
+    };
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio is down");
+      e.status = 503;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow("twilio is down");
+    // Page is suppressed by the snooze, but the failure log row is
+    // still written so the dashboard's count keeps climbing.
+    expect(pages).toHaveLength(0);
+    expect(inserted.filter((r) => r.status === "error")).toHaveLength(1);
+  });
+
+  it("pages again once the snooze has expired", async () => {
+    // Seed an EXPIRED snooze — the helper must treat it as no-op.
+    const past = new Date(Date.now() - 60 * 1000).toISOString();
+    snoozeStore["retry|failure_snooze|twilio|sendWhatsApp"] = {
+      value: { untilIso: past, hours: 1 },
+    };
+    const fn = vi.fn(async () => {
+      const e: any = new Error("twilio still down");
+      e.status = 503;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "twilio",
+        opName: "sendWhatsApp",
+      }),
+    ).rejects.toThrow();
+    expect(pages).toHaveLength(1);
+  });
+
+  it("snooze is scoped to the (agent, op) — other ops still page", async () => {
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    snoozeStore["retry|failure_snooze|twilio|sendWhatsApp"] = {
+      value: { untilIso: future, hours: 1 },
+    };
+    const fn = vi.fn(async () => {
+      const e: any = new Error("openai outage");
+      e.status = 500;
+      throw e;
+    });
+    await expect(
+      withRetry(fn, {
+        retries: 0,
+        baseMs: 1,
+        agentName: "salesAgent",
+        opName: "openai.chat",
+      }),
+    ).rejects.toThrow();
+    // Different (agent, op) → not snoozed → page sent.
+    expect(pages).toHaveLength(1);
+  });
+
   it("pages on a terminal 4xx short-circuit for a critical agent (no retries)", async () => {
     const fn = vi.fn(async () => {
       const e: any = new Error("invalid recipient");
@@ -533,3 +643,65 @@ describe("withRetry — founder paging", () => {
     expect(pages[0]).toContain("attempts: 1");
   });
 });
+
+// ===========================================================================
+// snoozeFailureGroup / getFailureGroupSnoozedUntil — exercises the
+// admin "Snooze 1h" path directly (separate from withRetry).
+// ===========================================================================
+describe("snoozeFailureGroup / getFailureGroupSnoozedUntil", () => {
+  it("returns null when no snooze row exists for the (agent, op)", async () => {
+    const out = await getFailureGroupSnoozedUntil("twilio", "sendWhatsApp");
+    expect(out).toBeNull();
+  });
+
+  it("snoozeFailureGroup writes a memory row keyed by agent|op", async () => {
+    const until = await snoozeFailureGroup("twilio", "sendWhatsApp", 1);
+    expect(until.getTime()).toBeGreaterThan(Date.now());
+    expect(remembered).toHaveLength(1);
+    const row = remembered[0];
+    expect(row.agentName).toBe("retry");
+    expect(row.memoryType).toBe("failure_snooze");
+    expect(row.key).toBe("twilio|sendWhatsApp");
+    const v = row.value as { untilIso: string; hours: number };
+    expect(v.hours).toBe(1);
+    expect(new Date(v.untilIso).getTime()).toBeCloseTo(until.getTime(), -2);
+  });
+
+  it("clamps the hours argument to 1..168", async () => {
+    await snoozeFailureGroup("a", "b", 0);
+    await snoozeFailureGroup("c", "d", 9999);
+    expect((remembered[0].value as { hours: number }).hours).toBe(1);
+    expect((remembered[1].value as { hours: number }).hours).toBe(168);
+  });
+
+  it("getFailureGroupSnoozedUntil returns the expiry for a fresh snooze", async () => {
+    await snoozeFailureGroup("twilio", "sendWhatsApp", 1);
+    const out = await getFailureGroupSnoozedUntil("twilio", "sendWhatsApp");
+    expect(out).not.toBeNull();
+    expect(out!.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("snoozeFailureGroup throws when remember() reports ok=false", async () => {
+    // Re-mock remember to simulate a memory write failure (e.g. DB
+    // outage). The router relies on this throw to surface a 500 to
+    // the founder instead of a misleading "Snoozed" toast.
+    const { remember } = await import("../server/companyOs/memoryAgent");
+    (remember as any).mockImplementationOnce(async () => ({
+      ok: false,
+      reason: "db down",
+    }));
+    await expect(snoozeFailureGroup("twilio", "sendWhatsApp", 1)).rejects.toThrow(
+      /failed to persist snooze/,
+    );
+  });
+
+  it("getFailureGroupSnoozedUntil returns null for an expired snooze", async () => {
+    const past = new Date(Date.now() - 60 * 1000).toISOString();
+    snoozeStore["retry|failure_snooze|twilio|sendWhatsApp"] = {
+      value: { untilIso: past, hours: 1 },
+    };
+    const out = await getFailureGroupSnoozedUntil("twilio", "sendWhatsApp");
+    expect(out).toBeNull();
+  });
+});
+

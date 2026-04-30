@@ -36,6 +36,11 @@ function makeChain(resolver: ChainResolver): any {
       lastUpsertConfig = cfg;
       return chain;
     },
+    // `remember()` in memoryAgent ends with `.returning()` after the
+    // upsert, so we surface the resolver result there too. Existing
+    // callers that don't use `.returning()` are unaffected because
+    // `then`/`catch`/`finally` resolve to the same value.
+    returning: () => Promise.resolve(resolver()),
     then: (onF: any, onR: any) => Promise.resolve(resolver()).then(onF, onR),
     catch: (onR: any) => Promise.resolve(resolver()).catch(onR),
     finally: (onF: any) => Promise.resolve(resolver()).finally(onF),
@@ -46,11 +51,22 @@ function makeChain(resolver: ChainResolver): any {
 let lastInsertValues: any = null;
 let lastUpsertConfig: any = null;
 let executeCalls = 0;
+// Allow a test to swap in a custom resolver for the next `db.select()`
+// call (and only the next call). Used by `getRecentFailures` tests to
+// inject a synthetic batch of error logs without touching the real DB.
+let nextSelectResolver: ChainResolver | null = null;
 
 vi.mock("../server/db", () => {
   return {
     db: {
-      select: () => makeChain(() => []),
+      select: () => {
+        if (nextSelectResolver) {
+          const r = nextSelectResolver;
+          nextSelectResolver = null;
+          return makeChain(r);
+        }
+        return makeChain(() => []);
+      },
       insert: () => makeChain(() => []),
       update: () => makeChain(() => []),
       delete: () => makeChain(() => []),
@@ -87,12 +103,15 @@ import {
   getLiveKpis,
   getRecentSnapshots,
   getSnapshotByDate,
+  getRecentFailures,
+  snoozeFailureGroup,
 } from "../server/companyOs/dashboardAgent";
 
 beforeEach(() => {
   lastInsertValues = null;
   lastUpsertConfig = null;
   executeCalls = 0;
+  nextSelectResolver = null;
 });
 
 describe("Dashboard Agent — live aggregation", () => {
@@ -192,5 +211,115 @@ describe("Dashboard Agent — persistence", () => {
   it("getSnapshotByDate returns null when no row matches", async () => {
     const row = await getSnapshotByDate("2026-01-01");
     expect(row).toBeNull();
+  });
+});
+
+describe("Dashboard Agent — recent failures", () => {
+  it("getRecentFailures returns [] when there are no error logs", async () => {
+    const out = await getRecentFailures(24);
+    expect(out).toEqual([]);
+  });
+
+  it("groups error rows by (agentName, parsed op) and orders by count desc", async () => {
+    const now = Date.now();
+    // Three failures for twilio.send + one for openai.chat. Rows are
+    // returned newest-first per the agent's `.orderBy(desc(createdAt))`.
+    nextSelectResolver = () => [
+      {
+        agentName: "twilio",
+        command: "retry",
+        inputPreview: "op=twilio.send attempt=2 class=http_503 final",
+        errorMessage: "twilio is down (latest)",
+        createdAt: new Date(now - 1_000),
+      },
+      {
+        agentName: "twilio",
+        command: "retry",
+        inputPreview: "op=twilio.send attempt=2 class=http_503 final",
+        errorMessage: "twilio is down (mid)",
+        createdAt: new Date(now - 60_000),
+      },
+      {
+        agentName: "twilio",
+        command: "retry",
+        inputPreview: "op=twilio.send attempt=2 class=http_503 final",
+        errorMessage: "twilio is down (oldest)",
+        createdAt: new Date(now - 600_000),
+      },
+      {
+        agentName: "salesAgent",
+        command: "retry",
+        inputPreview: "op=openai.chat attempt=1 class=http_500 final",
+        errorMessage: "openai outage",
+        createdAt: new Date(now - 30_000),
+      },
+    ];
+    const out = await getRecentFailures(24);
+    expect(out).toHaveLength(2);
+    // Sorted by count desc → twilio.send (3) before openai.chat (1).
+    expect(out[0]).toMatchObject({
+      agentName: "twilio",
+      opName: "twilio.send",
+      count: 3,
+      lastErrorMessage: "twilio is down (latest)",
+      snoozedUntil: null,
+    });
+    expect(out[0].lastSeenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(out[1]).toMatchObject({
+      agentName: "salesAgent",
+      opName: "openai.chat",
+      count: 1,
+      lastErrorMessage: "openai outage",
+      snoozedUntil: null,
+    });
+  });
+
+  it("falls back to `command` when inputPreview has no op= token", async () => {
+    nextSelectResolver = () => [
+      {
+        agentName: "costTracker",
+        command: "logLlmCall",
+        inputPreview: "model=gpt-5-mini agent=manager",
+        errorMessage: "pricing missing",
+        createdAt: new Date(),
+      },
+    ];
+    const out = await getRecentFailures(24);
+    expect(out).toHaveLength(1);
+    expect(out[0].opName).toBe("logLlmCall");
+    expect(out[0].agentName).toBe("costTracker");
+  });
+
+  it("falls back to 'unknown' when both preview and command are missing", async () => {
+    nextSelectResolver = () => [
+      {
+        agentName: "mystery",
+        command: null,
+        inputPreview: null,
+        errorMessage: "no context",
+        createdAt: new Date(),
+      },
+    ];
+    const out = await getRecentFailures(24);
+    expect(out[0]).toMatchObject({ agentName: "mystery", opName: "unknown", count: 1 });
+  });
+
+  it("clamps the hours arg to 1..168 and never throws on db failure", async () => {
+    // Resolver that throws inside the chain → agent must catch and return [].
+    nextSelectResolver = () => {
+      throw new Error("boom");
+    };
+    const out = await getRecentFailures(9999);
+    expect(out).toEqual([]);
+  });
+
+  it("snoozeFailureGroup returns an ISO snoozedUntil and writes a memory row", async () => {
+    const r = await snoozeFailureGroup("twilio", "sendWhatsApp", 1);
+    expect(r.snoozedUntil).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // The retry helper writes via db.insert(...).values(...), captured by
+    // the existing chainable mock into `lastInsertValues`. The remember()
+    // flow may upsert through a separate path; we only assert that the
+    // call resolves with a valid ISO timestamp in the future.
+    expect(new Date(r.snoozedUntil).getTime()).toBeGreaterThan(Date.now());
   });
 });

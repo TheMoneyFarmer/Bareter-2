@@ -34,6 +34,7 @@
 
 import { db } from "../db";
 import { companyOsLogs } from "@shared/schema";
+import { recallByKey, remember } from "./memoryAgent";
 
 export interface WithRetryOptions {
   /** Total attempts = retries + 1. Default: 3 retries (4 total attempts). */
@@ -266,6 +267,83 @@ function markPaged(
   pageDedupe.set(`${agentName}|${opName}`, now);
 }
 
+// ---------------------------------------------------------------------------
+// Founder-driven snooze (per agent+op, persisted in agentMemory)
+//
+// When the dashboard's "Recent failures" panel snoozes a flapping
+// (agentName, opName) group, we write an `agent_memory` row under
+// (agentName="retry", memoryType="failure_snooze", key=`${agent}|${op}`)
+// with `{ untilIso, hours }`. The retry helper consults this row before
+// paging the founder so a known-flapping upstream stops spamming
+// WhatsApp until the snooze window expires. Mirrors the
+// intelligence-agent's global alert snooze (intelligenceAgent.ts) but
+// scoped to a single agent+op pair.
+//
+// Failure log rows are still written even while snoozed, so the
+// dashboard panel still shows the count climbing — only the WhatsApp
+// page is suppressed.
+// ---------------------------------------------------------------------------
+
+const SNOOZE_AGENT = "retry";
+const SNOOZE_TYPE = "failure_snooze";
+
+function snoozeKey(agentName: string, opName: string): string {
+  return `${agentName}|${opName}`;
+}
+
+/**
+ * Read the active snooze for `(agentName, opName)`. Returns the
+ * expiry `Date` if a non-expired snooze exists, otherwise `null`.
+ * Read-only and never throws — failures degrade to "not snoozed" so
+ * a memory outage can't silently suppress alerts.
+ */
+export async function getFailureGroupSnoozedUntil(
+  agentName: string,
+  opName: string,
+): Promise<Date | null> {
+  try {
+    const m = await recallByKey(SNOOZE_AGENT, SNOOZE_TYPE, snoozeKey(agentName, opName));
+    if (!m || !m.value) return null;
+    const v = m.value as { untilIso?: string };
+    if (!v.untilIso) return null;
+    const d = new Date(v.untilIso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d > new Date() ? d : null;
+  } catch (err) {
+    console.warn("[companyOs.retry] getFailureGroupSnoozedUntil failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Persist a snooze for `(agentName, opName)` lasting `hours` hours
+ * (clamped to 1–168). Returns the expiry `Date`. Used by the admin
+ * dashboard's "Snooze 1h" button on each failure group.
+ *
+ * Throws when the underlying `remember()` write rejects (e.g. DB
+ * outage or oversized value) so the HTTP route can surface a non-2xx
+ * to the founder instead of silently reporting success.
+ */
+export async function snoozeFailureGroup(
+  agentName: string,
+  opName: string,
+  hours = 1,
+): Promise<Date> {
+  const safeHours = Math.max(1, Math.min(168, Math.floor(Number(hours) || 1)));
+  const until = new Date(Date.now() + safeHours * 60 * 60 * 1000);
+  const result = await remember({
+    agentName: SNOOZE_AGENT,
+    memoryType: SNOOZE_TYPE,
+    key: snoozeKey(agentName, opName),
+    value: { untilIso: until.toISOString(), hours: safeHours },
+    confidence: 1,
+  });
+  if (!result.ok) {
+    throw new Error(`failed to persist snooze: ${result.reason ?? "unknown"}`);
+  }
+  return until;
+}
+
 /**
  * Best-effort founder page on terminal failure. Uses a dynamic
  * import of `./twilio` to avoid the circular import (twilio.ts
@@ -342,7 +420,17 @@ export async function withRetry<T>(
         // SUCCESSFUL page so a transient page-send failure doesn't
         // suppress alerts for a full hour.
         if (shouldPage(opts.paging, agentName, opName)) {
-          if (!wasPagedRecently(agentName, opName)) {
+          // Founder-driven snooze (per agent+op) takes precedence
+          // over the in-memory dedupe — if the dashboard snoozed
+          // this group, suppress the page until the snooze expires.
+          // Failures still write log rows so the dashboard count
+          // keeps climbing; only the WhatsApp page is silenced.
+          const snoozedUntil = await getFailureGroupSnoozedUntil(agentName, opName);
+          if (snoozedUntil) {
+            console.log(
+              `[companyOs.retry] page suppressed for ${agentName}/${opName} (snoozed until ${snoozedUntil.toISOString()})`,
+            );
+          } else if (!wasPagedRecently(agentName, opName)) {
             const sent = await pageFounderOnFinalFailure(
               agentName,
               opName,

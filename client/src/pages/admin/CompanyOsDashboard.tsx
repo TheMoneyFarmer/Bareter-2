@@ -153,6 +153,25 @@ interface AlertsResponse {
   alerts: ProactiveAlertRow[];
 }
 
+// Mirrors `RecentFailureGroup` from `server/companyOs/dashboardAgent.ts`.
+// Each row is one (agentName, opName) bucket with the count, last error
+// message, last-seen timestamp, and (if any) the per-group snooze
+// expiry written by the snooze button below.
+interface RecentFailureGroup {
+  agentName: string;
+  opName: string;
+  count: number;
+  lastErrorMessage: string | null;
+  lastSeenAt: string | null;
+  snoozedUntil: string | null;
+}
+
+interface RecentFailuresResponse {
+  count: number;
+  hours: number;
+  groups: RecentFailureGroup[];
+}
+
 // Mirrors `AgentBudgetVerdict` from `server/companyOs/costTracker.ts`.
 // The dashboard renders one progress bar per row; colour thresholds
 // (green < 80%, amber 80–95%, red ≥ 95%) are duplicated client-side
@@ -489,6 +508,17 @@ export default function CompanyOsDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  // Recent agent failures — last 24h of error-status companyOsLogs rows
+  // grouped by (agent, op) so the founder can triage flapping upstreams
+  // without scrolling raw rows. Polled at the same 60s cadence so a
+  // freshly-failing op shows up without a manual reload.
+  const failuresQuery = useQuery<RecentFailuresResponse>({
+    queryKey: ["/api/company-os/dashboard/failures"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const generateBoardReportMutation = useMutation<unknown, Error, string | undefined>({
     mutationFn: async (month) => {
       const url = month
@@ -617,6 +647,37 @@ export default function CompanyOsDashboard() {
     },
   });
 
+  const snoozeFailureMutation = useMutation<
+    unknown,
+    Error,
+    { agentName: string; opName: string }
+  >({
+    mutationFn: async ({ agentName, opName }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/company-os/dashboard/failures/snooze`,
+        { agentName, opName, hours: 1 },
+      );
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/dashboard/failures"],
+      });
+      toast({
+        title: "Snoozed for 1h",
+        description: `${vars.agentName} · ${vars.opName} won't page until the snooze expires.`,
+      });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Snooze failed",
+        description: err.message,
+      });
+    },
+  });
+
   const updateBudgetMutation = useMutation<
     { ok: boolean; agentName: string; monthlyCapAed: number },
     Error,
@@ -655,7 +716,9 @@ export default function CompanyOsDashboard() {
     snapshotsQuery.isFetching ||
     alertsQuery.isFetching ||
     budgetsQuery.isFetching ||
-    boardReportsQuery.isFetching;
+    boardReportsQuery.isFetching ||
+    failuresQuery.isFetching;
+  const recentFailures = failuresQuery.data?.groups ?? [];
   const boardReports = boardReportsQuery.data?.reports ?? [];
   const error = liveQuery.error ?? snapshotsQuery.error;
   const openAlerts = alertsQuery.data?.alerts ?? [];
@@ -1030,6 +1093,130 @@ export default function CompanyOsDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Recent agent failures (last 24h, grouped by agent + op).
+            Always rendered so the founder gets a clear "all clear"
+            empty state instead of a vanished panel — important for
+            trust ("no panel" is ambiguous; "no failures" is reassuring).
+            Grouping collapses noisy logs from a single flapping op into
+            one triagable row with a per-group "Snooze 1h" that the retry
+            helper consults to skip paging. */}
+        <Card data-testid="card-recent-failures">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Recent failures
+                  <Badge
+                    variant="secondary"
+                    data-testid="badge-recent-failures-count"
+                  >
+                    {recentFailures.length}
+                  </Badge>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    last 24h · grouped by agent + op
+                  </span>
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {failuresQuery.isLoading && (
+                <Skeleton
+                  className="h-16 w-full"
+                  data-testid="skeleton-recent-failures"
+                />
+              )}
+              {!failuresQuery.isLoading && recentFailures.length === 0 && (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="text-recent-failures-empty"
+                >
+                  No agent failures in the last 24 hours.
+                </p>
+              )}
+              {recentFailures.map((g) => {
+                const groupId = `${g.agentName}-${g.opName}`;
+                const snoozeDate = g.snoozedUntil
+                  ? new Date(g.snoozedUntil)
+                  : null;
+                const snoozeActiveForGroup =
+                  !!snoozeDate && snoozeDate.getTime() > Date.now();
+                const lastSeen = g.lastSeenAt ? new Date(g.lastSeenAt) : null;
+                const pendingForGroup =
+                  snoozeFailureMutation.isPending &&
+                  snoozeFailureMutation.variables?.agentName === g.agentName &&
+                  snoozeFailureMutation.variables?.opName === g.opName;
+                return (
+                  <div
+                    key={groupId}
+                    className="flex items-start justify-between gap-3 rounded-md border p-3 hover-elevate"
+                    data-testid={`row-failure-${groupId}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="destructive"
+                          data-testid={`badge-failure-count-${groupId}`}
+                        >
+                          {g.count}× failed
+                        </Badge>
+                        <span
+                          className="truncate text-sm font-medium"
+                          data-testid={`text-failure-agent-${groupId}`}
+                        >
+                          {g.agentName}
+                        </span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          · {g.opName}
+                        </span>
+                        {snoozeActiveForGroup && snoozeDate && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1"
+                            data-testid={`badge-failure-snoozed-${groupId}`}
+                          >
+                            <BellOff className="h-3 w-3" />
+                            snoozed until {snoozeDate.toLocaleTimeString()}
+                          </Badge>
+                        )}
+                      </div>
+                      {g.lastErrorMessage && (
+                        <p
+                          className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground"
+                          data-testid={`text-failure-error-${groupId}`}
+                        >
+                          {g.lastErrorMessage}
+                        </p>
+                      )}
+                      {lastSeen && (
+                        <p
+                          className="mt-1 text-[11px] text-muted-foreground"
+                          data-testid={`text-failure-last-seen-${groupId}`}
+                        >
+                          last seen {lastSeen.toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        snoozeFailureMutation.mutate({
+                          agentName: g.agentName,
+                          opName: g.opName,
+                        })
+                      }
+                      disabled={pendingForGroup || snoozeActiveForGroup}
+                      data-testid={`button-snooze-failure-${groupId}`}
+                    >
+                      <BellOff className="mr-1 h-3 w-3" />
+                      Snooze 1h
+                    </Button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
         {/* Charts */}
         <div className="grid gap-3 lg:grid-cols-2">

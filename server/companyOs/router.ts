@@ -65,6 +65,8 @@ import {
   getDashboardData,
   getRecentSnapshots as getRecentKpiSnapshots,
   getSnapshotByDate as getKpiSnapshotByDate,
+  getRecentFailures,
+  snoozeFailureGroup,
 } from "./dashboardAgent";
 import { listMemories, deleteMemoryById } from "./memoryAgent";
 import {
@@ -703,6 +705,48 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /logs failed:", err);
       res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Recent agent failures (admin dashboard panel).
+  //   • GET  /dashboard/failures[?hours=24]
+  //       Returns `{ count, hours, groups: [{ agentName, opName, count,
+  //       lastErrorMessage, lastSeenAt, snoozedUntil }, …] }`.
+  //   • POST /dashboard/failures/snooze
+  //       Body `{ agentName, opName, hours? }` — writes a memory row the
+  //       retry helper consults to skip paging the founder for that
+  //       group until the snooze expires. `hours` defaults to 1 and is
+  //       clamped 1–168 by the underlying helper.
+  // ---------------------------------------------------------------------------
+  router.get("/dashboard/failures", opts.requireAdmin, async (req, res) => {
+    try {
+      const hoursRaw = Number(req.query.hours ?? 24);
+      const hours = Number.isFinite(hoursRaw) ? Math.max(1, Math.min(168, hoursRaw)) : 24;
+      const groups = await getRecentFailures(hours);
+      res.json({ count: groups.length, hours, groups });
+    } catch (err) {
+      console.error("[companyOs] /dashboard/failures failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post("/dashboard/failures/snooze", opts.requireAdmin, async (req, res) => {
+    try {
+      const agentName = String(req.body?.agentName ?? "").trim();
+      const opName = String(req.body?.opName ?? "").trim();
+      if (!agentName || !opName) {
+        return res
+          .status(400)
+          .json({ ok: false, message: "agentName and opName are required" });
+      }
+      const hoursRaw = Number(req.body?.hours ?? 1);
+      const hours = Number.isFinite(hoursRaw) ? Math.max(1, Math.min(168, hoursRaw)) : 1;
+      const r = await snoozeFailureGroup(agentName, opName, hours);
+      res.json({ ok: true, agentName, opName, hours, ...r });
+    } catch (err) {
+      console.error("[companyOs] /dashboard/failures/snooze failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
     }
   });
 
