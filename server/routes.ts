@@ -126,12 +126,46 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+// Defense-in-depth: even if a stray row has `isAdmin = true`, the request
+// is rejected unless the user's email is in `ADMIN_EMAIL_ALLOWLIST`
+// (comma-separated, case-insensitive). When the allowlist is unset the
+// middleware falls back to the legacy isAdmin-only behavior so dev
+// environments without the env var keep working.
+const adminEmailAllowlist = (): Set<string> | null => {
+  const raw = process.env.ADMIN_EMAIL_ALLOWLIST;
+  if (!raw || !raw.trim()) return null;
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+};
+
+// Strip `isAdmin` from any client-facing user payload whose email is not
+// in `ADMIN_EMAIL_ALLOWLIST`. This way a stale row in the DB cannot
+// expose the admin nav on the client even if `requireAdmin` already
+// blocks the underlying API calls.
+function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: boolean | null }>(
+  payload: T,
+): T {
+  const allow = adminEmailAllowlist();
+  if (allow && payload.isAdmin && !allow.has((payload.email ?? "").trim().toLowerCase())) {
+    return { ...payload, isAdmin: false };
+  }
+  return payload;
+}
+
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
   const user = await storage.getUser(req.session.userId);
   if (!user?.isAdmin) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  const allow = adminEmailAllowlist();
+  if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) {
     return res.status(403).json({ message: "Forbidden" });
   }
   next();
@@ -217,7 +251,7 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+        res.json(sanitizeAdminFlag(userWithoutPassword));
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -248,7 +282,7 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+        res.json(sanitizeAdminFlag(userWithoutPassword));
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -400,7 +434,7 @@ export async function registerRoutes(
     }
 
     const { password, ...userWithoutPassword } = user;
-    res.json(userWithoutPassword);
+    res.json(sanitizeAdminFlag(userWithoutPassword));
   });
 
   // Serve uploaded files

@@ -63,3 +63,5 @@ timeoutMs = 480000
 WAITLIST_MODE = "true"
 COMPANY_OS_MONTHLY_BUDGET_AED = "400"
 USD_TO_AED_RATE = "3.6725"
+BOOTSTRAP_ADMIN_EMAIL = "thando@bareter.com"
+ADMIN_EMAIL_ALLOWLIST = "thando@bareter.com"

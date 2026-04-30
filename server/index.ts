@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase, backfillLocationFields } from "./seed";
+import { bootstrapAdmin } from "./bootstrapAdmin";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerImageRoutes } from "./replit_integrations/image";
 import { registerChatRoutes } from "./replit_integrations/chat";
@@ -107,6 +108,10 @@ app.use((req, res, next) => {
       "[startup] DIDIT_WEBHOOK_SECRET is not set — KYC/KYB webhook signature verification will reject all callbacks. Set this secret before going live.",
     );
   }
+
+  // Provision the founder admin account (idempotent). Runs in every
+  // environment so the same secret rotation lands in dev and prod.
+  await bootstrapAdmin();
 
   // Backfill country/city/location for legacy rows so location filters and
   // worldwide-toggle behavior work correctly across pre-expansion data.
