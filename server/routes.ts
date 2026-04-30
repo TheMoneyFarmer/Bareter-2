@@ -263,7 +263,7 @@ export async function registerRoutes(
     try {
       const data = loginSchema.parse(req.body);
 
-      const user = await storage.getUserByEmail(data.email);
+      const user = await storage.getUserByEmail(data.email.trim().toLowerCase());
       if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
