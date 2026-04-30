@@ -172,6 +172,21 @@ interface RecentFailuresResponse {
   groups: RecentFailureGroup[];
 }
 
+// Mirrors `PendingPublishDraftListItem` from
+// `server/companyOs/marketingAgent.ts`. One row per parked
+// `publish post <topic>` draft awaiting `send` / `skip` over WhatsApp.
+interface PendingPublishDraft {
+  senderId: string;
+  topic: string;
+  postBody: string;
+  expiresAt: string;
+}
+
+interface PendingPublishDraftsResponse {
+  count: number;
+  drafts: PendingPublishDraft[];
+}
+
 // Mirrors `AgentBudgetVerdict` from `server/companyOs/costTracker.ts`.
 // The dashboard renders one progress bar per row; colour thresholds
 // (green < 80%, amber 80–95%, red ≥ 95%) are duplicated client-side
@@ -519,6 +534,17 @@ export default function CompanyOsDashboard() {
     refetchOnWindowFocus: false,
   });
 
+  // Parked `publish post` drafts (Task #112). Polled at 30s so the
+  // expiry countdown stays close to real-time without hammering the
+  // memory store — drafts default to a 10 min TTL, and the founder
+  // doesn't need second-by-second precision to decide send vs skip.
+  const pendingPublishQuery = useQuery<PendingPublishDraftsResponse>({
+    queryKey: ["/api/company-os/marketing/pending-publish"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
   const generateBoardReportMutation = useMutation<unknown, Error, string | undefined>({
     mutationFn: async (month) => {
       const url = month
@@ -678,6 +704,67 @@ export default function CompanyOsDashboard() {
     },
   });
 
+  const sendPendingPublishMutation = useMutation<
+    { ok: boolean; reply?: string },
+    Error,
+    { senderId: string }
+  >({
+    mutationFn: async ({ senderId }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/company-os/marketing/pending-publish/${encodeURIComponent(senderId)}/send`,
+      );
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/marketing/pending-publish"],
+      });
+      // The recent-posts panel reads from `liveQuery`, so refresh that
+      // too so a freshly-published draft shows up under "Recent posts"
+      // without a manual reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/company-os/dashboard/live"] });
+      toast({
+        title: "Draft sent",
+        description: data.reply ? data.reply.split("\n")[0].slice(0, 160) : undefined,
+      });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Send failed",
+        description: err.message,
+      });
+    },
+  });
+
+  const skipPendingPublishMutation = useMutation<
+    { ok: boolean; reply?: string },
+    Error,
+    { senderId: string }
+  >({
+    mutationFn: async ({ senderId }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/company-os/marketing/pending-publish/${encodeURIComponent(senderId)}/skip`,
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/company-os/marketing/pending-publish"],
+      });
+      toast({ title: "Draft discarded" });
+    },
+    onError: (err) => {
+      toast({
+        variant: "destructive",
+        title: "Skip failed",
+        description: err.message,
+      });
+    },
+  });
+
   const updateBudgetMutation = useMutation<
     { ok: boolean; agentName: string; monthlyCapAed: number },
     Error,
@@ -717,8 +804,10 @@ export default function CompanyOsDashboard() {
     alertsQuery.isFetching ||
     budgetsQuery.isFetching ||
     boardReportsQuery.isFetching ||
-    failuresQuery.isFetching;
+    failuresQuery.isFetching ||
+    pendingPublishQuery.isFetching;
   const recentFailures = failuresQuery.data?.groups ?? [];
+  const pendingPublishDrafts = pendingPublishQuery.data?.drafts ?? [];
   const boardReports = boardReportsQuery.data?.reports ?? [];
   const error = liveQuery.error ?? snapshotsQuery.error;
   const openAlerts = alertsQuery.data?.alerts ?? [];
@@ -1417,6 +1506,121 @@ export default function CompanyOsDashboard() {
                 </Button>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Pending publish-post drafts (Task #112). Always renders so a
+            "no drafts" empty state is visible — same trust principle as
+            Recent failures (a vanished panel is ambiguous; an explicit
+            "nothing waiting" is reassuring). 30s polling keeps the
+            countdown close to real time but doesn't hammer the
+            agentMemory store. */}
+        <Card data-testid="card-pending-publish">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Megaphone className="h-4 w-4" />
+              Pending publish drafts
+              <Badge
+                variant="secondary"
+                data-testid="badge-pending-publish-count"
+              >
+                {pendingPublishDrafts.length}
+              </Badge>
+              <span className="text-xs font-normal text-muted-foreground">
+                waiting for WhatsApp `send` / `skip`
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingPublishQuery.isLoading && (
+              <Skeleton
+                className="h-16 w-full"
+                data-testid="skeleton-pending-publish"
+              />
+            )}
+            {!pendingPublishQuery.isLoading && pendingPublishDrafts.length === 0 && (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="text-pending-publish-empty"
+              >
+                No drafts waiting. Use `publish post &lt;topic&gt;` on WhatsApp to queue one.
+              </p>
+            )}
+            {pendingPublishDrafts.map((d) => {
+              const expiresMs = Date.parse(d.expiresAt);
+              const minsLeft = Number.isFinite(expiresMs)
+                ? Math.max(0, Math.round((expiresMs - Date.now()) / 60000))
+                : 0;
+              const senderLabel = d.senderId === "default" ? "founder" : d.senderId;
+              const sendPending =
+                sendPendingPublishMutation.isPending &&
+                sendPendingPublishMutation.variables?.senderId === d.senderId;
+              const skipPending =
+                skipPendingPublishMutation.isPending &&
+                skipPendingPublishMutation.variables?.senderId === d.senderId;
+              const anyPending = sendPending || skipPending;
+              return (
+                <div
+                  key={d.senderId}
+                  className="flex flex-col gap-2 rounded-md border p-3 hover-elevate sm:flex-row sm:items-start sm:justify-between"
+                  data-testid={`row-pending-publish-${d.senderId}`}
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className="truncate text-sm font-medium"
+                        data-testid={`text-pending-publish-topic-${d.senderId}`}
+                      >
+                        {d.topic || "(no topic)"}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px]"
+                        data-testid={`badge-pending-publish-sender-${d.senderId}`}
+                      >
+                        {senderLabel}
+                      </Badge>
+                      <Badge
+                        variant={minsLeft <= 2 ? "destructive" : "secondary"}
+                        data-testid={`badge-pending-publish-expires-${d.senderId}`}
+                      >
+                        expires in {minsLeft} min
+                      </Badge>
+                    </div>
+                    <pre
+                      className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs"
+                      data-testid={`text-pending-publish-body-${d.senderId}`}
+                    >
+                      {d.postBody}
+                    </pre>
+                  </div>
+                  <div className="flex shrink-0 gap-2 sm:flex-col">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        sendPendingPublishMutation.mutate({ senderId: d.senderId })
+                      }
+                      disabled={anyPending}
+                      data-testid={`button-pending-publish-send-${d.senderId}`}
+                    >
+                      <Check className="mr-1 h-3 w-3" />
+                      {sendPending ? "Sending…" : "Send"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        skipPendingPublishMutation.mutate({ senderId: d.senderId })
+                      }
+                      disabled={anyPending}
+                      data-testid={`button-pending-publish-skip-${d.senderId}`}
+                    >
+                      {skipPending ? "Discarding…" : "Discard"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
 

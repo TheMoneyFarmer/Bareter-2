@@ -46,6 +46,7 @@ import { dubaiDateString } from "./financeAgent";
 import {
   buildAgentContext,
   rememberInBackground,
+  recall,
   recallByKey,
   remember,
   forgetMemoryTyped,
@@ -734,6 +735,50 @@ export async function clearPendingPublishDraft(senderId?: string): Promise<void>
   // Typed delete so we only drop the `pending_publish` slot — never any
   // other memoryType that happens to share the same per-founder key.
   await forgetMemoryTyped(AGENT, PUBLISH_CONFIRM_MEMORY_TYPE, pendingPublishKey(senderId));
+}
+
+/**
+ * Public-facing shape of a parked draft for the admin dashboard. Carries
+ * the per-founder `senderId` (the agentMemory `key`, with the `whatsapp:`
+ * prefix already stripped) so the UI can post `/send` and `/skip` for the
+ * exact slot — important once we support more than one founder phone.
+ */
+export interface PendingPublishDraftListItem extends PendingPublishDraft {
+  senderId: string;
+}
+
+/**
+ * Enumerate every parked `publish post` draft so the founder can
+ * see what's waiting from the admin dashboard (Task #112). Expired
+ * drafts are filtered out AND swept from storage in the background
+ * so the panel never advertises a draft you can no longer publish.
+ */
+export async function listPendingPublishDrafts(): Promise<PendingPublishDraftListItem[]> {
+  const rows = await recall(AGENT, PUBLISH_CONFIRM_MEMORY_TYPE, 50);
+  const now = Date.now();
+  const out: PendingPublishDraftListItem[] = [];
+  for (const row of rows) {
+    const v = row.value as Partial<PendingPublishDraft> | null;
+    if (!v || typeof v.postBody !== "string" || typeof v.expiresAt !== "string") {
+      continue;
+    }
+    if (Date.parse(v.expiresAt) <= now) {
+      // Fire-and-forget cleanup so the dashboard converges to a clean
+      // state without paying a deletion round-trip per request.
+      void forgetMemoryTyped(AGENT, PUBLISH_CONFIRM_MEMORY_TYPE, row.key);
+      continue;
+    }
+    out.push({
+      senderId: row.key,
+      topic: typeof v.topic === "string" ? v.topic : "",
+      postBody: v.postBody,
+      expiresAt: v.expiresAt,
+    });
+  }
+  // Soonest-to-expire first so the founder triages the most urgent draft
+  // before it disappears.
+  out.sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+  return out;
 }
 
 export async function publishPostFromTopic(topic: string): Promise<PublishPostResult> {

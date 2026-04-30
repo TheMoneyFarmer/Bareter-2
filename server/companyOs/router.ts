@@ -16,6 +16,9 @@ import {
   getBriefById,
   getRecentCampaigns,
   getRecentMarketingPosts,
+  listPendingPublishDrafts,
+  handleConfirmPublishSend,
+  handleConfirmPublishSkip,
 } from "./marketingAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { handleManagerMessage, composeDailyBriefing } from "./managerAgent";
@@ -350,6 +353,57 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
       res.status(500).json({ message: "Internal error" });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Pending publish-post drafts (Task #112). Surfaces the WhatsApp
+  // confirmation queue (Task #86) so the founder can see + act on parked
+  // drafts from the admin dashboard when WhatsApp is unreliable.
+  // ---------------------------------------------------------------------------
+
+  router.get("/marketing/pending-publish", opts.requireAdmin, async (_req, res) => {
+    try {
+      const drafts = await listPendingPublishDrafts();
+      res.json({ count: drafts.length, drafts });
+    } catch (err) {
+      console.error("[companyOs] /marketing/pending-publish failed:", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  });
+
+  router.post(
+    "/marketing/pending-publish/:senderId/send",
+    opts.requireAdmin,
+    async (req, res) => {
+      try {
+        // Express decodes path params, so an encoded `+971...` arrives
+        // as `+971...` — exactly the form `pendingPublishKey` expects
+        // (it strips a leading `whatsapp:` prefix if present).
+        const senderId = String(req.params.senderId || "");
+        if (!senderId) return res.status(400).json({ message: "senderId required" });
+        const reply = await handleConfirmPublishSend(senderId);
+        res.json({ ok: true, reply });
+      } catch (err) {
+        console.error("[companyOs] /marketing/pending-publish/:id/send failed:", err);
+        res.status(500).json({ ok: false, message: "Internal error" });
+      }
+    },
+  );
+
+  router.post(
+    "/marketing/pending-publish/:senderId/skip",
+    opts.requireAdmin,
+    async (req, res) => {
+      try {
+        const senderId = String(req.params.senderId || "");
+        if (!senderId) return res.status(400).json({ message: "senderId required" });
+        const reply = await handleConfirmPublishSkip(senderId);
+        res.json({ ok: true, reply });
+      } catch (err) {
+        console.error("[companyOs] /marketing/pending-publish/:id/skip failed:", err);
+        res.status(500).json({ ok: false, message: "Internal error" });
+      }
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // Sales Agent endpoints (admin-only). Surfaces leads + ad-hoc sync

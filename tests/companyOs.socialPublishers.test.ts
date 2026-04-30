@@ -265,6 +265,7 @@ import {
   handleConfirmPublishTweak,
   storePendingPublishDraft,
   getPendingPublishDraft,
+  listPendingPublishDrafts,
   runMetaCampaignSync,
 } from "../server/companyOs/marketingAgent";
 import { chatCompletion as mockedChatCompletion } from "../server/agents/llm";
@@ -1483,5 +1484,200 @@ describe("Task #114 — webhook routes edit/tweak to the right handlers", () => 
     const reply = hoisted.sendCalls[0]?.body ?? "";
     expect(reply).toContain("Updated draft");
     expect(reply).toContain("Brand new body line");
+  });
+});
+
+// ===========================================================================
+// Task #112 — admin dashboard pending publish drafts panel.
+// ===========================================================================
+describe("Task #112 — listPendingPublishDrafts", () => {
+  beforeEach(() => {
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "true";
+    delete process.env.MARKETING_PUBLISH_CONFIRM_TIMEOUT_MIN;
+  });
+
+  it("returns parked drafts with senderId, topic, body, expiry — soonest first", async () => {
+    // Two distinct rows in the recall queue: founderB expires sooner.
+    const soonExpiry = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+    const lateExpiry = new Date(Date.now() + 9 * 60 * 1000).toISOString();
+    dbState.selectQueue.push([
+      {
+        id: "mem-a",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000001",
+        value: { topic: "Topic A", postBody: "Body A", expiresAt: lateExpiry },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      {
+        id: "mem-b",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000002",
+        value: { topic: "Topic B", postBody: "Body B", expiresAt: soonExpiry },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const drafts = await listPendingPublishDrafts();
+    expect(drafts).toHaveLength(2);
+    // Soonest-to-expire first.
+    expect(drafts[0].senderId).toBe("+971500000002");
+    expect(drafts[0].topic).toBe("Topic B");
+    expect(drafts[0].postBody).toBe("Body B");
+    expect(drafts[1].senderId).toBe("+971500000001");
+  });
+
+  it("filters out expired rows (and does not include them in the response)", async () => {
+    const expired = new Date(Date.now() - 60 * 1000).toISOString();
+    const valid = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    dbState.selectQueue.push([
+      {
+        id: "mem-expired",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000003",
+        value: { topic: "Stale", postBody: "Stale body", expiresAt: expired },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      {
+        id: "mem-valid",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000004",
+        value: { topic: "Fresh", postBody: "Fresh body", expiresAt: valid },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const drafts = await listPendingPublishDrafts();
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].senderId).toBe("+971500000004");
+    expect(drafts[0].topic).toBe("Fresh");
+  });
+
+  it("returns an empty array when no drafts are parked", async () => {
+    dbState.selectQueue.push([]);
+    const drafts = await listPendingPublishDrafts();
+    expect(drafts).toEqual([]);
+  });
+
+  it("ignores rows whose value is malformed (defence-in-depth)", async () => {
+    const valid = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    dbState.selectQueue.push([
+      {
+        id: "mem-bad",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000005",
+        // missing postBody / expiresAt
+        value: { topic: "Just a topic" },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      {
+        id: "mem-good",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000006",
+        value: { topic: "Real", postBody: "Real body", expiresAt: valid },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const drafts = await listPendingPublishDrafts();
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].senderId).toBe("+971500000006");
+  });
+});
+
+describe("Task #112 — admin pending-publish endpoints", () => {
+  beforeEach(() => {
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "true";
+  });
+
+  it("GET /marketing/pending-publish surfaces parked drafts to admins", async () => {
+    const expiry = new Date(Date.now() + 8 * 60 * 1000).toISOString();
+    dbState.selectQueue.push([
+      {
+        id: "mem-x",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000111",
+        value: { topic: "X topic", postBody: "X body", expiresAt: expiry },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const app = buildApp();
+    const res = await request(app).get("/api/company-os/marketing/pending-publish");
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.drafts[0].senderId).toBe("+971500000111");
+    expect(res.body.drafts[0].topic).toBe("X topic");
+    expect(res.body.drafts[0].postBody).toBe("X body");
+    expect(res.body.drafts[0].expiresAt).toBe(expiry);
+  });
+
+  it("POST /marketing/pending-publish/:senderId/skip clears the draft and returns the reply", async () => {
+    const expiry = new Date(Date.now() + 8 * 60 * 1000).toISOString();
+    // recallByKey lookup inside handleConfirmPublishSkip
+    dbState.selectQueue.push([
+      {
+        id: "mem-y",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000222",
+        value: { topic: "Y topic", postBody: "Y body", expiresAt: expiry },
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const app = buildApp();
+    const res = await request(app).post(
+      `/api/company-os/marketing/pending-publish/${encodeURIComponent("+971500000222")}/skip`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.reply).toContain("Skipped");
+    expect(res.body.reply).toContain("Y topic");
+  });
+
+  it("POST /skip with no parked draft returns the friendly fallback reply", async () => {
+    // recallByKey returns empty
+    dbState.selectQueue.push([]);
+    const app = buildApp();
+    const res = await request(app).post(
+      `/api/company-os/marketing/pending-publish/${encodeURIComponent("+971500000999")}/skip`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.reply).toContain("nothing to skip");
   });
 });
