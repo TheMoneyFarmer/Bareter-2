@@ -130,14 +130,17 @@ app.use((req, res, next) => {
     console.error("[startup] Failed to start Company OS scheduler:", err);
   }
 
-  // Warm the per-agent budget override cache so the LLM gate hits a hot
-  // cache on the very first request after a restart instead of falling
-  // back to the hardcoded map for the brief window before the lazy
-  // load resolves. Failures are non-fatal — getAgentBudgetAed degrades
-  // gracefully to the hardcoded defaults.
+  // Warm the per-agent budget override cache BEFORE the server starts
+  // serving requests. We await this so the very first dashboard load
+  // and the very first LLM safety/throttle decision after restart see
+  // the persisted DB caps, not the hardcoded fallback. Failures are
+  // non-fatal — getAgentBudgetAed degrades gracefully to the
+  // hardcoded defaults and ensureAgentBudgetOverridesLoaded will
+  // retry on the next read because loadOverrideCache only flips the
+  // ready flag on success.
   try {
     const { ensureAgentBudgetOverridesLoaded } = await import("./companyOs/costTracker");
-    void ensureAgentBudgetOverridesLoaded();
+    await ensureAgentBudgetOverridesLoaded();
   } catch (err) {
     console.error("[startup] Failed to warm agent-budget cache:", err);
   }
