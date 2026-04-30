@@ -32,6 +32,8 @@ import {
   handlePublishPostCommand,
   handleConfirmPublishSend,
   handleConfirmPublishSkip,
+  handleConfirmPublishEdit,
+  handleConfirmPublishTweak,
 } from "./marketingAgent";
 import { handleLeadsCommand, handleSyncLeadsCommand } from "./salesAgent";
 import {
@@ -72,6 +74,8 @@ const HELP_TEXT = [
   "• `draft post <topic>` — IG/LinkedIn/X-ready post draft",
   "• `publish post <topic>` — draft a post, then reply `send` to publish or `skip` to discard",
   "• `send` / `skip` — confirm or cancel the last `publish post` draft (10 min window)",
+  "• `edit <new body>` — replace the parked draft body without re-prompting the AI",
+  "• `tweak <hint>` — re-prompt the AI with the parked draft + your hint",
   "• `campaign update <name> ctr=X spend=Y conversions=Z` — log campaign metrics",
   "• `leads` — sales leads snapshot (totals, avg score, new this week)",
   "• `sync leads` — run an ad-hoc leads ingest + re-engagement sweep",
@@ -410,6 +414,36 @@ export async function handleManagerMessage(
       command: "publish_skip",
       inputPreview: text,
       outputPreview: out,
+      tokensUsed: 0,
+    });
+    return out;
+  }
+  // `edit <new body>` — replace the parked draft body without spending
+  // another LLM token. We use the original `text` (case-preserved) so
+  // the founder's exact wording is what gets parked. The regex accepts
+  // any whitespace (including newlines) after the keyword so multi-line
+  // copy/paste edits route here instead of falling through to the
+  // free-form LLM (which would burn budget on a publish-control reply).
+  if (/^edit(?:\s|$)/i.test(normalized)) {
+    const out = await handleConfirmPublishEdit(text, senderId);
+    await logLlmCall({
+      agentName: "manager",
+      command: "publish_edit",
+      inputPreview: text.slice(0, 200),
+      outputPreview: out.slice(0, 160),
+      tokensUsed: 0,
+    });
+    return out;
+  }
+  // `tweak <hint>` — re-prompt the LLM with the parked draft + hint.
+  // Costs LLM tokens (gated by the global budget inside chatCompletion).
+  if (/^tweak(?:\s|$)/i.test(normalized)) {
+    const out = await handleConfirmPublishTweak(text, senderId);
+    await logLlmCall({
+      agentName: "manager",
+      command: "publish_tweak",
+      inputPreview: text.slice(0, 200),
+      outputPreview: out.slice(0, 160),
       tokensUsed: 0,
     });
     return out;

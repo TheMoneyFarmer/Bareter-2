@@ -694,13 +694,20 @@ export async function storePendingPublishDraft(
     postBody,
     expiresAt: new Date(Date.now() + publishConfirmTimeoutMs()).toISOString(),
   };
-  await remember({
+  // Surface persist failures (e.g. body > 4KB memory cap, DB write
+  // error). Returning the draft on a silent failure would tell the
+  // founder "Updated draft" while the OLD content is still parked —
+  // a subsequent `send` would then publish the wrong thing.
+  const result = await remember({
     agentName: AGENT,
     memoryType: PUBLISH_CONFIRM_MEMORY_TYPE,
     key: pendingPublishKey(senderId),
     value: draft,
     confidence: 1,
   });
+  if (!result.ok) {
+    throw new Error(`pending publish draft persist failed: ${result.reason}`);
+  }
   return draft;
 }
 
@@ -912,6 +919,182 @@ export async function handleConfirmPublishSend(senderId?: string): Promise<strin
     postBody: draft.postBody,
     outcome,
   });
+}
+
+/**
+ * Handle the founder's `edit <new body>` reply — replaces the parked
+ * draft body with whatever follows the `edit ` keyword and resets the
+ * confirmation expiry. Returns a friendly hint when no draft is
+ * parked. Costs zero LLM tokens.
+ */
+// Match `edit` followed by optional whitespace + body. Capture group 1
+// is the body (or undefined for bare `edit`). `[\s\S]+` lets the body
+// span newlines, tabs, etc. so multi-line copy/paste edits work.
+const EDIT_COMMAND_RE = /^edit(?:\s+([\s\S]+))?$/i;
+const TWEAK_COMMAND_RE = /^tweak(?:\s+([\s\S]+))?$/i;
+
+export async function handleConfirmPublishEdit(
+  rawText: string,
+  senderId?: string,
+): Promise<string> {
+  const trimmed = (rawText ?? "").trim();
+  const match = trimmed.match(EDIT_COMMAND_RE);
+  // Capture group is undefined for bare `edit` and empty/whitespace
+  // when the founder sends `edit    ` — both must be treated as a
+  // usage hint so we never accidentally overwrite the parked draft
+  // with the literal string "edit".
+  const newBody = (match?.[1] ?? "").trim();
+  if (!newBody) {
+    return "Usage: `edit <new body>` — replaces the parked draft. Example: `edit Hook line\\nValue prop\\nCTA #UAEBusiness`";
+  }
+  const draft = await getPendingPublishDraft(senderId);
+  if (!draft) {
+    return [
+      "No draft is waiting to edit.",
+      `Drafts expire after ${publishConfirmTimeoutMin()} min — start a new one with \`publish post <topic>\`.`,
+    ].join("\n");
+  }
+  let updated: PendingPublishDraft;
+  try {
+    updated = await storePendingPublishDraft(senderId, draft.topic, newBody);
+  } catch (err) {
+    // Persist failure (DB write or 4KB memory cap). The OLD draft is
+    // still parked — tell the founder so they don't `send` thinking
+    // their new body is staged.
+    console.error("[companyOs.marketing] storePendingPublishDraft (edit) failed:", err);
+    return [
+      "❌ Couldn't save your edit — the original draft is still parked.",
+      "Try a shorter body (4KB cap) or start fresh with `publish post <topic>`.",
+    ].join("\n");
+  }
+  await logLlmCall({
+    agentName: AGENT,
+    command: "publish_post_edited",
+    inputPreview: `topic=${draft.topic.slice(0, 120)} chars=${newBody.length}`,
+    outputPreview: "draft replaced",
+    tokensUsed: 0,
+  });
+  const channels = getConfiguredChannels();
+  const channelLine =
+    channels.length > 0
+      ? `Will publish to: ${channels.join(", ")}.`
+      : "No publisher configured yet — `send` will draft a copy-paste reply only.";
+  return [
+    `✏️ *Updated draft for "${draft.topic}"* — review again:`,
+    "",
+    updated.postBody,
+    "",
+    `Reply *send* within ${publishConfirmTimeoutMin()} min to publish, *skip* to discard, or *edit <new body>* / *tweak <hint>* to keep iterating.`,
+    channelLine,
+  ].join("\n");
+}
+
+const TWEAK_POST_SYSTEM = `You are the Marketing Agent for Bareter (UAE/GCC barter marketplace). Revise an existing draft social post using the founder's hint.
+
+Constraints:
+- Keep the same hard limits as the original draft: 220 characters total, hook + value prop + CTA + 3 hashtags on a final line.
+- Preserve the original's intent unless the hint explicitly contradicts it.
+- At least one hashtag must be UAE/GCC-specific (e.g. #UAEBusiness, #DubaiSME, #GCCBarter).
+- No emoji at the very start (LinkedIn-friendly).
+- Output ONLY the revised post text. No commentary, no quotes, no labels.`;
+
+/**
+ * Re-prompt the LLM with the parked draft + the founder's hint and
+ * return the revised post body. Pulled out so it's easy to mock in
+ * tests (we can vi.spyOn(marketingAgent, "tweakPostDraft")).
+ */
+export async function tweakPostDraft(
+  topic: string,
+  originalDraft: string,
+  hint: string,
+): Promise<string> {
+  const memoryBlock = await buildAgentContext("marketing");
+  const systemContent = memoryBlock
+    ? `${memoryBlock}\n\n${TWEAK_POST_SYSTEM}`
+    : TWEAK_POST_SYSTEM;
+  const userContent = [
+    `Topic: ${topic.slice(0, 200)}`,
+    "",
+    "Original draft:",
+    originalDraft,
+    "",
+    `Founder's hint: ${hint.slice(0, 400)}`,
+  ].join("\n");
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemContent },
+    { role: "user", content: userContent },
+  ];
+  const { content } = await chatCompletion(messages, {
+    agentName: AGENT,
+    command: "tweak_post",
+    inputPreview: `topic=${topic.slice(0, 80)} hint=${hint.slice(0, 80)}`,
+    model: DEFAULT_MODEL,
+    temperature: 0.7,
+    maxTokens: 200,
+  });
+  return content.trim();
+}
+
+/**
+ * Handle the founder's `tweak <hint>` reply — re-prompts the LLM with
+ * the original draft + hint, then re-parks the new version. Returns a
+ * friendly hint when no draft is parked or when the LLM call fails
+ * (e.g. budget gate triggered).
+ */
+export async function handleConfirmPublishTweak(
+  rawText: string,
+  senderId?: string,
+): Promise<string> {
+  const trimmed = (rawText ?? "").trim();
+  const match = trimmed.match(TWEAK_COMMAND_RE);
+  // Same defensive parse as `edit`: bare `tweak` (no hint) must NOT
+  // hit the LLM — that would burn budget on a hint of literally
+  // "tweak", which produces garbage and costs money.
+  const hint = (match?.[1] ?? "").trim();
+  if (!hint) {
+    return "Usage: `tweak <hint>` — re-roll the parked draft using your hint. Example: `tweak make it more urgent and add a discount angle`";
+  }
+  const draft = await getPendingPublishDraft(senderId);
+  if (!draft) {
+    return [
+      "No draft is waiting to tweak.",
+      `Drafts expire after ${publishConfirmTimeoutMin()} min — start a new one with \`publish post <topic>\`.`,
+    ].join("\n");
+  }
+  let revised: string;
+  try {
+    revised = await tweakPostDraft(draft.topic, draft.postBody, hint);
+  } catch (err) {
+    console.error("[companyOs.marketing] tweakPostDraft failed:", err);
+    return "Tweak failed (likely the AI budget gate). Try `costs` to see remaining budget. Your previous draft is still parked.";
+  }
+  if (!revised) {
+    return "I couldn't generate a tweak — your previous draft is still parked. Try a more specific hint.";
+  }
+  let updated: PendingPublishDraft;
+  try {
+    updated = await storePendingPublishDraft(senderId, draft.topic, revised);
+  } catch (err) {
+    console.error("[companyOs.marketing] storePendingPublishDraft (tweak) failed:", err);
+    return [
+      "📝 *Tweaked draft* (couldn't save the confirmation slot — copy/paste manually):",
+      "",
+      revised,
+    ].join("\n");
+  }
+  const channels = getConfiguredChannels();
+  const channelLine =
+    channels.length > 0
+      ? `Will publish to: ${channels.join(", ")}.`
+      : "No publisher configured yet — `send` will draft a copy-paste reply only.";
+  return [
+    `🔁 *Tweaked draft for "${draft.topic}"* — review again:`,
+    "",
+    updated.postBody,
+    "",
+    `Reply *send* within ${publishConfirmTimeoutMin()} min to publish, *skip* to discard, or *edit <new body>* / *tweak <hint>* to keep iterating.`,
+    channelLine,
+  ].join("\n");
 }
 
 /**

@@ -261,10 +261,13 @@ import {
   handlePublishPostCommand,
   handleConfirmPublishSend,
   handleConfirmPublishSkip,
+  handleConfirmPublishEdit,
+  handleConfirmPublishTweak,
   storePendingPublishDraft,
   getPendingPublishDraft,
   runMetaCampaignSync,
 } from "../server/companyOs/marketingAgent";
+import { chatCompletion as mockedChatCompletion } from "../server/agents/llm";
 import { createCompanyOsRouter } from "../server/companyOs/router";
 
 function buildApp() {
@@ -1083,5 +1086,403 @@ describe("Task #86 — help text mentions confirmation", () => {
     const reply = hoisted.sendCalls[0]?.body ?? "";
     expect(reply).toContain("`send`");
     expect(reply).toContain("`skip`");
+  });
+});
+
+// ===========================================================================
+// Task #114 — `edit` / `tweak` while a draft is parked.
+// ===========================================================================
+describe("Task #114 — publish draft edit + tweak commands", () => {
+  beforeEach(() => {
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "true";
+  });
+
+  it("`edit <new body>` replaces the parked draft and re-prompts the founder", async () => {
+    // Pre-seed the parked draft for this founder.
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original hook\nOriginal value\nOriginal CTA\n#barter #cashlesstrade #UAEBusiness",
+    );
+    // recallByKey for the lookup inside handleConfirmPublishEdit.
+    dbState.selectQueue.push([
+      {
+        id: "mem-edit-1",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const newBody =
+      "Reworked Hook\nReworked value prop\nReworked CTA\n#barter #cashlesstrade #DubaiSME";
+    const out = await handleConfirmPublishEdit(`edit ${newBody}`);
+    expect(out).toContain('Updated draft for "Eid barter offers"');
+    expect(out).toContain("Reworked Hook");
+    expect(out).toContain("#DubaiSME");
+    // Re-prompt mentions all four follow-up commands.
+    expect(out).toMatch(/\*send\*/);
+    expect(out).toMatch(/\*skip\*/);
+    expect(out).toMatch(/edit <new body>/);
+    expect(out).toMatch(/tweak <hint>/);
+    // No publisher fetch happened — edit is publish-free.
+    expect(fetchState.calls.some((c) => c.url.includes("buffer"))).toBe(false);
+  });
+
+  it("`edit` with no parked draft returns a friendly hint and does not crash", async () => {
+    // No selectQueue entry → recallByKey returns [] → null draft.
+    const out = await handleConfirmPublishEdit("edit some new body text");
+    expect(out).toContain("No draft is waiting");
+    expect(out).toContain("publish post");
+  });
+
+  it("`edit` with no body after the keyword returns the usage hint", async () => {
+    const out = await handleConfirmPublishEdit("edit ");
+    expect(out).toContain("Usage:");
+    expect(out).toContain("edit <new body>");
+  });
+
+  it("bare `edit` (no whitespace, no body) returns usage even when a draft is parked", async () => {
+    // Pre-park a draft so we can prove the handler doesn't overwrite
+    // it with the literal string "edit". This is the regression the
+    // architect flagged.
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original hook\nOriginal value\nOriginal CTA\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-bare-edit",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const out = await handleConfirmPublishEdit("edit");
+    expect(out).toContain("Usage:");
+    expect(out).toContain("edit <new body>");
+    // Crucially: the response must NOT confirm an update; the parked
+    // draft must remain untouched (verified by the absence of the
+    // confirmation envelope).
+    expect(out).not.toContain("Updated draft");
+  });
+
+  it("multi-line `edit\\nbody` routes to the edit handler (not the free-form LLM)", async () => {
+    vi.mocked(mockedChatCompletion).mockClear();
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "old\nold\nold\n#a #b #c",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-multiline-edit",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "edit\nLine one of the body\nLine two\n#UAEBusiness #DubaiSME #GCCBarter",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Updated draft");
+    expect(reply).toContain("Line one of the body");
+    // Critically: the LLM must NOT have been called — `edit` is free.
+    expect(vi.mocked(mockedChatCompletion)).not.toHaveBeenCalled();
+  });
+
+  it("`edit` reports a clear failure (and keeps the old draft) when the persist call fails", async () => {
+    // Park a draft so the missing-draft branch doesn't short-circuit.
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original\nOriginal\nOriginal\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-edit-fail",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    // Trigger the persist-failure path by sending a payload that
+    // exceeds the 4KB memory cap — `remember()` returns
+    // `{ ok: false }` and `storePendingPublishDraft` now throws.
+    const oversized = "X".repeat(5000);
+    const out = await handleConfirmPublishEdit(`edit ${oversized}`);
+    expect(out).toContain("Couldn't save your edit");
+    expect(out).toContain("original draft is still parked");
+    // The misleading success envelope must not be present.
+    expect(out).not.toContain("Updated draft");
+  });
+
+  it("`edit` preserves the founder's exact capitalisation, punctuation and hashtags", async () => {
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "old\nold\nold\n#a #b #c",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-edit-case",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const out = await handleConfirmPublishEdit(
+      "edit RAMADAN Special: 30% MORE deals?\nLine two!\n#UAEBusiness #DubaiSME #GCCBarter",
+    );
+    expect(out).toContain("RAMADAN Special: 30% MORE deals?");
+    expect(out).toContain("Line two!");
+    expect(out).toContain("#UAEBusiness");
+  });
+
+  it("`tweak <hint>` re-prompts the LLM and re-parks the revised draft", async () => {
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original hook\nOriginal value\nOriginal CTA\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-tweak-1",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    // Override the canned LLM stub for this single call so we can
+    // verify the revised body actually reaches the founder.
+    vi.mocked(mockedChatCompletion).mockResolvedValueOnce({
+      content:
+        "Urgent hook!\nValue prop with discount\nClaim before Eid\n#UAEBusiness #DubaiSME #GCCBarter",
+      tokensUsed: 42,
+    });
+    const out = await handleConfirmPublishTweak(
+      "tweak make it more urgent and add a discount angle",
+    );
+    expect(out).toContain('Tweaked draft for "Eid barter offers"');
+    expect(out).toContain("Urgent hook!");
+    expect(out).toContain("#UAEBusiness");
+    expect(out).toMatch(/\*send\*/);
+    expect(out).toMatch(/edit <new body>/);
+    // The LLM was called for the tweak.
+    expect(vi.mocked(mockedChatCompletion)).toHaveBeenCalled();
+    // No publish happened.
+    expect(fetchState.calls.some((c) => c.url.includes("buffer"))).toBe(false);
+  });
+
+  it("`tweak` with no parked draft returns a friendly hint and skips the LLM", async () => {
+    vi.mocked(mockedChatCompletion).mockClear();
+    const out = await handleConfirmPublishTweak("tweak punchier hook please");
+    expect(out).toContain("No draft is waiting");
+    expect(out).toContain("publish post");
+    // Crucially: the LLM was NOT called when there's nothing to tweak.
+    expect(vi.mocked(mockedChatCompletion)).not.toHaveBeenCalled();
+  });
+
+  it("`tweak` with no hint after the keyword returns the usage hint", async () => {
+    vi.mocked(mockedChatCompletion).mockClear();
+    const out = await handleConfirmPublishTweak("tweak ");
+    expect(out).toContain("Usage:");
+    expect(out).toContain("tweak <hint>");
+    expect(vi.mocked(mockedChatCompletion)).not.toHaveBeenCalled();
+  });
+
+  it("bare `tweak` (no whitespace, no hint) returns usage and does NOT call the LLM", async () => {
+    // Park a draft so the missing-draft branch can't be the reason
+    // we skipped the LLM. This is the architect's regression: bare
+    // `tweak` previously called the LLM with hint = "tweak", burning
+    // budget on a no-op.
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original\nOriginal\nOriginal\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-bare-tweak",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    vi.mocked(mockedChatCompletion).mockClear();
+    const out = await handleConfirmPublishTweak("tweak");
+    expect(out).toContain("Usage:");
+    expect(out).toContain("tweak <hint>");
+    expect(vi.mocked(mockedChatCompletion)).not.toHaveBeenCalled();
+  });
+
+  it("multi-line `tweak\\nhint` routes to the tweak handler (not the free-form LLM)", async () => {
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original\nOriginal\nOriginal\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-multiline-tweak",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    vi.mocked(mockedChatCompletion).mockResolvedValueOnce({
+      content:
+        "Sharper hook!\nValue with proof\nClaim today\n#UAEBusiness #DubaiSME #GCCBarter",
+      tokensUsed: 31,
+    });
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "tweak\nmake the hook punchier\nand add a stat",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Tweaked draft");
+    expect(reply).toContain("Sharper hook!");
+    // The LLM was called exactly once for the tweak — the free-form
+    // Manager handler must not have been used.
+    expect(vi.mocked(mockedChatCompletion)).toHaveBeenCalledTimes(1);
+  });
+
+  it("`tweak` falls back to a friendly error when the LLM call fails (e.g. budget gate)", async () => {
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "Original hook\nOriginal value\nOriginal CTA\n#barter #cashlesstrade #UAEBusiness",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-tweak-fail",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    vi.mocked(mockedChatCompletion).mockRejectedValueOnce(
+      new Error("budget exceeded"),
+    );
+    const out = await handleConfirmPublishTweak("tweak shorter please");
+    expect(out.toLowerCase()).toContain("tweak failed");
+    expect(out).toContain("costs");
+    // Original draft remains parked (we didn't overwrite it).
+    expect(out).toContain("previous draft is still parked");
+  });
+});
+
+// `help` should also advertise the Task #114 commands so founders can discover them.
+describe("Task #114 — help text mentions edit + tweak", () => {
+  it("`help` lists `edit` and `tweak`", async () => {
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(app, "help");
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("edit <new body>");
+    expect(reply).toContain("tweak <hint>");
+  });
+});
+
+// End-to-end through the WhatsApp webhook: send `edit ...` and verify the
+// reply gets dispatched (not just the direct handler call).
+describe("Task #114 — webhook routes edit/tweak to the right handlers", () => {
+  beforeEach(() => {
+    process.env.MARKETING_PUBLISH_REQUIRE_CONFIRMATION = "true";
+  });
+
+  it("webhook `edit <body>` from the founder updates the parked draft", async () => {
+    const stored = await storePendingPublishDraft(
+      undefined,
+      "Eid barter offers",
+      "old\nold\nold\n#a #b #c",
+    );
+    dbState.selectQueue.push([
+      {
+        id: "mem-wh-edit",
+        agentName: "marketingAgent",
+        memoryType: "pending_publish",
+        key: "+971500000000",
+        value: stored,
+        confidence: "1.000",
+        usageCount: 0,
+        lastUsedAt: null,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+    ]);
+    const app = buildApp();
+    const { httpRes, sendPromise } = await postWebhook(
+      app,
+      "edit Brand new body line\nSecond line\n#UAEBusiness #DubaiSME #GCCBarter",
+    );
+    expect(httpRes.status).toBe(200);
+    await sendPromise;
+    const reply = hoisted.sendCalls[0]?.body ?? "";
+    expect(reply).toContain("Updated draft");
+    expect(reply).toContain("Brand new body line");
   });
 });
