@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useSearch } from "wouter";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
+import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -460,11 +461,11 @@ export function BrowsePage() {
                 <Crown className="h-5 w-5 text-bareter-gold" />
                 <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-featured-title">Featured Listings</h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-featured">
                 {featuredListings.slice(0, 3).map((listing) => (
                   <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                 ))}
-              </div>
+              </StaggeredReveal>
             </section>
           )}
 
@@ -474,7 +475,7 @@ export function BrowsePage() {
                 <TrendingUp className="h-5 w-5 text-primary" />
                 <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-trending-title">Trending Posts</h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-trending">
                 {trendingPosts.slice(0, 6).map((post) => (
                   <Link key={post.id} href={`/feed`}>
                     <Card className="hover-elevate cursor-pointer overflow-hidden" data-testid={`card-trending-${post.id}`}>
@@ -505,7 +506,7 @@ export function BrowsePage() {
                     </Card>
                   </Link>
                 ))}
-              </div>
+              </StaggeredReveal>
             </section>
           )}
 
@@ -598,11 +599,11 @@ export function BrowsePage() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-latest">
                 {(listings || []).slice(0, 6).map((listing) => (
                   <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                 ))}
-              </div>
+              </StaggeredReveal>
             )}
           </section>
         </div>
@@ -675,11 +676,11 @@ export function BrowsePage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-results">
                   {sortedListings.map((listing) => (
                     <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                   ))}
-                </div>
+                </StaggeredReveal>
               )}
             </div>
           </div>

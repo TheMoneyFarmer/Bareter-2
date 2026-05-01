@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link } from "wouter";
 import { MapPin, ShieldCheck, Crown, Lock, Heart } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -34,12 +34,13 @@ const HIGH_VALUE_THRESHOLD_AED = 50000;
 interface ListingCardProps {
   listing: ListingWithUser;
   className?: string;
+  style?: CSSProperties;
   testId?: string;
   isWishlisted?: boolean;
   onWishlistToggle?: (listingId: string) => void;
 }
 
-export function ListingCard({ listing, className = "", testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
+export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const cover = listing.images?.[0] || null;
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
@@ -61,6 +62,7 @@ export function ListingCard({ listing, className = "", testId, isWishlisted, onW
     <Link
       href={`/listings/${listing.id}`}
       className={`group block ${className}`}
+      style={style}
       data-testid={testId || `card-listing-${listing.id}`}
     >
       <article className="bareter-card-hover bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card overflow-hidden h-full flex flex-col">

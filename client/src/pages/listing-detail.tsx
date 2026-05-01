@@ -645,7 +645,7 @@ export function ListingDetailPage() {
                 {user ? (
                   <Button
                     variant="bareter"
-                    className="w-full h-[52px] gap-2 text-base"
+                    className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
                     onClick={() => setProposeOpen(true)}
                     data-testid="button-propose-trade-sticky"
                   >

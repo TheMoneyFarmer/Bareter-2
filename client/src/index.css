@@ -448,3 +448,228 @@
     .bareter-img-blur { animation: none !important; transition: none !important; }
   }
 }
+
+/* === Step 13 — Ambient animations ======================================== */
+@layer utilities {
+
+  /* ---------------------------------------------------------------------- */
+  /* Deal ticker (Animation 3)                                              */
+  /* ---------------------------------------------------------------------- */
+  .bareter-ticker {
+    height: 44px;
+    overflow: hidden;
+    background-color: var(--bareter-navy-deep);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .bareter-ticker-track {
+    display: flex;
+    width: max-content;
+    align-items: center;
+    height: 100%;
+    animation: bareter-ticker-scroll 35s linear infinite;
+  }
+  .bareter-ticker:hover .bareter-ticker-track {
+    animation-play-state: paused;
+  }
+  .bareter-ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 28px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.78);
+    white-space: nowrap;
+  }
+  .bareter-ticker-item .ticker-value {
+    color: var(--bareter-teal-light);
+    font-weight: 600;
+  }
+  .bareter-ticker-sep {
+    color: var(--bareter-teal);
+    opacity: 0.4;
+    padding: 0 4px;
+  }
+  @keyframes bareter-ticker-scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Card stagger reveal (Animation 4)                                      */
+  /* ---------------------------------------------------------------------- */
+  .bareter-stagger-card {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  .is-in-view .bareter-stagger-card,
+  .bareter-stagger-card.is-revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Hero floating cards (Animation 1)                                      */
+  /* ---------------------------------------------------------------------- */
+  .bareter-floats {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .bareter-float {
+    position: absolute;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--bareter-navy);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
+    backdrop-filter: blur(2px);
+    opacity: 0.35;
+    filter: blur(1px);
+    transition: transform 0.1s ease-out;
+    min-width: 180px;
+    max-width: 220px;
+  }
+  .bareter-float-inner {
+    will-change: transform;
+  }
+  .bareter-float .float-emoji { font-size: 18px; line-height: 1; }
+  .bareter-float .float-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bareter-navy);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bareter-float .float-meta {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--bareter-teal);
+  }
+
+  @keyframes bareter-float-1 {
+    0%   { transform: translate(0px, 0px) rotate(-2deg); }
+    50%  { transform: translate(14px, -20px) rotate(1deg); }
+    100% { transform: translate(-8px, 12px) rotate(-1deg); }
+  }
+  @keyframes bareter-float-2 {
+    0%   { transform: translate(0px, 0px) rotate(2deg); }
+    50%  { transform: translate(-18px, 10px) rotate(-1deg); }
+    100% { transform: translate(6px, -14px) rotate(1deg); }
+  }
+  @keyframes bareter-float-3 {
+    0%   { transform: translate(0px, 0px) rotate(-1deg); }
+    50%  { transform: translate(10px, -22px) rotate(2deg); }
+    100% { transform: translate(-6px, 8px) rotate(0deg); }
+  }
+  @keyframes bareter-float-4 {
+    0%   { transform: translate(0px, 0px) rotate(1deg); }
+    50%  { transform: translate(-16px, -14px) rotate(-2deg); }
+    100% { transform: translate(8px, 14px) rotate(1deg); }
+  }
+  @keyframes bareter-float-5 {
+    0%   { transform: translate(0px, 0px) rotate(-2deg); }
+    50%  { transform: translate(20px, 8px) rotate(0deg); }
+    100% { transform: translate(-4px, -10px) rotate(2deg); }
+  }
+  @keyframes bareter-float-6 {
+    0%   { transform: translate(0px, 0px) rotate(2deg); }
+    50%  { transform: translate(-12px, -18px) rotate(-1deg); }
+    100% { transform: translate(8px, 10px) rotate(1deg); }
+  }
+  .float-1 { animation: bareter-float-1 18s ease-in-out infinite alternate; }
+  .float-2 { animation: bareter-float-2 22s ease-in-out infinite alternate; }
+  .float-3 { animation: bareter-float-3 20s ease-in-out infinite alternate; }
+  .float-4 { animation: bareter-float-4 25s ease-in-out infinite alternate; }
+  .float-5 { animation: bareter-float-5 19s ease-in-out infinite alternate; }
+  .float-6 { animation: bareter-float-6 23s ease-in-out infinite alternate; }
+
+  .bareter-floats.is-paused .bareter-float-inner {
+    animation-play-state: paused;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Category-pill clip-path fill (Micro)                                   */
+  /* ---------------------------------------------------------------------- */
+  .bareter-pill-fill {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    transition: transform 0.2s ease;
+  }
+  .bareter-pill-fill::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--bareter-teal);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s ease;
+    z-index: -1;
+  }
+  [dir="rtl"] .bareter-pill-fill::before { transform-origin: right; }
+  .bareter-pill-fill:hover {
+    transform: scale(1.04);
+    border-color: var(--bareter-teal) !important;
+  }
+  .bareter-pill-fill:hover::before {
+    transform: scaleX(1);
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Propose-a-Trade two-pulse (Micro) — transform/opacity only via pseudo  */
+  /* ---------------------------------------------------------------------- */
+  .bareter-cta-pulse {
+    position: relative;
+    isolation: isolate;
+  }
+  .bareter-cta-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid var(--bareter-teal);
+    opacity: 0;
+    transform: scale(1);
+    pointer-events: none;
+    z-index: -1;
+    animation: bareter-cta-pulse 1.2s ease-out 2;
+  }
+  @keyframes bareter-cta-pulse {
+    0%   { opacity: 0.55; transform: scale(1); }
+    100% { opacity: 0;    transform: scale(1.18); }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Step 13 reduced-motion umbrella                                        */
+  /* ---------------------------------------------------------------------- */
+  @media (prefers-reduced-motion: reduce) {
+    .bareter-ticker-track,
+    .bareter-float-inner,
+    .bareter-cta-pulse::after {
+      animation: none !important;
+    }
+    .bareter-cta-pulse::after { opacity: 0 !important; }
+    .bareter-stagger-card {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+    .bareter-pill-fill,
+    .bareter-pill-fill::before {
+      transition: none !important;
+    }
+    .bareter-header-transition {
+      transition: none !important;
+    }
+  }
+}

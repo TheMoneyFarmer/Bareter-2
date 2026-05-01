@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -57,7 +57,15 @@ export function Header() {
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [scrolled, setScrolled] = useState(false);
   const activeLocation = useActiveLocation();
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const updateLocationMutation = useMutation({
     mutationFn: async ({ country, city }: { country: string; city: string }) => {
@@ -107,9 +115,19 @@ export function Header() {
       {/* UAE accent strip — red · white · green */}
       <div className="uae-accent-strip" aria-hidden="true" />
 
-      {/* Main navy bar — 64px */}
-      <div className="bg-bareter-navy text-white shadow-[0_2px_8px_rgba(0,0,0,0.15)]">
-        <div className="container mx-auto max-w-7xl h-16 px-4 flex items-center gap-3 sm:gap-6">
+      {/* Main navy bar — 64px (shrinks to 56px on scroll) */}
+      <div
+        className={`bg-bareter-navy text-white ${
+          scrolled
+            ? "supports-[backdrop-filter]:bg-bareter-navy/85 backdrop-blur-md shadow-[0_4px_16px_rgba(0,0,0,0.25)]"
+            : "shadow-[0_2px_8px_rgba(0,0,0,0.15)]"
+        }`}
+      >
+        <div
+          className={`bareter-header-transition container mx-auto max-w-7xl px-4 flex items-center gap-3 sm:gap-6 transition-[height] duration-200 ease-out ${
+            scrolled ? "h-14" : "h-16"
+          }`}
+        >
           {/* LEFT — logo */}
           <Link href="/" className="flex items-center flex-shrink-0" data-testid="link-home">
             <img

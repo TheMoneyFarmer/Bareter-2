@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { ListingCard, ListingCardSkeleton } from "@/components/ListingCard";
+import { DealTicker } from "@/components/DealTicker";
+import { HeroFloatingCards } from "@/components/HeroFloatingCards";
+import { StaggeredReveal } from "@/components/StaggeredReveal";
+import { useReveal } from "@/hooks/use-reveal";
+import { useCountUp } from "@/hooks/use-count-up";
 import type { ListingWithUser } from "@shared/schema";
 import {
   Search,
@@ -81,6 +86,7 @@ export function LandingPage() {
         className="relative isolate overflow-hidden bg-bareter-gradient bareter-noise"
         data-testid="section-hero"
       >
+        <HeroFloatingCards />
         <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
           <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
             <h1
@@ -142,7 +148,7 @@ export function LandingPage() {
                   <Link key={p.label} href={p.href}>
                     <button
                       type="button"
-                      className="px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full hover:bg-bareter-teal hover:border-bareter-teal transition-colors active:scale-[0.98] whitespace-nowrap"
+                      className="bareter-pill-fill px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full whitespace-nowrap"
                       data-testid={`pill-hero-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       <span className="me-1.5">{p.emoji}</span>
@@ -156,28 +162,11 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ============================ DEAL TICKER ============================ */}
+      <DealTicker />
+
       {/* ============================ TRUST BAR ============================ */}
-      <section
-        className="bg-white dark:bg-card border-y border-bareter-border dark:border-border"
-        data-testid="section-trust"
-      >
-        <div className="container mx-auto max-w-7xl px-4 py-7">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 sm:gap-y-0 divide-y sm:divide-y-0 sm:divide-x divide-bareter-border dark:divide-border">
-            {[
-              { icon: ShieldCheck, label: "Verified Users",    desc: "KYC + KYB checks" },
-              { icon: Cpu,         label: "AI-Matched Deals",  desc: "Smart trade engine" },
-              { icon: FileSignature, label: "Auto Contracts",   desc: "E-signed agreements" },
-              { icon: CheckCircle2, label: "🇦🇪 UAE Compliant",  desc: "VAT-ready receipts" },
-            ].map((t, i) => (
-              <div key={i} className="flex flex-col items-center text-center px-3 sm:px-6 py-1">
-                <t.icon className="h-7 w-7 text-bareter-teal mb-2" />
-                <p className="text-card-title text-bareter-navy dark:text-foreground">{t.label}</p>
-                <p className="text-caption mt-0.5">{t.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <TrustBar />
 
       {/* ============================ FEATURED LISTINGS ============================ */}
       <section
@@ -220,11 +209,14 @@ export function LandingPage() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StaggeredReveal
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              testId="grid-featured-listings"
+            >
               {featured.map((l) => (
                 <ListingCard key={l.id} listing={l} />
               ))}
-            </div>
+            </StaggeredReveal>
           )}
         </div>
       </section>
@@ -381,6 +373,66 @@ export function LandingPage() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+/* ============================ TRUST BAR (count-up) ============================ */
+const TRUST_STATS: {
+  icon: typeof ShieldCheck;
+  label: string;
+  desc: string;
+  countTo?: number;
+  suffix?: string;
+}[] = [
+  { icon: ShieldCheck,   label: "Verified Users",    desc: "KYC + KYB checks",      countTo: 500, suffix: "+" },
+  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart trade engine",    countTo: 1200, suffix: "+" },
+  { icon: FileSignature, label: "Auto Contracts",    desc: "E-signed agreements" },
+  { icon: CheckCircle2,  label: "🇦🇪 UAE Compliant", desc: "VAT-ready receipts"   },
+];
+
+function TrustBar() {
+  const { ref, isVisible } = useReveal<HTMLElement>();
+  return (
+    <section
+      ref={ref}
+      className="bg-white dark:bg-card border-y border-bareter-border dark:border-border"
+      data-testid="section-trust"
+    >
+      <div className="container mx-auto max-w-7xl px-4 py-7">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 sm:gap-y-0 divide-y sm:divide-y-0 sm:divide-x divide-bareter-border dark:divide-border">
+          {TRUST_STATS.map((t, i) => (
+            <TrustStat key={i} stat={t} active={isVisible} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrustStat({
+  stat,
+  active,
+}: {
+  stat: (typeof TRUST_STATS)[number];
+  active: boolean;
+}) {
+  const value = useCountUp(stat.countTo ?? 0, 1500, active);
+  return (
+    <div className="flex flex-col items-center text-center px-3 sm:px-6 py-1">
+      <stat.icon className="h-7 w-7 text-bareter-teal mb-2" />
+      {stat.countTo ? (
+        <p
+          className="text-card-title text-bareter-navy dark:text-foreground tabular-nums"
+          data-testid={`stat-trust-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
+        >
+          {value.toLocaleString()}
+          {stat.suffix ?? ""} {stat.label}
+        </p>
+      ) : (
+        <p className="text-card-title text-bareter-navy dark:text-foreground">{stat.label}</p>
+      )}
+      <p className="text-caption mt-0.5">{stat.desc}</p>
     </div>
   );
 }
