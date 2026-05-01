@@ -462,7 +462,7 @@ export function BrowsePage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {featuredListings.slice(0, 3).map((listing) => (
-                  <BrandListingCard key={listing.id} listing={listing} />
+                  <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                 ))}
               </div>
             </section>
@@ -600,7 +600,7 @@ export function BrowsePage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(listings || []).slice(0, 6).map((listing) => (
-                  <BrandListingCard key={listing.id} listing={listing} />
+                  <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                 ))}
               </div>
             )}
@@ -677,7 +677,7 @@ export function BrowsePage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {sortedListings.map((listing) => (
-                    <BrandListingCard key={listing.id} listing={listing} />
+                    <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
                   ))}
                 </div>
               )}

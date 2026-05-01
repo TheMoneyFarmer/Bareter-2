@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { Link } from "wouter";
-import { Star, MapPin, ShieldCheck, Crown, Lock } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { ListingWithUser } from "@shared/schema";
 import { isUserVerified } from "@/components/verified-badge";
@@ -35,9 +35,11 @@ interface ListingCardProps {
   listing: ListingWithUser;
   className?: string;
   testId?: string;
+  isWishlisted?: boolean;
+  onWishlistToggle?: (listingId: string) => void;
 }
 
-export function ListingCard({ listing, className = "", testId }: ListingCardProps) {
+export function ListingCard({ listing, className = "", testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const cover = listing.images?.[0] || null;
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
@@ -100,6 +102,24 @@ export function ListingCard({ listing, className = "", testId }: ListingCardProp
               <Lock className="h-3 w-3" />
               Enhanced verification
             </span>
+          )}
+
+          {onWishlistToggle && (
+            <button
+              type="button"
+              onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onWishlistToggle(listing.id);
+              }}
+              className="absolute bottom-3 end-3 h-9 w-9 rounded-full bg-white/90 dark:bg-bareter-navy-deep/80 backdrop-blur-sm inline-flex items-center justify-center shadow-sm hover:bg-white dark:hover:bg-bareter-navy-deep transition-colors"
+              data-testid={`button-wishlist-${listing.id}`}
+              aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              <Heart
+                className={`h-4 w-4 transition-colors ${isWishlisted ? "fill-bareter-error text-bareter-error" : "text-bareter-navy dark:text-white"}`}
+              />
+            </button>
           )}
         </div>
 
