@@ -43,7 +43,7 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
-  --background: 0 0% 100%;
+  --background: 220 17% 98%;
   --foreground: 222 84% 5%;
   --border: 214 32% 91%;
   --card: 0 0% 100%;
@@ -130,7 +130,7 @@
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 0 0% 0%;
+  --background: 213 38% 8%;
   --foreground: 200 7% 91%;
   --border: 210 5% 15%;
   --card: 228 10% 10%;

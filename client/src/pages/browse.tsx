@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useSearch } from "wouter";
+import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -709,7 +710,7 @@ export function BrowsePage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {featuredListings.slice(0, 3).map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <BrandListingCard key={listing.id} listing={listing} />
                 ))}
               </div>
             </section>
@@ -847,7 +848,7 @@ export function BrowsePage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(listings || []).slice(0, 6).map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <BrandListingCard key={listing.id} listing={listing} />
                 ))}
               </div>
             )}
@@ -924,7 +925,7 @@ export function BrowsePage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {sortedListings.map((listing) => (
-                    <ListingCard key={listing.id} listing={listing} />
+                    <BrandListingCard key={listing.id} listing={listing} />
                   ))}
                 </div>
               )}

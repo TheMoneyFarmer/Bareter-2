@@ -30,6 +30,7 @@ import { FounderBadge } from "@/components/founder-badge";
 import { SiInstagram, SiLinkedin, SiX } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
 import type { Listing, Rating, User } from "@shared/schema";
+import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import type { ExchangeItem } from "@shared/schema";
 
 interface PublicUserData extends Omit<User, "password"> {
@@ -354,40 +355,15 @@ export function UserProfilePage() {
               </CardHeader>
               <CardContent>
                 <div className="grid sm:grid-cols-2 gap-4">
-                  {profileData.listings.map((listing) => (
-                    <Link key={listing.id} href={`/listings/${listing.id}`}>
-                      <Card className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid={`card-user-listing-${listing.id}`}>
-                        <CardContent className="p-0">
-                          <div className="relative h-32 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
-                            {listing.type === "offer" ? (
-                              <Package className="h-10 w-10 text-primary/30" />
-                            ) : (
-                              <ShoppingCart className="h-10 w-10 text-primary/30" />
-                            )}
-                            <Badge
-                              variant={listing.type === "offer" ? "default" : "secondary"}
-                              className="absolute top-2 left-2"
-                            >
-                              {listing.type === "offer" ? "Offer" : "Request"}
-                            </Badge>
-                          </div>
-                          <div className="p-3">
-                            <h4 className="font-medium text-sm line-clamp-1 mb-1">{listing.title}</h4>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{listing.description}</p>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-bold text-primary">
-                                AED {parseFloat(listing.retailValue as string).toLocaleString()}
-                              </span>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Eye className="h-3 w-3" />
-                                {listing.viewCount || 0}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
+                  {profileData.listings.map((listing) => {
+                    const userForCard: User = { ...profileData, password: "" };
+                    return (
+                      <BrandListingCard
+                        key={listing.id}
+                        listing={{ ...listing, user: userForCard }}
+                      />
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { Star, MapPin, ShieldCheck, Crown, Lock } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { ListingWithUser } from "@shared/schema";
-import type { ExchangeItem } from "@shared/schema";
 import { isUserVerified } from "@/components/verified-badge";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
@@ -48,8 +47,8 @@ export function ListingCard({ listing, className = "", testId }: ListingCardProp
   const verified = isUserVerified(listing.user?.kycStatus, listing.user?.kybStatus);
 
   // Build the "Looking for" line from priority exchange items, falling back to wantedCategories
-  const exchangeItems = (listing as any).exchangeItems as ExchangeItem[] | undefined;
-  const wantedCategories = (listing as any).wantedCategories as string[] | undefined;
+  const exchangeItems = listing.exchangeItems ?? undefined;
+  const wantedCategories = listing.wantedCategories ?? undefined;
   const lookingFor =
     exchangeItems?.find((i) => i.isPriority)?.name ||
     exchangeItems?.[0]?.name ||
