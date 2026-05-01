@@ -160,7 +160,7 @@ export function ListingCard({ listing, className = "", testId }: ListingCardProp
   );
 }
 
-/* Skeleton variant — Step 11 polish, drop-in replacement for spinners */
+/* Skeleton variant — drop-in replacement for spinners */
 export function ListingCardSkeleton() {
   return (
     <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card overflow-hidden">

@@ -517,17 +517,15 @@ export function Header() {
                 <X className="h-4 w-4" />
               </button>
             </form>
-            {(user || true) && (
-              <button
-                type="button"
-                onClick={() => setLocationPickerOpen(true)}
-                className="mt-2 inline-flex items-center gap-1.5 text-xs text-white/80"
-                data-testid="button-mobile-location"
-              >
-                {activeLocation.worldwide ? <Globe className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
-                <span>{locationPillLabel}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setLocationPickerOpen(true)}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs text-white/80"
+              data-testid="button-mobile-location"
+            >
+              {activeLocation.worldwide ? <Globe className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+              <span>{locationPillLabel}</span>
+            </button>
           </div>
         )}
       </div>

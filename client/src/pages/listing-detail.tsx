@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -695,10 +694,6 @@ export function ListingDetailPage() {
 
           {!isOwnListing && user && (
             <Dialog open={proposeOpen} onOpenChange={setProposeOpen}>
-              <DialogTrigger asChild>
-                {/* Hidden duplicate trigger — main CTA lives in the sticky right card + mobile bottom bar */}
-                <button type="button" className="sr-only" data-testid="button-propose-trade-hidden" aria-hidden="true" tabIndex={-1}>Propose Trade</button>
-              </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle>Propose a Trade</DialogTitle>

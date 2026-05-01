@@ -383,12 +383,12 @@
     border-color: var(--bareter-teal);
   }
 
-  /* Button active scale — Step 11 polish */
+  /* Button active scale */
   .bareter-press:active {
     transform: scale(0.98);
   }
 
-  /* Skeleton shimmer — Step 11 polish */
+  /* Skeleton shimmer */
   .bareter-shimmer {
     position: relative;
     overflow: hidden;
@@ -420,7 +420,7 @@
     100% { transform: translateX(100%); }
   }
 
-  /* Blur-up image loader — Step 11 polish */
+  /* Blur-up image loader */
   .bareter-img-blur {
     filter: blur(8px);
     transform: scale(1.02);
@@ -431,7 +431,7 @@
     transform: scale(1);
   }
 
-  /* Route fade — 150ms — Step 11 polish */
+  /* Route fade — 150ms */
   .bareter-route-fade {
     animation: bareter-fade-in 0.15s ease both;
   }
