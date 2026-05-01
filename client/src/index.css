@@ -674,8 +674,16 @@
 
   /* ---------------------------------------------------------------------- */
   /* Step 13 reduced-motion umbrella                                        */
+  /* Global collapse: cap every animation/transition to one near-zero       */
+  /* iteration, then layer specific overrides for the new animation classes.*/
   /* ---------------------------------------------------------------------- */
   @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
     .bareter-ticker-track,
     .bareter-float-inner,
     .bareter-cta-pulse::after {
