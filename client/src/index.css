@@ -17,6 +17,27 @@
 
 /* LIGHT MODE */
 :root {
+  /* === Bareter brand tokens (literal hex — do not change) === */
+  --bareter-teal:        #1A7272;
+  --bareter-teal-light:  #22A0A0;
+  --bareter-teal-muted:  #E6F4F4;
+  --bareter-navy:        #1C2D4A;
+  --bareter-navy-deep:   #0F1923;
+  --bareter-gold:        #D4A843;
+  --bareter-white:       #FFFFFF;
+  --bareter-off-white:   #F7F9FC;
+  --bareter-border:      #E2E8F0;
+  --bareter-muted:       #64748B;
+  --bareter-dark:        #0F1923;
+  --bareter-gradient:    linear-gradient(135deg, #0F1923 0%, #1A3A3A 50%, #1A4A4A 100%);
+  --shadow-card:         0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  --shadow-hover:        0 4px 12px rgba(26,114,114,0.15), 0 8px 32px rgba(26,114,114,0.10);
+  --radius-card:         12px;
+  --radius-btn:          8px;
+  --radius-pill:         999px;
+  --bareter-uae-red:     #CE1126;
+  --bareter-uae-green:   #009A44;
+
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -8;
@@ -304,5 +325,126 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+}
+
+/* === Bareter typography system =========================================== */
+@layer utilities {
+  .text-hero       { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+  .text-section    { font-size: 1.5rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+  .text-card-title { font-size: 1rem; font-weight: 600; line-height: 1.4; }
+  .text-body       { font-size: 0.9375rem; font-weight: 400; line-height: 1.65; }
+  .text-caption    { font-size: 0.8125rem; font-weight: 400; color: var(--bareter-muted); }
+  .text-price      { font-size: 1.125rem; font-weight: 700; color: var(--bareter-teal); }
+  .text-btn        { font-size: 0.9375rem; font-weight: 500; }
+}
+
+/* === Bareter brand utilities ============================================ */
+@layer utilities {
+  .bg-bareter-gradient    { background: var(--bareter-gradient); }
+  .shadow-bareter-card    { box-shadow: var(--shadow-card); }
+  .shadow-bareter-hover   { box-shadow: var(--shadow-hover); }
+  .rounded-bareter-card   { border-radius: var(--radius-card); }
+  .rounded-bareter-btn    { border-radius: var(--radius-btn); }
+  .rounded-bareter-pill   { border-radius: var(--radius-pill); }
+
+  /* UAE accent strip — red · white · green, 3px tall */
+  .uae-accent-strip {
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(
+      to right,
+      var(--bareter-uae-red) 0%,
+      var(--bareter-uae-red) 33.333%,
+      #FFFFFF 33.333%,
+      #FFFFFF 66.666%,
+      var(--bareter-uae-green) 66.666%,
+      var(--bareter-uae-green) 100%
+    );
+  }
+
+  /* Subtle noise overlay for the hero gradient (3% opacity) */
+  .bareter-noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.55'/></svg>");
+  }
+
+  /* Card hover lift — used by ListingCard */
+  .bareter-card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .bareter-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--bareter-teal);
+  }
+
+  /* Button active scale — Step 11 polish */
+  .bareter-press:active {
+    transform: scale(0.98);
+  }
+
+  /* Skeleton shimmer — Step 11 polish */
+  .bareter-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--bareter-off-white);
+  }
+  .bareter-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.6) 50%,
+      rgba(255,255,255,0) 100%
+    );
+    animation: bareter-shimmer 1.4s infinite;
+  }
+  .dark .bareter-shimmer { background-color: rgba(255,255,255,0.04); }
+  .dark .bareter-shimmer::after {
+    background-image: linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.06) 50%,
+      rgba(255,255,255,0) 100%
+    );
+  }
+  @keyframes bareter-shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  /* Blur-up image loader — Step 11 polish */
+  .bareter-img-blur {
+    filter: blur(8px);
+    transform: scale(1.02);
+    transition: filter 0.4s ease, transform 0.4s ease;
+  }
+  .bareter-img-blur.is-loaded {
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  /* Route fade — 150ms — Step 11 polish */
+  .bareter-route-fade {
+    animation: bareter-fade-in 0.15s ease both;
+  }
+  @keyframes bareter-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Reduced motion respect */
+  @media (prefers-reduced-motion: reduce) {
+    .bareter-shimmer::after,
+    .bareter-route-fade,
+    .bareter-card-hover,
+    .bareter-img-blur { animation: none !important; transition: none !important; }
   }
 }

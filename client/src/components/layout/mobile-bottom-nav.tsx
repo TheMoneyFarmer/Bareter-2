@@ -4,13 +4,12 @@ import { useI18n } from "@/lib/i18n";
 import { useWaitlist } from "@/lib/waitlist";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Rss,
+  Home,
   Compass,
-  PlusSquare,
-  Handshake,
+  Plus,
+  MessageSquare,
   User,
   LogIn,
-  MessageSquare,
 } from "lucide-react";
 
 export function MobileBottomNav() {
@@ -26,70 +25,144 @@ export function MobileBottomNav() {
   });
   const inboxUnread = inboxData?.count || 0;
 
-  const isActive = (path: string) => location === path;
+  const isActive = (path: string) =>
+    location === path || (path !== "/" && location.startsWith(path));
 
-  const tabs = [
-    { href: "/feed", label: t("nav.feed"), icon: Rss, requiresAuth: false, id: "feed" },
-    { href: "/browse", label: t("nav.browse"), icon: Compass, requiresAuth: false, id: "browse" },
-    { href: "/create-post", label: t("nav.createPost"), icon: PlusSquare, requiresAuth: true, id: "create-post" },
-    { href: "/inbox", label: "Inbox", icon: MessageSquare, requiresAuth: true, id: "inbox", badge: inboxUnread },
-    { href: user ? "/profile" : "/login", label: user ? t("nav.profile") : t("nav.login"), icon: user ? User : LogIn, requiresAuth: false, id: user ? "profile" : "login" },
-  ];
-
-  const visibleTabs = tabs.filter((tab) => !tab.requiresAuth || user);
+  const homeHref = user ? "/feed" : "/";
+  const profileHref = user ? "/profile" : "/login";
+  const profileLabel = user ? t("nav.profile") : t("nav.login");
+  const loginIntercept = !user && waitlistMode.enabled;
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
+      className="fixed bottom-0 inset-x-0 z-50 md:hidden"
       data-testid="mobile-bottom-nav"
+      aria-label="Primary"
     >
-      <div className="flex items-center justify-around h-14 px-1 safe-area-bottom">
-        {visibleTabs.map((tab) => {
-          const active = isActive(tab.href);
-          const isLoginTab = tab.id === "login";
-          const intercept = isLoginTab && waitlistMode.enabled;
-          const inner = (
-            <>
+      <div className="relative bg-white dark:bg-card border-t border-bareter-border dark:border-border h-[60px] safe-area-bottom shadow-[0_-2px_8px_rgba(15,25,35,0.08)]">
+        <div className="grid grid-cols-5 h-full">
+          {/* Home */}
+          <Link
+            href={homeHref}
+            className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+              isActive(homeHref) || location === "/"
+                ? "text-bareter-teal"
+                : "text-bareter-muted dark:text-muted-foreground"
+            }`}
+            data-testid="mobile-tab-home"
+          >
+            <Home className="h-5 w-5" strokeWidth={isActive(homeHref) ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Home</span>
+          </Link>
+
+          {/* Browse */}
+          <Link
+            href="/browse"
+            className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+              isActive("/browse")
+                ? "text-bareter-teal"
+                : "text-bareter-muted dark:text-muted-foreground"
+            }`}
+            data-testid="mobile-tab-browse"
+          >
+            <Compass className="h-5 w-5" strokeWidth={isActive("/browse") ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Browse</span>
+          </Link>
+
+          {/* List (FAB placeholder slot — keeps grid balanced) */}
+          <div className="flex items-end justify-center" />
+
+          {/* Messages */}
+          {user ? (
+            <Link
+              href="/inbox"
+              className={`relative flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+                isActive("/inbox")
+                  ? "text-bareter-teal"
+                  : "text-bareter-muted dark:text-muted-foreground"
+              }`}
+              data-testid="mobile-tab-inbox"
+            >
               <div className="relative">
-                <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
-                {"badge" in tab && typeof tab.badge === "number" && tab.badge > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
-                    {tab.badge > 9 ? "9+" : tab.badge}
+                <MessageSquare
+                  className="h-5 w-5"
+                  strokeWidth={isActive("/inbox") ? 2.5 : 2}
+                />
+                {inboxUnread > 0 && (
+                  <span className="absolute -top-1.5 -end-1.5 bg-destructive text-destructive-foreground text-[9px] rounded-full min-w-[14px] h-[14px] flex items-center justify-center font-bold px-0.5">
+                    {inboxUnread > 9 ? "9+" : inboxUnread}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium leading-tight truncate">
-                {intercept ? "Join" : tab.label}
-              </span>
-            </>
-          );
-          const cls = `flex flex-col items-center justify-center gap-0.5 min-w-[3.5rem] py-1 px-2 ${
-            active ? "text-primary" : "text-muted-foreground"
-          }`;
-          if (intercept) {
-            return (
-              <button
-                key={tab.href}
-                type="button"
-                onClick={openWaitlist}
-                className={cls}
-                data-testid={`mobile-tab-${tab.id}`}
-              >
-                {inner}
-              </button>
-            );
-          }
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={cls}
-              data-testid={`mobile-tab-${tab.id}`}
-            >
-              {inner}
+              <span className="text-[10px] font-medium">Messages</span>
             </Link>
-          );
-        })}
+          ) : (
+            <div className="flex items-center justify-center text-bareter-muted/30 dark:text-muted-foreground/30">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+          )}
+
+          {/* Profile / Login */}
+          {loginIntercept ? (
+            <button
+              type="button"
+              onClick={openWaitlist}
+              className="flex flex-col items-center justify-center gap-0.5 min-h-[44px] text-bareter-muted dark:text-muted-foreground"
+              data-testid="mobile-tab-login"
+            >
+              <LogIn className="h-5 w-5" />
+              <span className="text-[10px] font-medium">Join</span>
+            </button>
+          ) : (
+            <Link
+              href={profileHref}
+              className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+                isActive(profileHref)
+                  ? "text-bareter-teal"
+                  : "text-bareter-muted dark:text-muted-foreground"
+              }`}
+              data-testid={user ? "mobile-tab-profile" : "mobile-tab-login"}
+            >
+              {user ? (
+                <User className="h-5 w-5" strokeWidth={isActive("/profile") ? 2.5 : 2} />
+              ) : (
+                <LogIn className="h-5 w-5" />
+              )}
+              <span className="text-[10px] font-medium">{profileLabel}</span>
+            </Link>
+          )}
+        </div>
+
+        {/* Elevated +List FAB — center, sits above the bar */}
+        {user ? (
+          <Link
+            href="/create-listing"
+            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            data-testid="mobile-tab-create-listing"
+            aria-label="List a trade"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.5} />
+          </Link>
+        ) : loginIntercept ? (
+          <button
+            type="button"
+            onClick={openWaitlist}
+            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            data-testid="mobile-tab-create-listing"
+            aria-label="Join the waitlist to list"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.5} />
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            data-testid="mobile-tab-create-listing"
+            aria-label="Sign in to list a trade"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.5} />
+          </Link>
+        )}
       </div>
     </nav>
   );

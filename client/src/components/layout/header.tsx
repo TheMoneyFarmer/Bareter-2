@@ -43,6 +43,7 @@ import {
   MessageSquare,
   Globe,
   MapPin,
+  X,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 
@@ -51,9 +52,11 @@ export function Header() {
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useI18n();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const activeLocation = useActiveLocation();
 
   const updateLocationMutation = useMutation({
@@ -74,9 +77,7 @@ export function Header() {
   const countryEntry = getCountryByCode(userCountry);
   const locationPillLabel = activeLocation.worldwide
     ? "Worldwide"
-    : userCity
-      ? `${userCity}, ${countryEntry?.name || userCountry}`
-      : countryEntry?.name || userCountry;
+    : userCity || countryEntry?.name || "Dubai";
 
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -91,409 +92,444 @@ export function Header() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
   const inboxUnread = inboxData?.count || 0;
 
-  const navItems = [
-    { href: "/feed", label: t("nav.browse"), icon: Search },
-    { href: "/create-post", label: t("nav.createPost"), icon: PenSquare },
-    { href: "/deals", label: t("nav.myDeals"), icon: Handshake },
-  ];
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    navigate(`/browse?q=${encodeURIComponent(q)}`);
+    setMobileSearchOpen(false);
+  };
 
   const isActive = (path: string) => location === path;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between gap-4 px-4 mx-auto max-w-7xl">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <Handshake className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">{t("app.name")}</span>
+    <header className="sticky top-0 z-50 w-full" data-testid="site-header">
+      {/* UAE accent strip — red · white · green */}
+      <div className="uae-accent-strip" aria-hidden="true" />
+
+      {/* Main navy bar — 64px */}
+      <div className="bg-bareter-navy text-white shadow-[0_2px_8px_rgba(0,0,0,0.15)]">
+        <div className="container mx-auto max-w-7xl h-16 px-4 flex items-center gap-3 sm:gap-6">
+          {/* LEFT — logo */}
+          <Link href="/" className="flex items-center flex-shrink-0" data-testid="link-home">
+            <img
+              src="/logo-full-white.png"
+              alt={t("app.name") || "Bareter"}
+              className="h-8 w-auto"
+            />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/feed">
-              <Button
-                variant={isActive("/feed") ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-2"
-                data-testid="nav-feed"
-              >
-                <Rss className="h-4 w-4" />
-                {t("nav.feed")}
-              </Button>
-            </Link>
-            <Link href="/browse">
-              <Button
-                variant={isActive("/browse") ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-2"
-                data-testid="nav-browse-marketplace"
-              >
-                <Search className="h-4 w-4" />
-                {t("nav.browseMarketplace")}
-              </Button>
-            </Link>
-            {user && (
-              <>
-                <Link href="/create-post">
-                  <Button
-                    variant={isActive("/create-post") ? "secondary" : "ghost"}
-                    size="sm"
-                    className="gap-2"
-                    data-testid="nav-create-post"
-                  >
-                    <PenSquare className="h-4 w-4" />
-                    {t("nav.createPost")}
-                  </Button>
-                </Link>
-                <Link href="/deals">
-                  <Button
-                    variant={isActive("/deals") ? "secondary" : "ghost"}
-                    size="sm"
-                    className="gap-2"
-                    data-testid="nav-deals"
-                  >
-                    <Handshake className="h-4 w-4" />
-                    {t("nav.myDeals")}
-                  </Button>
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-1 sm:gap-2">
-          <div className="hidden sm:flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLanguage(language === "en" ? "ar" : "en")}
-              data-testid="button-language-toggle"
-            >
-              <Languages className="h-5 w-5" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              data-testid="button-theme-toggle"
-            >
-              {theme === "light" ? (
-                <Moon className="h-5 w-5" />
-              ) : (
-                <Sun className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-
-          {user && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="inline-flex gap-1.5 h-9 max-w-[160px] sm:max-w-[180px]"
+          {/* CENTER — search pill (desktop) */}
+          <form
+            onSubmit={handleSearchSubmit}
+            className="hidden md:flex flex-1 max-w-[480px] mx-auto h-10 items-center bg-white rounded-full px-4 shadow-sm focus-within:ring-2 focus-within:ring-bareter-teal-light"
+            role="search"
+          >
+            <Search className="h-4 w-4 text-bareter-muted flex-shrink-0" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search trades in Dubai..."
+              className="flex-1 ms-3 me-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
+              data-testid="input-header-search"
+            />
+            <button
+              type="button"
               onClick={() => setLocationPickerOpen(true)}
-              data-testid="button-header-location"
+              className="hidden lg:inline-flex items-center gap-1 ps-3 text-xs font-medium text-bareter-navy border-l border-bareter-border max-w-[140px]"
+              data-testid="button-header-location-pill"
               title="Change location"
             >
-              <MapPin className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate text-xs font-medium">{locationPillLabel}</span>
-            </Button>
-          )}
-          {!user && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="inline-flex gap-1.5 h-9 max-w-[160px]"
-              onClick={() => setLocationPickerOpen(true)}
-              data-testid="button-header-location-guest"
-              title="Browse a country"
-            >
-              <Globe className="h-4 w-4" />
-              <span className="text-xs">{locationPillLabel}</span>
-            </Button>
-          )}
+              <MapPin className="h-3.5 w-3.5 text-bareter-teal flex-shrink-0" />
+              <span className="truncate">{locationPillLabel}</span>
+            </button>
+          </form>
 
-          {user ? (
-            <>
-              <Link href="/inbox">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative"
-                  data-testid="button-inbox"
-                >
-                  <MessageSquare className="h-5 w-5" />
-                  {inboxUnread > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
-                    >
-                      {inboxUnread > 9 ? "9+" : inboxUnread}
-                    </Badge>
-                  )}
-                </Button>
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="relative"
-                    data-testid="button-notifications"
+          {/* RIGHT — actions */}
+          <div className="flex items-center gap-1 sm:gap-2 ms-auto">
+            {/* Mobile: search toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileSearchOpen((v) => !v)}
+              className="md:hidden h-10 w-10 inline-flex items-center justify-center rounded-md text-white hover:bg-white/10"
+              data-testid="button-mobile-search-toggle"
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
+            {/* Desktop: language + theme */}
+            <button
+              type="button"
+              onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+              className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md text-white hover:bg-white/10"
+              data-testid="button-language-toggle"
+              aria-label="Toggle language"
+            >
+              <Languages className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md text-white hover:bg-white/10"
+              data-testid="button-theme-toggle"
+              aria-label="Toggle theme"
+            >
+              {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
+
+            {user ? (
+              <>
+                {/* List a trade — primary teal CTA */}
+                <Link href="/create-listing" className="hidden sm:inline-flex">
+                  <Button variant="bareter" size="sm" className="h-10 gap-1.5" data-testid="button-list-trade">
+                    <Plus className="h-4 w-4" />
+                    List a trade
+                  </Button>
+                </Link>
+
+                {/* Inbox */}
+                <Link href="/inbox">
+                  <button
+                    type="button"
+                    className="relative h-10 w-10 inline-flex items-center justify-center rounded-md text-white hover:bg-white/10"
+                    data-testid="button-inbox"
+                    aria-label="Inbox"
                   >
-                    <Bell className="h-5 w-5" />
-                    {unreadCount > 0 && (
+                    <MessageSquare className="h-5 w-5" />
+                    {inboxUnread > 0 && (
                       <Badge
                         variant="destructive"
-                        className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                        className="absolute -top-1 -end-1 h-4 min-w-4 px-1 flex items-center justify-center text-[10px]"
                       >
-                        {unreadCount > 9 ? "9+" : unreadCount}
+                        {inboxUnread > 9 ? "9+" : inboxUnread}
                       </Badge>
                     )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  <div className="flex items-center justify-between p-3 border-b">
-                    <span className="font-semibold">{t("nav.notifications")}</span>
-                    {unreadCount > 0 && (
-                      <Badge variant="secondary">{unreadCount} {t("nav.new")}</Badge>
-                    )}
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notifications && notifications.length > 0 ? (
-                      notifications.slice(0, 5).map((notification) => (
-                        <DropdownMenuItem
-                          key={notification.id}
-                          className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${
-                            !notification.isRead ? "bg-accent/50" : ""
-                          }`}
+                  </button>
+                </Link>
+
+                {/* Notifications */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="relative h-10 w-10 inline-flex items-center justify-center rounded-md text-white hover:bg-white/10"
+                      data-testid="button-notifications"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="h-5 w-5" />
+                      {unreadCount > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="absolute -top-1 -end-1 h-4 min-w-4 px-1 flex items-center justify-center text-[10px]"
                         >
-                          <span className="font-medium text-sm">{notification.title}</span>
-                          <span className="text-xs text-muted-foreground line-clamp-2">
-                            {notification.message}
-                          </span>
-                        </DropdownMenuItem>
-                      ))
-                    ) : (
-                      <div className="p-6 text-center text-muted-foreground text-sm">
-                        {t("nav.noNotifications")}
-                      </div>
-                    )}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="relative h-9 w-9 rounded-full"
-                    data-testid="button-user-menu"
-                  >
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {user.fullName.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="absolute -bottom-0.5 -right-0.5">
-                      <VerifiedBadge
-                        kycStatus={user.kycStatus}
-                        kybStatus={user.kybStatus}
-                        accountType={user.accountType}
-                        size="md"
-                        testId="header-user-verified"
-                      />
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="flex items-center gap-3 p-3 border-b">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {user.fullName.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <FounderBadge show={!!user.founderBadge} />
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{user.fullName}</span>
-                      <span className="text-xs text-muted-foreground truncate">
-                        {user.email}
-                      </span>
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </Badge>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-80">
+                    <div className="flex items-center justify-between p-3 border-b">
+                      <span className="font-semibold">{t("nav.notifications")}</span>
+                      {unreadCount > 0 && (
+                        <Badge variant="secondary">{unreadCount} {t("nav.new")}</Badge>
+                      )}
                     </div>
-                  </div>
-                  <Link href="/profile">
-                    <DropdownMenuItem className="cursor-pointer" data-testid="menu-profile">
-                      <User className="mr-2 h-4 w-4" />
-                      {t("nav.profile")}
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/deals">
-                    <DropdownMenuItem className="cursor-pointer" data-testid="menu-deals">
-                      <Handshake className="mr-2 h-4 w-4" />
-                      {t("nav.myDeals")}
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/dashboard">
-                    <DropdownMenuItem className="cursor-pointer" data-testid="menu-dashboard">
-                      <LayoutDashboard className="mr-2 h-4 w-4" />
-                      {t("nav.dashboard")}
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/settings">
-                    <DropdownMenuItem className="cursor-pointer" data-testid="menu-settings">
-                      <Settings className="mr-2 h-4 w-4" />
-                      {t("nav.settings")}
-                    </DropdownMenuItem>
-                  </Link>
-                  {user.isAdmin && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <Link href="/admin">
-                        <DropdownMenuItem className="cursor-pointer" data-testid="menu-admin">
-                          <Shield className="mr-2 h-4 w-4" />
-                          <span className="flex-1">{t("nav.admin")}</span>
-                          <Badge variant="destructive" className="ml-2 text-xs">Admin</Badge>
-                        </DropdownMenuItem>
-                      </Link>
-                    </>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={logout}
-                    className="cursor-pointer text-destructive focus:text-destructive"
-                    data-testid="menu-logout"
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    {t("nav.logout")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications && notifications.length > 0 ? (
+                        notifications.slice(0, 5).map((notification) => (
+                          <DropdownMenuItem
+                            key={notification.id}
+                            className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${
+                              !notification.isRead ? "bg-accent/50" : ""
+                            }`}
+                          >
+                            <span className="font-medium text-sm">{notification.title}</span>
+                            <span className="text-xs text-muted-foreground line-clamp-2">
+                              {notification.message}
+                            </span>
+                          </DropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="p-6 text-center text-muted-foreground text-sm">
+                          {t("nav.noNotifications")}
+                        </div>
+                      )}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              <Sheet>
-                <SheetTrigger asChild className="md:hidden">
-                  <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
-                    <Menu className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-72">
-                  <nav className="flex flex-col gap-2 mt-8">
+                {/* Avatar menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="relative h-10 w-10 rounded-full overflow-visible inline-flex items-center justify-center hover:bg-white/10"
+                      data-testid="button-user-menu"
+                      aria-label="Account"
+                    >
+                      <Avatar className="h-9 w-9 ring-2 ring-white/20">
+                        <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
+                        <AvatarFallback className="bg-bareter-teal text-white text-sm font-semibold">
+                          {user.fullName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="absolute -bottom-0.5 -end-0.5">
+                        <VerifiedBadge
+                          kycStatus={user.kycStatus}
+                          kybStatus={user.kybStatus}
+                          accountType={user.accountType}
+                          size="md"
+                          testId="header-user-verified"
+                        />
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <div className="flex items-center gap-3 p-3 border-b">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
+                        <AvatarFallback className="bg-bareter-teal text-white">
+                          {user.fullName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <FounderBadge show={!!user.founderBadge} />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium text-sm truncate">{user.fullName}</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {user.email}
+                        </span>
+                      </div>
+                    </div>
                     <Link href="/profile">
-                      <Button
-                        variant={isActive("/profile") ? "secondary" : "ghost"}
-                        className="w-full justify-start gap-2"
-                      >
-                        <User className="h-4 w-4" />
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-profile">
+                        <User className="me-2 h-4 w-4" />
                         {t("nav.profile")}
-                      </Button>
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link href="/feed">
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-feed">
+                        <Rss className="me-2 h-4 w-4" />
+                        {t("nav.feed")}
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link href="/browse">
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-browse">
+                        <Search className="me-2 h-4 w-4" />
+                        {t("nav.browseMarketplace") || "Browse"}
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link href="/deals">
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-deals">
+                        <Handshake className="me-2 h-4 w-4" />
+                        {t("nav.myDeals")}
+                      </DropdownMenuItem>
                     </Link>
                     <Link href="/dashboard">
-                      <Button
-                        variant={isActive("/dashboard") ? "secondary" : "ghost"}
-                        className="w-full justify-start gap-2"
-                      >
-                        <LayoutDashboard className="h-4 w-4" />
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-dashboard">
+                        <LayoutDashboard className="me-2 h-4 w-4" />
                         {t("nav.dashboard")}
-                      </Button>
-                    </Link>
-                    <Link href="/saved">
-                      <Button
-                        variant={isActive("/saved") ? "secondary" : "ghost"}
-                        className="w-full justify-start gap-2"
-                      >
-                        <Search className="h-4 w-4" />
-                        Saved Items
-                      </Button>
-                    </Link>
-                    <Link href="/referrals">
-                      <Button
-                        variant={isActive("/referrals") ? "secondary" : "ghost"}
-                        className="w-full justify-start gap-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Referrals
-                      </Button>
+                      </DropdownMenuItem>
                     </Link>
                     <Link href="/settings">
-                      <Button
-                        variant={isActive("/settings") ? "secondary" : "ghost"}
-                        className="w-full justify-start gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
+                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-settings">
+                        <Settings className="me-2 h-4 w-4" />
                         {t("nav.settings")}
-                      </Button>
+                      </DropdownMenuItem>
                     </Link>
                     {user.isAdmin && (
-                      <Link href="/admin">
-                        <Button
-                          variant={isActive("/admin") ? "secondary" : "ghost"}
-                          className="w-full justify-start gap-2"
-                        >
-                          <Shield className="h-4 w-4" />
-                          {t("nav.admin")}
-                          <Badge variant="destructive" className="ml-auto text-xs">Admin</Badge>
+                      <>
+                        <DropdownMenuSeparator />
+                        <Link href="/admin">
+                          <DropdownMenuItem className="cursor-pointer" data-testid="menu-admin">
+                            <Shield className="me-2 h-4 w-4" />
+                            <span className="flex-1">{t("nav.admin")}</span>
+                            <Badge variant="destructive" className="ms-2 text-xs">Admin</Badge>
+                          </DropdownMenuItem>
+                        </Link>
+                      </>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={logout}
+                      className="cursor-pointer text-destructive focus:text-destructive"
+                      data-testid="menu-logout"
+                    >
+                      <LogOut className="me-2 h-4 w-4" />
+                      {t("nav.logout")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Mobile hamburger */}
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <button
+                      type="button"
+                      className="md:hidden h-10 w-10 inline-flex items-center justify-center rounded-md text-white hover:bg-white/10"
+                      data-testid="button-mobile-menu"
+                      aria-label="Menu"
+                    >
+                      <Menu className="h-5 w-5" />
+                    </button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-72">
+                    <nav className="flex flex-col gap-1 mt-8">
+                      <Link href="/create-listing">
+                        <Button variant="bareter" className="w-full justify-start gap-2 h-11">
+                          <Plus className="h-4 w-4" />
+                          List a trade
                         </Button>
                       </Link>
-                    )}
-                    <div className="border-t my-2" />
-                    <div className="flex items-center gap-2 sm:hidden">
+                      <div className="h-2" />
+                      <Link href="/profile">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <User className="h-4 w-4" />
+                          {t("nav.profile")}
+                        </Button>
+                      </Link>
+                      <Link href="/dashboard">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <LayoutDashboard className="h-4 w-4" />
+                          {t("nav.dashboard")}
+                        </Button>
+                      </Link>
+                      <Link href="/saved">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <Search className="h-4 w-4" />
+                          Saved
+                        </Button>
+                      </Link>
+                      <Link href="/referrals">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <Plus className="h-4 w-4" />
+                          Referrals
+                        </Button>
+                      </Link>
+                      <Link href="/settings">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <Settings className="h-4 w-4" />
+                          {t("nav.settings")}
+                        </Button>
+                      </Link>
+                      {user.isAdmin && (
+                        <Link href="/admin">
+                          <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                            <Shield className="h-4 w-4" />
+                            {t("nav.admin")}
+                            <Badge variant="destructive" className="ms-auto text-xs">Admin</Badge>
+                          </Button>
+                        </Link>
+                      )}
+                      <div className="border-t my-2" />
+                      <div className="flex items-center gap-2 sm:hidden">
+                        <Button
+                          variant="bareter-ghost"
+                          className="flex-1 justify-start gap-2"
+                          onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+                          data-testid="mobile-menu-language"
+                        >
+                          <Languages className="h-4 w-4" />
+                          {language === "en" ? "Arabic" : "English"}
+                        </Button>
+                        <Button
+                          variant="bareter-ghost"
+                          className="flex-1 justify-start gap-2"
+                          onClick={toggleTheme}
+                          data-testid="mobile-menu-theme"
+                        >
+                          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                          {theme === "light" ? "Dark" : "Light"}
+                        </Button>
+                      </div>
                       <Button
-                        variant="ghost"
-                        className="flex-1 justify-start gap-2"
-                        onClick={() => setLanguage(language === "en" ? "ar" : "en")}
-                        data-testid="mobile-menu-language"
+                        variant="bareter-ghost"
+                        className="w-full justify-start gap-2 text-destructive"
+                        onClick={logout}
+                        data-testid="mobile-menu-logout"
                       >
-                        <Languages className="h-4 w-4" />
-                        {language === "en" ? "Arabic" : "English"}
+                        <LogOut className="h-4 w-4" />
+                        {t("nav.logout")}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        className="flex-1 justify-start gap-2"
-                        onClick={toggleTheme}
-                        data-testid="mobile-menu-theme"
-                      >
-                        {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                        {theme === "light" ? "Dark" : "Light"}
-                      </Button>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start gap-2 text-destructive"
-                      onClick={logout}
-                      data-testid="mobile-menu-logout"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      {t("nav.logout")}
-                    </Button>
-                  </nav>
-                </SheetContent>
-              </Sheet>
-            </>
-          ) : waitlistMode.enabled ? (
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                size="sm"
-                onClick={openWaitlist}
-                data-testid="button-join-waitlist"
-              >
-                Join the waitlist
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Link href="/login">
-                <Button variant="ghost" size="sm" data-testid="button-login">
-                  {t("nav.login")}
+                    </nav>
+                  </SheetContent>
+                </Sheet>
+              </>
+            ) : waitlistMode.enabled ? (
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Button
+                  variant="bareter"
+                  size="sm"
+                  className="h-10"
+                  onClick={openWaitlist}
+                  data-testid="button-join-waitlist"
+                >
+                  Join the waitlist
                 </Button>
-              </Link>
-              <Link href="/register">
-                <Button size="sm" data-testid="button-register">{t("nav.register")}</Button>
-              </Link>
-            </div>
-          )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Link href="/login" className="hidden sm:inline-flex">
+                  <Button
+                    variant="bareter-ghost"
+                    size="sm"
+                    className="h-10 text-white hover:bg-white/10"
+                    data-testid="button-login"
+                  >
+                    {t("nav.login")}
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <Button variant="bareter" size="sm" className="h-10" data-testid="button-register">
+                    {t("nav.register")}
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Mobile expandable search row */}
+        {mobileSearchOpen && (
+          <div className="md:hidden border-t border-white/10 bg-bareter-navy px-4 py-3">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex h-10 items-center bg-white rounded-full px-4"
+              role="search"
+            >
+              <Search className="h-4 w-4 text-bareter-muted flex-shrink-0" />
+              <input
+                autoFocus
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search trades..."
+                className="flex-1 ms-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
+                data-testid="input-header-search-mobile"
+              />
+              <button
+                type="button"
+                onClick={() => setMobileSearchOpen(false)}
+                className="text-bareter-muted ms-2"
+                aria-label="Close search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </form>
+            {(user || true) && (
+              <button
+                type="button"
+                onClick={() => setLocationPickerOpen(true)}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs text-white/80"
+                data-testid="button-mobile-location"
+              >
+                {activeLocation.worldwide ? <Globe className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+                <span>{locationPillLabel}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <LocationPicker

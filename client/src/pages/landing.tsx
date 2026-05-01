@@ -1,176 +1,288 @@
-import { Link } from "wouter";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
-import { useI18n } from "@/lib/i18n";
+import { useWaitlist } from "@/lib/waitlist";
+import { ListingCard, ListingCardSkeleton } from "@/components/ListingCard";
+import type { ListingWithUser } from "@shared/schema";
 import {
+  Search,
+  MapPin,
+  ShieldCheck,
+  Cpu,
+  FileSignature,
   ArrowRight,
-  Handshake,
-  Shield,
-  FileText,
-  MessageSquare,
   Star,
-  TrendingUp,
-  Users,
-  CheckCircle,
-  Building2,
-  Utensils,
-  Laptop,
-  Briefcase,
-  PartyPopper,
-  ShoppingBag,
+  CheckCircle2,
 } from "lucide-react";
+
+const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
+  { emoji: "🚗", label: "Cars", href: "/browse?category=Automotive" },
+  { emoji: "🏢", label: "Real Estate", href: "/browse?category=Real%20Estate" },
+  { emoji: "💼", label: "Services", href: "/browse?category=Services" },
+  { emoji: "📱", label: "Electronics", href: "/browse?category=Technology" },
+  { emoji: "🍽", label: "Hospitality", href: "/browse?category=Hospitality" },
+  { emoji: "⛵", label: "Yachts", href: "/browse?category=Yachts" },
+  { emoji: "🏋", label: "Fitness", href: "/browse?category=Health%20%26%20Wellness" },
+  { emoji: "🏠", label: "Home", href: "/browse?category=Home" },
+];
+
+const CATEGORY_GRID: { label: string; emoji: string; gradient: string; href: string }[] = [
+  { label: "Cars",        emoji: "🚗", gradient: "linear-gradient(135deg, #1C2D4A 0%, #0F1923 100%)", href: "/browse?category=Automotive" },
+  { label: "Real Estate", emoji: "🏢", gradient: "linear-gradient(135deg, #0F4F4F 0%, #0F1923 100%)", href: "/browse?category=Real%20Estate" },
+  { label: "Services",    emoji: "💼", gradient: "linear-gradient(135deg, #334155 0%, #0F1923 100%)", href: "/browse?category=Services" },
+  { label: "Electronics", emoji: "📱", gradient: "linear-gradient(135deg, #1F2937 0%, #0F1923 100%)", href: "/browse?category=Technology" },
+  { label: "Hospitality", emoji: "🍽", gradient: "linear-gradient(135deg, #6B2D14 0%, #1C0F08 100%)", href: "/browse?category=Hospitality" },
+  { label: "Yachts",      emoji: "⛵", gradient: "linear-gradient(135deg, #0C4A6E 0%, #082F4A 100%)", href: "/browse?category=Yachts" },
+  { label: "Fitness",     emoji: "🏋", gradient: "linear-gradient(135deg, #14532D 0%, #052E16 100%)", href: "/browse?category=Health%20%26%20Wellness" },
+  { label: "Home",        emoji: "🏠", gradient: "linear-gradient(135deg, #1C2D4A 0%, #2D1B0F 100%)", href: "/browse?category=Home" },
+];
+
+const SUCCESS_STORIES = [
+  { name: "Aisha M.", city: "Dubai",     swap: "Catering for 50 guests",  forItem: "Wedding photography",  value: 18500 },
+  { name: "Omar S.",  city: "Abu Dhabi", swap: "Office furniture set",     forItem: "3 months of accounting", value: 32000 },
+  { name: "Layla R.", city: "Sharjah",   swap: "Logo and brand identity",  forItem: "Beachfront staycation",  value: 9500 },
+];
 
 export function LandingPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
+  const [, navigate] = useLocation();
+  const [heroQuery, setHeroQuery] = useState("");
+  const [heroCity, setHeroCity] = useState("Dubai");
+  const [waitlistEmail, setWaitlistEmail] = useState("");
 
-  const categories = [
-    { icon: Building2, labelKey: "landing.catHospitality", count: 234 },
-    { icon: ShoppingBag, labelKey: "landing.catFashion", count: 189 },
-    { icon: Laptop, labelKey: "landing.catSaaS", count: 156 },
-    { icon: Briefcase, labelKey: "landing.catServices", count: 312 },
-    { icon: Utensils, labelKey: "landing.catFood", count: 178 },
-    { icon: PartyPopper, labelKey: "landing.catEvents", count: 145 },
-  ];
+  const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/featured"],
+  });
+  const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings"],
+  });
 
-  const steps = [
-    {
-      icon: Users,
-      titleKey: "landing.step1Title",
-      descKey: "landing.step1Desc",
-    },
-    {
-      icon: Handshake,
-      titleKey: "landing.step2Title",
-      descKey: "landing.step2Desc",
-    },
-    {
-      icon: MessageSquare,
-      titleKey: "landing.step3Title",
-      descKey: "landing.step3Desc",
-    },
-    {
-      icon: CheckCircle,
-      titleKey: "landing.step4Title",
-      descKey: "landing.step4Desc",
-    },
-  ];
+  const featured =
+    (featuredListings && featuredListings.length > 0
+      ? featuredListings
+      : latestListings || []
+    ).slice(0, 4);
 
-  const stats = [
-    { value: "AED 12M+", labelKey: "landing.totalTradeValue" },
-    { value: "2,500+", labelKey: "landing.activeUsers" },
-    { value: "850+", labelKey: "landing.completedDeals" },
-    { value: "98%", labelKey: "landing.satisfactionRate" },
-  ];
+  const handleHeroSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (heroQuery.trim()) params.set("q", heroQuery.trim());
+    if (heroCity && heroCity !== "Worldwide") params.set("location", heroCity);
+    navigate(`/browse${params.toString() ? `?${params.toString()}` : ""}`);
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 via-background to-background">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cg%20fill%3D%22%2314b8a6%22%20fill-opacity%3D%220.03%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E')] opacity-50" />
-        
-        <div className="container relative px-4 py-20 md:py-32 mx-auto max-w-7xl">
-          <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
-            <Badge variant="secondary" className="mb-6 px-4 py-1.5">
-              {t("landing.badge")}
-            </Badge>
-            
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-              {t("landing.heroTitle1")}{" "}
-              <span className="text-primary">{t("landing.heroTitle2")}</span>
+      {/* ============================ HERO ============================ */}
+      <section
+        className="relative isolate overflow-hidden bg-bareter-gradient bareter-noise"
+        data-testid="section-hero"
+      >
+        <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
+          <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
+            <h1
+              className="text-hero text-white"
+              data-testid="text-hero-headline"
+            >
+              Trade what you have for what you need.
             </h1>
-            
-            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-8 leading-relaxed">
-              {t("landing.heroDescription")}
+            <p className="mt-3 text-base sm:text-lg text-bareter-teal-light max-w-2xl">
+              UAE's AI-powered barter marketplace. No cash. Just value.
             </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link href={user ? "/browse" : "/register"}>
-                <Button size="lg" className="gap-2 px-8" data-testid="button-get-started">
-                  {user ? t("landing.browseListings") : t("landing.startBartering")}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              {!user && (
-                <Link href="/feed">
-                  <Button size="lg" variant="outline" data-testid="button-browse-public">
-                    {t("landing.browseMarketplace")}
-                  </Button>
-                </Link>
-              )}
-              <Link href="/how-it-works">
-                <Button size="lg" variant="outline" data-testid="button-how-it-works">
-                  {t("landing.seeHowItWorks")}
-                </Button>
-              </Link>
-            </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-12">
-              {stats.map((stat) => (
-                <div key={stat.labelKey} className="text-center px-4">
-                  <div className="text-2xl md:text-3xl font-bold text-primary">{stat.value}</div>
-                  <div className="text-sm text-muted-foreground">{t(stat.labelKey)}</div>
-                </div>
-              ))}
+            {/* Hero search pill */}
+            <form
+              onSubmit={handleHeroSearch}
+              className="mt-8 w-full max-w-[560px] h-[52px] flex items-stretch bg-white rounded-full shadow-bareter-hover overflow-hidden"
+              role="search"
+              data-testid="form-hero-search"
+            >
+              <label className="flex items-center gap-1.5 px-4 text-sm font-medium text-bareter-navy border-e border-bareter-border">
+                <MapPin className="h-4 w-4 text-bareter-teal" aria-hidden="true" />
+                <select
+                  value={heroCity}
+                  onChange={(e) => setHeroCity(e.target.value)}
+                  className="bg-transparent focus:outline-none cursor-pointer"
+                  data-testid="select-hero-city"
+                >
+                  <option>Dubai</option>
+                  <option>Abu Dhabi</option>
+                  <option>Sharjah</option>
+                  <option>Ajman</option>
+                  <option>RAK</option>
+                  <option>Fujairah</option>
+                  <option>Worldwide</option>
+                </select>
+              </label>
+              <input
+                type="search"
+                value={heroQuery}
+                onChange={(e) => setHeroQuery(e.target.value)}
+                placeholder="Search trades..."
+                className="flex-1 px-4 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
+                data-testid="input-hero-search"
+              />
+              <button
+                type="submit"
+                className="px-5 bg-bareter-teal hover:bg-bareter-teal-light text-white inline-flex items-center justify-center transition-colors active:scale-[0.98]"
+                aria-label="Search"
+                data-testid="button-hero-search"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+            </form>
+
+            {/* Hero category pills */}
+            <div className="mt-6 w-full overflow-x-auto scrollbar-hide -mx-4 px-4">
+              <div className="flex items-center gap-2 justify-start sm:justify-center min-w-min">
+                {HERO_CATEGORY_PILLS.map((p) => (
+                  <Link key={p.label} href={p.href}>
+                    <button
+                      type="button"
+                      className="px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full hover:bg-bareter-teal hover:border-bareter-teal transition-colors active:scale-[0.98] whitespace-nowrap"
+                      data-testid={`pill-hero-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <span className="me-1.5">{p.emoji}</span>
+                      {p.label}
+                    </button>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="py-20 bg-card">
-        <div className="container px-4 mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">{t("landing.popularCategories")}</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              {t("landing.exploreCategories")}
-            </p>
+      {/* ============================ TRUST BAR ============================ */}
+      <section
+        className="bg-white dark:bg-card border-y border-bareter-border dark:border-border"
+        data-testid="section-trust"
+      >
+        <div className="container mx-auto max-w-7xl px-4 py-7">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 sm:gap-y-0 divide-y sm:divide-y-0 sm:divide-x divide-bareter-border dark:divide-border">
+            {[
+              { icon: ShieldCheck, label: "Verified Users",    desc: "KYC + KYB checks" },
+              { icon: Cpu,         label: "AI-Matched Deals",  desc: "Smart trade engine" },
+              { icon: FileSignature, label: "Auto Contracts",   desc: "E-signed agreements" },
+              { icon: CheckCircle2, label: "🇦🇪 UAE Compliant",  desc: "VAT-ready receipts" },
+            ].map((t, i) => (
+              <div key={i} className="flex flex-col items-center text-center px-3 sm:px-6 py-1">
+                <t.icon className="h-7 w-7 text-bareter-teal mb-2" />
+                <p className="text-card-title text-bareter-navy dark:text-foreground">{t.label}</p>
+                <p className="text-caption mt-0.5">{t.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============================ FEATURED LISTINGS ============================ */}
+      <section
+        className="bg-bareter-off-white dark:bg-background"
+        data-testid="section-featured"
+      >
+        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
+          <div className="flex items-end justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-section text-bareter-navy dark:text-foreground">
+                Trending trades in Dubai 🔥
+              </h2>
+              <p className="text-caption mt-1">Updated daily by our AI matching engine</p>
+            </div>
+            <Link
+              href="/browse"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-bareter-teal hover:text-bareter-teal-light"
+              data-testid="link-view-all-listings"
+            >
+              View all listings <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {categories.map((category) => (
-              <Link key={category.labelKey} href={`/browse?category=${t(category.labelKey)}`}>
-                <Card className="hover-elevate cursor-pointer h-full">
-                  <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-                      <category.icon className="h-6 w-6 text-primary" />
-                    </div>
-                    <h3 className="font-medium mb-1">{t(category.labelKey)}</h3>
-                    <span className="text-xs text-muted-foreground">{category.count} {t("landing.listings")}</span>
-                  </CardContent>
-                </Card>
+          {loadingFeatured && loadingLatest ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <ListingCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : featured.length === 0 ? (
+            <div className="rounded-bareter-card bg-white dark:bg-card border border-bareter-border dark:border-border p-10 text-center">
+              <p className="text-card-title text-bareter-navy dark:text-foreground">
+                No trades yet — be the first to list something
+              </p>
+              <p className="text-caption mt-1 mb-4">
+                Post your offer in minutes and get matched by our AI.
+              </p>
+              <Link href={user ? "/create-listing" : "/register"}>
+                <Button variant="bareter">Create the first listing</Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {featured.map((l) => (
+                <ListingCard key={l.id} listing={l} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ============================ CATEGORY GRID ============================ */}
+      <section className="bg-white dark:bg-background" data-testid="section-categories">
+        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
+          <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
+            Browse by category
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            {CATEGORY_GRID.map((c) => (
+              <Link
+                key={c.label}
+                href={c.href}
+                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border"
+                style={{ background: c.gradient }}
+                data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent transition-opacity group-hover:from-black/70" />
+                <div className="absolute bottom-4 start-4 text-white">
+                  <div className="text-3xl mb-1">{c.emoji}</div>
+                  <div className="text-card-title text-white">{c.label}</div>
+                </div>
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-20">
-        <div className="container px-4 mx-auto max-w-7xl">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">{t("landing.howItWorks")}</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              {t("landing.howItWorksDesc")}
-            </p>
-          </div>
+      {/* ============================ HOW IT WORKS ============================ */}
+      <section className="bg-bareter-navy text-white" data-testid="section-how">
+        <div className="container mx-auto max-w-7xl px-4 py-16">
+          <h2 className="text-section text-white text-center mb-2">How it works</h2>
+          <p className="text-caption text-white/60 text-center mb-12">
+            Three simple steps from listing to closed deal
+          </p>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {steps.map((step, index) => (
-              <div key={step.titleKey} className="relative">
-                <div className="flex flex-col items-center text-center">
-                  <div className="relative mb-6">
-                    <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                      <step.icon className="h-8 w-8 text-primary" />
-                    </div>
-                    <div className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground">
-                      {index + 1}
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">{t(step.titleKey)}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{t(step.descKey)}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6 relative">
+            {[
+              { n: 1, emoji: "📋", title: "List what you have",   desc: "Describe your item or service in minutes." },
+              { n: 2, emoji: "🤖", title: "Get AI-matched",       desc: "Our engine finds the perfect trade partner." },
+              { n: 3, emoji: "🤝", title: "Close the deal",       desc: "Contract auto-generated, exchange confirmed." },
+            ].map((s, i, arr) => (
+              <div key={s.n} className="relative flex flex-col items-center text-center">
+                <div
+                  className="h-14 w-14 rounded-full bg-bareter-teal text-white text-xl font-bold flex items-center justify-center mb-4 shadow-bareter-hover"
+                  aria-hidden="true"
+                >
+                  {s.n}
                 </div>
-                {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-8 left-[calc(50%+3rem)] w-[calc(100%-6rem)] h-px bg-border" />
+                <div className="text-2xl mb-2">{s.emoji}</div>
+                <h3 className="text-card-title text-white mb-2">{s.title}</h3>
+                <p className="text-caption text-white/60 max-w-xs">{s.desc}</p>
+                {i < arr.length - 1 && (
+                  <div className="hidden md:block absolute top-7 -end-3 w-6 text-white/30">
+                    <ArrowRight className="h-5 w-5" />
+                  </div>
                 )}
               </div>
             ))}
@@ -178,91 +290,97 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="py-20 bg-card">
-        <div className="container px-4 mx-auto max-w-7xl">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <Badge variant="secondary" className="mb-4">{t("landing.whyChoose")}</Badge>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">
-                {t("landing.secureCompliant")}
-              </h2>
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Shield className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-1">{t("landing.verifiedPartners")}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {t("landing.verifiedPartnersDesc")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <FileText className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-1">{t("landing.bindingContracts")}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {t("landing.bindingContractsDesc")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-1">{t("landing.vatCompliant")}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {t("landing.vatCompliantDesc")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Star className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-1">{t("landing.ratingsReputation")}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {t("landing.ratingsReputationDesc")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/5 rounded-3xl blur-3xl" />
-              <Card className="relative">
-                <CardContent className="p-8">
-                  <div className="text-center space-y-6">
-                    <div className="h-20 w-20 rounded-2xl bg-primary mx-auto flex items-center justify-center">
-                      <Handshake className="h-10 w-10 text-primary-foreground" />
+      {/* ============================ SUCCESS STORIES ============================ */}
+      <section className="bg-bareter-off-white dark:bg-background" data-testid="section-stories">
+        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
+          <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
+            Real trades. Real value.
+          </h2>
+          <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
+            <div className="flex gap-4 min-w-min snap-x snap-mandatory">
+              {SUCCESS_STORIES.map((s, i) => (
+                <article
+                  key={i}
+                  className="snap-start flex-shrink-0 w-[300px] sm:w-[340px] bg-white dark:bg-card border border-bareter-border dark:border-border rounded-bareter-card shadow-bareter-card p-5"
+                  data-testid={`card-story-${i}`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="h-9 w-9 rounded-full bg-bareter-teal-muted text-bareter-teal flex items-center justify-center font-semibold">
+                      {s.name.charAt(0)}
                     </div>
-                    <div>
-                      <h3 className="text-2xl font-bold mb-2">{t("landing.readyToStart")}</h3>
-                      <p className="text-muted-foreground mb-6">
-                        {t("landing.joinThousands")}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">
+                        {s.name} <span className="font-normal text-bareter-muted">in {s.city}</span>
                       </p>
-                      <Link href={user ? "/browse" : "/register"}>
-                        <Button size="lg" className="w-full gap-2" data-testid="button-cta-bottom">
-                          {user ? t("landing.exploreListings") : t("landing.createFreeAccount")}
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </Link>
+                      <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-bareter-teal">
+                        <ShieldCheck className="h-3 w-3" /> Verified
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t("landing.noSubscription")}
-                    </p>
                   </div>
-                </CardContent>
-              </Card>
+                  <p className="text-sm text-bareter-navy dark:text-foreground leading-relaxed">
+                    Swapped <span className="font-semibold">{s.swap}</span> for{" "}
+                    <span className="font-semibold">{s.forItem}</span>
+                  </p>
+                  <p className="mt-3 text-price">AED {s.value.toLocaleString()}</p>
+                  <div className="mt-3 flex items-center gap-1 text-bareter-teal">
+                    {Array.from({ length: 5 }).map((_, k) => (
+                      <Star key={k} className="h-3.5 w-3.5 fill-current" />
+                    ))}
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </div>
       </section>
+
+      {/* ============================ WAITLIST CTA ============================ */}
+      {!user && (
+        <section
+          className="relative isolate overflow-hidden bg-bareter-gradient bareter-noise"
+          data-testid="section-waitlist-cta"
+        >
+          <div className="container relative z-10 mx-auto max-w-3xl px-4 py-16 text-center">
+            <h2 className="text-section text-white">
+              Join the waitlist — be first when we go live
+            </h2>
+            <p className="mt-2 text-bareter-teal-light">Dubai · Abu Dhabi · GCC</p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (waitlistMode.enabled) {
+                  openWaitlist();
+                } else {
+                  navigate(`/register?email=${encodeURIComponent(waitlistEmail)}`);
+                }
+              }}
+              className="mt-6 mx-auto max-w-[480px] flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                type="email"
+                required
+                value={waitlistEmail}
+                onChange={(e) => setWaitlistEmail(e.target.value)}
+                placeholder="you@business.com"
+                className="flex-1 h-12 px-5 rounded-full bg-white text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none focus:ring-2 focus:ring-bareter-teal-light"
+                data-testid="input-waitlist-email"
+              />
+              <Button
+                type="submit"
+                variant="bareter"
+                className="h-12 px-6 rounded-full"
+                data-testid="button-waitlist-submit"
+              >
+                Get early access
+              </Button>
+            </form>
+            <p className="mt-3 text-caption text-white/50">
+              No spam. Launch notification only.
+            </p>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

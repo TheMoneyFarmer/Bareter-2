@@ -21,6 +21,19 @@ const buttonVariants = cva(
         secondary: "border bg-secondary text-secondary-foreground border border-secondary-border ",
         // Add a transparent border so that when someone toggles a border on later, it doesn't shift layout/size.
         ghost: "border border-transparent",
+        // === Bareter brand variants ===
+        // Primary teal CTA — matches --bareter-teal, hover lifts to --bareter-teal-light
+        bareter:
+          "bg-bareter-teal text-white border border-transparent hover:bg-bareter-teal-light no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-transform",
+        // Secondary outline — navy border + text, hover fills navy
+        "bareter-outline":
+          "bg-white dark:bg-transparent text-bareter-navy dark:text-white border-[1.5px] border-bareter-navy hover:bg-bareter-navy hover:text-white no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-colors",
+        // Ghost — transparent, navy text, off-white bg on hover
+        "bareter-ghost":
+          "bg-transparent text-bareter-navy dark:text-white border border-transparent hover:bg-bareter-off-white dark:hover:bg-white/10 no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-colors",
+        // Pill filter — for category pills row
+        "bareter-pill":
+          "rounded-full bg-white/10 text-white border border-white/30 hover:bg-bareter-teal hover:border-bareter-teal no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-colors",
       },
       // Heights are set as "min" heights, because sometimes Ai will place large amount of content
       // inside buttons. With a min-height they will look appropriate with small amounts of content,

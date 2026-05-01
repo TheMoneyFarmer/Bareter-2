@@ -197,15 +197,17 @@ export function ListingDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="container px-4 py-8 mx-auto max-w-5xl">
-        <Skeleton className="h-8 w-48 mb-6" />
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-80 rounded-lg" />
-            <Skeleton className="h-32" />
-          </div>
-          <div>
-            <Skeleton className="h-64" />
+      <div className="bg-bareter-off-white dark:bg-background min-h-screen">
+        <div className="container px-4 py-8 mx-auto max-w-7xl">
+          <Skeleton className="h-8 w-48 mb-6" />
+          <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
+            <div className="space-y-6">
+              <Skeleton className="aspect-video rounded-bareter-card" />
+              <Skeleton className="h-32 rounded-bareter-card" />
+            </div>
+            <div>
+              <Skeleton className="h-64 rounded-bareter-card" />
+            </div>
           </div>
         </div>
       </div>
@@ -230,15 +232,34 @@ export function ListingDetailPage() {
   const createdDate = listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "N/A";
 
   return (
-    <div className="container px-4 py-8 mx-auto max-w-5xl">
-      <Link href="/browse" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
+    <div className="bg-bareter-off-white dark:bg-background min-h-screen pb-24 lg:pb-8">
+      <div className="container px-4 py-6 mx-auto max-w-7xl">
+      <nav aria-label="Breadcrumb" className="text-caption mb-4 flex items-center gap-1.5 flex-wrap">
+        <Link href="/" className="hover:text-bareter-teal">Home</Link>
+        <span>›</span>
+        <Link href="/browse" className="hover:text-bareter-teal">Listings</Link>
+        {(listing.categories || [])[0] && (
+          <>
+            <span>›</span>
+            <span className="text-bareter-navy dark:text-foreground">{(listing.categories || [])[0]}</span>
+          </>
+        )}
+        {listing.location && (
+          <>
+            <span>›</span>
+            <span className="text-bareter-navy dark:text-foreground">{listing.location}</span>
+          </>
+        )}
+      </nav>
+
+      <Link href="/browse" className="inline-flex items-center gap-2 text-bareter-muted hover:text-bareter-teal mb-4 text-sm">
         <ArrowLeft className="h-4 w-4" />
         Back to listings
       </Link>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="relative rounded-lg overflow-hidden bg-muted aspect-video">
+      <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
+        <div className="space-y-6 min-w-0">
+          <div className="relative rounded-bareter-card overflow-hidden bg-bareter-off-white dark:bg-muted aspect-video shadow-bareter-card">
             {listing.images && listing.images.length > 0 ? (
               <img
                 src={listing.images[0]}
@@ -266,9 +287,9 @@ export function ListingDetailPage() {
             </Badge>
           </div>
 
-          <div>
+          <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-2xl md:text-3xl font-bold">{listing.title}</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-bareter-navy dark:text-foreground">{listing.title}</h1>
               <div className="flex gap-2">
                 {user && (
                   <Button
@@ -320,7 +341,7 @@ export function ListingDetailPage() {
             </div>
 
             <div className="flex items-center gap-3 mb-6 flex-wrap">
-              <div className="text-3xl font-bold text-primary">
+              <div className="text-3xl md:text-4xl font-bold text-bareter-teal" data-testid="text-listing-detail-price">
                 AED {parseFloat(listing.retailValue as string).toLocaleString()}
               </div>
               {(listing as any).valueFlagged && (
@@ -583,10 +604,51 @@ export function ListingDetailPage() {
           </Card>
         </div>
 
-        <div className="space-y-4">
-          <Card>
+        <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          {/* Price + primary CTA card */}
+          {!isOwnListing && (
+            <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
+              <CardContent className="p-5 space-y-3">
+                <div className="text-3xl md:text-4xl font-bold text-bareter-teal">
+                  AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                </div>
+                {listing.location && (
+                  <div className="inline-flex items-center gap-1 text-sm text-bareter-muted">
+                    <MapPin className="h-4 w-4 text-bareter-teal" />
+                    {listing.location}
+                  </div>
+                )}
+                {user ? (
+                  <Button
+                    variant="bareter"
+                    className="w-full h-[52px] gap-2 text-base"
+                    onClick={() => setProposeOpen(true)}
+                    data-testid="button-propose-trade-sticky"
+                  >
+                    <Handshake className="h-5 w-5" />
+                    Propose a Trade
+                  </Button>
+                ) : (
+                  <Link href="/login">
+                    <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
+                      <Handshake className="h-5 w-5" />
+                      Sign in to Trade
+                    </Button>
+                  </Link>
+                )}
+                <Link href={`/users/${listing.userId}`}>
+                  <Button variant="bareter-outline" className="w-full h-11 gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Message Seller
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
             <CardHeader>
-              <CardTitle className="text-lg">About the {listing.type === "offer" ? "Seller" : "Buyer"}</CardTitle>
+              <CardTitle className="text-lg text-bareter-navy dark:text-foreground">About the {listing.type === "offer" ? "Seller" : "Buyer"}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3 mb-4">
@@ -634,10 +696,8 @@ export function ListingDetailPage() {
           {!isOwnListing && user && (
             <Dialog open={proposeOpen} onOpenChange={setProposeOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full gap-2" size="lg" data-testid="button-propose-trade">
-                  <Handshake className="h-5 w-5" />
-                  Propose Trade
-                </Button>
+                {/* Hidden duplicate trigger — main CTA lives in the sticky right card + mobile bottom bar */}
+                <button type="button" className="sr-only" data-testid="button-propose-trade-hidden" aria-hidden="true" tabIndex={-1}>Propose Trade</button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
                 <DialogHeader>
@@ -762,20 +822,11 @@ export function ListingDetailPage() {
             </Dialog>
           )}
 
-          {!user && (
-            <Link href="/login">
-              <Button className="w-full gap-2" size="lg">
-                <Handshake className="h-5 w-5" />
-                Sign in to Trade
-              </Button>
-            </Link>
-          )}
-
           {isOwnListing && (
-            <Card>
+            <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
               <CardContent className="p-4 text-center">
-                <p className="text-sm text-muted-foreground">This is your listing</p>
-                <Button variant="outline" className="mt-2 w-full" data-testid="button-edit-listing">
+                <p className="text-sm text-bareter-muted">This is your listing</p>
+                <Button variant="bareter-outline" className="mt-2 w-full" data-testid="button-edit-listing">
                   Edit Listing
                 </Button>
               </CardContent>
@@ -790,6 +841,31 @@ export function ListingDetailPage() {
         targetType="listing"
         targetId={listing?.id ?? 0}
       />
+      </div>
+
+      {/* Mobile sticky bottom CTA — Propose a Trade */}
+      {!isOwnListing && (
+        <div className="lg:hidden fixed bottom-[60px] inset-x-0 z-40 bg-white dark:bg-card border-t border-bareter-border dark:border-border p-3 shadow-[0_-4px_12px_rgba(15,25,35,0.08)]">
+          {user ? (
+            <Button
+              variant="bareter"
+              className="w-full h-14 text-base gap-2"
+              onClick={() => setProposeOpen(true)}
+              data-testid="button-propose-trade-mobile"
+            >
+              <Handshake className="h-5 w-5" />
+              Propose a Trade · AED {parseFloat(listing.retailValue as string).toLocaleString()}
+            </Button>
+          ) : (
+            <Link href="/login">
+              <Button variant="bareter" className="w-full h-14 text-base gap-2">
+                <Handshake className="h-5 w-5" />
+                Sign in to Trade
+              </Button>
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }

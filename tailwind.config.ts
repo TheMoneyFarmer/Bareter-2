@@ -81,6 +81,26 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        bareter: {
+          teal:        "#1A7272",
+          "teal-light": "#22A0A0",
+          "teal-muted": "#E6F4F4",
+          navy:        "#1C2D4A",
+          "navy-deep": "#0F1923",
+          gold:        "#D4A843",
+          "off-white": "#F7F9FC",
+          muted:       "#64748B",
+          border:      "#E2E8F0",
+          "uae-red":   "#CE1126",
+          "uae-green": "#009A44",
+        },
+      },
+      boxShadow: {
+        "bareter-card":  "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)",
+        "bareter-hover": "0 4px 12px rgba(26,114,114,0.15), 0 8px 32px rgba(26,114,114,0.10)",
+      },
+      backgroundImage: {
+        "bareter-gradient": "linear-gradient(135deg, #0F1923 0%, #1A3A3A 50%, #1A4A4A 100%)",
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

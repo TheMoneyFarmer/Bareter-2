@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useEffect } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -76,15 +76,40 @@ export function BrowsePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<ExploreTab>("discover");
-  const [search, setSearch] = useState("");
+  const searchString = useSearch();
+  const initialParams = new URLSearchParams(searchString);
+  const initialQ = initialParams.get("q") || "";
+  const initialCategory = initialParams.get("category") || "";
+  const initialLocationParam = initialParams.get("location") || "";
+
+  const [activeTab, setActiveTab] = useState<ExploreTab>(
+    initialQ || initialCategory || initialLocationParam ? "search" : "discover"
+  );
+  const [search, setSearch] = useState(initialQ);
   const [selectedType, setSelectedType] = useState<string>("all");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    initialCategory ? [initialCategory] : []
+  );
+  const [selectedLocation, setSelectedLocation] = useState<string>(
+    initialLocationParam || "all"
+  );
   const [selectedCondition, setSelectedCondition] = useState<string>("all");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [valueRange, setValueRange] = useState([0, 100000]);
   const [sortBy, setSortBy] = useState<string>("newest");
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const q = params.get("q") || "";
+    const cat = params.get("category") || "";
+    const loc = params.get("location") || "";
+    if (q || cat || loc) {
+      setSearch(q);
+      if (cat) setSelectedCategories([cat]);
+      if (loc) setSelectedLocation(loc);
+      setActiveTab("search");
+    }
+  }, [searchString]);
 
   const [openProposalForms, setOpenProposalForms] = useState<Record<string, boolean>>({});
   const [proposalOfferName, setProposalOfferName] = useState<Record<string, string>>({});
@@ -407,7 +432,7 @@ export function BrowsePage() {
               )}
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-lg font-bold text-primary">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
+                  <span className="text-lg font-bold text-bareter-teal">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
                   {(listing as any).valueFlagged && (
                     <Badge variant="outline" className="gap-1 text-[10px] border-amber-500/60 text-amber-600 dark:text-amber-400" data-testid={`badge-value-flagged-${listing.id}`}>
                       <AlertTriangle className="h-2.5 w-2.5" />
@@ -646,10 +671,16 @@ export function BrowsePage() {
   );
 
   return (
+    <div className="bg-bareter-off-white dark:bg-background min-h-screen">
     <div className="container px-2 sm:px-4 py-4 sm:py-8 mx-auto max-w-7xl">
+      <nav aria-label="Breadcrumb" className="text-caption mb-3 hidden sm:flex items-center gap-1.5">
+        <Link href="/" className="hover:text-bareter-teal">Home</Link>
+        <span>›</span>
+        <span className="text-bareter-navy dark:text-foreground">Browse</span>
+      </nav>
       <div className="flex items-center gap-2 mb-6 overflow-x-auto scrollbar-hide">
         <Button
-          variant={activeTab === "discover" ? "default" : "outline"}
+          variant={activeTab === "discover" ? "bareter" : "bareter-outline"}
           onClick={() => setActiveTab("discover")}
           className="gap-2 flex-shrink-0"
           data-testid="tab-discover"
@@ -658,7 +689,7 @@ export function BrowsePage() {
           Discover
         </Button>
         <Button
-          variant={activeTab === "search" ? "default" : "outline"}
+          variant={activeTab === "search" ? "bareter" : "bareter-outline"}
           onClick={() => setActiveTab("search")}
           className="gap-2 flex-shrink-0"
           data-testid="tab-search"
@@ -673,8 +704,8 @@ export function BrowsePage() {
           {featuredListings && featuredListings.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <Crown className="h-5 w-5 text-amber-500" />
-                <h2 className="text-lg font-semibold" data-testid="text-featured-title">Featured Listings</h2>
+                <Crown className="h-5 w-5 text-bareter-gold" />
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-featured-title">Featured Listings</h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {featuredListings.slice(0, 3).map((listing) => (
@@ -688,7 +719,7 @@ export function BrowsePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <TrendingUp className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold" data-testid="text-trending-title">Trending Posts</h2>
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-trending-title">Trending Posts</h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {trendingPosts.slice(0, 6).map((post) => (
@@ -728,7 +759,7 @@ export function BrowsePage() {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Package className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold" data-testid="text-categories-title">Browse by Category</h2>
+              <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-categories-title">Browse by Category</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {CATEGORIES.map((cat) => {
@@ -758,7 +789,7 @@ export function BrowsePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Users className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold" data-testid="text-recommended-title">Businesses to Barter With</h2>
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-recommended-title">Businesses to Barter With</h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {recommendedUsers.slice(0, 6).map((recUser: any) => (
@@ -801,7 +832,7 @@ export function BrowsePage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Zap className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold" data-testid="text-latest-title">Latest Listings</h2>
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-latest-title">Latest Listings</h2>
               </div>
               <Button variant="outline" size="sm" onClick={() => setActiveTab("search")} data-testid="button-view-all">
                 View All
@@ -901,6 +932,7 @@ export function BrowsePage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
