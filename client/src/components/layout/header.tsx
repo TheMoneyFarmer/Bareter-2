@@ -115,17 +115,17 @@ export function Header() {
       {/* UAE accent strip — red · white · green */}
       <div className="uae-accent-strip" aria-hidden="true" />
 
-      {/* Main navy bar — 64px (shrinks to 56px on scroll) */}
+      {/* Main navy bar — 64px (visual densify on scroll via transform/opacity only) */}
       <div
-        className={`bg-bareter-navy text-white ${
+        className={`bareter-header-shell bg-bareter-navy text-white ${
           scrolled
             ? "supports-[backdrop-filter]:bg-bareter-navy/85 backdrop-blur-md shadow-[0_4px_16px_rgba(0,0,0,0.25)]"
             : "shadow-[0_2px_8px_rgba(0,0,0,0.15)]"
         }`}
       >
         <div
-          className={`bareter-header-transition container mx-auto max-w-7xl px-4 flex items-center gap-3 sm:gap-6 transition-[height] duration-200 ease-out ${
-            scrolled ? "h-14" : "h-16"
+          className={`bareter-header-transition container mx-auto max-w-7xl px-4 flex items-center gap-3 sm:gap-6 h-16 ${
+            scrolled ? "is-scrolled" : ""
           }`}
         >
           {/* LEFT — logo */}

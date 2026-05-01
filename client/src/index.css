@@ -467,6 +467,7 @@
     width: max-content;
     align-items: center;
     height: 100%;
+    will-change: transform;
     animation: bareter-ticker-scroll 35s linear infinite;
   }
   .bareter-ticker:hover .bareter-ticker-track {
@@ -650,6 +651,26 @@
   }
 
   /* ---------------------------------------------------------------------- */
+  /* Header — paint-only transitions (bg / shadow / backdrop) + visual      */
+  /* "densify" via transform/opacity on inner row when scrolled.            */
+  /* No layout properties (height/width/margin/top/left) are animated.      */
+  /* ---------------------------------------------------------------------- */
+  .bareter-header-shell {
+    transition: background-color 0.2s ease-out,
+                box-shadow 0.2s ease-out,
+                backdrop-filter 0.2s ease-out,
+                -webkit-backdrop-filter 0.2s ease-out;
+  }
+  .bareter-header-transition {
+    transform-origin: top center;
+    transition: transform 0.2s ease-out;
+    will-change: transform;
+  }
+  .bareter-header-transition.is-scrolled {
+    transform: translateY(-2px);
+  }
+
+  /* ---------------------------------------------------------------------- */
   /* Step 13 reduced-motion umbrella                                        */
   /* ---------------------------------------------------------------------- */
   @media (prefers-reduced-motion: reduce) {
@@ -668,8 +689,12 @@
     .bareter-pill-fill::before {
       transition: none !important;
     }
+    .bareter-header-shell,
     .bareter-header-transition {
       transition: none !important;
+    }
+    .bareter-header-transition.is-scrolled {
+      transform: none !important;
     }
   }
 }
