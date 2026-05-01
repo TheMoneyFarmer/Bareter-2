@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bareter is a full-stack, cashless barter marketplace for businesses in the UAE and GCC regions. It aims to facilitate trade of goods and services without currency, enhance liquidity, and foster a collaborative business environment. Key features include listing creation, real-time negotiation, binding contract generation, and comprehensive deal lifecycle management. The platform is free, designed for global expansion with multi-country/city support, and includes robust user verification (KYC/KYB) and AI-powered functionalities.
+Bareter is a full-stack, cashless barter marketplace for businesses in the UAE. It aims to facilitate trade of goods and services without currency, enhance liquidity, and foster a collaborative business environment. Key features include listing creation, real-time negotiation, binding contract generation, and comprehensive deal lifecycle management. The platform is free, designed for global expansion with multi-country/city support, and includes robust user verification (KYC/KYB) and AI-powered functionalities.
 
 ## User Preferences
 

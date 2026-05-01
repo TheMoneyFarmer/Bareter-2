@@ -83,7 +83,7 @@ export function Footer() {
         <div className="mt-12 pt-6 border-t border-white/10">
           <p className="text-xs text-white/50 text-center sm:text-start">
             <span className="me-2">🇦🇪</span>
-            Built in the UAE · Dubai · Abu Dhabi · GCC
+            Built in the UAE
           </p>
         </div>
 

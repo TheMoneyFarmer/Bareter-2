@@ -342,7 +342,7 @@ export function LandingPage() {
             <h2 className="text-section text-white">
               Join the waitlist — be first when we go live
             </h2>
-            <p className="mt-2 text-bareter-teal-light">Dubai · Abu Dhabi · GCC</p>
+            <p className="mt-2 text-bareter-teal-light">United Arab Emirates</p>
 
             <form
               onSubmit={(e) => {

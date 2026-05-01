@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { X, Send, Bot, User, Loader2, Sparkles, AlertTriangle } from "lucide-react";
+import { X, Send, Bot, User, Loader2, Sparkles, AlertTriangle, LogIn } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessage {
@@ -13,17 +15,54 @@ interface ChatMessage {
   content: string;
 }
 
+const AUTH_INTRO: ChatMessage = {
+  role: "assistant",
+  content: "Hi! I'm BarterBot, your trading assistant. How can I help you today?",
+};
+
+const GUEST_INTRO: ChatMessage = {
+  role: "assistant",
+  content:
+    "Hi! I'm BarterBot, the Bareter support assistant. I can answer your questions about trading, listings, contracts, and how the platform works — just sign in (or join the waitlist) to start chatting.",
+};
+
 export default function AiSupportChat() {
   const { user } = useAuth();
+  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "Hi! I'm BarterBot, your trading assistant. How can I help you today?" },
+    user ? AUTH_INTRO : GUEST_INTRO,
   ]);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const sendMutation = useMutation({
+  // Reset chat whenever auth state crosses the login/logout boundary
+  // (or switches to a different user). Keeps a logged-out visitor from
+  // seeing the previous user's conversation, and avoids cross-account
+  // context bleed on the same device.
+  const userId = user?.id ?? null;
+  // Track the userId that owns the currently displayed conversation, so
+  // late-arriving responses from a previous session can be discarded.
+  const conversationOwnerRef = useRef<string | null>(userId);
+  useEffect(() => {
+    conversationOwnerRef.current = userId;
+    setMessages([userId ? AUTH_INTRO : GUEST_INTRO]);
+    setInput("");
+  }, [userId]);
+
+  const sendMutation = useMutation<
+    { response: string },
+    Error,
+    string,
+    { requestOwner: string | null }
+  >({
+    onMutate: async () => {
+      // Capture the conversation owner at request time so late-arriving
+      // responses can be discarded if the user logged out or switched
+      // accounts in the meantime.
+      return { requestOwner: conversationOwnerRef.current };
+    },
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/ai/support", {
         message,
@@ -31,10 +70,12 @@ export default function AiSupportChat() {
       });
       return res.json();
     },
-    onSuccess: (data: { response: string }) => {
+    onSuccess: (data, _variables, context) => {
+      if (context?.requestOwner !== conversationOwnerRef.current) return;
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      if (context?.requestOwner !== conversationOwnerRef.current) return;
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Sorry, I'm having trouble right now. Please try again." },
@@ -67,23 +108,34 @@ export default function AiSupportChat() {
     }
   }, [messages]);
 
-  if (!user) return null;
-
+  // Position: stack vertically above the WhatsApp FAB (which sits at
+  // bottom-20 mobile / md:bottom-6 desktop, h-12 mobile / h-14 desktop).
+  // Mobile: 80 + 48 + 12 gap ≈ 144 (bottom-36)
+  // Desktop: 24 + 56 + 12 gap ≈ 92  (md:bottom-24)
   if (!isOpen) {
+    // Plain <button> (not shadcn <Button>) on purpose: shadcn's baked-in
+    // hover-elevate / active-elevate-2 utilities apply
+    // `position: relative; z-index: 0;`, which loses to Tailwind `fixed z-50`
+    // on specificity but wins on cascade order — leaving the FAB stuck in
+    // page flow far below the viewport. This matches the WhatsApp button.
     return (
-      <Button
+      <button
+        type="button"
         data-testid="btn-ai-support-open"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 md:bottom-6"
-        size="icon"
+        className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-50 h-12 w-12 md:h-14 md:w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Contact support"
       >
-        <Bot className="h-6 w-6" />
-      </Button>
+        <Bot className="h-6 w-6 md:h-7 md:w-7" />
+      </button>
     );
   }
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 w-80 rounded-lg border bg-background shadow-xl flex flex-col md:bottom-6 md:w-96">
+    <div
+      className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-50 w-[calc(100vw-2rem)] max-w-sm md:w-96 rounded-lg border bg-background shadow-xl flex flex-col"
+      data-testid="panel-ai-support"
+    >
       <div className="flex items-center justify-between border-b px-4 py-3 bg-primary text-primary-foreground rounded-t-lg">
         <div className="flex items-center gap-2">
           <Bot className="h-5 w-5" />
@@ -145,42 +197,78 @@ export default function AiSupportChat() {
       </div>
 
       <div className="border-t p-3 space-y-2">
-        {messages.length > 3 && (
-          <Button
-            data-testid="btn-ai-escalate-human"
-            variant="outline"
-            size="sm"
-            className="w-full text-xs h-7"
-            onClick={handleEscalate}
-          >
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            Escalate to Human
-          </Button>
+        {user ? (
+          <>
+            {messages.length > 3 && (
+              <Button
+                data-testid="btn-ai-escalate-human"
+                variant="outline"
+                size="sm"
+                className="w-full text-xs h-7"
+                onClick={handleEscalate}
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Escalate to Human
+              </Button>
+            )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
+              className="flex gap-2"
+            >
+              <Input
+                data-testid="input-ai-support-message"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask me anything..."
+                className="text-sm"
+                disabled={sendMutation.isPending}
+              />
+              <Button
+                data-testid="btn-ai-support-send"
+                type="submit"
+                size="icon"
+                disabled={!input.trim() || sendMutation.isPending}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </form>
+          </>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {waitlistMode.enabled ? (
+              <Button
+                data-testid="btn-ai-support-join-waitlist"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setIsOpen(false);
+                  openWaitlist();
+                }}
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Join the waitlist to chat
+              </Button>
+            ) : (
+              <Link href="/login">
+                <Button
+                  data-testid="btn-ai-support-sign-in"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Sign in to chat with support
+                </Button>
+              </Link>
+            )}
+            <p className="text-[11px] text-muted-foreground text-center">
+              Or message us on WhatsApp using the green button below.
+            </p>
+          </div>
         )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="flex gap-2"
-        >
-          <Input
-            data-testid="input-ai-support-message"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask me anything..."
-            className="text-sm"
-            disabled={sendMutation.isPending}
-          />
-          <Button
-            data-testid="btn-ai-support-send"
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || sendMutation.isPending}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ const faqs = [
       },
       {
         q: "Who can use Bareter?",
-        a: "Bareter is designed for businesses and professionals in the UAE and GCC region. Whether you're a hotel, a marketing agency, a freelance designer, or any other business, you can join and start bartering.",
+        a: "Bareter is designed for businesses and professionals in the UAE. Whether you're a hotel, a marketing agency, a freelance designer, or any other business, you can join and start bartering.",
       },
       {
         q: "Is Bareter free to use?",

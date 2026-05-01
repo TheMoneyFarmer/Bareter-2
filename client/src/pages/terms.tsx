@@ -26,7 +26,7 @@ export function TermsPage() {
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>Be at least 18 years of age</li>
-            <li>Be a registered business or authorized representative of a business entity in the UAE or GCC region</li>
+            <li>Be a registered business or authorized representative of a business entity in the UAE</li>
             <li>Have the legal authority to enter into binding contracts</li>
             <li>Not be prohibited from using the Platform under applicable laws</li>
           </ul>
