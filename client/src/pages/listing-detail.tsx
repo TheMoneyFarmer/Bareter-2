@@ -284,7 +284,7 @@ export function ListingDetailPage() {
             )}
             <Badge
               variant={listing.type === "offer" ? "default" : "secondary"}
-              className="absolute top-4 left-4"
+              className="absolute top-4 start-4"
             >
               {listing.type === "offer" ? (
                 <><Package className="h-3 w-3 mr-1" /> Offer</>
@@ -586,7 +586,7 @@ export function ListingDetailPage() {
                       data-testid="input-comment-offer-name"
                     />
                     <div className="relative flex-shrink-0 w-32">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
+                      <span className="absolute start-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
                       <Input
                         type="number"
                         value={commentOfferValue}
@@ -751,7 +751,7 @@ export function ListingDetailPage() {
                     <div className="space-y-2">
                       <Label htmlFor="counter-value">Estimated Value (AED)</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                        <span className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                           AED
                         </span>
                         <Input
