@@ -1,0 +1,376 @@
+
+BARETER — Full Frontend Design Revamp
+READ THIS ENTIRE PROMPT BEFORE TOUCHING ANY FILE.
+This is Bareter, a UAE-based AI-powered barter marketplace. The stack is React 18 + Vite + Wouter + TanStack Query + shadcn/ui + Tailwind CSS. The backend is Express 5 + Drizzle ORM + PostgreSQL. Do not touch any backend files, agents, routes, or database schema. This is a frontend-only visual design revamp.
+The current site exists and works. We are not rebuilding functionality — we are upgrading the visual design to feel like a premium UAE marketplace. Think Farfetch meets Dubizzle, built for Dubai in 2025.
+
+LOGOS — ALREADY BUILT, USE EXACTLY AS IS
+The Bareter brand assets are complete and professional. Do not create new logos, placeholder text logos, or SVG recreations. Use the existing image files already in the project.
+Logo file usage rules:
+
+logo-full-color.png → navbar on white or light backgrounds
+logo-full-white.png → navbar on dark/navy backgrounds, hero section, footer
+logo-icon.png → mobile nav bar icon, small avatar contexts
+apple-touch-icon.png → already correct, do not change
+og-image.png → already set as social sharing image, do not change
+social-square.png → do not change
+
+The brand teal extracted from the logo icon is #1A7272. The dark gradient in the OG image goes from #0F1923 to #1A3A3A. These are the two most important colours in the entire system — everything else derives from them.
+
+BRAND TOKENS
+Add these to client/src/index.css. Override Tailwind defaults where needed.
+css:root {
+  /* Primary palette — extracted from Bareter logo assets */
+  --bareter-teal:        #1A7272;  /* logo icon teal — primary brand colour */
+  --bareter-teal-light:  #22A0A0;  /* hover/active states */
+  --bareter-teal-muted:  #E6F4F4;  /* teal tints for pills, badges */
+  --bareter-navy:        #1C2D4A;  /* wordmark colour */
+  --bareter-navy-deep:   #0F1923;  /* darkest — from OG image */
+  --bareter-gradient:    linear-gradient(135deg, #0F1923 0%, #1A3A3A 50%, #1A4A4A 100%);
+  /* matches OG image hero gradient exactly */
+
+  /* Neutrals */
+  --bareter-white:       #FFFFFF;
+  --bareter-off-white:   #F7F9FC;
+  --bareter-border:      #E2E8F0;
+  --bareter-muted:       #64748B;
+  --bareter-dark:        #0F1923;
+
+  /* Accent */
+  --bareter-gold:        #D4A843;  /* premium/featured listings only */
+
+  /* Shadows */
+  --shadow-card:   0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  --shadow-hover:  0 4px 12px rgba(26,114,114,0.15), 0 8px 32px rgba(26,114,114,0.10);
+
+  /* Radius */
+  --radius-card:   12px;
+  --radius-btn:    8px;
+  --radius-pill:   999px;
+
+  /* Typography */
+  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+}
+Also update tailwind.config.ts to extend with these colours:
+tsextend: {
+  colors: {
+    bareter: {
+      teal:       '#1A7272',
+      'teal-light': '#22A0A0',
+      'teal-muted': '#E6F4F4',
+      navy:       '#1C2D4A',
+      'navy-deep': '#0F1923',
+      gold:       '#D4A843',
+      'off-white': '#F7F9FC',
+      muted:      '#64748B',
+      border:     '#E2E8F0',
+    }
+  }
+}
+
+PAGE BY PAGE INSTRUCTIONS
+
+1. GLOBAL LAYOUT
+Navigation bar:
+
+Height: 64px
+Background: var(--bareter-navy) (#1C2D4A)
+No border, subtle bottom shadow: 0 2px 8px rgba(0,0,0,0.15)
+Left: Use logo-full-white.png — height 32px, width auto, never distort
+Centre: Search bar — full pill shape, white background, height 40px, placeholder: Search trades in Dubai... — this is the most important UI element on the page, make it prominent and wide (max 480px)
+Right: "List a trade" button (teal filled, white text) + Login button (ghost white outline) + avatar when logged in
+Top accent strip: 3px height, full width, colours left to right: #CE1126 (UAE red) · #FFFFFF · #009A44 (UAE green) — subtle national identity signal, appears above the navbar
+Mobile: Logo left, hamburger right, search bar collapses to magnifier icon that expands on tap
+
+Footer:
+
+Background: var(--bareter-navy-deep) (#0F1923)
+Logo: logo-full-white.png, height 28px
+4 columns: About Bareter · Categories · Legal · Contact
+Tagline below logo: "Trade what you have for what you need." in muted white
+Bottom strip: 🇦🇪 Built in the UAE · Dubai · Abu Dhabi · GCC
+Copyright: © 2025 Bareter. All rights reserved.
+All footer text: white at 60% opacity, links brighten to 100% on hover
+
+
+2. HOMEPAGE — most important page
+Hero section:
+
+Full viewport width, min-height 580px
+Background: var(--bareter-gradient) — the exact gradient from the OG image (#0F1923 → #1A3A3A → #1A4A4A)
+Add a very subtle noise texture overlay at 3% opacity for depth
+Layout: Centred content stack
+Logo icon logo-icon.png at 64px — do NOT show this if navbar already shows the full logo. Instead lead with the headline directly
+Headline: Trade what you have for what you need. — white, bold, clamp(2rem, 5vw, 3.25rem), max-width 700px, centred
+Subheadline: UAE's AI-powered barter marketplace. No cash. Just value. — #22A0A0 (light teal), 1.1rem, font-weight 400, margin-top 12px
+Search bar: Large centred pill, white background, height 52px, max-width 560px, margin-top 32px. Inside: location dropdown (📍 Dubai ▾) on left separated by a divider, text input Search trades... in middle, teal search button on right. Exactly like Dubizzle's hero search.
+Category pills row: Horizontal scroll, margin-top 24px. Pills: 🚗 Cars · 🏢 Real Estate · 💼 Services · 📱 Electronics · 🍽 Hospitality · ⛵ Yachts · 🏋 Fitness · 🏠 Home. Style: semi-transparent white border, white text, hover fills with var(--bareter-teal), border-radius pill
+
+Trust bar:
+
+White background, padding 28px 0
+4 columns with thin dividers between them
+Each column: icon (teal, 28px) + bold number or label + small description
+Content: 🔒 Verified Users | 🤖 AI-Matched Deals | ⚖️ Auto Contracts | 🇦🇪 UAE Compliant
+Subtle top + bottom border in var(--bareter-border)
+
+Featured listings section:
+
+Background: var(--bareter-off-white) (#F7F9FC)
+Section title: Trending trades in Dubai 🔥 — navy, 1.5rem, font-weight 600
+Subtitle: Updated daily by our AI matching engine
+4-column card grid on desktop, 2-column tablet, 1-column mobile
+"View all listings →" link in teal, right-aligned
+Use the Listing Card component spec below
+
+Category grid:
+
+White background
+Section title: Browse by category
+4×2 grid of large visual category cards, each 280px tall on desktop
+Each card: dark gradient overlay from bottom, category name in white bold at bottom-left, hover: slight scale up (1.02) and brighter overlay
+Use placeholder gradient backgrounds per category using brand colours if no images available:
+
+Cars: navy gradient
+Real Estate: dark teal gradient
+Services: slate gradient
+Electronics: charcoal gradient
+Hospitality: warm dark gradient
+Yachts: deep ocean gradient
+Fitness: dark green gradient
+Home: warm navy gradient
+
+
+
+How it works:
+
+Background: var(--bareter-navy), white text
+3 steps horizontal on desktop, vertical on mobile
+Step numbers: large teal circles (56px) with white number
+Step 1: 📋 List what you have — describe your item or service in minutes
+Step 2: 🤖 Get AI-matched — our engine finds the perfect trade partner
+Step 3: 🤝 Close the deal — contract auto-generated, exchange confirmed
+Arrow connectors between steps on desktop
+
+Success stories strip:
+
+Background: var(--bareter-off-white)
+Heading: Real trades. Real value.
+Horizontal scrolling cards (no auto-play carousel)
+Each card: white background, rounded-xl, shadow-card, content: [Name] in [City] + Swapped [Item A] for [Item B] + Value: AED X,XXX + teal verified badge
+If no real data yet, show 3 placeholder cards with UAE-relevant examples
+
+Waitlist CTA section (show when user is not logged in):
+
+Background: var(--bareter-gradient)
+Heading white: Join the waitlist — be first when we go live
+Subtext teal: Dubai · Abu Dhabi · GCC
+Email input (white, pill) + Get early access button (teal filled)
+Below: small muted text No spam. Launch notification only.
+
+
+3. LISTING CARD COMPONENT
+This is used everywhere. Build it once as client/src/components/ListingCard.tsx and use it in every grid.
+┌─────────────────────────────────┐
+│  IMAGE (16:9, object-cover)     │
+│  [Category pill — top left]     │
+│  [⭐ Featured — top right]      │  ← gold, only if featured
+├─────────────────────────────────┤
+│  Title (bold, 600, 1 line clamp)│
+│  AED 12,500          📍 Dubai   │  ← teal AED value, muted location
+│  ─────────────────────────────  │
+│  Looking for: Web design work   │
+│  ─────────────────────────────  │
+│  [Avatar] Ahmed K.  ✅ Verified  │  ← teal shield if KYC verified
+└─────────────────────────────────┘
+Card styles:
+
+Background: white
+Border: 1px solid var(--bareter-border)
+Border-radius: var(--radius-card) (12px)
+Box-shadow: var(--shadow-card)
+Hover: var(--shadow-hover), transform: translateY(-2px), border-color: var(--bareter-teal)
+Transition: all 0.2s ease
+AED value: var(--bareter-teal), font-weight 700
+"AED" prefix always shown, never a dollar sign, never USD
+Category pill colours:
+
+Cars: #1C2D4A (navy)
+Services: #1A7272 (teal)
+Food: #B45309 (amber)
+Real Estate: #4A1D96 (purple)
+Electronics: #1E40AF (blue)
+Yachts: #0C4A6E (ocean)
+Default: #374151 (grey)
+
+
+Verified badge: teal shield icon (✅ or custom) — only show if user.kycVerified = true
+
+
+4. BROWSE / LISTINGS PAGE
+Layout inspired directly by Dubizzle:
+
+Left sidebar: 280px fixed width on desktop
+
+Filter sections with expand/collapse: Category · Location (emirate multi-select) · Value range (AED dual-handle slider, min 0 max 500,000+) · Listing type (Offering / Seeking / Both) · Verified users only (toggle) · Posted within (Today / This week / This month)
+"Apply filters" teal button at bottom
+"Clear all" ghost link
+
+
+Main content area: 3-column card grid
+Top bar: 248 listings in Dubai (result count) + sort dropdown right-aligned: Newest first ▾ | Highest value | Best AI match | Closest to me
+Breadcrumb: Home › Listings › Vehicles › Dubai
+Mobile: Filters hidden behind full-screen drawer triggered by "⚙️ Filters" button in top bar
+Pagination or infinite scroll at the bottom
+
+
+5. SINGLE LISTING PAGE
+Inspired by Dubizzle property listing pages:
+Desktop layout — 65% / 35% split:
+Left column (65%):
+
+Image gallery: main image full width with thumbnail strip below, click to open lightbox
+Listing title: large, navy, bold
+AED 12,500 estimated value — large teal, prominent
+Posted: 12 May 2025 · Dubai, UAE
+Description section with expand/collapse if long
+Details table: Category · Condition · Location · Listed date · Views
+What they want in return: section with its own card in teal-muted background
+Similar listings grid (3 cards) at the bottom
+
+Right sidebar (35%, sticky on scroll):
+
+White card with shadow
+AED 12,500 large teal bold
+📍 Dubai, UAE
+"Propose a Trade" — large teal filled button, full width, 52px height, this is the primary CTA
+"Message Seller" — navy outline button, full width
+Divider
+Seller profile mini-card: avatar + name + ✅ KYC Verified + ⭐ 4.8 (12 reviews) + Member since Jan 2025
+🔗 Share · ⚑ Report links in muted at bottom
+
+Mobile:
+
+Sidebar collapses to below listing content
+"Propose a Trade" button fixed to bottom of screen (full width, 56px, teal, always visible while scrolling)
+
+
+6. TYPOGRAPHY SYSTEM
+Apply these everywhere — do not use default Tailwind sizing inconsistently:
+css.text-hero     { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 700; line-height: 1.15; }
+.text-section  { font-size: 1.5rem;     font-weight: 600; line-height: 1.3; }
+.text-card-title { font-size: 1rem;    font-weight: 600; line-height: 1.4; }
+.text-body     { font-size: 0.9375rem; font-weight: 400; line-height: 1.65; }
+.text-caption  { font-size: 0.8125rem; font-weight: 400; color: var(--bareter-muted); }
+.text-price    { font-size: 1.125rem;  font-weight: 700; color: var(--bareter-teal); }
+.text-btn      { font-size: 0.9375rem; font-weight: 500; }
+
+7. BUTTON SYSTEM
+Primary:    bg var(--bareter-teal), white text, hover: var(--bareter-teal-light)
+Secondary:  bg white, 1.5px border var(--bareter-navy), navy text, hover: navy bg + white text  
+Ghost:      transparent bg, var(--bareter-navy) text, hover: var(--bareter-off-white) bg
+Danger:     bg #DC2626, white text
+Pill filter: border-radius var(--radius-pill), used for category pills only
+All buttons:
+
+Padding: 10px 22px
+Font-weight: 500
+Border-radius: var(--radius-btn) (8px) except pills
+Transition: all 0.15s ease
+No box shadows on buttons — flat design
+Active state: transform: scale(0.98)
+
+
+8. COLOUR USAGE RULES
+
+Navy #1C2D4A — navbar, footer, headings, section backgrounds, primary text on white
+Teal #1A7272 — all primary CTAs, AED prices, verified badges, active states, links
+Teal light #22A0A0 — hover states, secondary accents
+Teal muted #E6F4F4 — pill backgrounds, info banners, light highlights
+Gold #D4A843 — featured listing badge ONLY, use very sparingly
+Off-white #F7F9FC — alternating section backgrounds, card backgrounds
+White #FFFFFF — cards, modals, input fields, sidebar
+Red #DC2626 — errors, disputes, warnings only
+Never use pure black #000000 — use var(--bareter-navy-deep) or var(--bareter-navy)
+Never show USD or $ — always AED with the full prefix
+
+
+9. UAE-SPECIFIC DETAILS
+
+All currency: AED X,XXX format — never USD, never $, always AED prefix before the number
+Location tags: Dubai · Abu Dhabi · Sharjah · RAK · Ajman · Fujairah · Al Ain
+Date format: 12 May 2025 — not 05/12/2025 or American format
+UAE flag emoji 🇦🇪 next to "UAE Verified" trust labels
+Arabic RTL readiness: use CSS logical properties (margin-inline-start not margin-left, padding-inline-end not padding-right) throughout — even if Arabic is not active yet, the layout must not break when it is
+Friday/Saturday = UAE weekend — any "active today" or "posted today" logic should reflect UAE timezone (Asia/Dubai, UTC+4)
+High-value listing threshold: deals above AED 50,000 get a 🔒 Enhanced Verification badge on the card
+
+
+10. MOBILE — STRICT RULES
+
+All pages must work perfectly at 375px width (iPhone SE minimum)
+Bottom navigation bar on mobile — 5 items:
+
+🏠 Home · 🔍 Browse · ➕ List (teal circle FAB, 56px, elevated) · 💬 Messages · 👤 Profile
+The ➕ button is larger than the others and sits slightly elevated above the bar
+Background: white, top border in var(--bareter-border), height 60px
+
+
+Minimum touch target: 44px × 44px on all interactive elements
+Card grid: 1 column at 375px, 2 columns at 640px+, 3-4 columns at 1024px+
+No horizontal overflow at any screen width
+Sticky "Propose a Trade" button on single listing page (full width, bottom of screen, 56px)
+Search bar expands to full screen on mobile tap
+
+
+11. MICRO-INTERACTIONS
+
+Listing cards: translateY(-2px) + shadow increase on hover, 0.2s ease
+Buttons: scale(0.98) on mousedown/touchstart
+Route transitions: 150ms fade using Wouter's location changes
+Loading states: skeleton cards that match the exact listing card dimensions — white card with animated shimmer gradient, NOT spinners
+Empty states: illustrated with a simple SVG icon + message + CTA button:
+
+No listings: "No trades found in this category yet — be the first to list something" + teal "Create listing" button
+No messages: "No messages yet — propose your first trade"
+No results from search: "No matches found. Try a different location or category."
+
+
+Image load: blur-up placeholder while loading (use CSS filter: blur(8px) → blur(0) transition)
+
+
+12. ADMIN PAGES
+The existing /admin and /admin/company-os pages must remain fully functional. Apply only:
+
+The updated navbar with logo-full-white.png
+The updated footer
+The CSS brand token variables
+
+Do not redesign admin page internals, tables, charts, or agent controls.
+
+WHAT TO NEVER TOUCH
+
+Nothing inside server/
+Nothing inside shared/schema.ts
+No agent files
+No Express routes
+No Drizzle queries
+No TanStack Query hooks or data fetching logic
+No form validation logic — only style the inputs
+No routing logic — only style the pages
+
+
+BUILD ORDER — DO THIS STEP BY STEP
+Build in this exact sequence. Show me what changed after each step before continuing to the next. Do not do all steps at once.
+Step 1: Brand tokens in client/src/index.css + Tailwind config update + confirm colours render correctly
+Step 2: Navbar component with logo-full-white.png, search bar, UAE accent strip at top, mobile hamburger
+Step 3: Footer component with logo-full-white.png, 4 columns, UAE tagline
+Step 4: ListingCard.tsx component — build it standalone and show me a preview with placeholder data
+Step 5: Homepage hero section — gradient background, headline, search bar, category pills
+Step 6: Homepage trust bar + how it works + category grid sections
+Step 7: Featured listings section using the ListingCard component with real data from the API
+Step 8: Waitlist CTA section + success stories strip
+Step 9: Browse/listings page — sidebar filters + card grid + top bar
+Step 10: Single listing page — gallery + details + sticky sidebar + propose trade CTA
+Step 11: Mobile bottom navigation bar + all mobile-specific adjustments
+Step 12: Skeleton loading states + empty states + micro-interactions

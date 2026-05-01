@@ -1,0 +1,226 @@
+BARETER — Step 13: Animated Visual Elements
+Add this after all 12 steps are complete and confirmed working. This is purely visual enhancement — no backend changes, no data logic.
+Reference: The Stripe homepage uses what are called "ambient animations" — floating 3D-ish product mockups, cards that drift slowly, elements that react to mouse movement. We want the same energy adapted for a barter marketplace.
+
+WHAT TO BUILD — 4 ANIMATION ZONES
+
+ANIMATION 1 — Hero floating cards (replaces static hero background)
+Instead of a plain gradient background in the hero section, floating listing cards drift slowly behind the headline and search bar. They move independently at different speeds and depths, creating a parallax layered effect.
+tsx// Add to the hero section background layer
+// These float BEHIND the headline and search bar (z-index lower)
+// They are blurred slightly (backdrop: blur 1px) and at 35% opacity
+// so they don't distract from the headline
+
+// 6 floating card previews arranged off-grid:
+// Card 1: top-left area, drifts slowly right and down
+// Card 2: top-right area, drifts slowly left
+// Card 3: middle-left, drifts upward slowly
+// Card 4: bottom-right, drifts diagonally
+// Card 5: far right partially cropped, slow rightward drift
+// Card 6: bottom-left partially cropped, upward drift
+
+// Each card shows: category icon + title + AED value
+// Use CSS keyframe animations, NOT a JS animation library
+// Animation duration: 18-25 seconds per card, infinite, alternate direction
+// Use will-change: transform for performance
+
+// Example for one card:
+@keyframes float-card-1 {
+  0%   { transform: translate(0px, 0px) rotate(-2deg); }
+  50%  { transform: translate(14px, -20px) rotate(1deg); }
+  100% { transform: translate(-8px, 12px) rotate(-1deg); }
+}
+
+// Different timing per card so they never move in sync
+// Card 1: 18s, Card 2: 22s, Card 3: 20s, Card 4: 25s, Card 5: 19s, Card 6: 23s
+Content of the floating cards (hardcoded, not from API):
+
+🚗 Land Cruiser 2021 · AED 145,000 · Dubai
+💼 Brand Design · AED 8,000 · Abu Dhabi
+🍽 Private Dining for 8 · AED 3,500 · Dubai
+🏢 Office Space · AED 18,000 · DIFC
+📱 MacBook Pro M3 · AED 9,200 · Sharjah
+⛵ Yacht Charter · AED 35,000 · Dubai Marina
+
+
+ANIMATION 2 — Mouse parallax on hero
+The floating cards respond subtly to mouse position. When the user moves their mouse across the hero, the card layers shift slightly — cards in the "back layer" move less, cards in the "front layer" move more. Creates depth.
+tsx// Implement with a simple useMousePosition hook
+// No heavy libraries needed — pure React + CSS transforms
+
+const useMousePosition = () => {
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      // Normalise to -1 to 1 range relative to window centre
+      setPosition({
+        x: (e.clientX / window.innerWidth - 0.5) * 2,
+        y: (e.clientY / window.innerHeight - 0.5) * 2,
+      });
+    };
+    window.addEventListener('mousemove', handler);
+    return () => window.removeEventListener('mousemove', handler);
+  }, []);
+  return position;
+};
+
+// Apply to card layers:
+// Back layer (4 cards):  transform: translate(x * 8px, y * 6px)
+// Front layer (2 cards): transform: translate(x * 18px, y * 14px)
+// Headline layer:        transform: translate(x * 3px, y * 2px) — very subtle
+// Transition: transform 0.1s ease-out on all — makes it feel smooth not laggy
+
+// IMPORTANT: Disable mouse parallax on mobile (touch devices)
+// Use: const isMobile = window.matchMedia('(hover: none)').matches
+
+ANIMATION 3 — Horizontal scrolling deal ticker
+A continuous horizontal scrolling strip showing live-style deal activity. Sits between the hero and the trust bar. Dark navy background.
+tsx// Infinite horizontal scroll — CSS only, no JS
+// Two identical rows of items duplicated so the scroll loops seamlessly
+// Speed: 35 seconds for one full cycle, linear, infinite
+
+// Each item in the ticker:
+// [Category icon] [Item name] [→] [What it traded for] [AED value] [·]
+
+// Example items (hardcoded):
+const tickerItems = [
+  "🚗 Nissan Patrol  →  6 months office space  ·  AED 95,000",
+  "💻 MacBook Pro  →  Brand identity design  ·  AED 9,000",
+  "🍽 Restaurant experience  →  Food photography  ·  AED 7,000",
+  "🏢 Co-working space  →  Marketing consultancy  ·  AED 36,000",
+  "⛵ Yacht day charter  →  Villa stay Palm Jumeirah  ·  AED 70,000",
+  "📱 iPhone 15 Pro  →  3 months personal training  ·  AED 5,500",
+  "🏋 Gym membership  →  Graphic design package  ·  AED 4,200",
+  "🚗 Toyota Land Cruiser  →  Legal services package  ·  AED 52,000",
+];
+
+// CSS:
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+  // -50% because content is duplicated, so -50% = one full set
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 35s linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused; // pause on hover
+}
+
+// Each item: padding 0 32px, teal text for the value, muted white for the rest
+// Separator between items: · in teal at 40% opacity
+// Container: overflow hidden, dark navy bg, height 44px, flex align-centre
+
+ANIMATION 4 — Listing cards entrance animation
+When the listing card grid comes into view (user scrolls down to it), cards animate in from below with a staggered delay. Each card fades up one by one.
+tsx// Use Intersection Observer — no library needed
+// When the grid container enters viewport, add class 'in-view' to parent
+// Children stagger in with CSS animation-delay
+
+// CSS:
+.listing-card {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.listing-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+// Stagger delays: card 1 = 0ms, card 2 = 60ms, card 3 = 120ms, card 4 = 180ms
+// Apply via inline style: style={{ transitionDelay: `${index * 60}ms` }}
+
+// React hook:
+const useIntersectionObserver = (ref, options) => {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true);
+        observer.disconnect(); // only animate in once
+      }
+    }, options);
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return isVisible;
+};
+
+// Apply to each card in the grid
+// Once visible = true, add 'visible' class
+// Disconnect after first trigger — animation only plays once per page load
+
+ADDITIONAL MICRO-ANIMATIONS TO ADD EVERYWHERE
+Category pills in hero:
+When hovered, the pill does a very subtle scale up (1.04) and the background fills from left to right with a CSS clip-path animation. 0.2s ease.
+Trust bar counters:
+When the trust bar scrolls into view, the numbers count up from 0 to their final value. Use a simple counter hook:
+tsxconst useCountUp = (end: number, duration = 1500) => {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let start = 0;
+    const increment = end / (duration / 16);
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= end) { setCount(end); clearInterval(timer); }
+      else setCount(Math.floor(start));
+    }, 16);
+    return () => clearInterval(timer);
+  }, [end]);
+  return count;
+};
+// Use for: "500+ traders" → counts from 0 to 500 on scroll into view
+Navbar on scroll:
+When user scrolls more than 60px down, navbar gets a slightly stronger shadow and reduces height from 64px to 56px. Smooth 0.2s transition. Adds a subtle background blur: backdrop-filter: blur(12px) with slight transparency.
+"Propose a Trade" button:
+On the single listing page, this button has a very subtle pulse animation when the page first loads — just two pulses then stops. Draws the eye to the primary CTA without being annoying.
+css@keyframes cta-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(26, 114, 114, 0.4); }
+  50%       { box-shadow: 0 0 0 12px rgba(26, 114, 114, 0); }
+}
+
+.btn-propose {
+  animation: cta-pulse 1.2s ease-in-out 2;
+  // plays exactly twice then stops
+}
+
+PERFORMANCE RULES — NON-NEGOTIABLE
+
+All animations use transform and opacity only — never animate width, height, top, left, margin (these cause layout reflow and kill performance)
+Add will-change: transform only to the floating hero cards and the ticker — not globally
+All animations must respect prefers-reduced-motion:
+
+css@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+Floating hero cards: pause animation when tab is not visible (document.addEventListener('visibilitychange', ...))
+Mouse parallax: throttle the mousemove handler to 60fps max using requestAnimationFrame
+Ticker: use will-change: transform on the track element only
+Card entrance animations: disconnect Intersection Observer after first trigger — do not leave observers running indefinitely
+
+
+WHAT NOT TO ANIMATE
+
+Do not animate layout shifts — no animating flex/grid changes
+Do not use JS animation libraries (Framer Motion, GSAP, Lottie) — pure CSS and minimal React hooks only, keeping bundle size small
+Do not animate the admin pages — those are functional tools, not marketing pages
+Do not add animations to form inputs, error messages, or anything in the checkout/payment flow
+Do not add infinite spinning loaders — use the skeleton shimmer from Step 12 instead
+
+
+Final instruction for Step 13: Build Animation 3 (the ticker) first — it's the safest, most impactful, and requires no React hooks. Confirm it works. Then build Animation 4 (card entrance). Then Animation 1 (hero floating cards). Then Animation 2 (mouse parallax) last — test on desktop only. Show me each one before continuing.
+
+Paste this into Replit as a follow-up after the main 12-step prompt is confirmed complete. Tell Replit: "This is Step 13 — add animations to the already-completed frontend. Do not touch anything from Steps 1–12 that is already working. Start with the ticker strip."
