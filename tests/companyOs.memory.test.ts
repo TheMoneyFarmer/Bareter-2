@@ -77,6 +77,8 @@ const hoisted = vi.hoisted(() => {
 vi.mock("../server/companyOs/stripeClient", () => ({
   getStripeClient: vi.fn(async () => null),
   getStripeWebhookSecret: vi.fn(async () => null),
+  getStripeSecretKey: vi.fn(async () => null),
+  isStripeConfigured: vi.fn(async () => false),
 }));
 
 vi.mock("../server/agents/llm", () => ({

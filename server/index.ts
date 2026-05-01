@@ -28,7 +28,7 @@ app.use(securityHeaders());
 // Origin-check CSRF guard for state-changing requests on /api/*.
 // We trust the same-origin model: an unsafe-method request must declare an
 // `Origin` (or `Referer`) whose host matches one of our allowed app hosts.
-// External integration webhooks (Stripe, Didit) sign their payloads and are
+// External integration webhooks (Twilio, Didit) sign their payloads and are
 // explicitly exempted because they intentionally come from a different host.
 app.use(originCsrfGuard());
 
@@ -37,14 +37,6 @@ declare module "http" {
     rawBody: unknown;
   }
 }
-
-// Stripe webhook needs the *raw* request body to verify the HMAC
-// signature. Mount the raw parser BEFORE the global JSON parser so
-// `req.body` arrives as a Buffer at /api/company-os/stripe-webhook.
-app.use(
-  "/api/company-os/stripe-webhook",
-  express.raw({ type: "application/json", limit: "1mb" }),
-);
 
 // Twilio sends inbound WhatsApp webhooks as application/x-www-form-urlencoded.
 // The global urlencoded parser below already handles this, but we mount it

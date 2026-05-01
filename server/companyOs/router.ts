@@ -1,12 +1,12 @@
 // Express router for the Company OS / WhatsApp control plane.
 //
-// Mounted under /api/company-os. The two webhooks (/whatsapp and
-// /stripe-webhook) verify the sender via signatures and are exempted
-// from the global origin-CSRF guard via security.ts; the three GET
-// endpoints (/status, /finance, /logs) are gated by `requireAdmin`.
+// Mounted under /api/company-os. The /whatsapp webhook verifies the
+// sender via Twilio signatures and is exempted from the global
+// origin-CSRF guard via security.ts; the GET endpoints (/status,
+// /finance, /logs, …) are gated by `requireAdmin`. Stripe was removed
+// during pre-publish hardening — see server/companyOs/stripeClient.ts.
 
 import express, { type Request, type Response, type Router, type RequestHandler } from "express";
-import type Stripe from "stripe";
 import { desc } from "drizzle-orm";
 import { db } from "../db";
 import { companyOsLogs } from "@shared/schema";
@@ -23,8 +23,6 @@ import {
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { handleManagerMessage, composeDailyBriefing } from "./managerAgent";
 import {
-  handleStripePaymentSucceeded,
-  handleStripeChargeRefunded,
   getRecentSnapshots,
   formatFinanceReport,
   getWeeklyRevenue,
@@ -40,7 +38,6 @@ import {
   isFounderConfigured,
   isTwilioConfigured,
 } from "./twilio";
-import { getStripeWebhookSecret, getStripeClient } from "./stripeClient";
 import { getMonthSpendByAgent, getBudgetVerdict } from "./costTracker";
 import {
   getLeads,
@@ -145,62 +142,6 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
     } catch (err) {
       console.error("[companyOs] /whatsapp handler error:", err);
       if (!res.headersSent) res.status(200).send("");
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // POST /api/company-os/stripe-webhook — Stripe webhook.
-  //
-  // Body parser is `express.raw({ type: "application/json" })` mounted
-  // in server/index.ts so `req.body` is a Buffer here. Signature is
-  // verified via the Stripe SDK; mismatches return 400 (Stripe retries
-  // those). Successful events are handed to the Finance Agent.
-  // ---------------------------------------------------------------------------
-  router.post("/stripe-webhook", async (req: Request, res: Response) => {
-    try {
-      const sig = req.headers["stripe-signature"];
-      const webhookSecret = await getStripeWebhookSecret();
-      const stripe = await getStripeClient();
-      if (!stripe || !webhookSecret) {
-        console.warn("[companyOs] stripe-webhook: Stripe not configured");
-        return res.status(500).json({ message: "Stripe not configured" });
-      }
-      if (!sig || typeof sig !== "string") {
-        return res.status(400).json({ message: "Missing stripe-signature header" });
-      }
-      const raw = req.body;
-      if (!Buffer.isBuffer(raw)) {
-        // Body parser misconfiguration — fail loudly so it gets noticed.
-        return res.status(400).json({ message: "Stripe webhook body must be raw" });
-      }
-
-      let event: Stripe.Event;
-      try {
-        event = stripe.webhooks.constructEvent(raw, sig, webhookSecret);
-      } catch (err) {
-        console.warn("[companyOs] Stripe signature verification failed:", err);
-        return res.status(400).json({ message: "Invalid signature" });
-      }
-
-      // Respond fast, then process — Stripe also enforces ~15s.
-      res.status(200).json({ received: true });
-
-      void (async () => {
-        try {
-          if (event.type === "payment_intent.succeeded") {
-            await handleStripePaymentSucceeded(event);
-          } else if (event.type === "charge.refunded") {
-            await handleStripeChargeRefunded(event);
-          } else {
-            console.log("[companyOs] stripe-webhook: ignored event", event.type);
-          }
-        } catch (err) {
-          console.error("[companyOs] async stripe handler failed:", err);
-        }
-      })();
-    } catch (err) {
-      console.error("[companyOs] /stripe-webhook handler error:", err);
-      if (!res.headersSent) res.status(500).json({ message: "Internal error" });
     }
   });
 

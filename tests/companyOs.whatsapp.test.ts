@@ -83,6 +83,8 @@ vi.mock("../server/db", () => ({
 vi.mock("../server/companyOs/stripeClient", () => ({
   getStripeClient: vi.fn(async () => null),
   getStripeWebhookSecret: vi.fn(async () => null),
+  getStripeSecretKey: vi.fn(async () => null),
+  isStripeConfigured: vi.fn(async () => false),
 }));
 
 // LLM stub for the free-form path. The mock returns a recognisable canned

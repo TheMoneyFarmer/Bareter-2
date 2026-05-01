@@ -5,11 +5,10 @@ export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const CSRF_EXEMPT_PATHS = new Set<string>([
   "/api/webhooks/didit",
-  // Company OS webhooks. Both verify the sender via signature
-  // (Twilio HMAC + Stripe HMAC) inside their handlers, so a blanket
-  // origin-CSRF guard would only cause a 403 retry loop.
+  // Company OS webhook. Verifies the sender via Twilio HMAC inside the
+  // handler, so a blanket origin-CSRF guard would only cause a 403
+  // retry loop.
   "/api/company-os/whatsapp",
-  "/api/company-os/stripe-webhook",
 ]);
 
 export function securityHeaders(): RequestHandler {

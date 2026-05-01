@@ -89,9 +89,9 @@ the bootstrap email.
 
 ## Why the scheduler needs production deploy
 
-The Company OS cron jobs in `server/companyOs/scheduler.ts` only start when `NODE_ENV === "production"` (or with the `COMPANY_OS_SCHEDULER_FORCE` flag). The Replit dev workflow runs in development, so the 08:00 Asia/Dubai daily briefing, the hourly Stripe finance snapshot, and the 09:00 budget-warning job will **not** fire from the dev preview — they only fire from a published deployment. Do not "fix" the dev-mode skip; it is intentional so dev restarts don't spam the founder phone.
+The Company OS cron jobs in `server/companyOs/scheduler.ts` only start when `NODE_ENV === "production"` (or with the `COMPANY_OS_SCHEDULER_FORCE` flag). The Replit dev workflow runs in development, so the 08:00 Asia/Dubai daily briefing, the hourly finance snapshot (zero revenue while Stripe is disabled), and the 09:00 budget-warning job will **not** fire from the dev preview — they only fire from a published deployment. Do not "fix" the dev-mode skip; it is intentional so dev restarts don't spam the founder phone.
 
-Deploy as **Reserved VM** or **Background Worker**, not Autoscale, so the Node process stays resident long enough for `node-cron` to fire on time. After deploy, repoint the Stripe webhook in the Stripe dashboard from the dev URL to `https://<your-domain>/api/company-os/stripe-webhook`.
+Deploy as **Reserved VM** or **Background Worker**, not Autoscale, so the Node process stays resident long enough for `node-cron` to fire on time.
 
 ## Verifying the WhatsApp control plane after deploy
 
@@ -108,7 +108,7 @@ The end-to-end behaviour above is also covered by `tests/companyOs.whatsapp.test
 
 - **Database**: PostgreSQL.
 - **Authentication & Security**: bcryptjs, express-session.
-- **Payment Processing**: Stripe SDK integration and plumbing exists in the codebase but is not used by any user-facing flow.
+- **Payment Processing**: Disabled. Stripe SDK and the `/api/company-os/stripe-webhook` route were removed during pre-publish hardening so the deploy preflight wouldn't demand a Stripe sandbox connection. `server/companyOs/stripeClient.ts` is a no-op stub that always returns `null`/`false`. To re-enable, reinstall `stripe`, restore the SDK import in `stripeClient.ts`, re-add the webhook route in `server/companyOs/router.ts`, and re-add `/api/company-os/stripe-webhook` to the raw-body parser in `server/index.ts` and the CSRF allowlist in `server/security.ts`.
 - **Identity Verification**: Didit (KYC/KYB) for user and business verification.
 - **Email Services**: Nodemailer.
 - **AI Integration**: OpenAI for various AI agents.

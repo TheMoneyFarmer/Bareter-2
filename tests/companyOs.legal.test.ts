@@ -182,6 +182,8 @@ vi.mock("../server/agents/llm", () => ({
 vi.mock("../server/companyOs/stripeClient", () => ({
   getStripeClient: vi.fn(async () => null),
   getStripeWebhookSecret: vi.fn(async () => null),
+  getStripeSecretKey: vi.fn(async () => null),
+  isStripeConfigured: vi.fn(async () => false),
 }));
 
 // Twilio REST capture — same pattern as the WhatsApp + Marketing suites.
