@@ -112,9 +112,6 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full" data-testid="site-header">
-      {/* UAE accent strip — red · white · green */}
-      <div className="uae-accent-strip" aria-hidden="true" />
-
       {/* Main navy bar — 64px (visual densify on scroll via transform/opacity only) */}
       <div
         className={`bareter-header-shell bg-bareter-navy text-white ${

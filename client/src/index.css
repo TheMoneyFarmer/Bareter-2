@@ -348,21 +348,6 @@
   .rounded-bareter-btn    { border-radius: var(--radius-btn); }
   .rounded-bareter-pill   { border-radius: var(--radius-pill); }
 
-  /* UAE accent strip — red · white · green, 3px tall */
-  .uae-accent-strip {
-    height: 3px;
-    width: 100%;
-    background: linear-gradient(
-      to right,
-      var(--bareter-uae-red) 0%,
-      var(--bareter-uae-red) 33.333%,
-      #FFFFFF 33.333%,
-      #FFFFFF 66.666%,
-      var(--bareter-uae-green) 66.666%,
-      var(--bareter-uae-green) 100%
-    );
-  }
-
   /* Subtle noise overlay for the hero gradient (3% opacity) */
   .bareter-noise::after {
     content: "";
