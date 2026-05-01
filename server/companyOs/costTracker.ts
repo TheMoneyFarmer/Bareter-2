@@ -9,7 +9,13 @@ import { and, gte, lte, sql, count, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { agentBudgets, companyOsLogs } from "@shared/schema";
 
-export const DEFAULT_MODEL = "openai/gpt-4o-mini";
+// Replit's AI integration proxy rejects the LiteLLM-style `openai/` prefix
+// (returns 400/404 "Model is not supported" / "API deployment for this
+// resource does not exist"). Use the bare model name as documented in
+// `server/replit_integrations/chat/routes.ts`. If you change this, also
+// add a matching entry to MODEL_USD_PER_1K_TOKENS below or estimateCostAed
+// will fall back to the gpt-4o-mini blended rate.
+export const DEFAULT_MODEL = "gpt-4o-mini";
 
 // Thrown by `chatCompletion`/`jsonCompletion` when the *global* monthly
 // AED budget gate fires. Callers (moderation, valuation, etc.) catch
@@ -286,9 +292,10 @@ export function getAgentBudgetAed(agent: string): number {
 // conservative (round up) so the budget gate fires earlier rather than
 // later.
 const MODEL_USD_PER_1K_TOKENS: Record<string, number> = {
-  "openai/gpt-4o-mini": 0.0006, // ~$0.15/M in + $0.60/M out, blended high
-  "openai/gpt-4o": 0.0125,
-  "openai/gpt-4.1-mini": 0.0008,
+  "gpt-4o-mini": 0.0006, // ~$0.15/M in + $0.60/M out, blended high
+  "gpt-4o": 0.0125,
+  "gpt-4.1-mini": 0.0008,
+  "gpt-5.1": 0.005, // conservative placeholder until official pricing lands
 };
 
 function getUsdToAed(): number {
@@ -301,8 +308,18 @@ function getMonthlyBudgetAed(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 400;
 }
 
+// Strip the legacy LiteLLM-style `openai/` prefix so historical log
+// rows written before the prefix was dropped still resolve to the
+// correct rate instead of silently falling back to gpt-4o-mini's
+// price.
+function normalizeModelName(model: string): string {
+  return model.startsWith("openai/") ? model.slice("openai/".length) : model;
+}
+
 export function estimateCostAed(model: string, tokens: number): number {
-  const usdPer1k = MODEL_USD_PER_1K_TOKENS[model] ?? MODEL_USD_PER_1K_TOKENS[DEFAULT_MODEL];
+  const key = normalizeModelName(model);
+  const usdPer1k =
+    MODEL_USD_PER_1K_TOKENS[key] ?? MODEL_USD_PER_1K_TOKENS[DEFAULT_MODEL];
   const usd = (tokens / 1000) * usdPer1k;
   return Number((usd * getUsdToAed()).toFixed(6));
 }

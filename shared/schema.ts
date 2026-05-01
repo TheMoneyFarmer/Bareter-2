@@ -714,7 +714,7 @@ export const companyOsLogs = pgTable("company_os_logs", {
   command: text("command"), // hard-coded command name or "freeform"
   inputPreview: text("input_preview"), // truncated user message (no PII beyond what they sent)
   outputPreview: text("output_preview"), // truncated agent response
-  model: text("model"), // e.g. "openai/gpt-4o-mini"
+  model: text("model"), // e.g. "gpt-4o-mini"
   tokensUsed: integer("tokens_used").default(0),
   costAed: decimal("cost_aed", { precision: 10, scale: 6 }).default("0"),
   status: text("status").notNull().default("ok"), // "ok", "error", "blocked_budget"
