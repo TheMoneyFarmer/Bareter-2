@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { Input } from "@/components/ui/input";
+import { StaggeredReveal } from "@/components/StaggeredReveal";
 
 interface StaticListing {
   id: string;
@@ -298,7 +299,7 @@ export function BrowsePublicPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <StaggeredReveal className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" testId="grid-public-listings">
           {filteredListings.map((listing) => (
             <Card key={listing.id} className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid={`card-listing-${listing.id}`}>
               <Link href="/register">
@@ -394,7 +395,7 @@ export function BrowsePublicPage() {
               </Link>
             </Card>
           ))}
-        </div>
+        </StaggeredReveal>
       )}
 
       <div className="mt-12 text-center">

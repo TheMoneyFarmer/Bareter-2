@@ -10,6 +10,7 @@ import { HeroFloatingCards } from "@/components/HeroFloatingCards";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { useReveal } from "@/hooks/use-reveal";
 import { useCountUp } from "@/hooks/use-count-up";
+import { useMousePosition } from "@/hooks/use-mouse-position";
 import type { ListingWithUser } from "@shared/schema";
 import {
   Search,
@@ -57,6 +58,7 @@ export function LandingPage() {
   const [heroQuery, setHeroQuery] = useState("");
   const [heroCity, setHeroCity] = useState("Dubai");
   const [waitlistEmail, setWaitlistEmail] = useState("");
+  const headlineParallax = useMousePosition();
 
   const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/featured"],
@@ -92,6 +94,11 @@ export function LandingPage() {
             <h1
               className="text-hero text-white"
               data-testid="text-hero-headline"
+              style={{
+                transform: `translate3d(${(headlineParallax.x * 3).toFixed(2)}px, ${(headlineParallax.y * 3).toFixed(2)}px, 0)`,
+                transition: "transform 0.15s ease-out",
+                willChange: "transform",
+              }}
             >
               Trade what you have for what you need.
             </h1>

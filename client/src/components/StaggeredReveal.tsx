@@ -1,4 +1,11 @@
-import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { useReveal } from "@/hooks/use-reveal";
 
 interface StaggeredRevealProps {
@@ -6,6 +13,11 @@ interface StaggeredRevealProps {
   className?: string;
   stagger?: number;
   testId?: string;
+}
+
+interface StaggerableProps {
+  className?: string;
+  style?: CSSProperties;
 }
 
 export function StaggeredReveal({
@@ -18,9 +30,10 @@ export function StaggeredReveal({
 
   const enhanced = Children.map(children, (child, i) => {
     if (!isValidElement(child)) return child;
-    const existingClass = (child.props as any).className ?? "";
-    const existingStyle = (child.props as any).style ?? {};
-    return cloneElement(child as React.ReactElement<any>, {
+    const typed = child as ReactElement<StaggerableProps>;
+    const existingClass = typed.props.className ?? "";
+    const existingStyle = typed.props.style ?? {};
+    return cloneElement(typed, {
       className: `${existingClass} bareter-stagger-card`.trim(),
       style: { ...existingStyle, transitionDelay: `${i * stagger}ms` },
     });
