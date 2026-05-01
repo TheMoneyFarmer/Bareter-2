@@ -9,7 +9,11 @@ import twilio from "twilio";
 import type { Twilio } from "twilio";
 import { withRetry } from "./retry";
 
-const MAX_BODY_LEN = 4000;
+// Twilio's WhatsApp freeform message hard limit is 1600 chars. Anything
+// longer is rejected with "The concatenated message body exceeds the
+// 1600 character limit." Keep this value at or below 1600 so truncate
+// short-circuits before Twilio does.
+const MAX_BODY_LEN = 1600;
 
 let cachedClient: Twilio | null = null;
 let cachedClientKey = "";
