@@ -47,8 +47,17 @@ async function fetchResendSettings(): Promise<ResendConnectionSettings | null> {
   }
 }
 
+function envFallbackSettings(): ResendConnectionSettings | null {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return null;
+  return {
+    api_key: apiKey,
+    from_email: process.env.RESEND_FROM_EMAIL?.trim() || undefined,
+  };
+}
+
 async function getCredentials(): Promise<ResendConnectionSettings> {
-  const settings = await fetchResendSettings();
+  const settings = (await fetchResendSettings()) ?? envFallbackSettings();
   if (!settings) {
     throw new Error("Resend not connected");
   }
@@ -78,7 +87,7 @@ export async function isResendReady(): Promise<boolean> {
   const now = Date.now();
   if (readyCache && readyCache.expiresAt > now) return readyCache.ready;
 
-  const settings = await fetchResendSettings();
+  const settings = (await fetchResendSettings()) ?? envFallbackSettings();
   const ready = Boolean(settings?.api_key);
   if (ready) cachedSettings = settings;
   readyCache = { ready, expiresAt: now + READY_TTL_MS };
