@@ -69,7 +69,7 @@ const translations: Record<Language, Record<string, string>> = {
     "landing.badge": "UAE's Premier Barter Marketplace",
     "landing.heroTitle1": "Trade Value,",
     "landing.heroTitle2": "Not Cash",
-    "landing.heroDescription": "Connect with verified UAE businesses to exchange goods and services. No cash needed - just value for value, backed by secure contracts and UAE VAT compliance.",
+    "landing.heroDescription": "Connect with verified UAE businesses to exchange goods and services. No cash needed - just value for value, backed by secure contracts and Influencers world wide.",
     "landing.startBartering": "Start Bartering Free",
     "landing.browseListings": "Browse Listings",
     "landing.browseMarketplace": "Browse Marketplace",
