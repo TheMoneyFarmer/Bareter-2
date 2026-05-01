@@ -244,7 +244,7 @@ export function LandingPage() {
                 style={{ background: c.gradient }}
                 data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent transition-opacity group-hover:from-black/70" />
+                <div className="absolute inset-0 bg-gradient-to-t from-bareter-navy-deep/70 via-bareter-navy-deep/15 to-transparent transition-opacity group-hover:from-bareter-navy-deep/80" />
                 <div className="absolute bottom-4 start-4 text-white">
                   <div className="text-3xl mb-1">{c.emoji}</div>
                   <div className="text-card-title text-white">{c.label}</div>
