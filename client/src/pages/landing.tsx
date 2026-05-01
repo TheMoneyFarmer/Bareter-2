@@ -97,7 +97,6 @@ export function LandingPage() {
               style={{
                 transform: `translate3d(${(headlineParallax.x * 3).toFixed(2)}px, ${(headlineParallax.y * 3).toFixed(2)}px, 0)`,
                 transition: "transform 0.15s ease-out",
-                willChange: "transform",
               }}
             >
               Trade what you have for what you need.
