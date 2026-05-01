@@ -34,6 +34,9 @@ const buttonVariants = cva(
         // Pill filter — for category pills row
         "bareter-pill":
           "rounded-full bg-white/10 text-white border border-white/30 hover:bg-bareter-teal hover:border-bareter-teal no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-colors",
+        // Danger — destructive actions in the brand palette
+        "bareter-danger":
+          "bg-bareter-error text-white border border-transparent hover:opacity-90 no-default-hover-elevate no-default-active-elevate active:scale-[0.98] transition-opacity",
       },
       // Heights are set as "min" heights, because sometimes Ai will place large amount of content
       // inside buttons. With a min-height they will look appropriate with small amounts of content,

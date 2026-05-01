@@ -64,6 +64,7 @@ export function ListingDetailPage() {
   const [, navigate] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const [proposeOpen, setProposeOpen] = useState(searchParams.get("propose") === "true");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [counterOffer, setCounterOffer] = useState("");
   const [counterValue, setCounterValue] = useState("");
   const [showReport, setShowReport] = useState(false);
@@ -258,12 +259,19 @@ export function ListingDetailPage() {
 
       <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
         <div className="space-y-6 min-w-0">
-          <div className="relative rounded-bareter-card overflow-hidden bg-bareter-off-white dark:bg-muted aspect-video shadow-bareter-card">
+          <button
+            type="button"
+            onClick={() => listing.images && listing.images.length > 0 && setLightboxIndex(0)}
+            className="group relative block w-full rounded-bareter-card overflow-hidden bg-bareter-off-white dark:bg-muted aspect-video shadow-bareter-card cursor-zoom-in disabled:cursor-default"
+            disabled={!listing.images || listing.images.length === 0}
+            data-testid="button-open-lightbox"
+            aria-label="Open image gallery"
+          >
             {listing.images && listing.images.length > 0 ? (
               <img
                 src={listing.images[0]}
                 alt={listing.title}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
@@ -284,7 +292,24 @@ export function ListingDetailPage() {
                 <><ShoppingCart className="h-3 w-3 mr-1" /> Request</>
               )}
             </Badge>
-          </div>
+          </button>
+
+          {listing.images && listing.images.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1" data-testid="strip-thumbnails">
+              {listing.images.map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setLightboxIndex(i)}
+                  className="relative h-20 w-20 flex-shrink-0 rounded-md overflow-hidden border border-bareter-border dark:border-border hover:border-bareter-teal transition-colors"
+                  data-testid={`button-thumbnail-${i}`}
+                  aria-label={`Open image ${i + 1}`}
+                >
+                  <img src={img} alt={`${listing.title} ${i + 1}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
@@ -860,6 +885,52 @@ export function ListingDetailPage() {
             </Link>
           )}
         </div>
+      )}
+
+      {listing.images && listing.images.length > 0 && (
+        <Dialog open={lightboxIndex !== null} onOpenChange={(o) => !o && setLightboxIndex(null)}>
+          <DialogContent className="max-w-4xl p-0 bg-bareter-navy-deep border-none">
+            <DialogHeader className="sr-only">
+              <DialogTitle>{listing.title}</DialogTitle>
+              <DialogDescription>Listing image gallery</DialogDescription>
+            </DialogHeader>
+            {lightboxIndex !== null && (
+              <div className="relative">
+                <img
+                  src={listing.images[lightboxIndex]}
+                  alt={`${listing.title} ${lightboxIndex + 1} of ${listing.images.length}`}
+                  className="w-full max-h-[85vh] object-contain"
+                  data-testid="img-lightbox"
+                />
+                {listing.images.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setLightboxIndex((i) => (i! - 1 + listing.images!.length) % listing.images!.length)}
+                      className="absolute start-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 hover:bg-white/25 text-white inline-flex items-center justify-center transition-colors"
+                      data-testid="button-lightbox-prev"
+                      aria-label="Previous image"
+                    >
+                      <ArrowLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLightboxIndex((i) => (i! + 1) % listing.images!.length)}
+                      className="absolute end-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 hover:bg-white/25 text-white inline-flex items-center justify-center transition-colors"
+                      data-testid="button-lightbox-next"
+                      aria-label="Next image"
+                    >
+                      <ArrowLeft className="h-5 w-5 rotate-180" />
+                    </button>
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/40 text-white text-xs">
+                      {lightboxIndex + 1} / {listing.images.length}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

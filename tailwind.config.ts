@@ -93,6 +93,7 @@ export default {
           border:      "#E2E8F0",
           "uae-red":   "#CE1126",
           "uae-green": "#009A44",
+          error:       "#DC2626",
         },
       },
       boxShadow: {

@@ -890,7 +890,7 @@ export function BrowsePage() {
           </div>
 
           <div className="flex gap-8">
-            <aside className="hidden md:block w-64 flex-shrink-0">
+            <aside className="hidden md:block w-[280px] flex-shrink-0">
               <Card><CardContent className="p-4">
                 <h3 className="font-semibold mb-4 flex items-center gap-2"><Filter className="h-4 w-4" />Filters</h3>
                 <FilterContent />
