@@ -6,8 +6,24 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 channel = "stable-24_05"
 
 [[ports]]
-  localPort = 5000
-  externalPort = 80
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5099
+externalPort = 4200
+
+[[ports]]
+localPort = 5151
+externalPort = 3001
+
+[[ports]]
+localPort = 5163
+externalPort = 3003
+
+[[ports]]
+localPort = 5904
+externalPort = 3000
   
 [env]
 PORT = "5000"
