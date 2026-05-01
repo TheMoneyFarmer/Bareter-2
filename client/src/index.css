@@ -612,18 +612,19 @@
     position: absolute;
     inset: 0;
     background: var(--bareter-teal);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.25s ease;
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path 0.25s ease;
     z-index: -1;
   }
-  [dir="rtl"] .bareter-pill-fill::before { transform-origin: right; }
+  [dir="rtl"] .bareter-pill-fill::before {
+    clip-path: inset(0 0 0 100%);
+  }
   .bareter-pill-fill:hover {
     transform: scale(1.04);
     border-color: var(--bareter-teal) !important;
   }
   .bareter-pill-fill:hover::before {
-    transform: scaleX(1);
+    clip-path: inset(0 0 0 0);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -665,8 +666,10 @@
     transform-origin: top center;
     transition: transform 0.2s ease-out;
   }
+  /* 56/64 = 0.875 — perceived 64px → 56px shrink via transform only.       */
+  /* No height/width/margin animated; the outer shell stays 64px tall.      */
   .bareter-header-transition.is-scrolled {
-    transform: translateY(-2px);
+    transform: scale(0.875);
   }
 
   /* ---------------------------------------------------------------------- */
