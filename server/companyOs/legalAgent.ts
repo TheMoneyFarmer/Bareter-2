@@ -53,7 +53,20 @@ import { jsPDF } from "jspdf";
 import { createRequire } from "node:module";
 // `arabic-persian-reshaper` ships only a CommonJS build, so we need a
 // CJS require shim — the file otherwise runs in ESM mode under tsx.
-const cjsRequire = createRequire(import.meta.url);
+//
+// We can't use `import.meta.url` directly here because the production
+// build runs through esbuild with `format: "cjs"`, which rejects
+// `import.meta.url` at bundle time. At runtime in CJS the bundle
+// already has `__filename`, and under tsx ESM the fallback path
+// (`process.cwd() + "/package.json"`) is a valid existing file that
+// `createRequire` can anchor on. We never actually need the calling
+// file's real path — `createRequire` only uses it as a resolution
+// base.
+const cjsRequire = createRequire(
+  typeof __filename === "string"
+    ? __filename
+    : process.cwd() + "/package.json",
+);
 const { ArabicShaper } = cjsRequire("arabic-persian-reshaper") as {
   ArabicShaper: { convertArabic: (text: string) => string };
 };
