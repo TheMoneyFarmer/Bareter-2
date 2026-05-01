@@ -519,26 +519,33 @@
     inset: 0;
     pointer-events: none;
     overflow: hidden;
-    z-index: 1;
+    z-index: 0;
+    /* Mobile + tablet: hide floats entirely so they never crowd the      */
+    /* headline / search / CTAs on small screens.                         */
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .bareter-floats { display: block; }
   }
   .bareter-float {
     position: absolute;
-    display: inline-flex;
-    flex-direction: column;
-    gap: 4px;
     padding: 12px 16px;
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.94);
+    background: rgba(255, 255, 255, 0.92);
     color: var(--bareter-navy);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
     backdrop-filter: blur(2px);
-    opacity: 0.35;
+    opacity: 0.22;
     filter: blur(1px);
     transition: transform 0.1s ease-out;
-    min-width: 180px;
-    max-width: 220px;
+    min-width: 170px;
+    max-width: 210px;
   }
+  /* Stack emoji + title + meta vertically inside each card. */
   .bareter-float-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     will-change: transform;
   }
   .bareter-float .float-emoji { font-size: 18px; line-height: 1; }

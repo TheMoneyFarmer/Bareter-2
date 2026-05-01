@@ -109,9 +109,7 @@ function App() {
                       <Router />
                     </RouteTransition>
                   </main>
-                  <div className="hidden md:block">
-                    <Footer />
-                  </div>
+                  <Footer />
                   <MobileBottomNav />
                 </div>
                 <Toaster />

@@ -12,13 +12,16 @@ interface FloatCard {
   animClass: string;
 }
 
+// Positions are tuned for lg+ (>=1024px) screens only — floats are hidden
+// below that breakpoint via CSS. They sit in the four corners and the two
+// far edges so they never overlap the headline, search, or category pills.
 const FLOAT_CARDS: FloatCard[] = [
   {
     emoji: "🚗",
     title: "Land Cruiser 2021",
     meta: "AED 145,000 · Dubai",
     layer: "back",
-    position: { top: "8%", left: "4%" },
+    position: { top: "6%", left: "1.5%" },
     animClass: "float-1",
   },
   {
@@ -26,7 +29,7 @@ const FLOAT_CARDS: FloatCard[] = [
     title: "Brand Design",
     meta: "AED 8,000 · Abu Dhabi",
     layer: "back",
-    position: { top: "12%", right: "6%" },
+    position: { top: "8%", right: "1.5%" },
     animClass: "float-2",
   },
   {
@@ -34,7 +37,7 @@ const FLOAT_CARDS: FloatCard[] = [
     title: "Private Dining for 8",
     meta: "AED 3,500 · Dubai",
     layer: "front",
-    position: { top: "55%", left: "2%" },
+    position: { bottom: "6%", left: "2%" },
     animClass: "float-3",
   },
   {
@@ -42,24 +45,8 @@ const FLOAT_CARDS: FloatCard[] = [
     title: "Office Space",
     meta: "AED 18,000 · DIFC",
     layer: "back",
-    position: { bottom: "10%", right: "10%" },
+    position: { bottom: "8%", right: "2%" },
     animClass: "float-4",
-  },
-  {
-    emoji: "📱",
-    title: "MacBook Pro M3",
-    meta: "AED 9,200 · Sharjah",
-    layer: "back",
-    position: { top: "48%", right: "-3%" },
-    animClass: "float-5",
-  },
-  {
-    emoji: "⛵",
-    title: "Yacht Charter",
-    meta: "AED 35,000 · Dubai Marina",
-    layer: "front",
-    position: { bottom: "8%", left: "8%" },
-    animClass: "float-6",
   },
 ];
 
