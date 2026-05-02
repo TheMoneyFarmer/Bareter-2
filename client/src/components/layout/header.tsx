@@ -53,6 +53,35 @@ export function Header() {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useI18n();
   const [location, navigate] = useLocation();
+
+  // When the language is toggled from the header, persist the choice to the
+  // logged-in user's account so it follows them across devices. We attempt
+  // the PATCH unconditionally (rather than gating on the React `user` value,
+  // which may briefly lag behind the session cookie right after login) and
+  // silently swallow 401 responses for anonymous visitors — they keep using
+  // the existing localStorage-only behavior. The session cookie sent by the
+  // browser, not the React state, is the source of truth on the server.
+  const persistLanguageMutation = useMutation({
+    mutationFn: async (lang: "en" | "ar") => {
+      try {
+        const res = await apiRequest("PATCH", "/api/users/settings", { language: lang });
+        return await res.json();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.startsWith("401")) return null; // anonymous — expected
+        throw err;
+      }
+    },
+    onSuccess: (result) => {
+      if (result) queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    },
+  });
+
+  const toggleLanguage = () => {
+    const next = language === "en" ? "ar" : "en";
+    setLanguage(next);
+    persistLanguageMutation.mutate(next);
+  };
   const { toast } = useToast();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -177,7 +206,7 @@ export function Header() {
             {/* Desktop: language + theme */}
             <button
               type="button"
-              onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+              onClick={toggleLanguage}
               className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md text-white hover:bg-white/10"
               data-testid="button-language-toggle"
               aria-label="Toggle language"
@@ -464,7 +493,7 @@ export function Header() {
                         <Button
                           variant="bareter-ghost"
                           className="flex-1 justify-start gap-2"
-                          onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+                          onClick={toggleLanguage}
                           data-testid="mobile-menu-language"
                         >
                           <Languages className="h-4 w-4" />

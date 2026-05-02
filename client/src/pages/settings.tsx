@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
+import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
@@ -133,6 +134,7 @@ const RADIUS_OPTIONS = [
 
 export function SettingsPage() {
   const { user } = useAuth();
+  const { language: activeLanguage, setLanguage } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
@@ -155,6 +157,18 @@ export function SettingsPage() {
       language: user?.language || "en",
     },
   });
+
+  // The Account form's defaultValues are only read once on mount, so if the
+  // user's saved language preference is loaded asynchronously (or changed
+  // elsewhere — e.g. via the header toggle, which updates i18n + the user
+  // record), the language Select can show a stale value. Mirror the live
+  // i18n language into the form so the Select always reflects the
+  // currently-active language.
+  useEffect(() => {
+    if (accountForm.getValues("language") !== activeLanguage) {
+      accountForm.setValue("language", activeLanguage);
+    }
+  }, [activeLanguage, accountForm]);
 
   const notificationForm = useForm<NotificationSettingsForm>({
     resolver: zodResolver(notificationSettingsSchema),
@@ -201,8 +215,16 @@ export function SettingsPage() {
       const res = await apiRequest("PATCH", "/api/users/settings", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // If the user changed their language preference here, mirror it into
+      // the live i18n context so the UI updates immediately without waiting
+      // for /api/auth/me to refetch (LanguageSync will also no-op once it
+      // sees the new server value).
+      const nextLang = (variables as { language?: string } | undefined)?.language;
+      if (nextLang === "en" || nextLang === "ar") {
+        setLanguage(nextLang as Language);
+      }
       toast({
         title: "Settings saved",
         description: "Your settings have been updated successfully.",

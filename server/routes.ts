@@ -656,6 +656,13 @@ export async function registerRoutes(
         }
       }
 
+      // The UI only supports two languages today (English and Arabic). Reject
+      // any other value to keep `users.language` consistent and prevent stray
+      // values from sneaking in via direct API calls.
+      if (data.language !== undefined && data.language !== "en" && data.language !== "ar") {
+        return res.status(400).json({ message: "Invalid language. Must be 'en' or 'ar'." });
+      }
+
       if (Object.keys(data).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }

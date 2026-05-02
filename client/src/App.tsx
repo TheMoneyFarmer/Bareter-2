@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { WaitlistProvider } from "@/lib/waitlist";
 import { ThemeProvider } from "@/lib/theme";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, LanguageSync } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { LandingPage } from "@/pages/landing";
@@ -130,6 +130,7 @@ function App() {
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>
+            <LanguageSync />
             <TooltipProvider>
               <WaitlistProvider>
                 <div className="min-h-screen flex flex-col bg-background">

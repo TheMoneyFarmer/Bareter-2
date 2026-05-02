@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, useEffect, type ReactNode } from "react";
+import { useAuth } from "@/lib/auth";
 
 export type Language = "en" | "ar";
 
@@ -715,4 +716,38 @@ export function useI18n() {
     throw new Error("useI18n must be used within I18nProvider");
   }
   return context;
+}
+
+/**
+ * Bridge component that mirrors the authenticated user's saved
+ * `users.language` preference into the local i18n state. Mount this
+ * once inside <AuthProvider> (so `useAuth()` is available) and inside
+ * <I18nProvider> (so `useI18n()` is available).
+ *
+ * Behavior:
+ * - When the server-side `user.language` value changes (login, refetch
+ *   after a settings save, switching account), we apply it to the i18n
+ *   state. The setter is a no-op if the value already matches, so this
+ *   is safe to fire after a header toggle that already updated state
+ *   locally and then PATCHed the server.
+ * - We deliberately do NOT depend on the local `language` state, so
+ *   that a user-initiated toggle doesn't get reverted by an in-flight
+ *   stale `user.language` value.
+ * - Anonymous visitors fall through to the existing localStorage-only
+ *   behavior already handled by I18nProvider.
+ */
+export function LanguageSync() {
+  const { user } = useAuth();
+  const { setLanguage } = useI18n();
+  const lastAppliedRef = useRef<Language | null>(null);
+
+  useEffect(() => {
+    const userLang = user?.language;
+    if (userLang !== "en" && userLang !== "ar") return;
+    if (lastAppliedRef.current === userLang) return;
+    lastAppliedRef.current = userLang;
+    setLanguage(userLang);
+  }, [user?.language, setLanguage]);
+
+  return null;
 }
