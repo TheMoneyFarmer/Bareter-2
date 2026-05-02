@@ -1,5 +1,29 @@
 uploads = []
 
+[[generated]]
+id = "-Fe1sZIlzX_x81OTDocvg"
+uri = "file://attached_assets/generated_images/logo-concept-a.png"
+type = "image"
+title = "logo concept B letter mark"
+
+[[generated]]
+id = "wo3cmj4csn1N2d73HkBPd"
+uri = "file://attached_assets/generated_images/logo-concept-b.png"
+type = "image"
+title = "logo concept Bareter wordmark"
+
+[[generated]]
+id = "QSGLaHgoWIGBDAJ2M9qIy"
+uri = "file://attached_assets/generated_images/logo-concept-c.png"
+type = "image"
+title = "logo fist bump Bareter"
+
+[[generated]]
+id = "HqQjVNX8uP-FC7KjAooAD"
+uri = "file://attached_assets/generated_images/logo-concept-d.png"
+type = "image"
+title = "logo exchange arrows Bareter"
+
 [[outputs]]
 id = "Zmdvt1wr9H48qrl2poGJ6"
 uri = "file://attached_assets/brand/logo-full-color.png"
