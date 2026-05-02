@@ -18,7 +18,6 @@ import {
   Cpu,
   FileSignature,
   ArrowRight,
-  Star,
   CheckCircle2,
 } from "lucide-react";
 
@@ -326,7 +325,7 @@ export function LandingPage() {
               </Button>
             </form>
             <p className="mt-3 text-caption text-white/50">
-              
+              No spam. Launch notification only.
             </p>
           </div>
         </section>

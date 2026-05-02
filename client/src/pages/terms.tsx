@@ -45,7 +45,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">4. Barter Transactions</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Bareter facilitates barter exchanges between businesses and individuals. When you engage in a barter:
+            Bareter facilitates barter exchanges between businesses. When you engage in a barter:
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>You represent that you have the right to barter the goods or services listed</li>
@@ -68,7 +68,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">6. VAT and Tax Compliance</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Under UAE Federal Tax Authority regulations, barter transactions are subject to Value Added Tax (VAT) at the standard rate of 5%. Each party is independently responsible for its own VAT obligations arising from barter transactions. Bareter provides guidance; only consult an FTA-registered tax agent for advice specific to your situation. Each party to a barter transaction is responsible for:
+            Under UAE Federal Tax Authority regulations, barter transactions are subject to Value Added Tax (VAT) at the standard rate of 5%. Each party to a barter transaction is responsible for:
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>Issuing proper VAT tax invoices for goods or services provided</li>
@@ -125,8 +125,8 @@ export function TermsPage() {
           <div className="mt-4 text-muted-foreground">
             <p>Bareter</p>
             <p>Dubai, United Arab Emirates</p>
-            <p>Email: hello@bareter.com</p>
-            <p>Phone: +971 523 133 5127</p>
+            <p>Email: legal@bareter.com</p>
+            <p>Phone: +971 4 123 4567</p>
           </div>
         </section>
       </div>
