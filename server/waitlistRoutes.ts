@@ -258,7 +258,7 @@ export function registerWaitlistRoutes(
 
   // Admin: update the public-facing position offset. Takes effect for all
   // public waitlist API responses immediately (no restart, no redeploy).
-  app.put("/api/admin/waitlist/offset", requireAdmin, async (req: any, res) => {
+  app.put("/api/admin/waitlist/offset", requireAdmin, async (req, res) => {
     const schema = z.object({ offset: z.number().int().min(0).max(10_000_000) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -267,7 +267,7 @@ export function registerWaitlistRoutes(
     await storage.setAppSetting(
       WAITLIST_OFFSET_KEY,
       String(parsed.data.offset),
-      req.session?.userId ?? null,
+      req.session.userId ?? null,
     );
     invalidateOffsetCache();
     const effective = await getWaitlistOffset();
