@@ -213,9 +213,9 @@ export function UserProfilePage() {
                 <>
                   <Separator className="my-4" />
                   <div className="space-y-2">
-                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile">
+                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile" /* keep test id */>
                       <Handshake className="h-4 w-4" />
-                      Propose a Trade
+                      Propose a Barter
                     </Button>
                     <Link href={`/inbox?userId=${profileData.id}`}>
                       <Button variant="outline" className="w-full gap-2" data-testid="button-message-user">
@@ -231,9 +231,9 @@ export function UserProfilePage() {
                 <>
                   <Separator className="my-4" />
                   <Link href="/login">
-                    <Button className="w-full gap-2" data-testid="button-login-to-trade">
+                    <Button className="w-full gap-2" data-testid="button-login-to-trade" /* keep test id */>
                       <Handshake className="h-4 w-4" />
-                      Sign in to Trade
+                      Sign in to Barter
                     </Button>
                   </Link>
                 </>

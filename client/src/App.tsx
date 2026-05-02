@@ -44,6 +44,7 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
+import { GeoGate } from "@/components/geo-gate";
 import NotFound from "@/pages/not-found";
 
 function RouteTransition({ children }: { children: React.ReactNode }) {
@@ -106,7 +107,9 @@ function App() {
                   <Header />
                   <main className="flex-1 pb-20 md:pb-0">
                     <RouteTransition>
-                      <Router />
+                      <GeoGate>
+                        <Router />
+                      </GeoGate>
                     </RouteTransition>
                   </main>
                   <Footer />

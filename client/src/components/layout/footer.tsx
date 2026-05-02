@@ -24,7 +24,7 @@ export function Footer() {
               />
             </Link>
             <p className="text-sm text-white/60 leading-relaxed max-w-xs">
-              Trade what you have for what you need.
+              Barter what you have for what you need.
             </p>
           </div>
 
@@ -37,7 +37,7 @@ export function Footer() {
               <Link href="/how-it-works" className={linkCls}>{t("footer.howItWorks") || "How it works"}</Link>
               <Link href="/pricing" className={linkCls}>{t("footer.pricing") || "Pricing"}</Link>
               <Link href="/browse" className={linkCls}>{t("nav.browseListings") || "Browse listings"}</Link>
-              <Link href="/create-listing" className={linkCls}>{t("nav.createListing") || "List a trade"}</Link>
+              <Link href="/create-listing" className={linkCls}>{t("nav.createListing") || "List a barter"}</Link>
             </nav>
           </div>
 

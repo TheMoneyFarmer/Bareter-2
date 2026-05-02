@@ -27,7 +27,7 @@ type SubmitResponse = {
 };
 
 export function WaitlistDialog() {
-  const { isOpen, close, mode, referralCode: incomingRef } = useWaitlist();
+  const { isOpen, close, mode, referralCode: incomingRef, defaults } = useWaitlist();
   const { toast } = useToast();
   const [step, setStep] = useState<"form" | "success">("form");
   const [success, setSuccess] = useState<SubmitResponse | null>(null);
@@ -36,9 +36,20 @@ export function WaitlistDialog() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [country, setCountry] = useState<string>("");
+  const [city, setCity] = useState<string>("");
   const [accountType, setAccountType] = useState<string>("individual");
   const [businessName, setBusinessName] = useState("");
   const [honeypot, setHoneypot] = useState("");
+
+  // Prefill country/city from context defaults whenever the dialog opens with new defaults.
+  // We refresh on every open so geo-detected values aren't stuck behind earlier user-typed ones.
+  useEffect(() => {
+    if (isOpen) {
+      if (defaults.country) setCountry(defaults.country);
+      if (defaults.city) setCity(defaults.city);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaults.country, defaults.city]);
 
   // Live total
   const { data: counter } = useQuery<{ count: number }>({
@@ -68,6 +79,7 @@ export function WaitlistDialog() {
         email,
         name: name || null,
         country: country || null,
+        city: city || null,
         accountType,
         businessName: accountType === "business" ? (businessName || null) : null,
         source: typeof window !== "undefined" ? window.location.pathname : null,
@@ -216,17 +228,28 @@ export function WaitlistDialog() {
                   </Select>
                 </div>
                 <div>
-                  <Label htmlFor="wl-type">I am a</Label>
-                  <Select value={accountType} onValueChange={setAccountType}>
-                    <SelectTrigger id="wl-type" data-testid="select-waitlist-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="individual">Individual</SelectItem>
-                      <SelectItem value="business">Business</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="wl-city">City</Label>
+                  <Input
+                    id="wl-city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Your city"
+                    data-testid="input-waitlist-city"
+                  />
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="wl-type">I am a</Label>
+                <Select value={accountType} onValueChange={setAccountType}>
+                  <SelectTrigger id="wl-type" data-testid="select-waitlist-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {accountType === "business" && (

@@ -110,14 +110,14 @@ export function ListingDetailPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       toast({
-        title: "Trade proposed!",
-        description: "Your trade proposal has been sent. You can chat to negotiate.",
+        title: "Barter proposed!",
+        description: "Your barter proposal has been sent. You can chat to negotiate.",
       });
       navigate(`/deals/${data.id}`);
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to propose trade",
+        title: "Failed to propose barter",
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
@@ -647,16 +647,16 @@ export function ListingDetailPage() {
                     variant="bareter"
                     className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
                     onClick={() => setProposeOpen(true)}
-                    data-testid="button-propose-trade-sticky"
+                    data-testid="button-propose-trade-sticky" /* keep test id */
                   >
                     <Handshake className="h-5 w-5" />
-                    Propose a Trade
+                    Propose a Barter
                   </Button>
                 ) : (
                   <Link href="/login">
                     <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
                       <Handshake className="h-5 w-5" />
-                      Sign in to Trade
+                      Sign in to Barter
                     </Button>
                   </Link>
                 )}
@@ -721,7 +721,7 @@ export function ListingDetailPage() {
             <Dialog open={proposeOpen} onOpenChange={setProposeOpen}>
               <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
                 <DialogHeader>
-                  <DialogTitle>Propose a Trade</DialogTitle>
+                  <DialogTitle>Propose a Barter</DialogTitle>
                   <DialogDescription>
                     Tell {listing.user?.fullName} what you can offer in exchange
                   </DialogDescription>
@@ -809,7 +809,7 @@ export function ListingDetailPage() {
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 mx-6 mb-2">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High-value trade (AED 5,000+)</p>
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High-value barter (AED 5,000+)</p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
                         Verify the other party's business badge, use Bareter's contract feature, and keep all communication on-platform.
                       </p>
@@ -863,7 +863,7 @@ export function ListingDetailPage() {
       />
       </div>
 
-      {/* Mobile sticky bottom CTA — Propose a Trade */}
+      {/* Mobile sticky bottom CTA — Propose a Barter */}
       {!isOwnListing && (
         <div className="lg:hidden fixed bottom-[60px] inset-x-0 z-40 bg-white dark:bg-card border-t border-bareter-border dark:border-border p-3 shadow-[0_-4px_12px_rgba(15,25,35,0.08)]">
           {user ? (
@@ -871,16 +871,16 @@ export function ListingDetailPage() {
               variant="bareter"
               className="w-full h-14 text-base gap-2"
               onClick={() => setProposeOpen(true)}
-              data-testid="button-propose-trade-mobile"
+              data-testid="button-propose-trade-mobile" /* keep test id */
             >
               <Handshake className="h-5 w-5" />
-              Propose a Trade · AED {parseFloat(listing.retailValue as string).toLocaleString()}
+              Propose a Barter · AED {parseFloat(listing.retailValue as string).toLocaleString()}
             </Button>
           ) : (
             <Link href="/login">
               <Button variant="bareter" className="w-full h-14 text-base gap-2">
                 <Handshake className="h-5 w-5" />
-                Sign in to Trade
+                Sign in to Barter
               </Button>
             </Link>
           )}

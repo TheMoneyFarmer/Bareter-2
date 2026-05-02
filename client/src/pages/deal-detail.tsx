@@ -115,8 +115,8 @@ export function DealDetailPage() {
     if (!message.trim()) return;
     if (OFF_PLATFORM_RE.test(message.trim())) {
       toast({
-        title: "Stay safe — keep trades on Bareter",
-        description: "Your message may contain references to external platforms. Trading outside the app removes your buyer & seller protections.",
+        title: "Stay safe — keep barters on Bareter",
+        description: "Your message may contain references to external platforms. Bartering outside the app removes your buyer & seller protections.",
         variant: "destructive",
       });
     }
@@ -232,7 +232,7 @@ export function DealDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Trade Details</CardTitle>
+              <CardTitle className="text-lg">Deal Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-6">
@@ -425,7 +425,7 @@ export function DealDetailPage() {
                   data-testid="button-accept-deal"
                 >
                   <CheckCircle className="h-4 w-4" />
-                  Accept Trade
+                  Accept Barter
                 </Button>
               )}
 

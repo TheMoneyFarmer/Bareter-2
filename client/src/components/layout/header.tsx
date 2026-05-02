@@ -145,7 +145,7 @@ export function Header() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search trades in Dubai..."
+              placeholder="Search barters in Dubai..."
               className="flex-1 ms-3 me-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
               data-testid="input-header-search"
             />
@@ -196,11 +196,26 @@ export function Header() {
 
             {user ? (
               <>
-                {/* List a trade — primary teal CTA */}
+                {/* Feed — visible nav link (desktop) */}
+                <Link href="/feed" className="hidden md:inline-flex">
+                  <Button
+                    variant="bareter-ghost"
+                    size="sm"
+                    className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
+                      isActive("/feed") ? "bg-white/10" : ""
+                    }`}
+                    data-testid="button-nav-feed"
+                  >
+                    <Rss className="h-4 w-4" />
+                    Feed
+                  </Button>
+                </Link>
+
+                {/* List a barter — primary teal CTA */}
                 <Link href="/create-listing" className="hidden sm:inline-flex">
                   <Button variant="bareter" size="sm" className="h-10 gap-1.5" data-testid="button-list-trade">
                     <Plus className="h-4 w-4" />
-                    List a trade
+                    List a barter
                   </Button>
                 </Link>
 
@@ -394,7 +409,13 @@ export function Header() {
                       <Link href="/create-listing">
                         <Button variant="bareter" className="w-full justify-start gap-2 h-11">
                           <Plus className="h-4 w-4" />
-                          List a trade
+                          List a barter
+                        </Button>
+                      </Link>
+                      <Link href="/feed">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <Rss className="h-4 w-4" />
+                          {t("nav.feed") || "Feed"}
                         </Button>
                       </Link>
                       <div className="h-2" />
@@ -519,7 +540,7 @@ export function Header() {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search trades..."
+                placeholder="Search barters..."
                 className="flex-1 ms-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
                 data-testid="input-header-search-mobile"
               />

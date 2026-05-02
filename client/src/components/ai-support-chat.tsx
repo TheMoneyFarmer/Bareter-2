@@ -17,13 +17,13 @@ interface ChatMessage {
 
 const AUTH_INTRO: ChatMessage = {
   role: "assistant",
-  content: "Hi! I'm BarterBot, your trading assistant. How can I help you today?",
+  content: "Hi! I'm BarterBot, your barter assistant. How can I help you today?",
 };
 
 const GUEST_INTRO: ChatMessage = {
   role: "assistant",
   content:
-    "Hi! I'm BarterBot, the Bareter support assistant. I can answer your questions about trading, listings, contracts, and how the platform works — just sign in (or join the waitlist) to start chatting.",
+    "Hi! I'm BarterBot, the Bareter support assistant. I can answer your questions about bartering, listings, contracts, and how the platform works — just sign in (or join the waitlist) to start chatting.",
 };
 
 export default function AiSupportChat() {

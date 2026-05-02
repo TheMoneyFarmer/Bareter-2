@@ -99,7 +99,7 @@ export function LandingPage() {
                 transition: "transform 0.15s ease-out",
               }}
             >
-              Trade what you have for what you need.
+              Barter what you have for what you need.
             </h1>
             <p className="mt-3 text-base sm:text-lg text-bareter-teal-light max-w-2xl">
               UAE's AI-powered barter marketplace. No cash. Just value.
@@ -133,7 +133,7 @@ export function LandingPage() {
                 type="search"
                 value={heroQuery}
                 onChange={(e) => setHeroQuery(e.target.value)}
-                placeholder="Search trades..."
+                placeholder="Search barters..."
                 className="flex-1 px-4 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
                 data-testid="input-hero-search"
               />
@@ -183,7 +183,7 @@ export function LandingPage() {
           <div className="flex items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-section text-bareter-navy dark:text-foreground">
-                Trending trades in Dubai 🔥
+                Trending barters in Dubai 🔥
               </h2>
               <p className="text-caption mt-1">Updated daily by our AI matching engine</p>
             </div>
@@ -205,7 +205,7 @@ export function LandingPage() {
           ) : featured.length === 0 ? (
             <div className="rounded-bareter-card bg-white dark:bg-card border border-bareter-border dark:border-border p-10 text-center">
               <p className="text-card-title text-bareter-navy dark:text-foreground">
-                No trades yet — be the first to list something
+                No barters yet — be the first to list something
               </p>
               <p className="text-caption mt-1 mb-4">
                 Post your offer in minutes and get matched by our AI.
@@ -264,7 +264,7 @@ export function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6 relative">
             {[
               { n: 1, emoji: "📋", title: "List what you have",   desc: "Describe your item or service in minutes." },
-              { n: 2, emoji: "🤖", title: "Get AI-matched",       desc: "Our engine finds the perfect trade partner." },
+              { n: 2, emoji: "🤖", title: "Get AI-matched",       desc: "Our engine finds the perfect barter partner." },
               { n: 3, emoji: "🤝", title: "Close the deal",       desc: "Contract auto-generated, exchange confirmed." },
             ].map((s, i, arr) => (
               <div key={s.n} className="relative flex flex-col items-center text-center">
@@ -292,7 +292,7 @@ export function LandingPage() {
       <section className="bg-bareter-off-white dark:bg-background" data-testid="section-stories">
         <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
           <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
-            Real trades. Real value.
+            Real barters. Real value.
           </h2>
           <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
             <div className="flex gap-4 min-w-min snap-x snap-mandatory">
@@ -392,7 +392,7 @@ const TRUST_STATS: {
   suffix?: string;
 }[] = [
   { icon: ShieldCheck,   label: "Verified Users",    desc: "KYC + KYB checks",      countTo: 500, suffix: "+" },
-  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart trade engine",    countTo: 1200, suffix: "+" },
+  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart barter engine",    countTo: 1200, suffix: "+" },
   { icon: FileSignature, label: "Auto Contracts",    desc: "E-signed agreements" },
   { icon: CheckCircle2,  label: "🇦🇪 UAE Compliant", desc: "VAT-ready receipts"   },
 ];

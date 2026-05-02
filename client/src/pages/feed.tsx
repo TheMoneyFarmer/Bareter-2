@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 import {
   Heart,
@@ -415,7 +416,7 @@ function BarterExchangeSection({ post, onPropose }: { post: PostWithUser; onProp
       {wantItems.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-            Willing to trade for
+            Willing to barter for
           </p>
           <div className="flex flex-wrap gap-1.5">
             {visibleWants.map((item, i) => (
@@ -544,7 +545,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
   const handleContact = (type: "call" | "email" | "message") => {
     if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to contact this trader" });
+      toast({ title: "Sign in required", description: "Please sign in to contact this member" });
       navigate("/login");
       return;
     }
@@ -553,17 +554,17 @@ function FeedCard({ post }: { post: PostWithUser }) {
       if (poster?.phone && poster?.showPhone !== false) {
         window.open(`tel:${poster.phone}`, "_self");
       } else {
-        toast({ title: "Not available", description: "This trader hasn't shared their phone number" });
+        toast({ title: "Not available", description: "This member hasn't shared their phone number" });
       }
     } else if (type === "email") {
       if (poster?.email && poster?.showEmail !== false) {
         window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${post.title || "Bareter"}`, "_self");
       } else {
-        toast({ title: "Not available", description: "This trader hasn't shared their email address" });
+        toast({ title: "Not available", description: "This member hasn't shared their email address" });
       }
     } else if (type === "message") {
       if (poster?.allowDirectMessages === false) {
-        toast({ title: "Not available", description: "This trader has disabled direct messages" });
+        toast({ title: "Not available", description: "This member has disabled direct messages" });
       } else {
         toast({ title: "Coming soon", description: "Direct messaging will be available soon" });
       }
@@ -599,7 +600,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
   return (
     <>
-    <Card className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md" data-testid={`card-post-${post.id}`}>
+    <Card id={`post-${post.id}`} className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md scroll-mt-24" data-testid={`card-post-${post.id}`}>
       <CardContent className="p-0">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
           <Link href={`/users/${post.userId}`}>
@@ -665,38 +666,55 @@ function FeedCard({ post }: { post: PostWithUser }) {
           </div>
         </div>
 
-        <div className="relative">
+        <div className="relative group" data-testid={`media-${post.id}`}>
           {post.mediaUrls && post.mediaUrls.length > 0 ? (
-            <div className="w-full aspect-square bg-muted" data-testid={`media-${post.id}`}>
-              <img
-                src={post.mediaUrls[0]}
-                alt={post.title || "Post media"}
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-            </div>
+            <ImageCarousel
+              images={post.mediaUrls as string[]}
+              alt={post.title || "Post media"}
+              aspect="aspect-square"
+              testIdPrefix={`post-media-${post.id}`}
+              overlays={
+                <>
+                  {isHighValue && (
+                    <div className="absolute top-3 left-3 z-10">
+                      <Badge variant="default" className="text-xs gap-1" data-testid={`badge-high-value-${post.id}`}>
+                        <TrendingUp className="h-3 w-3" />
+                        High Value
+                      </Badge>
+                    </div>
+                  )}
+                  {declaredValue > 0 && (
+                    <div className="absolute bottom-3 right-3 z-10">
+                      <Badge variant="secondary" className="font-semibold bg-background/90 backdrop-blur-sm text-sm" data-testid={`badge-value-${post.id}`}>
+                        AED {formatValue(post.declaredValue)}
+                      </Badge>
+                    </div>
+                  )}
+                </>
+              }
+            />
           ) : (
-            <div className="w-full aspect-square bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+            <div className="w-full aspect-square bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center relative">
               {post.postType === "request" ? (
                 <Search className="h-20 w-20 text-primary/20" />
               ) : (
                 <PackagePlus className="h-20 w-20 text-primary/20" />
               )}
-            </div>
-          )}
-          {isHighValue && (
-            <div className="absolute top-3 left-3">
-              <Badge variant="default" className="text-xs gap-1" data-testid={`badge-high-value-${post.id}`}>
-                <TrendingUp className="h-3 w-3" />
-                High Value
-              </Badge>
-            </div>
-          )}
-          {declaredValue > 0 && (
-            <div className="absolute bottom-3 right-3">
-              <Badge variant="secondary" className="font-semibold bg-background/90 backdrop-blur-sm text-sm" data-testid={`badge-value-${post.id}`}>
-                AED {formatValue(post.declaredValue)}
-              </Badge>
+              {isHighValue && (
+                <div className="absolute top-3 left-3">
+                  <Badge variant="default" className="text-xs gap-1" data-testid={`badge-high-value-${post.id}`}>
+                    <TrendingUp className="h-3 w-3" />
+                    High Value
+                  </Badge>
+                </div>
+              )}
+              {declaredValue > 0 && (
+                <div className="absolute bottom-3 right-3">
+                  <Badge variant="secondary" className="font-semibold bg-background/90 backdrop-blur-sm text-sm" data-testid={`badge-value-${post.id}`}>
+                    AED {formatValue(post.declaredValue)}
+                  </Badge>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -918,7 +936,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
             <div>
               <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">Join Bareter</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Start trading goods & services with UAE businesses
+                Start bartering goods & services with UAE businesses
               </p>
             </div>
             <div className="flex gap-2">
@@ -953,7 +971,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="font-semibold text-sm" data-testid="sidebar-suggested-title">Active Traders</h3>
+              <h3 className="font-semibold text-sm" data-testid="sidebar-suggested-title">Active Members</h3>
               <Link href="/browse" data-testid="sidebar-see-all">
                 <span className="text-xs text-primary font-medium underline">See All</span>
               </Link>
@@ -992,7 +1010,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-trades">850+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Trades</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Deals</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-users">2,500+</span>
@@ -1000,7 +1018,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-value">AED 12M+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Trade Value</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Deal Value</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-satisfaction">98%</span>
@@ -1040,7 +1058,7 @@ function SafetyBanner() {
       <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
         <ShieldAlert className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Trade safely on Bareter</p>
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Barter safely on Bareter</p>
           <ul className="mt-1 space-y-0.5 text-[11px] text-blue-700 dark:text-blue-400">
             <li>• Always verify the business badge before trading</li>
             <li>• Keep all negotiations inside the platform</li>

@@ -516,12 +516,12 @@
     position: absolute;
     padding: 12px 16px;
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.85);
     color: var(--bareter-navy);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
     backdrop-filter: blur(2px);
-    opacity: 0.22;
-    filter: blur(1px);
+    opacity: 0.14;
+    filter: blur(1.5px);
     transition: transform 0.1s ease-out;
     min-width: 170px;
     max-width: 210px;
@@ -579,12 +579,12 @@
     50%  { transform: translate(-12px, -18px) rotate(-1deg); }
     100% { transform: translate(8px, 10px) rotate(1deg); }
   }
-  .float-1 { animation: bareter-float-1 18s ease-in-out infinite alternate; }
-  .float-2 { animation: bareter-float-2 22s ease-in-out infinite alternate; }
-  .float-3 { animation: bareter-float-3 20s ease-in-out infinite alternate; }
-  .float-4 { animation: bareter-float-4 25s ease-in-out infinite alternate; }
-  .float-5 { animation: bareter-float-5 19s ease-in-out infinite alternate; }
-  .float-6 { animation: bareter-float-6 23s ease-in-out infinite alternate; }
+  .float-1 { animation: bareter-float-1 28s ease-in-out infinite alternate; }
+  .float-2 { animation: bareter-float-2 34s ease-in-out infinite alternate; }
+  .float-3 { animation: bareter-float-3 30s ease-in-out infinite alternate; }
+  .float-4 { animation: bareter-float-4 38s ease-in-out infinite alternate; }
+  .float-5 { animation: bareter-float-5 29s ease-in-out infinite alternate; }
+  .float-6 { animation: bareter-float-6 35s ease-in-out infinite alternate; }
 
   .bareter-floats.is-paused .bareter-float-inner {
     animation-play-state: paused;

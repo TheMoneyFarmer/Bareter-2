@@ -276,7 +276,7 @@ export function BrowsePublicPage() {
           <span className="font-medium text-foreground">{filteredListings.length}</span> listings available
         </p>
         <Link href="/register">
-          <Button className="gap-2" data-testid="button-join-to-trade">
+          <Button className="gap-2" data-testid="button-join-to-trade" /* keep test id */>
             <Sparkles className="h-4 w-4" />
             Join to Start Bartering
           </Button>
@@ -403,7 +403,7 @@ export function BrowsePublicPage() {
           <CardContent className="py-10">
             <h2 className="text-2xl font-bold mb-3">Ready to Start Bartering?</h2>
             <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
-              Create your free account to browse all listings, contact sellers, and propose trades with verified UAE businesses.
+              Create your free account to browse all listings, contact sellers, and propose barters with verified UAE businesses.
             </p>
             <div className="flex gap-3 justify-center flex-wrap">
               <Link href="/register">

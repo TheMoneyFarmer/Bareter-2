@@ -283,7 +283,7 @@ export function CreateListingPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Create Listing</h1>
         <p className="text-muted-foreground">
-          List something you want to offer or request in a trade
+          List something you want to offer or request in a barter
         </p>
       </div>
 
@@ -322,7 +322,7 @@ export function CreateListingPage() {
                             <Package className="h-10 w-10 mb-3 text-primary" />
                             <span className="font-semibold">I'm Offering</span>
                             <span className="text-xs text-muted-foreground text-center mt-1">
-                              Goods or services to trade
+                              Goods or services to barter
                             </span>
                           </label>
                         </div>
@@ -541,14 +541,14 @@ export function CreateListingPage() {
                 What I Want in Exchange
               </CardTitle>
               <CardDescription>
-                Tell potential trade partners what you're looking for in return
+                Tell potential barter partners what you're looking for in return
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
                 <FormLabel className="text-base mb-3 block">Preferred Categories</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Select categories of goods/services you'd accept in trade
+                  Select categories of goods/services you'd accept in barter
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {CATEGORIES.map((category) => (
@@ -686,7 +686,7 @@ export function CreateListingPage() {
                           Open to other offers
                         </FormLabel>
                         <FormDescription>
-                          Allow traders to propose items not listed above
+                          Allow members to propose items not listed above
                         </FormDescription>
                       </div>
                     </FormItem>

@@ -174,7 +174,7 @@ function VerificationSection({ user }: { user: User }) {
               {status === "NOT_STARTED" && "Complete identity verification to start bartering."}
               {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
               {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
-              {status === "APPROVED" && "You are verified and can now trade on Bareter!"}
+              {status === "APPROVED" && "You are verified and can now barter on Bareter!"}
               {status === "DECLINED" && "Your verification was declined. Please try again with valid documents."}
               {status === "EXPIRED" && "Your verification session expired. Please start again."}
               {status === "ABANDONED" && "You didn't complete verification. Please try again."}
@@ -250,7 +250,7 @@ function VerificationSection({ user }: { user: User }) {
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertTitle className="text-green-700 dark:text-green-300">Verified Account</AlertTitle>
             <AlertDescription className="text-green-600 dark:text-green-400">
-              Your identity has been verified. You can now trade with confidence on Bareter.
+              Your identity has been verified. You can now barter with confidence on Bareter.
             </AlertDescription>
           </Alert>
         )}
@@ -493,7 +493,7 @@ export function ProfilePage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Complete your profile</AlertTitle>
           <AlertDescription>
-            Add your bio, location, and business details to start bartering. Complete profiles get more trade proposals.
+            Add your bio, location, and business details to start bartering. Complete profiles get more barter proposals.
           </AlertDescription>
         </Alert>
       )}
@@ -790,7 +790,7 @@ export function ProfilePage() {
                 What I Offer
               </CardTitle>
               <CardDescription>
-                List the goods and services you can provide in trades with their retail values
+                List the goods and services you can provide in barters with their retail values
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -848,7 +848,7 @@ export function ProfilePage() {
                 ))}
                 {(user.whatIOffer || []).length === 0 && (
                   <p className="text-muted-foreground text-sm text-center py-4">
-                    No offers added yet. Add what you can provide in trades.
+                    No offers added yet. Add what you can provide in barters.
                   </p>
                 )}
               </div>
@@ -930,7 +930,7 @@ export function ProfilePage() {
                 ))}
                 {(user.whatINeed || []).length === 0 && (
                   <p className="text-muted-foreground text-sm text-center py-4">
-                    No needs added yet. Add what you're looking for in trades.
+                    No needs added yet. Add what you're looking for in barters.
                   </p>
                 )}
               </div>
@@ -954,7 +954,7 @@ export function ProfilePage() {
                 Skill Endorsements
               </CardTitle>
               <CardDescription>
-                Endorsements from other traders who have worked with you
+                Endorsements from other members who have worked with you
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -995,7 +995,7 @@ export function ProfilePage() {
                 <div className="text-center py-8">
                   <ThumbsUp className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
                   <p className="text-muted-foreground text-sm">No endorsements yet</p>
-                  <p className="text-muted-foreground text-xs mt-1">Complete trades to receive endorsements from other users</p>
+                  <p className="text-muted-foreground text-xs mt-1">Complete deals to receive endorsements from other users</p>
                 </div>
               )}
             </CardContent>

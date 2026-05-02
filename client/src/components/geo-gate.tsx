@@ -1,0 +1,148 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Globe2, Mail, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
+import { getCountryByCode } from "@shared/schema";
+
+const BYPASS_KEY = "bareter_bypass_geo";
+const ALLOWED_COUNTRY = "AE";
+
+interface GeoLookup {
+  country: string;
+  countryName: string;
+  city: string | null;
+  source: string;
+  cached?: boolean;
+}
+
+export function GeoGate({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const { openWith } = useWaitlist();
+  const [bypassed, setBypassed] = useState(false);
+
+  // Honour ?bypassGeo=1 and persistent localStorage flag (admins/dev/QA)
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("bypassGeo") === "1") {
+        localStorage.setItem(BYPASS_KEY, "1");
+      }
+      if (localStorage.getItem(BYPASS_KEY) === "1") {
+        setBypassed(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const { data: geo, isLoading } = useQuery<GeoLookup>({
+    queryKey: ["/api/geo/lookup"],
+    enabled: !user?.isAdmin && !bypassed,
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const allow = useMemo(() => {
+    if (user?.isAdmin) return true;
+    if (bypassed) return true;
+    if (!geo) return null; // still resolving
+    return geo.country === ALLOWED_COUNTRY;
+  }, [user?.isAdmin, bypassed, geo]);
+
+  // While we resolve geo for unauthenticated visitors, hold the render with a soft loader
+  // so non-AE visitors can never briefly access the app before the gate decides.
+  if (allow === null) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center" data-testid="geo-gate-loading">
+        <div className="h-6 w-6 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    );
+  }
+  if (allow !== false) return <>{children}</>;
+
+  const detectedCountry =
+    geo?.countryName || (geo?.country ? getCountryByCode(geo.country)?.name || geo.country : "your country");
+
+  const onJoinWaitlist = () => {
+    openWith({
+      country: geo?.country ?? null,
+      city: geo?.city ?? null,
+      reason: "geo",
+    });
+  };
+
+  const onContinueAnyway = () => {
+    try {
+      localStorage.setItem(BYPASS_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setBypassed(true);
+  };
+
+  return (
+    <div
+      className="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4 py-12"
+      data-testid="geo-gate"
+    >
+      <Card className="max-w-lg w-full shadow-bareter-card">
+        <CardContent className="p-8 text-center space-y-5">
+          <div className="mx-auto h-14 w-14 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+            <Globe2 className="h-7 w-7" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold" data-testid="geo-gate-title">
+              Bareter isn't live in {detectedCountry} yet
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              We're a UAE-first marketplace today, but expanding worldwide. Join the waitlist
+              and we'll let you know the moment Bareter launches in your country.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-muted/40 border border-border px-4 py-3 text-left">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              <span>
+                Detected location: <span className="font-medium text-foreground">
+                  {geo?.city ? `${geo.city}, ` : ""}{detectedCountry}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+            <Button
+              className="flex-1 gap-2"
+              size="lg"
+              onClick={onJoinWaitlist}
+              data-testid="button-geo-waitlist"
+            >
+              <Mail className="h-4 w-4" />
+              Join the waitlist
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex-1"
+              onClick={onContinueAnyway}
+              data-testid="button-geo-bypass"
+            >
+              Continue anyway
+            </Button>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            Already have an account?{" "}
+            <a href="/login" className="text-primary underline" data-testid="link-geo-login">
+              Sign in
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

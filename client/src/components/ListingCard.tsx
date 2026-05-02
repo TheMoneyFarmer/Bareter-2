@@ -1,9 +1,10 @@
-import { useState, type CSSProperties, type MouseEvent } from "react";
+import { type CSSProperties, type MouseEvent } from "react";
 import { Link } from "wouter";
 import { MapPin, ShieldCheck, Crown, Lock, Heart } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { ListingWithUser } from "@shared/schema";
 import { isUserVerified } from "@/components/verified-badge";
+import { ImageCarousel } from "@/components/ImageCarousel";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -41,8 +42,7 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const cover = listing.images?.[0] || null;
+  const allImages = (listing.images as string[] | undefined) ?? [];
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
   const pillColor = primaryCategory ? CATEGORY_PILL_COLORS[primaryCategory] || "#374151" : "#374151";
   const valueNum = parseFloat(listing.retailValue as string);
@@ -66,64 +66,58 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
       data-testid={testId || `card-listing-${listing.id}`}
     >
       <article className="bareter-card-hover bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card overflow-hidden h-full flex flex-col">
-        {/* IMAGE — strict 16:9 */}
-        <div className="relative aspect-[16/9] bg-bareter-off-white dark:bg-muted overflow-hidden">
-          {cover ? (
-            <img
-              src={cover}
-              alt={listing.title}
-              loading="lazy"
-              onLoad={() => setImgLoaded(true)}
-              className={`w-full h-full object-cover bareter-img-blur ${imgLoaded ? "is-loaded" : ""}`}
-            />
-          ) : (
-            <div className="w-full h-full bg-bareter-gradient flex items-center justify-center">
-              <span className="text-white/60 text-xs font-medium tracking-wider">BARETER</span>
-            </div>
-          )}
+        {/* IMAGE — 16:9 with swipe carousel */}
+        <ImageCarousel
+          images={allImages}
+          alt={listing.title}
+          aspect="aspect-[16/9]"
+          testIdPrefix={`listing-media-${listing.id}`}
+          overlays={
+            <>
+              {primaryCategory && (
+                <span
+                  className="absolute top-3 start-3 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white rounded-md shadow-sm"
+                  style={{ backgroundColor: pillColor }}
+                  data-testid={`pill-category-${listing.id}`}
+                >
+                  {primaryCategory}
+                </span>
+              )}
 
-          {primaryCategory && (
-            <span
-              className="absolute top-3 start-3 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white rounded-md shadow-sm"
-              style={{ backgroundColor: pillColor }}
-              data-testid={`pill-category-${listing.id}`}
-            >
-              {primaryCategory}
-            </span>
-          )}
+              {listing.isFeatured && (
+                <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-gold text-bareter-navy-deep shadow-sm">
+                  <Crown className="h-3 w-3" />
+                  Featured
+                </span>
+              )}
 
-          {listing.isFeatured && (
-            <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-gold text-bareter-navy-deep shadow-sm">
-              <Crown className="h-3 w-3" />
-              Featured
-            </span>
-          )}
+              {isHighValue && !listing.isFeatured && (
+                <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-navy/95 text-white shadow-sm">
+                  <Lock className="h-3 w-3" />
+                  Enhanced verification
+                </span>
+              )}
 
-          {isHighValue && !listing.isFeatured && (
-            <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-navy/95 text-white shadow-sm">
-              <Lock className="h-3 w-3" />
-              Enhanced verification
-            </span>
-          )}
-
-          {onWishlistToggle && (
-            <button
-              type="button"
-              onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onWishlistToggle(listing.id);
-              }}
-              className="absolute bottom-3 end-3 h-9 w-9 rounded-full bg-white/90 dark:bg-bareter-navy-deep/80 backdrop-blur-sm inline-flex items-center justify-center shadow-sm hover:bg-white dark:hover:bg-bareter-navy-deep transition-colors"
-              data-testid={`button-wishlist-${listing.id}`}
-              aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-            >
-              <Heart
-                className={`h-4 w-4 transition-colors ${isWishlisted ? "fill-bareter-error text-bareter-error" : "text-bareter-navy dark:text-white"}`}
-              />
-            </button>
-          )}
-        </div>
+              {onWishlistToggle && (
+                <button
+                  type="button"
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onWishlistToggle(listing.id);
+                  }}
+                  className="absolute bottom-3 end-3 h-9 w-9 rounded-full bg-white/90 dark:bg-bareter-navy-deep/80 backdrop-blur-sm inline-flex items-center justify-center shadow-sm hover:bg-white dark:hover:bg-bareter-navy-deep transition-colors z-10"
+                  data-testid={`button-wishlist-${listing.id}`}
+                  aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                >
+                  <Heart
+                    className={`h-4 w-4 transition-colors ${isWishlisted ? "fill-bareter-error text-bareter-error" : "text-bareter-navy dark:text-white"}`}
+                  />
+                </button>
+              )}
+            </>
+          }
+        />
 
         {/* BODY */}
         <div className="flex flex-col flex-1 p-4 gap-2.5">

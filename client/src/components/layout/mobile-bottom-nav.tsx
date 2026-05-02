@@ -10,6 +10,7 @@ import {
   MessageSquare,
   User,
   LogIn,
+  Rss,
 } from "lucide-react";
 
 export function MobileBottomNav() {
@@ -41,21 +42,36 @@ export function MobileBottomNav() {
     >
       <div className="relative bg-white dark:bg-card border-t border-bareter-border dark:border-border h-[60px] safe-area-bottom shadow-[0_-2px_8px_rgba(15,25,35,0.08)]">
         <div className="grid grid-cols-5 h-full">
-          {/* Home */}
-          <Link
-            href={homeHref}
-            className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-              isActive(homeHref) || location === "/"
-                ? "text-bareter-teal"
-                : "text-bareter-muted dark:text-muted-foreground"
-            }`}
-            data-testid="mobile-tab-home"
-          >
-            <Home className="h-5 w-5" strokeWidth={isActive(homeHref) ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Home</span>
-          </Link>
+          {/* Home / Feed */}
+          {user ? (
+            <Link
+              href="/feed"
+              className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+                isActive("/feed") || location === "/"
+                  ? "text-bareter-teal"
+                  : "text-bareter-muted dark:text-muted-foreground"
+              }`}
+              data-testid="mobile-tab-home"
+            >
+              <Rss className="h-5 w-5" strokeWidth={isActive("/feed") ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Feed</span>
+            </Link>
+          ) : (
+            <Link
+              href="/"
+              className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+                location === "/"
+                  ? "text-bareter-teal"
+                  : "text-bareter-muted dark:text-muted-foreground"
+              }`}
+              data-testid="mobile-tab-home"
+            >
+              <Home className="h-5 w-5" strokeWidth={location === "/" ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">Home</span>
+            </Link>
+          )}
 
-          {/* Browse */}
+          {/* Discover (Browse) */}
           <Link
             href="/browse"
             className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
@@ -66,7 +82,7 @@ export function MobileBottomNav() {
             data-testid="mobile-tab-browse"
           >
             <Compass className="h-5 w-5" strokeWidth={isActive("/browse") ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Browse</span>
+            <span className="text-[10px] font-medium">Discover</span>
           </Link>
 
           {/* List (FAB placeholder slot — keeps grid balanced) */}
@@ -139,7 +155,7 @@ export function MobileBottomNav() {
             href="/create-listing"
             className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
             data-testid="mobile-tab-create-listing"
-            aria-label="List a trade"
+            aria-label="List a barter"
           >
             <Plus className="h-7 w-7" strokeWidth={2.5} />
           </Link>
@@ -158,7 +174,7 @@ export function MobileBottomNav() {
             href="/login"
             className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
             data-testid="mobile-tab-create-listing"
-            aria-label="Sign in to list a trade"
+            aria-label="Sign in to list a barter"
           >
             <Plus className="h-7 w-7" strokeWidth={2.5} />
           </Link>
