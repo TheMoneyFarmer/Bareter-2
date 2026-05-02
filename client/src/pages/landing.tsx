@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { DealTicker } from "@/components/DealTicker";
+import { SuccessStoriesMarquee } from "@/components/SuccessStoriesMarquee";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { useReveal } from "@/hooks/use-reveal";
 import { useCountUp } from "@/hooks/use-count-up";
@@ -41,12 +42,6 @@ const CATEGORY_GRID: { label: string; emoji: string; gradient: string; href: str
   { label: "Yachts",      emoji: "⛵", gradient: "linear-gradient(135deg, #0C4A6E 0%, #082F4A 100%)", href: "/browse?category=Yachts" },
   { label: "Fitness",     emoji: "🏋", gradient: "linear-gradient(135deg, #14532D 0%, #052E16 100%)", href: "/browse?category=Health%20%26%20Wellness" },
   { label: "Home",        emoji: "🏠", gradient: "linear-gradient(135deg, #1C2D4A 0%, #2D1B0F 100%)", href: "/browse?category=Home" },
-];
-
-const SUCCESS_STORIES = [
-  { name: "Aisha M.", city: "Dubai",     swap: "Catering for 50 guests",  forItem: "Wedding photography",  value: 18500 },
-  { name: "Omar S.",  city: "Abu Dhabi", swap: "Office furniture set",     forItem: "3 months of accounting", value: 32000 },
-  { name: "Layla R.", city: "Sharjah",   swap: "Logo and brand identity",  forItem: "Beachfront staycation",  value: 9500 },
 ];
 
 export function LandingPage() {
@@ -284,42 +279,9 @@ export function LandingPage() {
           <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
             Real barters. Real value.
           </h2>
-          <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
-            <div className="flex gap-4 min-w-min snap-x snap-mandatory">
-              {SUCCESS_STORIES.map((s, i) => (
-                <article
-                  key={i}
-                  className="snap-start flex-shrink-0 w-[300px] sm:w-[340px] bg-white dark:bg-card border border-bareter-border dark:border-border rounded-bareter-card shadow-bareter-card p-5"
-                  data-testid={`card-story-${i}`}
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="h-9 w-9 rounded-full bg-bareter-teal-muted text-bareter-teal flex items-center justify-center font-semibold">
-                      {s.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">
-                        {s.name} <span className="font-normal text-bareter-muted">in {s.city}</span>
-                      </p>
-                      <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-bareter-teal">
-                        <ShieldCheck className="h-3 w-3" /> Verified
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-bareter-navy dark:text-foreground leading-relaxed">
-                    Swapped <span className="font-semibold">{s.swap}</span> for{" "}
-                    <span className="font-semibold">{s.forItem}</span>
-                  </p>
-                  <p className="mt-3 text-price">AED {s.value.toLocaleString()}</p>
-                  <div className="mt-3 flex items-center gap-1 text-bareter-teal">
-                    {Array.from({ length: 5 }).map((_, k) => (
-                      <Star key={k} className="h-3.5 w-3.5 fill-current" />
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
         </div>
+        <SuccessStoriesMarquee />
+        <div className="h-14 sm:h-16" aria-hidden="true" />
       </section>
 
       {/* ============================ WAITLIST CTA ============================ */}
@@ -364,7 +326,7 @@ export function LandingPage() {
               </Button>
             </form>
             <p className="mt-3 text-caption text-white/50">
-              No spam. Launch notification only.
+              
             </p>
           </div>
         </section>

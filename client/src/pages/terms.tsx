@@ -125,8 +125,8 @@ export function TermsPage() {
           <div className="mt-4 text-muted-foreground">
             <p>Bareter</p>
             <p>Dubai, United Arab Emirates</p>
-            <p>Email: legal@bareter.com</p>
-            <p>Phone: +971 4 123 4567</p>
+            <p>Email: hello@bareter.com</p>
+            <p>Phone: +971 523 133 5127</p>
           </div>
         </section>
       </div>

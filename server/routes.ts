@@ -1158,6 +1158,76 @@ export async function registerRoutes(
     }
   });
 
+  // Public list of recently completed deals for the landing-page success
+  // stories marquee. Returns a small, sanitised shape (no IDs, no emails)
+  // so it can be served unauthenticated. Always returns 200 with [] on
+  // any error so the landing page never breaks.
+  app.get("/api/deals/recent-completed", async (_req, res) => {
+    try {
+      const recent = await storage.getRecentCompletedDeals(10);
+
+      // Initials only — never expose a real first or last name in full.
+      // e.g. "Sarah Ahmed" -> "S. A."  /  "Mohammed" -> "M."
+      const initialsOnly = (full: string) => {
+        const parts = full
+          .trim()
+          .split(/\s+/)
+          .filter((p) => p.length > 0)
+          .slice(0, 2);
+        if (parts.length === 0) return "Member";
+        return parts.map((p) => `${p.charAt(0).toUpperCase()}.`).join(" ");
+      };
+
+      // Allowlist of cities we will surface. Anything else collapses to a
+      // coarse "Worldwide" label so freeform location text (which can contain
+      // street addresses or PII) is never rendered.
+      const CITY_ALLOWLIST = new Set([
+        "dubai", "abu dhabi", "sharjah", "ajman", "ras al khaimah",
+        "fujairah", "umm al quwain", "al ain",
+        "riyadh", "jeddah", "doha", "manama", "kuwait city", "muscat",
+        "london", "new york", "san francisco", "los angeles", "paris",
+        "berlin", "madrid", "amsterdam", "singapore", "hong kong", "tokyo",
+        "mumbai", "delhi", "bangalore", "istanbul", "cairo", "casablanca",
+        "toronto", "sydney", "melbourne",
+      ]);
+      const cleanCity = (u: { city?: string | null; location?: string | null }) => {
+        const raw = (u.city || u.location || "").trim();
+        if (!raw) return "Worldwide";
+        // Take only the first comma-segment, strip non-letters at the edges.
+        const first = raw.split(",")[0].trim().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+        if (!first) return "Worldwide";
+        return CITY_ALLOWLIST.has(first.toLowerCase()) ? first : "Worldwide";
+      };
+
+      // Trim user-generated offer text and strip emails/phones defensively.
+      const safeOffer = (raw: string | null | undefined) => {
+        if (!raw) return "";
+        const stripped = raw
+          .replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/gi, "")
+          .replace(/\b\+?\d[\d\s().-]{6,}\b/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        return stripped.length > 70 ? `${stripped.slice(0, 67)}...` : stripped;
+      };
+
+      const stories = recent
+        .filter((d) => d.provider && d.seeker && d.providerOffer && d.seekerOffer)
+        .map((d) => ({
+          name: initialsOnly(d.provider.fullName || "Member"),
+          city: cleanCity(d.provider),
+          swap: safeOffer(d.providerOffer),
+          forItem: safeOffer(d.seekerOffer),
+          value: Math.round(Number(d.providerValue) || 0),
+        }))
+        .filter((s) => s.swap && s.forItem && s.value > 0);
+
+      res.json(stories);
+    } catch (error) {
+      console.error("Get recent completed deals error:", error);
+      res.json([]);
+    }
+  });
+
   // Deals routes
   app.get("/api/deals", requireAuth, async (req, res) => {
     try {

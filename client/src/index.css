@@ -483,6 +483,70 @@
   }
 
   /* ---------------------------------------------------------------------- */
+  /* Success-stories marquee (cards version of the deal ticker)             */
+  /* ---------------------------------------------------------------------- */
+  .bareter-stories {
+    position: relative;
+    overflow: hidden;
+    /* Soft edge fade so cards don't pop in/out at the viewport boundary. */
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 48px,
+      #000 calc(100% - 48px),
+      transparent 100%
+    );
+            mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 48px,
+      #000 calc(100% - 48px),
+      transparent 100%
+    );
+  }
+  .bareter-stories-track {
+    display: flex;
+    width: max-content;
+    will-change: transform;
+    animation: bareter-stories-scroll 60s linear infinite;
+  }
+  .bareter-stories:hover .bareter-stories-track,
+  .bareter-stories:focus-within .bareter-stories-track,
+  .bareter-stories:focus .bareter-stories-track {
+    animation-play-state: paused;
+  }
+  .bareter-stories:focus { outline: none; }
+  .bareter-stories:focus-visible {
+    outline: 2px solid var(--bareter-teal);
+    outline-offset: 4px;
+    border-radius: var(--radius-bareter-card, 16px);
+  }
+  /* Use margin-right (not flex `gap`) so the second half of the track is an
+     exact pixel copy of the first half — translateX(-50%) then loops with
+     no seam. */
+  .bareter-story-card {
+    flex-shrink: 0;
+    width: 300px;
+    margin-right: 1rem;
+    background-color: #ffffff;
+    border: 1px solid var(--bareter-border);
+    border-radius: var(--radius-bareter-card, 16px);
+    box-shadow: var(--shadow-bareter-card, 0 1px 3px rgba(0, 0, 0, 0.05));
+    padding: 1.25rem;
+  }
+  @media (min-width: 640px) {
+    .bareter-story-card { width: 340px; }
+  }
+  .dark .bareter-story-card {
+    background-color: hsl(var(--card));
+    border-color: hsl(var(--border));
+  }
+  @keyframes bareter-stories-scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* ---------------------------------------------------------------------- */
   /* Card stagger reveal (Animation 4)                                      */
   /* ---------------------------------------------------------------------- */
   .bareter-stagger-card {
@@ -677,9 +741,20 @@
       scroll-behavior: auto !important;
     }
     .bareter-ticker-track,
+    .bareter-stories-track,
     .bareter-float-inner,
     .bareter-cta-pulse::after {
       animation: none !important;
+    }
+    /* When auto-scroll is disabled, fall back to a horizontal-swipe row so
+       reduced-motion users still see all the stories. */
+    .bareter-stories {
+      overflow-x: auto;
+      -webkit-mask-image: none;
+              mask-image: none;
+    }
+    .bareter-stories-track {
+      width: auto;
     }
     .bareter-cta-pulse::after { opacity: 0 !important; }
     .bareter-stagger-card {

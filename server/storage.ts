@@ -209,6 +209,7 @@ export interface IStorage {
   // Trending/Featured
   getFeaturedListings(): Promise<ListingWithUser[]>;
   getTrendingPosts(): Promise<PostWithUser[]>;
+  getRecentCompletedDeals(limit?: number): Promise<DealWithUsers[]>;
 
   // Waitlist
   createWaitlistEntry(input: InsertWaitlistEntry & { ipAddress?: string | null; userAgent?: string | null }): Promise<WaitlistEntry>;
@@ -1024,6 +1025,25 @@ export class DatabaseStorage implements IStorage {
       ...listing,
       user: user!,
     }));
+  }
+
+  async getRecentCompletedDeals(limit: number = 10): Promise<DealWithUsers[]> {
+    const result = await db
+      .select()
+      .from(deals)
+      .where(eq(deals.state, "completed"))
+      .orderBy(desc(deals.updatedAt))
+      .limit(limit);
+
+    const dealsWithUsers = await Promise.all(
+      result.map(async (deal) => {
+        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
+        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
+        return { ...deal, seeker, provider };
+      })
+    );
+
+    return dealsWithUsers;
   }
 
   async getTrendingPosts(): Promise<PostWithUser[]> {
