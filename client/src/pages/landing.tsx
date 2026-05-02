@@ -330,7 +330,7 @@ export function LandingPage() {
         >
           <div className="container relative z-10 mx-auto max-w-3xl px-4 py-16 text-center">
             <h2 className="text-section text-white">
-              Join the waitlist — be first when we go live
+                          Join the waitlist
             </h2>
             <p className="mt-2 text-bareter-teal-light">United Arab Emirates</p>
 

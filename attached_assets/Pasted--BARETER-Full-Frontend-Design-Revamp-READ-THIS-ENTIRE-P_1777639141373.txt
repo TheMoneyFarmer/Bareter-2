@@ -163,7 +163,7 @@ If no real data yet, show 3 placeholder cards with UAE-relevant examples
 Waitlist CTA section (show when user is not logged in):
 
 Background: var(--bareter-gradient)
-Heading white: Join the waitlist — be first when we go live
+Heading white: Join the waitlist.
 Subtext teal: Dubai · Abu Dhabi · GCC
 Email input (white, pill) + Get early access button (teal filled)
 Below: small muted text No spam. Launch notification only.
