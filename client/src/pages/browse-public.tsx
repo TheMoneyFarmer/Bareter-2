@@ -276,7 +276,7 @@ export function BrowsePublicPage() {
           <span className="font-medium text-foreground">{filteredListings.length}</span> listings available
         </p>
         <Link href="/register">
-          <Button className="gap-2" data-testid="button-join-to-trade" /* keep test id */>
+          <Button className="gap-2" data-testid="button-join-to-trade">
             <Sparkles className="h-4 w-4" />
             Join to Start Bartering
           </Button>

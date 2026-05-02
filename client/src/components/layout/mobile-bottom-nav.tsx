@@ -4,7 +4,6 @@ import { useI18n } from "@/lib/i18n";
 import { useWaitlist } from "@/lib/waitlist";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Home,
   Compass,
   Plus,
   MessageSquare,
@@ -29,10 +28,10 @@ export function MobileBottomNav() {
   const isActive = (path: string) =>
     location === path || (path !== "/" && location.startsWith(path));
 
-  const homeHref = user ? "/feed" : "/";
   const profileHref = user ? "/profile" : "/login";
   const profileLabel = user ? t("nav.profile") : t("nav.login");
   const loginIntercept = !user && waitlistMode.enabled;
+  const feedActive = isActive("/feed") || (!user && location === "/");
 
   return (
     <nav
@@ -42,34 +41,19 @@ export function MobileBottomNav() {
     >
       <div className="relative bg-white dark:bg-card border-t border-bareter-border dark:border-border h-[60px] safe-area-bottom shadow-[0_-2px_8px_rgba(15,25,35,0.08)]">
         <div className="grid grid-cols-5 h-full">
-          {/* Home / Feed */}
-          {user ? (
-            <Link
-              href="/feed"
-              className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-                isActive("/feed") || location === "/"
-                  ? "text-bareter-teal"
-                  : "text-bareter-muted dark:text-muted-foreground"
-              }`}
-              data-testid="mobile-tab-home"
-            >
-              <Rss className="h-5 w-5" strokeWidth={isActive("/feed") ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">Feed</span>
-            </Link>
-          ) : (
-            <Link
-              href="/"
-              className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-                location === "/"
-                  ? "text-bareter-teal"
-                  : "text-bareter-muted dark:text-muted-foreground"
-              }`}
-              data-testid="mobile-tab-home"
-            >
-              <Home className="h-5 w-5" strokeWidth={location === "/" ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">Home</span>
-            </Link>
-          )}
+          {/* Feed — always a dedicated tab */}
+          <Link
+            href="/feed"
+            className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
+              feedActive
+                ? "text-bareter-teal"
+                : "text-bareter-muted dark:text-muted-foreground"
+            }`}
+            data-testid="mobile-tab-feed"
+          >
+            <Rss className="h-5 w-5" strokeWidth={feedActive ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Feed</span>
+          </Link>
 
           {/* Discover (Browse) */}
           <Link

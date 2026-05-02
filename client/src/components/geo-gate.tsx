@@ -7,6 +7,10 @@ import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { getCountryByCode } from "@shared/schema";
 
+// Bypass is intentionally limited to:
+//   - admins / founders (DB-driven)
+//   - explicit query param `?bypassGeo=1` (dev/QA escape hatch — no public UI)
+// There is no public "continue anyway" affordance; non-AE visitors must join the waitlist.
 const BYPASS_KEY = "bareter_bypass_geo";
 const ALLOWED_COUNTRY = "AE";
 
@@ -38,19 +42,21 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const { data: geo, isLoading } = useQuery<GeoLookup>({
+  const isPrivileged = !!(user?.isAdmin || user?.founderBadge);
+
+  const { data: geo } = useQuery<GeoLookup>({
     queryKey: ["/api/geo/lookup"],
-    enabled: !user?.isAdmin && !bypassed,
+    enabled: !isPrivileged && !bypassed,
     refetchOnWindowFocus: false,
     staleTime: 30 * 60 * 1000,
   });
 
   const allow = useMemo(() => {
-    if (user?.isAdmin) return true;
+    if (isPrivileged) return true;
     if (bypassed) return true;
     if (!geo) return null; // still resolving
     return geo.country === ALLOWED_COUNTRY;
-  }, [user?.isAdmin, bypassed, geo]);
+  }, [isPrivileged, bypassed, geo]);
 
   // While we resolve geo for unauthenticated visitors, hold the render with a soft loader
   // so non-AE visitors can never briefly access the app before the gate decides.
@@ -72,15 +78,6 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
       city: geo?.city ?? null,
       reason: "geo",
     });
-  };
-
-  const onContinueAnyway = () => {
-    try {
-      localStorage.setItem(BYPASS_KEY, "1");
-    } catch {
-      // ignore
-    }
-    setBypassed(true);
   };
 
   return (
@@ -114,24 +111,15 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <div className="pt-1">
             <Button
-              className="flex-1 gap-2"
+              className="w-full gap-2"
               size="lg"
               onClick={onJoinWaitlist}
               data-testid="button-geo-waitlist"
             >
               <Mail className="h-4 w-4" />
               Join the waitlist
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="flex-1"
-              onClick={onContinueAnyway}
-              data-testid="button-geo-bypass"
-            >
-              Continue anyway
             </Button>
           </div>
 

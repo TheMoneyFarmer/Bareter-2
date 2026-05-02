@@ -213,7 +213,7 @@ export function UserProfilePage() {
                 <>
                   <Separator className="my-4" />
                   <div className="space-y-2">
-                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile" /* keep test id */>
+                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile">
                       <Handshake className="h-4 w-4" />
                       Propose a Barter
                     </Button>
@@ -231,7 +231,7 @@ export function UserProfilePage() {
                 <>
                   <Separator className="my-4" />
                   <Link href="/login">
-                    <Button className="w-full gap-2" data-testid="button-login-to-trade" /* keep test id */>
+                    <Button className="w-full gap-2" data-testid="button-login-to-trade">
                       <Handshake className="h-4 w-4" />
                       Sign in to Barter
                     </Button>

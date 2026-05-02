@@ -4,10 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
-import { ListingCard, ListingCardSkeleton } from "@/components/ListingCard";
 import { DealTicker } from "@/components/DealTicker";
 import { HeroFloatingCards } from "@/components/HeroFloatingCards";
-import { StaggeredReveal } from "@/components/StaggeredReveal";
+import { TrendingTiles } from "@/components/TrendingTiles";
 import { useReveal } from "@/hooks/use-reveal";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useMousePosition } from "@/hooks/use-mouse-position";
@@ -174,7 +173,7 @@ export function LandingPage() {
       {/* ============================ TRUST BAR ============================ */}
       <TrustBar />
 
-      {/* ============================ FEATURED LISTINGS ============================ */}
+      {/* ============================ TRENDING (mixed posts + listings) ============================ */}
       <section
         className="bg-bareter-off-white dark:bg-background"
         data-testid="section-featured"
@@ -185,7 +184,7 @@ export function LandingPage() {
               <h2 className="text-section text-bareter-navy dark:text-foreground">
                 Trending barters in Dubai 🔥
               </h2>
-              <p className="text-caption mt-1">Updated daily by our AI matching engine</p>
+              <p className="text-caption mt-1">Live mix of posts and listings, ranked by interest</p>
             </div>
             <Link
               href="/browse"
@@ -197,9 +196,9 @@ export function LandingPage() {
           </div>
 
           {loadingFeatured && loadingLatest ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <ListingCardSkeleton key={i} />
+            <div className="grid grid-cols-3 gap-1 sm:gap-2">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="aspect-square rounded-sm sm:rounded-md bg-muted/60 animate-pulse" />
               ))}
             </div>
           ) : featured.length === 0 ? (
@@ -215,14 +214,7 @@ export function LandingPage() {
               </Link>
             </div>
           ) : (
-            <StaggeredReveal
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-              testId="grid-featured-listings"
-            >
-              {featured.map((l) => (
-                <ListingCard key={l.id} listing={l} />
-              ))}
-            </StaggeredReveal>
+            <TrendingTiles title="" listings={latestListings} maxTiles={9} />
           )}
         </div>
       </section>

@@ -647,7 +647,7 @@ export function ListingDetailPage() {
                     variant="bareter"
                     className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
                     onClick={() => setProposeOpen(true)}
-                    data-testid="button-propose-trade-sticky" /* keep test id */
+                    data-testid="button-propose-trade-sticky"
                   >
                     <Handshake className="h-5 w-5" />
                     Propose a Barter
@@ -871,7 +871,7 @@ export function ListingDetailPage() {
               variant="bareter"
               className="w-full h-14 text-base gap-2"
               onClick={() => setProposeOpen(true)}
-              data-testid="button-propose-trade-mobile" /* keep test id */
+              data-testid="button-propose-trade-mobile"
             >
               <Handshake className="h-5 w-5" />
               Propose a Barter · AED {parseFloat(listing.retailValue as string).toLocaleString()}

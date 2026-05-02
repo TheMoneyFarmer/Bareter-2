@@ -194,22 +194,23 @@ export function Header() {
               {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </button>
 
+            {/* Feed — first-class destination, visible for all visitors */}
+            <Link href="/feed" className="hidden md:inline-flex">
+              <Button
+                variant="bareter-ghost"
+                size="sm"
+                className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
+                  isActive("/feed") ? "bg-white/10" : ""
+                }`}
+                data-testid="button-nav-feed"
+              >
+                <Rss className="h-4 w-4" />
+                Feed
+              </Button>
+            </Link>
+
             {user ? (
               <>
-                {/* Feed — visible nav link (desktop) */}
-                <Link href="/feed" className="hidden md:inline-flex">
-                  <Button
-                    variant="bareter-ghost"
-                    size="sm"
-                    className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
-                      isActive("/feed") ? "bg-white/10" : ""
-                    }`}
-                    data-testid="button-nav-feed"
-                  >
-                    <Rss className="h-4 w-4" />
-                    Feed
-                  </Button>
-                </Link>
 
                 {/* List a barter — primary teal CTA */}
                 <Link href="/create-listing" className="hidden sm:inline-flex">

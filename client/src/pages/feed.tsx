@@ -1010,7 +1010,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-trades">850+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Deals</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Barters</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-users">2,500+</span>
@@ -1060,7 +1060,7 @@ function SafetyBanner() {
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Barter safely on Bareter</p>
           <ul className="mt-1 space-y-0.5 text-[11px] text-blue-700 dark:text-blue-400">
-            <li>• Always verify the business badge before trading</li>
+            <li>• Always verify the business badge before any barter</li>
             <li>• Keep all negotiations inside the platform</li>
             <li>• Report suspicious listings or requests</li>
           </ul>
