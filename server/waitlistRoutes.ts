@@ -239,7 +239,11 @@ export function registerWaitlistRoutes(
 
   // Admin: read the public-facing position offset and where it came from.
   app.get("/api/admin/waitlist/offset", requireAdmin, async (_req, res) => {
-    const stored = await storage.getAppSetting(WAITLIST_OFFSET_KEY);
+    const storedRaw = await storage.getAppSetting(WAITLIST_OFFSET_KEY);
+    // Treat malformed/negative stored values as absent so we don't report a
+    // misleading source or surface NaN to the admin UI.
+    const storedParsed = storedRaw !== null ? Number.parseInt(storedRaw, 10) : NaN;
+    const stored = Number.isFinite(storedParsed) && storedParsed >= 0 ? storedParsed : null;
     const env = envOffset();
     const effective = await getWaitlistOffset();
     const source: "db" | "env" | "default" = stored !== null
@@ -250,7 +254,7 @@ export function registerWaitlistRoutes(
     res.json({
       offset: effective,
       source,
-      stored: stored !== null ? Number.parseInt(stored, 10) : null,
+      stored,
       env,
       defaultValue: WAITLIST_OFFSET_DEFAULT,
     });
