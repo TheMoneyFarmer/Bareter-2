@@ -24,13 +24,13 @@ const steps = [
   {
     step: 2,
     title: "Browse & Discover",
-    description: "Explore listings from verified UAE businesses. Filter by category, location, and value to find perfect trade opportunities.",
+    description: "Explore listings from verified UAE businesses. Filter by category, location, and value to find perfect barter opportunities.",
     icon: Search,
   },
   {
     step: 3,
-    title: "Propose a Trade",
-    description: "Found something you want? Propose a trade by selecting what you offer in return. Set fair values for both sides.",
+    title: "Propose a Barter",
+    description: "Found something you want? Propose a barter by selecting what you offer in return. Set fair values for both sides.",
     icon: Handshake,
   },
   {
@@ -56,17 +56,17 @@ const steps = [
 const benefits = [
   {
     title: "Verified Businesses",
-    description: "All traders are verified with trade licenses and IDs, ensuring you're dealing with legitimate UAE businesses.",
+    description: "All members are verified with trade licenses and IDs, ensuring you're dealing with legitimate UAE businesses.",
     icon: Shield,
   },
   {
     title: "Free for Everyone",
-    description: "Every feature on Bareter is free — list, chat, sign contracts, and complete trades without paying anything.",
+    description: "Every feature on Bareter is free — list, chat, sign contracts, and complete deals without paying anything.",
     icon: Sparkles,
   },
   {
     title: "Trust & Ratings",
-    description: "Our rating system helps you identify reliable partners. Build your reputation with every successful trade.",
+    description: "Our rating system helps you identify reliable partners. Build your reputation with every successful barter.",
     icon: Star,
   },
 ];
@@ -77,7 +77,7 @@ export function HowItWorksPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">How Bareter Works</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Trade goods and services with UAE businesses in 6 simple steps. No cash needed.
+          Barter goods and services with UAE businesses in 6 simple steps. No cash needed.
         </p>
       </div>
 
@@ -110,7 +110,7 @@ export function HowItWorksPage() {
       </div>
 
       <div className="mb-16">
-        <h2 className="text-2xl font-bold text-center mb-8">Why Trade on Bareter?</h2>
+        <h2 className="text-2xl font-bold text-center mb-8">Why Barter on Bareter?</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {benefits.map((benefit) => (
             <Card key={benefit.title}>

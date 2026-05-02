@@ -829,7 +829,7 @@ export function SettingsPage() {
                         <div className="space-y-0.5">
                           <FormLabel className="text-base">Allow Direct Messages</FormLabel>
                           <FormDescription>
-                            Let other users contact you directly about potential trades
+                            Let other users contact you directly about potential barters
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -912,7 +912,7 @@ export function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          Only see trades within this distance from your location
+                          Only see barters within this distance from your location
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -925,7 +925,7 @@ export function SettingsPage() {
                       name="minTradeValue"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Minimum Trade Value (AED)</FormLabel>
+                          <FormLabel>Minimum Barter Value (AED)</FormLabel>
                           <FormControl>
                             <Input 
                               type="number" 
@@ -935,7 +935,7 @@ export function SettingsPage() {
                             />
                           </FormControl>
                           <FormDescription>
-                            Minimum value for trades you're interested in
+                            Minimum value for barters you're interested in
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -946,7 +946,7 @@ export function SettingsPage() {
                       name="maxTradeValue"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Maximum Trade Value (AED)</FormLabel>
+                          <FormLabel>Maximum Barter Value (AED)</FormLabel>
                           <FormControl>
                             <Input 
                               type="number" 
@@ -956,7 +956,7 @@ export function SettingsPage() {
                             />
                           </FormControl>
                           <FormDescription>
-                            Maximum value for trades you're interested in
+                            Maximum value for barters you're interested in
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -972,7 +972,7 @@ export function SettingsPage() {
                         <div className="space-y-0.5">
                           <FormLabel className="text-base">AI Auto-Match</FormLabel>
                           <FormDescription>
-                            Get AI-powered suggestions for potential trades based on your offers and needs
+                            Get AI-powered suggestions for potential barters based on your offers and needs
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -1117,7 +1117,7 @@ export function SettingsPage() {
                     <div>
                       <p className="font-medium">Identity Verification</p>
                       <p className="text-sm text-muted-foreground">
-                        {user.isVerified ? "Your identity is verified" : "Complete KYC/KYB verification to trade"}
+                        {user.isVerified ? "Your identity is verified" : "Complete KYC/KYB verification to barter"}
                       </p>
                     </div>
                   </div>

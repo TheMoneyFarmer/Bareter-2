@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Globe2, Mail, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +14,22 @@ import { getCountryByCode } from "@shared/schema";
 // There is no public "continue anyway" affordance; non-AE visitors must join the waitlist.
 const BYPASS_KEY = "bareter_bypass_geo";
 const ALLOWED_COUNTRY = "AE";
+
+// Routes that must remain reachable even from non-AE IPs so existing users,
+// people accepting invites, or visitors reading legal pages aren't locked out.
+const EXEMPT_ROUTE_PREFIXES = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/onboarding",
+  "/terms",
+  "/privacy",
+  "/help",
+  "/faq",
+  "/how-it-works",
+  "/pricing",
+];
 
 interface GeoLookup {
   country: string;
@@ -43,10 +60,12 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isPrivileged = !!(user?.isAdmin || user?.founderBadge);
+  const [pathname] = useLocation();
+  const isExemptRoute = EXEMPT_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
 
   const { data: geo } = useQuery<GeoLookup>({
     queryKey: ["/api/geo/lookup"],
-    enabled: !isPrivileged && !bypassed,
+    enabled: !isPrivileged && !bypassed && !isExemptRoute,
     refetchOnWindowFocus: false,
     staleTime: 30 * 60 * 1000,
   });
@@ -54,9 +73,10 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
   const allow = useMemo(() => {
     if (isPrivileged) return true;
     if (bypassed) return true;
+    if (isExemptRoute) return true;
     if (!geo) return null; // still resolving
     return geo.country === ALLOWED_COUNTRY;
-  }, [isPrivileged, bypassed, geo]);
+  }, [isPrivileged, bypassed, isExemptRoute, geo]);
 
   // While we resolve geo for unauthenticated visitors, hold the render with a soft loader
   // so non-AE visitors can never briefly access the app before the gate decides.

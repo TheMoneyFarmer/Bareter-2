@@ -65,7 +65,7 @@ export function ReferralsPage() {
   const shareViaWhatsApp = () => {
     if (codeData?.referralCode) {
       const message = encodeURIComponent(
-        `Join me on Bareter — the UAE barter marketplace where businesses trade goods and services without cash. Use my referral code ${codeData.referralCode} when you sign up at ${window.location.origin}/register`
+        `Join me on Bareter — the UAE barter marketplace where businesses barter goods and services without cash. Use my referral code ${codeData.referralCode} when you sign up at ${window.location.origin}/register`
       );
       window.open(`https://wa.me/?text=${message}`, "_blank");
     }
@@ -199,7 +199,7 @@ export function ReferralsPage() {
                 <span className="font-bold text-primary">3</span>
               </div>
               <h4 className="font-medium mb-1">Community Grows</h4>
-              <p className="text-sm text-muted-foreground">More verified businesses means more trade opportunities for everyone</p>
+              <p className="text-sm text-muted-foreground">More verified businesses means more barter opportunities for everyone</p>
             </div>
           </div>
         </CardContent>

@@ -16,7 +16,7 @@ export function DealTicker() {
     <div
       className="bareter-ticker"
       role="region"
-      aria-label="Recent barter trades"
+      aria-label="Recent barter deals"
       data-testid="ticker-deals"
     >
       <div className="bareter-ticker-track">

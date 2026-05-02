@@ -121,7 +121,7 @@ export function DealsPage() {
         </div>
         <h2 className="text-2xl font-bold mb-2">Sign in to view your deals</h2>
         <p className="text-muted-foreground mb-6">
-          You need to be signed in to see and manage your trade deals.
+          You need to be signed in to see and manage your barter deals.
         </p>
         <Link href="/login">
           <Button>Sign In</Button>
@@ -136,13 +136,13 @@ export function DealsPage() {
         <div>
           <h1 className="text-3xl font-bold mb-2">My Deals</h1>
           <p className="text-muted-foreground">
-            Manage your active trades and view history
+            Manage your active barters and view history
           </p>
         </div>
         <Link href="/browse">
           <Button className="gap-2" data-testid="button-find-trades">
             <Handshake className="h-4 w-4" />
-            Find Trades
+            Find Barters
           </Button>
         </Link>
       </div>
@@ -178,7 +178,7 @@ export function DealsPage() {
                 </div>
                 <h3 className="font-semibold text-lg mb-2">No active deals</h3>
                 <p className="text-muted-foreground mb-4">
-                  Browse listings and propose trades to get started
+                  Browse listings and propose barters to get started
                 </p>
                 <Link href="/browse">
                   <Button>Browse Listings</Button>
@@ -203,7 +203,7 @@ export function DealsPage() {
                 </div>
                 <h3 className="font-semibold text-lg mb-2">No completed deals yet</h3>
                 <p className="text-muted-foreground">
-                  Your successfully completed trades will appear here
+                  Your successfully completed barters will appear here
                 </p>
               </CardContent>
             </Card>
@@ -225,7 +225,7 @@ export function DealsPage() {
                 </div>
                 <h3 className="font-semibold text-lg mb-2">No cancelled deals</h3>
                 <p className="text-muted-foreground">
-                  Cancelled trades will appear here
+                  Cancelled barters will appear here
                 </p>
               </CardContent>
             </Card>

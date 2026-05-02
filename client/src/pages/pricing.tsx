@@ -7,7 +7,7 @@ import { CheckCircle } from "lucide-react";
 const features = [
   { name: "Create unlimited listings", included: true },
   { name: "Browse all offers & requests", included: true },
-  { name: "Propose unlimited trades", included: true },
+  { name: "Propose unlimited barters", included: true },
   { name: "Real-time chat", included: true },
   { name: "Generate barter contracts", included: true },
   { name: "Delivery proof upload", included: true },
@@ -23,7 +23,7 @@ export function PricingPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Bareter is Free for Everyone</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Every feature on Bareter is free to use. Create your account, list what you offer, find what you need, and complete trades — all at no cost.
+          Every feature on Bareter is free to use. Create your account, list what you offer, find what you need, and complete deals — all at no cost.
         </p>
       </div>
 
@@ -58,7 +58,7 @@ export function PricingPage() {
           <div>
             <h3 className="font-semibold mb-2">Is there really nothing to pay?</h3>
             <p className="text-sm text-muted-foreground">
-              That's right. Listing items, proposing trades, chatting, generating contracts, and completing deals are all free.
+              That's right. Listing items, proposing barters, chatting, generating contracts, and completing deals are all free.
             </p>
           </div>
           <div>
@@ -70,7 +70,7 @@ export function PricingPage() {
           <div>
             <h3 className="font-semibold mb-2">Are there any limits on usage?</h3>
             <p className="text-sm text-muted-foreground">
-              No artificial limits — create as many listings and complete as many trades as you like.
+              No artificial limits — create as many listings and complete as many deals as you like.
             </p>
           </div>
           <div>

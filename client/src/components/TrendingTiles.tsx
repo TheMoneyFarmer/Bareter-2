@@ -2,7 +2,9 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Heart, Package, TrendingUp, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { ListingWithUser, PostWithUser } from "@shared/schema";
+import type { ListingWithUser, PostWithUser, User } from "@shared/schema";
+
+type TileUser = Pick<User, "id" | "fullName"> & Partial<Pick<User, "username" | "avatarUrl">>;
 
 interface TrendingTilesProps {
   title?: string;
@@ -12,8 +14,8 @@ interface TrendingTilesProps {
 }
 
 type Tile =
-  | { kind: "post"; id: string; cover: string | null; title: string; href: string; user: any; likes: number }
-  | { kind: "listing"; id: string; cover: string | null; title: string; href: string; user: any; value: number };
+  | { kind: "post"; id: string; cover: string | null; title: string; href: string; user: TileUser; likes: number }
+  | { kind: "listing"; id: string; cover: string | null; title: string; href: string; user: TileUser; value: number };
 
 export function TrendingTiles({
   title = "Trending now",

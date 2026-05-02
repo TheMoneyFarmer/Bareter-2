@@ -29,11 +29,11 @@ const categories = [
     ],
   },
   {
-    title: "Making Trades",
-    description: "Everything about proposing and managing trades",
+    title: "Making Barters",
+    description: "Everything about proposing and managing barters",
     icon: FileText,
     articles: [
-      "How to propose a trade",
+      "How to propose a barter",
       "Negotiating deal terms",
       "Understanding the barter contract",
       "Uploading delivery proof",
@@ -74,13 +74,13 @@ const categories = [
   },
   {
     title: "VAT & Compliance",
-    description: "UAE tax regulations for barter trades",
+    description: "UAE tax regulations for barter deals",
     icon: HelpCircle,
     articles: [
       "VAT on barter transactions",
       "Generating VAT invoices",
       "FTA compliance requirements",
-      "Record keeping for trades",
+      "Record keeping for barters",
     ],
   },
 ];

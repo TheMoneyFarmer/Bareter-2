@@ -46,7 +46,7 @@ export default function AiMatchCards() {
   const handleEscalate = () => {
     toast({
       title: "Manual Matching Requested",
-      description: "A human curator will review matches for your profile and suggest personalized trades.",
+      description: "A human curator will review matches for your profile and suggest personalized barters.",
     });
   };
 

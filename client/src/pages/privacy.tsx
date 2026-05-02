@@ -53,7 +53,7 @@ export function PrivacyPage() {
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
             <li>Listings you create (offers and requests)</li>
-            <li>Trade proposals and deal terms</li>
+            <li>Barter proposals and deal terms</li>
             <li>Chat messages with bartering partners</li>
             <li>Delivery proof documentation</li>
             <li>Ratings and reviews</li>
@@ -70,7 +70,7 @@ export function PrivacyPage() {
             <li>Verify your business identity and credentials</li>
             <li>Facilitate barter transactions between users</li>
             <li>Process payments and manage fees</li>
-            <li>Send notifications about your trades and account</li>
+            <li>Send notifications about your barters and account</li>
             <li>Respond to your inquiries and provide customer support</li>
             <li>Improve our services and develop new features</li>
             <li>Detect and prevent fraud or abuse</li>
@@ -86,7 +86,7 @@ export function PrivacyPage() {
           
           <h3 className="text-lg font-medium mt-6 mb-3">With Other Users</h3>
           <p className="text-muted-foreground leading-relaxed">
-            Your public profile information (name, business name, location, what you offer/need, portfolio, ratings) is visible to other users. When you engage in a trade, your contact information may be shared with your bartering partner.
+            Your public profile information (name, business name, location, what you offer/need, portfolio, ratings) is visible to other users. When you engage in a barter, your contact information may be shared with your bartering partner.
           </p>
 
           <h3 className="text-lg font-medium mt-6 mb-3">With Service Providers</h3>

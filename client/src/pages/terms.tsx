@@ -45,10 +45,10 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">4. Barter Transactions</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Bareter facilitates barter exchanges between businesses. When you engage in a trade:
+            Bareter facilitates barter exchanges between businesses. When you engage in a barter:
           </p>
           <ul className="list-disc pl-6 mt-4 space-y-2 text-muted-foreground">
-            <li>You represent that you have the right to trade the goods or services listed</li>
+            <li>You represent that you have the right to barter the goods or services listed</li>
             <li>You agree to provide accurate valuations of your offerings in AED</li>
             <li>You acknowledge that barter contracts are legally binding</li>
             <li>You are responsible for fulfilling your obligations as specified in the deal terms</li>
@@ -58,7 +58,7 @@ export function TermsPage() {
         <section>
           <h2 className="text-2xl font-semibold mb-4">5. Fees and Payments</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Bareter is free to use. There are no charges for creating an account, listing items, proposing trades, generating contracts, or completing deals on the Platform.
+            Bareter is free to use. There are no charges for creating an account, listing items, proposing barters, generating contracts, or completing deals on the Platform.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
             Each party in a barter transaction remains responsible for its own taxes, costs, and any third-party fees associated with delivering the goods or services it has agreed to provide.
@@ -89,7 +89,7 @@ export function TermsPage() {
             <li>Infringe on the intellectual property rights of others</li>
             <li>Harass, abuse, or harm other users</li>
             <li>Use automated tools to access or scrape the Platform</li>
-            <li>Trade prohibited items including weapons, drugs, or counterfeit goods</li>
+            <li>Deal in prohibited items including weapons, drugs, or counterfeit goods</li>
           </ul>
         </section>
 
