@@ -739,15 +739,32 @@ export function useI18n() {
 export function LanguageSync() {
   const { user } = useAuth();
   const { setLanguage } = useI18n();
-  const lastAppliedRef = useRef<Language | null>(null);
+  // Track the (userId, language) pair we most recently applied. This lets
+  // us re-apply the saved language on auth transitions (login → logout →
+  // login again as the same user with the same persisted language) while
+  // still no-op'ing within a single session so a header toggle is not
+  // immediately reverted by a stale /api/auth/me cache.
+  const lastAppliedRef = useRef<{ userId: string | null; lang: Language | null }>({
+    userId: null,
+    lang: null,
+  });
 
   useEffect(() => {
+    const userId = user?.id ?? null;
     const userLang = user?.language;
+    // Reset our memo when the auth identity changes (logout, or a
+    // different user logging in). After this reset, the very next render
+    // with a real user will re-apply that user's saved language even if
+    // it matches what we previously applied for someone else / for the
+    // anonymous fallback.
+    if (lastAppliedRef.current.userId !== userId) {
+      lastAppliedRef.current = { userId, lang: null };
+    }
     if (userLang !== "en" && userLang !== "ar") return;
-    if (lastAppliedRef.current === userLang) return;
-    lastAppliedRef.current = userLang;
+    if (lastAppliedRef.current.lang === userLang) return;
+    lastAppliedRef.current = { userId, lang: userLang };
     setLanguage(userLang);
-  }, [user?.language, setLanguage]);
+  }, [user?.id, user?.language, setLanguage]);
 
   return null;
 }
