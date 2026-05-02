@@ -1380,7 +1380,7 @@ export function CreatePostPage() {
                           <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="max-w-xs text-xs">Adding market references helps other traders understand fair value and increases trust in your listing.</p>
+                          <p className="max-w-xs text-xs">Adding market references helps other members understand fair value and increases trust in your listing.</p>
                         </TooltipContent>
                       </Tooltip>
                     </FormDescription>

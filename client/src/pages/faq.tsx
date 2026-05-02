@@ -76,7 +76,7 @@ const faqs = [
     questions: [
       {
         q: "How does business verification work?",
-        a: "Upload your trade license, commercial registration, or Emirates ID. Our team reviews the document within 1-2 business days. Once verified, you'll receive a verified badge on your profile.",
+        a: "Upload your business license, commercial registration, or Emirates ID. Our team reviews the document within 1-2 business days. Once verified, you'll receive a verified badge on your profile.",
       },
       {
         q: "What if someone doesn't deliver on their promise?",

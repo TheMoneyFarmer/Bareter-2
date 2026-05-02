@@ -193,13 +193,13 @@ function VerificationSection({ user }: { user: User }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="individual">Individual (Personal ID)</SelectItem>
-                    <SelectItem value="business">Business (Trade License)</SelectItem>
+                    <SelectItem value="business">Business (with license)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   {selectedAccountType === "individual" 
                     ? "You'll verify with Emirates ID or Passport"
-                    : "You'll verify with Trade License and authorized signatory ID"
+                    : "You'll verify with a business license and authorized signatory ID"
                   }
                 </p>
               </div>

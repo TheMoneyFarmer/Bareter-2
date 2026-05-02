@@ -541,10 +541,10 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Building2 className="h-5 w-5" />
-                  Trade License Verification
+                  Business License Verification
                 </CardTitle>
                 <CardDescription>
-                  Business accounts must upload a valid UAE trade license before creating listings or accepting deals. 
+                  Business accounts must upload a valid UAE business license before creating listings or accepting deals. 
                   Data is handled per PDPL guidelines.
                 </CardDescription>
               </CardHeader>
@@ -580,9 +580,9 @@ export function SettingsPage() {
 
                 {user?.kybStatus !== "APPROVED" && (
                   <div>
-                    <Label htmlFor="license-upload">Upload Trade License (PDF or Image)</Label>
+                    <Label htmlFor="license-upload">Upload Business License (PDF or Image)</Label>
                     <p className="text-xs text-muted-foreground mb-2 mt-1">
-                      Upload a valid DED-issued trade license. Our team will review and verify it.
+                      Upload a valid DED-issued business license. Our team will review and verify it.
                     </p>
                     <input
                       id="license-upload"
@@ -622,7 +622,7 @@ export function SettingsPage() {
                 {user?.kybStatus === "APPROVED" && (
                   <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                     <CheckCircle className="h-4 w-4" />
-                    Your trade license has been verified. You can create listings and accept deals.
+                    Your business license has been verified. You can create listings and accept deals.
                   </div>
                 )}
               </CardContent>

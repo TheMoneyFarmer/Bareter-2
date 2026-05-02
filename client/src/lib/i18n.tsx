@@ -94,7 +94,7 @@ const translations: Record<Language, Record<string, string>> = {
     "landing.whyChoose": "Why Choose Bareter",
     "landing.secureCompliant": "Secure, Compliant, Professional",
     "landing.verifiedPartners": "Verified Business Partners",
-    "landing.verifiedPartnersDesc": "All users can upload their trade license or ID for verification. Barter with confidence knowing your partners are legitimate.",
+    "landing.verifiedPartnersDesc": "All users can upload their business license or ID for verification. Barter with confidence knowing your partners are legitimate.",
     "landing.bindingContracts": "Binding Barter Contracts",
     "landing.bindingContractsDesc": "Generate professional PDF contracts with retail values, timelines, deliverables, and UAE VAT compliance clauses.",
     "landing.vatCompliant": "UAE VAT Compliant",

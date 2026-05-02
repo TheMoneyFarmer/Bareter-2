@@ -38,7 +38,7 @@ export function TermsPage() {
             When you create an account, you agree to provide accurate, current, and complete information. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
-            Business verification requires submission of valid trade licenses, commercial registration, or government-issued identification. We reserve the right to reject or revoke verification at our discretion.
+            Business verification requires submission of valid business licenses, commercial registration, or government-issued identification. We reserve the right to reject or revoke verification at our discretion.
           </p>
         </section>
 

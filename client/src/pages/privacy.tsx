@@ -31,7 +31,7 @@ export function PrivacyPage() {
             <li>Business name and registration details</li>
             <li>Location information (emirate/city)</li>
             <li>Profile photos and portfolio images</li>
-            <li>Trade license or identification documents for verification</li>
+            <li>Business license or identification documents for verification</li>
             <li>Payment information processed through Stripe</li>
           </ul>
 

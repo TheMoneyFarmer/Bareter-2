@@ -56,7 +56,7 @@ const steps = [
 const benefits = [
   {
     title: "Verified Businesses",
-    description: "All members are verified with trade licenses and IDs, ensuring you're dealing with legitimate UAE businesses.",
+    description: "All members are verified with business licenses and IDs, ensuring you're dealing with legitimate UAE businesses.",
     icon: Shield,
   },
   {

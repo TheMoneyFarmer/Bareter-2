@@ -1078,7 +1078,7 @@ function SafetyBanner() {
 }
 
 export function FeedPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
 
@@ -1104,7 +1104,38 @@ export function FeedPage() {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
+    enabled: !!user,
   });
+
+  // Auth-gate the Feed: logged-out visitors see a sign-in / join-waitlist
+  // prompt instead of the feed content (Feed is a member destination).
+  if (!authLoading && !user) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12 sm:py-20" data-testid="feed-auth-gate">
+        <Card>
+          <CardContent className="py-12 sm:py-16 text-center">
+            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+              <Heart className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-3" data-testid="text-feed-gate-title">
+              Sign in to see the Feed
+            </h1>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto" data-testid="text-feed-gate-desc">
+              The Bareter Feed is a private space for verified members to share offers, requests, and updates. Sign in to continue, or join the waitlist if you are new.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button onClick={() => navigate("/login")} data-testid="button-feed-gate-login">
+                Sign In
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/register")} data-testid="button-feed-gate-register">
+                Join the Waitlist
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-0 sm:px-4 pb-4 sm:pb-8">
