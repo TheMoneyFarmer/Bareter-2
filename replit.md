@@ -46,6 +46,32 @@ Preferred communication style: Simple, everyday language.
 - **Company OS (WhatsApp control plane)**: Founder-only WhatsApp interface for platform insights, marketing post drafting/publishing, campaign updates, and LLM-powered queries, with a corresponding admin dashboard.
 - **Marketing Agent**: Generates weekly campaign briefs from platform data, delivered as PDFs via WhatsApp, with manual campaign metric capture.
 
+## Custom Domain & Outbound Links
+
+Outbound links — e.g. waitlist welcome emails and the in-app referral share
+link in the waitlist dialog — are built from a server-trusted base URL so they
+always point at the canonical (custom) production domain instead of whatever
+host happened to serve the request.
+
+Resolution order (in `server/waitlistRoutes.ts → baseUrlOf`):
+
+1. `PUBLIC_APP_URL` secret (preferred for production)
+2. `REPLIT_DOMAINS` (Replit deployment domain, set automatically)
+3. `REPLIT_DEV_DOMAIN` (workspace dev URL)
+4. `http://localhost:5000` (last-resort fallback)
+
+To switch to a new custom domain:
+
+1. Configure the custom domain on the Replit Deployment (Deployments → Settings → Custom domains).
+2. Set the `PUBLIC_APP_URL` secret to the full HTTPS URL of the custom domain
+   (e.g. `https://bareter.com`). No trailing slash.
+3. Redeploy.
+
+The frontend reads the canonical URL from the `appUrl` field of
+`GET /api/waitlist/mode`, exposed via the `appUrl` value on `useWaitlist()`.
+The waitlist dialog uses it for the share link so referrals always direct
+visitors to the published custom domain.
+
 ## External Dependencies
 
 - **Database**: PostgreSQL.

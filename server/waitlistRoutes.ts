@@ -10,10 +10,14 @@ export function isWaitlistMode(): boolean {
 
 // Public-facing position offset. The DB stores raw signup order (1, 2, 3…),
 // but the public UI/email shows positions starting at #311 to reflect early
-// pre-signups, founders, and partners not represented as DB rows.
-// Admin views, CSV exports, and analytics keep using the raw position.
+// pre-signups, founders, and partners not represented as DB rows. The same
+// offset is applied to public counts so the displayed total stays consistent
+// with displayed positions (otherwise users would see position #320 next to
+// "10 people in line" and trivially infer the offset).
+// Admin views, CSV exports, and analytics keep using raw values.
 const WAITLIST_POSITION_OFFSET = 310;
 const publicPosition = (raw: number): number => raw + WAITLIST_POSITION_OFFSET;
+const publicCount = (raw: number): number => raw + WAITLIST_POSITION_OFFSET;
 
 const ipBuckets = new Map<string, number[]>();
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -67,7 +71,8 @@ export function registerWaitlistRoutes(
   app.get("/api/waitlist/mode", async (req, res) => {
     try {
       const enabled = isWaitlistMode();
-      const count = enabled ? await storage.getWaitlistCount() : 0;
+      const rawCount = enabled ? await storage.getWaitlistCount() : 0;
+      const count = enabled ? publicCount(rawCount) : 0;
       res.json({ enabled, count, appUrl: baseUrlOf(req) });
     } catch {
       res.json({ enabled: isWaitlistMode(), count: 0, appUrl: baseUrlOf(req) });
@@ -75,8 +80,8 @@ export function registerWaitlistRoutes(
   });
 
   app.get("/api/waitlist/count", async (_req, res) => {
-    const count = await storage.getWaitlistCount();
-    res.json({ count });
+    const rawCount = await storage.getWaitlistCount();
+    res.json({ count: publicCount(rawCount) });
   });
 
   // Lookup an entry by referral code (for ?ref= landing copy)
@@ -109,7 +114,7 @@ export function registerWaitlistRoutes(
 
       const existing = await storage.getWaitlistEntryByEmail(body.email);
       if (existing) {
-        const totalCount = await storage.getWaitlistCount();
+        const totalCount = publicCount(await storage.getWaitlistCount());
         return res.json({
           ok: true,
           alreadyOnList: true,
@@ -144,7 +149,7 @@ export function registerWaitlistRoutes(
         .then(() => storage.markWaitlistConfirmed(entry.email).catch(() => {}))
         .catch((err) => console.error("[waitlist] email failed:", err));
 
-      const totalCount = await storage.getWaitlistCount();
+      const totalCount = publicCount(await storage.getWaitlistCount());
       res.json({
         ok: true,
         alreadyOnList: false,

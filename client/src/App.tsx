@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -50,13 +50,30 @@ import NotFound from "@/pages/not-found";
 
 function RouteTransition({ children }: { children: React.ReactNode }) {
   const [loc] = useLocation();
+  // Track whether the most recent navigation was a browser back/forward
+  // (popstate) so we can preserve the browser's native scroll restoration
+  // for those navigations and only force scroll-to-top on forward pushes.
+  const popNavRef = useRef(false);
 
-  // Reset scroll to the top of the page on every route change so users always
-  // start at the page header, not wherever they were on the previous page.
-  // Skip when the URL contains a hash (e.g. /feed#post-123) so deep-link
-  // anchors keep their default browser behavior.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const onPop = () => {
+      popNavRef.current = true;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Reset scroll to the top of the page on every NEW (push) route change so
+  // users always start at the page header — but skip on back/forward so the
+  // browser's native scroll restoration works, and skip when the URL has a
+  // hash (e.g. /feed#post-123) so deep-link anchors keep default behavior.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (popNavRef.current) {
+      popNavRef.current = false;
+      return;
+    }
     if (window.location.hash) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [loc]);
