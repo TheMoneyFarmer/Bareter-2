@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, Star } from "lucide-react";
 
@@ -55,18 +56,35 @@ function StoryCard({ story, index, ariaHidden }: { story: SuccessStory; index: n
   );
 }
 
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  return reduced;
+}
+
 export function SuccessStoriesMarquee() {
   const { data } = useQuery<SuccessStory[]>({
     queryKey: ["/api/deals/recent-completed"],
     staleTime: 5 * 60 * 1000,
   });
+  const reducedMotion = usePrefersReducedMotion();
 
   // Per spec: when no real completed deals exist (still loading or empty
   // result), fall back to the 3 hand-curated stories. Otherwise show only
   // the real deals so the marquee is always genuine.
   const real = data ?? [];
   const stories = real.length > 0 ? real : FALLBACK_STORIES;
-  const doubled = [...stories, ...stories];
+  // For reduced-motion users we render only the original set so the
+  // horizontal-scroll fallback shows each story exactly once. With motion,
+  // we double the track so the CSS keyframe loop is seamless.
+  const rendered = reducedMotion ? stories : [...stories, ...stories];
 
   return (
     <div
@@ -76,12 +94,12 @@ export function SuccessStoriesMarquee() {
       data-testid="stories-marquee"
     >
       <div className="bareter-stories-track">
-        {doubled.map((story, i) => (
+        {rendered.map((story, i) => (
           <StoryCard
             key={`${story.name}-${i}`}
             story={story}
             index={i % stories.length}
-            ariaHidden={i >= stories.length}
+            ariaHidden={!reducedMotion && i >= stories.length}
           />
         ))}
       </div>
