@@ -511,15 +511,15 @@
     animation: bareter-stories-scroll 60s linear infinite;
   }
   .bareter-stories:hover .bareter-stories-track,
-  .bareter-stories:focus-within .bareter-stories-track,
-  .bareter-stories:focus .bareter-stories-track {
+  .bareter-stories:focus-within .bareter-stories-track {
     animation-play-state: paused;
   }
-  .bareter-stories:focus { outline: none; }
-  .bareter-stories:focus-visible {
+  /* Focusable cards (for keyboard pause). Outline only on focus-visible
+     so mouse clicks don't draw a ring. */
+  .bareter-story-card { outline: none; }
+  .bareter-story-card:focus-visible {
     outline: 2px solid var(--bareter-teal);
-    outline-offset: 4px;
-    border-radius: var(--radius-bareter-card, 16px);
+    outline-offset: 3px;
   }
   /* Use margin-right (not flex `gap`) so the second half of the track is an
      exact pixel copy of the first half — translateX(-50%) then loops with

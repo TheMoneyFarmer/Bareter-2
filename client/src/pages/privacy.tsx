@@ -192,8 +192,8 @@ export function PrivacyPage() {
           <div className="mt-4 text-muted-foreground">
             <p>Bareter - Data Protection</p>
             <p>Dubai, United Arab Emirates</p>
-            <p>Email: hello@bareter.com</p>
-            <p>Phone: +971 523 133 5127</p>
+            <p>Email: privacy@bareter.com</p>
+            <p>Phone: +971 4 123 4567</p>
           </div>
         </section>
       </div>

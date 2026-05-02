@@ -21,6 +21,12 @@ function StoryCard({ story, index, ariaHidden }: { story: SuccessStory; index: n
       className="bareter-story-card"
       data-testid={ariaHidden ? undefined : `card-story-${index}`}
       aria-hidden={ariaHidden ? "true" : undefined}
+      tabIndex={ariaHidden ? -1 : 0}
+      aria-label={
+        ariaHidden
+          ? undefined
+          : `${story.name} in ${story.city} swapped ${story.swap} for ${story.forItem} worth AED ${story.value.toLocaleString()}`
+      }
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="h-9 w-9 rounded-full bg-bareter-teal-muted text-bareter-teal flex items-center justify-center font-semibold">
@@ -55,16 +61,11 @@ export function SuccessStoriesMarquee() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Always render at least 3 cards so the marquee feels populated and so the
-  // legacy `card-story-0..2` test hooks always exist. Real deals appear first;
-  // any remaining slots are filled with the curated fallback set.
+  // Per spec: when no real completed deals exist (still loading or empty
+  // result), fall back to the 3 hand-curated stories. Otherwise show only
+  // the real deals so the marquee is always genuine.
   const real = data ?? [];
-  const padded: SuccessStory[] = [...real];
-  for (const fb of FALLBACK_STORIES) {
-    if (padded.length >= 3) break;
-    padded.push(fb);
-  }
-  const stories = padded;
+  const stories = real.length > 0 ? real : FALLBACK_STORIES;
   const doubled = [...stories, ...stories];
 
   return (
@@ -73,7 +74,6 @@ export function SuccessStoriesMarquee() {
       role="region"
       aria-label="Recent completed barters"
       data-testid="stories-marquee"
-      tabIndex={0}
     >
       <div className="bareter-stories-track">
         {doubled.map((story, i) => (
