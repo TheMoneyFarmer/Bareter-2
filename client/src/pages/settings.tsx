@@ -158,12 +158,32 @@ export function SettingsPage() {
     },
   });
 
-  // The Account form's defaultValues are only read once on mount, so if the
-  // user's saved language preference is loaded asynchronously (or changed
-  // elsewhere — e.g. via the header toggle, which updates i18n + the user
-  // record), the language Select can show a stale value. Mirror the live
-  // i18n language into the form so the Select always reflects the
-  // currently-active language.
+  // The Account form's defaultValues are only read once on mount, but the
+  // /api/auth/me query is asynchronous: on first render `user` is often
+  // null, so the form mounts with empty fullName/email. Reset the form
+  // once the user data arrives (and whenever the persisted user record
+  // changes elsewhere) so the inputs stay in sync with the saved profile.
+  useEffect(() => {
+    if (!user) return;
+    accountForm.reset({
+      fullName: user.fullName || "",
+      email: user.email || "",
+      phone: user.phone || "",
+      website: user.website || "",
+      businessName: user.businessName || "",
+      location: user.location || "",
+      country: user.country || "AE",
+      city: user.city || "",
+      timezone: user.timezone || "Asia/Dubai",
+      currency: user.currency || "AED",
+      language: user.language || activeLanguage,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.fullName, user?.email, user?.phone, user?.website, user?.businessName, user?.location, user?.country, user?.city, user?.timezone, user?.currency, user?.language]);
+
+  // Mirror the live i18n language (which updates immediately on header
+  // toggle, before /api/auth/me has refetched) into the form so the
+  // language Select always reflects the currently-active language.
   useEffect(() => {
     if (accountForm.getValues("language") !== activeLanguage) {
       accountForm.setValue("language", activeLanguage);
