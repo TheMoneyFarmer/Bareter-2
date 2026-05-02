@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { DealTicker } from "@/components/DealTicker";
-import { HeroFloatingCards } from "@/components/HeroFloatingCards";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { useReveal } from "@/hooks/use-reveal";
 import { useCountUp } from "@/hooks/use-count-up";
@@ -87,7 +86,6 @@ export function LandingPage() {
         className="relative isolate overflow-hidden bg-bareter-gradient bareter-noise"
         data-testid="section-hero"
       >
-        <HeroFloatingCards />
         <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
           <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
             <h1
