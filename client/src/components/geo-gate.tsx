@@ -63,20 +63,23 @@ export function GeoGate({ children }: { children: React.ReactNode }) {
   const [pathname] = useLocation();
   const isExemptRoute = EXEMPT_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
 
-  const { data: geo } = useQuery<GeoLookup>({
+  const { data: geo, isError: geoError } = useQuery<GeoLookup>({
     queryKey: ["/api/geo/lookup"],
     enabled: !isPrivileged && !bypassed && !isExemptRoute,
     refetchOnWindowFocus: false,
     staleTime: 30 * 60 * 1000,
+    retry: 1,
   });
 
   const allow = useMemo(() => {
     if (isPrivileged) return true;
     if (bypassed) return true;
     if (isExemptRoute) return true;
+    // Fail open: if geo lookup errors, allow access rather than spin forever.
+    if (geoError) return true;
     if (!geo) return null; // still resolving
     return geo.country === ALLOWED_COUNTRY;
-  }, [isPrivileged, bypassed, isExemptRoute, geo]);
+  }, [isPrivileged, bypassed, isExemptRoute, geoError, geo]);
 
   // While we resolve geo for unauthenticated visitors, hold the render with a soft loader
   // so non-AE visitors can never briefly access the app before the gate decides.
