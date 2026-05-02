@@ -1632,6 +1632,106 @@ export function AdminPage() {
   );
 }
 
+function WaitlistOffsetCard() {
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<{
+    offset: number;
+    source: "db" | "env" | "default";
+    stored: number | null;
+    env: number | null;
+    defaultValue: number;
+  }>({
+    queryKey: ["/api/admin/waitlist/offset"],
+  });
+  const [draft, setDraft] = useState<string>("");
+  const editingValue = draft !== "" ? draft : data ? String(data.offset) : "";
+
+  const mutation = useMutation({
+    mutationFn: async (offset: number) => {
+      const res = await apiRequest("PUT", "/api/admin/waitlist/offset", { offset });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Offset updated", description: "New value is live for all public waitlist responses." });
+      setDraft("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/waitlist/offset"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist/mode"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist/count"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSave = () => {
+    const n = Number.parseInt(editingValue, 10);
+    if (!Number.isFinite(n) || n < 0) {
+      toast({ title: "Invalid offset", description: "Enter a non-negative whole number.", variant: "destructive" });
+      return;
+    }
+    mutation.mutate(n);
+  };
+
+  const sourceLabel = data?.source === "db"
+    ? "admin override (database)"
+    : data?.source === "env"
+      ? "WAITLIST_POSITION_OFFSET env var"
+      : "built-in default";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Public Position Offset</CardTitle>
+        <CardDescription>
+          Public-facing waitlist positions and counts start at this number. Raw signup order is preserved
+          in admin views and CSV exports. Changes take effect for everyone immediately.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          <div>
+            <div className="text-muted-foreground text-xs">Currently effective</div>
+            <div className="text-xl font-bold" data-testid="text-waitlist-offset-effective">
+              {isLoading ? "…" : data?.offset ?? "—"}
+            </div>
+            <div className="text-xs text-muted-foreground">from {sourceLabel}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Admin override (DB)</div>
+            <div className="text-base font-medium" data-testid="text-waitlist-offset-stored">
+              {data?.stored ?? "—"}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Env var fallback</div>
+            <div className="text-base font-medium">{data?.env ?? "—"}</div>
+            <div className="text-xs text-muted-foreground">default {data?.defaultValue ?? 310}</div>
+          </div>
+        </div>
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs text-muted-foreground">New offset</label>
+            <Input
+              type="number"
+              min={0}
+              value={editingValue}
+              onChange={(e) => setDraft(e.target.value)}
+              data-testid="input-waitlist-offset"
+            />
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={mutation.isPending || editingValue === "" || (data && Number.parseInt(editingValue, 10) === data.offset)}
+            data-testid="button-save-waitlist-offset"
+          >
+            {mutation.isPending ? "Saving…" : "Save offset"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function WaitlistAdminSection() {
   const { data: modeData } = useQuery<{ enabled: boolean; count: number }>({
     queryKey: ["/api/waitlist/mode"],
@@ -1683,6 +1783,8 @@ function WaitlistAdminSection() {
           </a>
         </Button>
       </div>
+
+      <WaitlistOffsetCard />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>

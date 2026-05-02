@@ -67,6 +67,7 @@ import {
   waitlistEntries,
   type WaitlistEntry,
   type InsertWaitlistEntry,
+  appSettings,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -221,6 +222,10 @@ export interface IStorage {
   getWaitlistSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
   markWaitlistConfirmed(email: string): Promise<void>;
   convertWaitlistEntryToUser(email: string, userId: string): Promise<WaitlistEntry | undefined>;
+
+  // App settings (runtime-tunable key/value pairs)
+  getAppSetting(key: string): Promise<string | null>;
+  setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1259,6 +1264,21 @@ export class DatabaseStorage implements IStorage {
   async getWaitlistCount(): Promise<number> {
     const [row] = await db.select({ c: sql<number>`count(*)` }).from(waitlistEntries);
     return Number(row?.c ?? 0);
+  }
+
+  async getAppSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return row?.value ?? null;
+  }
+
+  async setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void> {
+    await db
+      .insert(appSettings)
+      .values({ key, value, updatedBy: updatedBy ?? null })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value, updatedBy: updatedBy ?? null, updatedAt: new Date() },
+      });
   }
 
   async getWaitlistStatsByCountry(): Promise<{ country: string | null; count: number }[]> {

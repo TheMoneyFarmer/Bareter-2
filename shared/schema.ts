@@ -697,6 +697,18 @@ export const agentInteractions = pgTable("agent_interactions", {
 });
 
 // connect-pg-simple session table — declared so `db:push --force` doesn't drop it.
+// Generic key/value store for runtime-tunable application settings the
+// admins can change without a code release (e.g. the public waitlist
+// position offset). Keep this table small and intentional — it is not a
+// dumping ground; each key has a typed accessor on the storage layer.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: varchar("updated_by", { length: 36 }),
+});
+export type AppSetting = typeof appSettings.$inferSelect;
+
 export const sessionTable = pgTable("session", {
   sid: varchar("sid").primaryKey(),
   sess: json("sess").notNull(),

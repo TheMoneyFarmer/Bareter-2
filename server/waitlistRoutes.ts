@@ -15,9 +15,57 @@ export function isWaitlistMode(): boolean {
 // with displayed positions (otherwise users would see position #320 next to
 // "10 people in line" and trivially infer the offset).
 // Admin views, CSV exports, and analytics keep using raw values.
-const WAITLIST_POSITION_OFFSET = 310;
-const publicPosition = (raw: number): number => raw + WAITLIST_POSITION_OFFSET;
-const publicCount = (raw: number): number => raw + WAITLIST_POSITION_OFFSET;
+//
+// Resolution order:
+//   1. The `waitlist_position_offset` row in the `app_settings` table
+//      (settable from the admin dashboard at runtime, no restart needed).
+//   2. The `WAITLIST_POSITION_OFFSET` env var (per-environment override).
+//   3. The hardcoded default of 310.
+//
+// We cache the resolved value in-process for a few seconds so the hot path
+// (every public waitlist API call) does not hit the DB on every request.
+// Admin updates invalidate the cache immediately.
+const WAITLIST_OFFSET_KEY = "waitlist_position_offset";
+const WAITLIST_OFFSET_DEFAULT = 310;
+const OFFSET_TTL_MS = 5_000;
+
+let cachedOffset: number | null = null;
+let cachedAt = 0;
+
+function envOffset(): number | null {
+  const raw = process.env.WAITLIST_POSITION_OFFSET;
+  if (!raw) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export async function getWaitlistOffset(): Promise<number> {
+  const now = Date.now();
+  if (cachedOffset !== null && now - cachedAt < OFFSET_TTL_MS) return cachedOffset;
+  let value: number | null = null;
+  try {
+    const stored = await storage.getAppSetting(WAITLIST_OFFSET_KEY);
+    if (stored !== null) {
+      const n = Number.parseInt(stored, 10);
+      if (Number.isFinite(n) && n >= 0) value = n;
+    }
+  } catch (err) {
+    console.error("[waitlist] getAppSetting failed:", err);
+  }
+  if (value === null) value = envOffset();
+  if (value === null) value = WAITLIST_OFFSET_DEFAULT;
+  cachedOffset = value;
+  cachedAt = now;
+  return value;
+}
+
+function invalidateOffsetCache() {
+  cachedOffset = null;
+  cachedAt = 0;
+}
+
+const publicPosition = (raw: number, offset: number): number => raw + offset;
+const publicCount = (raw: number, offset: number): number => raw + offset;
 
 const ipBuckets = new Map<string, number[]>();
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -71,8 +119,9 @@ export function registerWaitlistRoutes(
   app.get("/api/waitlist/mode", async (req, res) => {
     try {
       const enabled = isWaitlistMode();
+      const offset = await getWaitlistOffset();
       const rawCount = enabled ? await storage.getWaitlistCount() : 0;
-      const count = enabled ? publicCount(rawCount) : 0;
+      const count = enabled ? publicCount(rawCount, offset) : 0;
       res.json({ enabled, count, appUrl: baseUrlOf(req) });
     } catch {
       res.json({ enabled: isWaitlistMode(), count: 0, appUrl: baseUrlOf(req) });
@@ -80,8 +129,11 @@ export function registerWaitlistRoutes(
   });
 
   app.get("/api/waitlist/count", async (_req, res) => {
-    const rawCount = await storage.getWaitlistCount();
-    res.json({ count: publicCount(rawCount) });
+    const [rawCount, offset] = await Promise.all([
+      storage.getWaitlistCount(),
+      getWaitlistOffset(),
+    ]);
+    res.json({ count: publicCount(rawCount, offset) });
   });
 
   // Lookup an entry by referral code (for ?ref= landing copy)
@@ -90,11 +142,12 @@ export function registerWaitlistRoutes(
     if (!code) return res.status(400).json({ message: "Invalid code" });
     const entry = await storage.getWaitlistEntryByReferralCode(code);
     if (!entry) return res.status(404).json({ message: "Not found" });
+    const offset = await getWaitlistOffset();
     res.json({
       referralCode: entry.referralCode,
       name: entry.name,
       country: entry.country,
-      position: publicPosition(entry.position),
+      position: publicPosition(entry.position, offset),
       referralCount: entry.referralCount ?? 0,
     });
   });
@@ -114,11 +167,12 @@ export function registerWaitlistRoutes(
 
       const existing = await storage.getWaitlistEntryByEmail(body.email);
       if (existing) {
-        const totalCount = publicCount(await storage.getWaitlistCount());
+        const offset = await getWaitlistOffset();
+        const totalCount = publicCount(await storage.getWaitlistCount(), offset);
         return res.json({
           ok: true,
           alreadyOnList: true,
-          position: publicPosition(existing.position),
+          position: publicPosition(existing.position, offset),
           referralCode: existing.referralCode,
           referralCount: existing.referralCount ?? 0,
           totalCount,
@@ -139,21 +193,22 @@ export function registerWaitlistRoutes(
         userAgent: (req.headers["user-agent"] as string) || null,
       });
 
+      const offset = await getWaitlistOffset();
       // Fire-and-forget email
       sendWaitlistWelcomeEmail(entry.email, {
         name: entry.name,
         referralCode: entry.referralCode,
-        position: publicPosition(entry.position),
+        position: publicPosition(entry.position, offset),
         baseUrl: baseUrlOf(req),
       })
         .then(() => storage.markWaitlistConfirmed(entry.email).catch(() => {}))
         .catch((err) => console.error("[waitlist] email failed:", err));
 
-      const totalCount = publicCount(await storage.getWaitlistCount());
+      const totalCount = publicCount(await storage.getWaitlistCount(), offset);
       res.json({
         ok: true,
         alreadyOnList: false,
-        position: publicPosition(entry.position),
+        position: publicPosition(entry.position, offset),
         referralCode: entry.referralCode,
         referralCount: 0,
         totalCount,
@@ -180,6 +235,43 @@ export function registerWaitlistRoutes(
       storage.getWaitlistSignupsByDay(30),
     ]);
     res.json({ entries, total, stats: { byCountry, byDay } });
+  });
+
+  // Admin: read the public-facing position offset and where it came from.
+  app.get("/api/admin/waitlist/offset", requireAdmin, async (_req, res) => {
+    const stored = await storage.getAppSetting(WAITLIST_OFFSET_KEY);
+    const env = envOffset();
+    const effective = await getWaitlistOffset();
+    const source: "db" | "env" | "default" = stored !== null
+      ? "db"
+      : env !== null
+        ? "env"
+        : "default";
+    res.json({
+      offset: effective,
+      source,
+      stored: stored !== null ? Number.parseInt(stored, 10) : null,
+      env,
+      defaultValue: WAITLIST_OFFSET_DEFAULT,
+    });
+  });
+
+  // Admin: update the public-facing position offset. Takes effect for all
+  // public waitlist API responses immediately (no restart, no redeploy).
+  app.put("/api/admin/waitlist/offset", requireAdmin, async (req: any, res) => {
+    const schema = z.object({ offset: z.number().int().min(0).max(10_000_000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Offset must be an integer between 0 and 10,000,000" });
+    }
+    await storage.setAppSetting(
+      WAITLIST_OFFSET_KEY,
+      String(parsed.data.offset),
+      req.session?.userId ?? null,
+    );
+    invalidateOffsetCache();
+    const effective = await getWaitlistOffset();
+    res.json({ offset: effective });
   });
 
   app.get("/api/admin/waitlist/export.csv", requireAdmin, async (_req, res) => {
