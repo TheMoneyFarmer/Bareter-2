@@ -206,10 +206,9 @@ export async function sendWaitlistWelcomeEmail(
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
   <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
     <div style="text-align: center; margin-bottom: 24px;">
-      <div style="display: inline-flex; align-items: center; justify-content: center; background: #136c68; border-radius: 12px; width: 52px; height: 52px; margin-bottom: 12px;">
-        <span style="color: white; font-size: 24px;">🤝</span>
-      </div>
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+      <a href="${opts.baseUrl}/" style="text-decoration: none;">
+        <img src="${opts.baseUrl}/logo-full-color.png" alt="${APP_NAME}" width="160" height="auto" style="display: inline-block; max-width: 160px; height: auto; border: 0;" />
+      </a>
     </div>
     <h2 style="font-size: 20px; color: #111; margin-bottom: 8px;">You're on the list! 🎉</h2>
     <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">

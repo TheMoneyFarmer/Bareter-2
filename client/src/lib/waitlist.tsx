@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { WaitlistDialog } from "@/components/waitlist-dialog";
 
-type WaitlistMode = { enabled: boolean; count: number };
+type WaitlistMode = { enabled: boolean; count: number; appUrl?: string };
 
 export interface WaitlistDefaults {
   country?: string | null;
@@ -22,6 +22,8 @@ interface WaitlistContextType {
   gate: () => boolean;
   referralCode: string | null;
   defaults: WaitlistDefaults;
+  /** Server-trusted public app URL — use for share/referral links so they always point at the canonical (custom) domain. */
+  appUrl: string;
 }
 
 const WaitlistContext = createContext<WaitlistContextType | null>(null);
@@ -73,6 +75,10 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
     return false;
   }, [user, mode?.enabled]);
 
+  const appUrl =
+    mode?.appUrl?.replace(/\/+$/, "") ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
   return (
     <WaitlistContext.Provider
       value={{
@@ -85,6 +91,7 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
         gate,
         referralCode,
         defaults,
+        appUrl,
       }}
     >
       {children}

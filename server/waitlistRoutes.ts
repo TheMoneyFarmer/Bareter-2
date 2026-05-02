@@ -8,6 +8,13 @@ export function isWaitlistMode(): boolean {
   return String(process.env.WAITLIST_MODE || "").toLowerCase() === "true";
 }
 
+// Public-facing position offset. The DB stores raw signup order (1, 2, 3…),
+// but the public UI/email shows positions starting at #311 to reflect early
+// pre-signups, founders, and partners not represented as DB rows.
+// Admin views, CSV exports, and analytics keep using the raw position.
+const WAITLIST_POSITION_OFFSET = 310;
+const publicPosition = (raw: number): number => raw + WAITLIST_POSITION_OFFSET;
+
 const ipBuckets = new Map<string, number[]>();
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_MAX = 5;
@@ -57,13 +64,13 @@ export function registerWaitlistRoutes(
   requireAdmin: (req: Request, res: Response, next: NextFunction) => any,
 ) {
   // Public — frontend reads this to decide whether to gate UI
-  app.get("/api/waitlist/mode", async (_req, res) => {
+  app.get("/api/waitlist/mode", async (req, res) => {
     try {
       const enabled = isWaitlistMode();
       const count = enabled ? await storage.getWaitlistCount() : 0;
-      res.json({ enabled, count });
+      res.json({ enabled, count, appUrl: baseUrlOf(req) });
     } catch {
-      res.json({ enabled: isWaitlistMode(), count: 0 });
+      res.json({ enabled: isWaitlistMode(), count: 0, appUrl: baseUrlOf(req) });
     }
   });
 
@@ -82,7 +89,7 @@ export function registerWaitlistRoutes(
       referralCode: entry.referralCode,
       name: entry.name,
       country: entry.country,
-      position: entry.position,
+      position: publicPosition(entry.position),
       referralCount: entry.referralCount ?? 0,
     });
   });
@@ -106,7 +113,7 @@ export function registerWaitlistRoutes(
         return res.json({
           ok: true,
           alreadyOnList: true,
-          position: existing.position,
+          position: publicPosition(existing.position),
           referralCode: existing.referralCode,
           referralCount: existing.referralCount ?? 0,
           totalCount,
@@ -131,7 +138,7 @@ export function registerWaitlistRoutes(
       sendWaitlistWelcomeEmail(entry.email, {
         name: entry.name,
         referralCode: entry.referralCode,
-        position: entry.position,
+        position: publicPosition(entry.position),
         baseUrl: baseUrlOf(req),
       })
         .then(() => storage.markWaitlistConfirmed(entry.email).catch(() => {}))
@@ -141,7 +148,7 @@ export function registerWaitlistRoutes(
       res.json({
         ok: true,
         alreadyOnList: false,
-        position: entry.position,
+        position: publicPosition(entry.position),
         referralCode: entry.referralCode,
         referralCount: 0,
         totalCount,

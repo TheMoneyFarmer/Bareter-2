@@ -27,7 +27,7 @@ type SubmitResponse = {
 };
 
 export function WaitlistDialog() {
-  const { isOpen, close, mode, referralCode: incomingRef, defaults } = useWaitlist();
+  const { isOpen, close, mode, referralCode: incomingRef, defaults, appUrl } = useWaitlist();
   const { toast } = useToast();
   const [step, setStep] = useState<"form" | "success">("form");
   const [success, setSuccess] = useState<SubmitResponse | null>(null);
@@ -110,8 +110,12 @@ export function WaitlistDialog() {
     submit.mutate();
   };
 
+  // Build share URL from the server-trusted public app URL so links always
+  // point at the canonical (custom) domain, even when the dialog is opened
+  // on a Replit dev URL or a redirect/preview host.
+  const shareBase = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
   const shareUrl = success
-    ? `${window.location.origin}/?ref=${success.referralCode}`
+    ? `${shareBase.replace(/\/+$/, "")}/?ref=${success.referralCode}`
     : "";
 
   const copyLink = async () => {

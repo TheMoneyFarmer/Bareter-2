@@ -666,21 +666,29 @@ const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("margin-language");
-    return (saved as Language) || "en";
+    if (typeof window === "undefined") return "en";
+    const saved = window.localStorage.getItem("margin-language");
+    return saved === "ar" || saved === "en" ? (saved as Language) : "en";
   });
 
-  const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
-    localStorage.setItem("margin-language", lang);
-    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = lang;
-  };
-
+  // Keep <html dir/lang> and localStorage in sync with the active language.
+  // We rely on this single effect (rather than mutating the DOM inside the
+  // setter) so toggling repeatedly between "en" and "ar" always lands on a
+  // consistent state, even if React batches multiple updates in one tick.
   useEffect(() => {
+    if (typeof document === "undefined") return;
     document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = language;
+    try {
+      window.localStorage.setItem("margin-language", language);
+    } catch {
+      // ignore storage errors (private mode etc.)
+    }
   }, [language]);
+
+  const setLanguage = useCallback((lang: Language) => {
+    setLanguageState((prev) => (prev === lang ? prev : lang));
+  }, []);
 
   const t = (key: string, replacements?: Record<string, string>): string => {
     let text = translations[language][key] || translations.en[key] || key;
