@@ -166,7 +166,7 @@ Background: var(--bareter-gradient)
 Heading white: Join the waitlist.
 Subtext teal: Dubai · Abu Dhabi · GCC
 Email input (white, pill) + Get early access button (teal filled)
-Below: small muted text 
+Below: small muted text No spam. Launch notification only.
 
 
 3. LISTING CARD COMPONENT
