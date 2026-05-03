@@ -72,7 +72,15 @@ export function useCookieConsent() {
     setPrefs(saved);
   }, []);
 
-  return { prefs, save, openPreferences: openCookiePreferences };
+  return {
+    prefs,
+    save,
+    openPreferences: openCookiePreferences,
+    // Aliases to match the documented integration contract.
+    preferences: prefs,
+    set: save,
+    reopen: openCookiePreferences,
+  };
 }
 
 export const COOKIE_OPEN_EVENT = OPEN_EVENT;
