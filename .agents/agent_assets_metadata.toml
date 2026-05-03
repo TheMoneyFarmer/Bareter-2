@@ -71,3 +71,81 @@ id = "vnIeJ6ZiNsdaXjRP_BQNY"
 uri = "file://attached_assets/brand/social-square.png"
 type = "image"
 title = "Social square (1080×1080)"
+
+[[outputs]]
+id = "NU6L81Bxd6CvFaOCfMDlh"
+uri = "file://attached_assets/bareter-brand-kit.zip"
+type = "unspecified"
+title = "Bareter Brand Kit (full bundle — all logos, favicons, social images + README)"
+
+[[outputs]]
+id = "AmH2D3tkmy64ViPmVO17V"
+uri = "file://attached_assets/brand-kit/logo-full-color.png"
+type = "image"
+title = "Wordmark — teal on transparent (light backgrounds)"
+
+[[outputs]]
+id = "Mx9CEKTFM-YCTQhFA565a"
+uri = "file://attached_assets/brand-kit/logo-full-white.png"
+type = "image"
+title = "Wordmark — white on transparent (dark / photo backgrounds)"
+
+[[outputs]]
+id = "GKP4a0sabUZYeHFAZvW17"
+uri = "file://attached_assets/brand-kit/logo-full-black.png"
+type = "image"
+title = "Wordmark — black on transparent (print, single-color)"
+
+[[outputs]]
+id = "yTg5jykbssO0CDUUownor"
+uri = "file://attached_assets/brand-kit/logo-icon.png"
+type = "image"
+title = "App icon — teal square with white B (primary mark)"
+
+[[outputs]]
+id = "rp3Y79BDRLjR2IV1JLK6-"
+uri = "file://attached_assets/brand-kit/logo-icon-white.png"
+type = "image"
+title = "App icon — white B on transparent"
+
+[[outputs]]
+id = "6EQGzbYM3BfTpLNQZy8pb"
+uri = "file://attached_assets/brand-kit/logo-icon-black.png"
+type = "image"
+title = "App icon — black B on transparent"
+
+[[outputs]]
+id = "EkiqtbwjcQc5b99Ov7zEA"
+uri = "file://attached_assets/brand-kit/social-square.png"
+type = "image"
+title = "Social square 1200×1200 — Instagram / LinkedIn post"
+
+[[outputs]]
+id = "rhUacM1tTitO7AUAFdf04"
+uri = "file://attached_assets/brand-kit/og-image.png"
+type = "image"
+title = "OG image 1200×630 — Facebook / Twitter / LinkedIn link previews"
+
+[[outputs]]
+id = "AO7AO91tz07R1FndMjdRz"
+uri = "file://attached_assets/brand-kit/apple-touch-icon.png"
+type = "image"
+title = "Apple touch icon 180×180"
+
+[[outputs]]
+id = "AtYAg_PfhivDVGuZ-gcRy"
+uri = "file://attached_assets/brand-kit/favicon-512.png"
+type = "image"
+title = "Favicon 512 (PWA / Android home screen)"
+
+[[outputs]]
+id = "WdnAzMUYrO4FXJiGhCYKj"
+uri = "file://attached_assets/brand-kit/favicon.ico"
+type = "unspecified"
+title = "Favicon .ico (browser tabs)"
+
+[[outputs]]
+id = "UXHDwSEiGrcEKIUt76X0w"
+uri = "file://attached_assets/brand-kit/README.txt"
+type = "text"
+title = "Brand kit README — what to use where"
