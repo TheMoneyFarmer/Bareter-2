@@ -541,6 +541,44 @@
     background-color: hsl(var(--card));
     border-color: hsl(var(--border));
   }
+  /* Visual "before → after" strip at the top of each story card so cards
+     read at a glance and don't look like text-only blocks. */
+  .bareter-story-card__visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    height: 96px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--bareter-teal-muted) 0%, #ffffff 100%);
+    border: 1px solid rgba(26, 114, 114, 0.10);
+  }
+  .dark .bareter-story-card__visual {
+    background: linear-gradient(135deg, rgba(34, 160, 160, 0.15) 0%, rgba(15, 25, 35, 0.4) 100%);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  .bareter-story-card__emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid rgba(26, 114, 114, 0.18);
+    box-shadow: 0 2px 6px rgba(15, 25, 35, 0.08);
+    font-size: 1.6rem;
+    line-height: 1;
+  }
+  .dark .bareter-story-card__emoji {
+    background: hsl(var(--card));
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+  .bareter-story-card__arrow {
+    color: var(--bareter-teal);
+    font-weight: 700;
+    font-size: 1.25rem;
+  }
   @keyframes bareter-stories-scroll {
     0%   { transform: translateX(0); }
     100% { transform: translateX(-50%); }

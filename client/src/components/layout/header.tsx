@@ -141,15 +141,14 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full" data-testid="site-header">
-      {/* Main bar — 64px. Frosted-glass: a soft dark tint with backdrop blur
-          so the bar feels nearly transparent (it picks up the page behind it)
-          while keeping white text/icons legible on both dark hero sections
-          and light marketplace pages. Slight teal cast appears on scroll. */}
+      {/* Main bar — 64px. Lighter brand-teal (teal-light, #22A0A0) instead
+          of the deep teal so it feels lighter on the page while still being
+          on-brand. Slightly more saturated/opaque on scroll. */}
       <div
-        className={`bareter-header-shell text-white ${
+        className={`bareter-header-shell bg-bareter-teal-light text-white ${
           scrolled
-            ? "bg-bareter-teal/75 supports-[backdrop-filter]:bg-bareter-teal/60 backdrop-blur-xl shadow-[0_4px_16px_rgba(15,25,35,0.15)]"
-            : "bg-black/30 supports-[backdrop-filter]:bg-black/20 backdrop-blur-xl"
+            ? "supports-[backdrop-filter]:bg-bareter-teal-light/90 backdrop-blur-md shadow-[0_4px_16px_rgba(34,160,160,0.20)]"
+            : "shadow-[0_2px_8px_rgba(34,160,160,0.15)]"
         }`}
       >
         <div
@@ -529,7 +528,7 @@ export function Header() {
               <div className="flex items-center gap-1 sm:gap-2">
                 <Button
                   size="sm"
-                  className="h-10 bg-white text-bareter-teal hover:bg-white/90 font-semibold shadow-sm"
+                  className="h-10 bg-white text-bareter-teal hover:bg-white/95 font-semibold shadow-sm"
                   onClick={openWaitlist}
                   data-testid="button-join-waitlist"
                 >
@@ -560,7 +559,7 @@ export function Header() {
 
         {/* Mobile expandable search row */}
         {mobileSearchOpen && (
-          <div className="md:hidden border-t border-white/15 bg-bareter-teal/90 backdrop-blur-md px-4 py-3">
+          <div className="md:hidden border-t border-white/15 bg-bareter-teal-light px-4 py-3">
             <form
               onSubmit={handleSearchSubmit}
               className="flex h-10 items-center bg-white rounded-full px-4"

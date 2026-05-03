@@ -16,7 +16,23 @@ const FALLBACK_STORIES: SuccessStory[] = [
   { name: "Layla R.", city: "Sharjah",   swap: "Logo and brand identity",  forItem: "Beachfront staycation",    value: 9500 },
 ];
 
+function pickEmoji(swap: string): string {
+  const s = swap.toLowerCase();
+  if (/photo|camera|video/.test(s)) return "📸";
+  if (/cater|food|restaurant|chef/.test(s)) return "🍽️";
+  if (/furniture|office|desk|chair/.test(s)) return "🪑";
+  if (/account|legal|consult|advisor/.test(s)) return "📊";
+  if (/logo|brand|design|identity/.test(s)) return "🎨";
+  if (/hotel|stay|suite|resort|beach/.test(s)) return "🏖️";
+  if (/saas|software|enterprise|license/.test(s)) return "💻";
+  if (/wedding|event/.test(s)) return "🎉";
+  if (/marketing|seo|ads/.test(s)) return "📣";
+  return "🤝";
+}
+
 function StoryCard({ story, index, ariaHidden }: { story: SuccessStory; index: number; ariaHidden?: boolean }) {
+  const swapEmoji = pickEmoji(story.swap);
+  const forEmoji = pickEmoji(story.forItem);
   return (
     <article
       className="bareter-story-card"
@@ -29,6 +45,12 @@ function StoryCard({ story, index, ariaHidden }: { story: SuccessStory; index: n
           : `${story.name} in ${story.city} swapped ${story.swap} for ${story.forItem} worth AED ${story.value.toLocaleString()}`
       }
     >
+      {/* Visual header strip — emoji "before/after" of the swap */}
+      <div className="bareter-story-card__visual mb-3" aria-hidden="true">
+        <span className="bareter-story-card__emoji" data-side="left">{swapEmoji}</span>
+        <span className="bareter-story-card__arrow">→</span>
+        <span className="bareter-story-card__emoji" data-side="right">{forEmoji}</span>
+      </div>
       <div className="flex items-center gap-2 mb-3">
         <div className="h-9 w-9 rounded-full bg-bareter-teal-muted text-bareter-teal flex items-center justify-center font-semibold">
           {story.name.charAt(0)}
@@ -86,8 +108,18 @@ export function SuccessStoriesMarquee() {
   const stories = real.length > 0 ? real : FALLBACK_STORIES;
   // For reduced-motion users we render only the original set so the
   // horizontal-scroll fallback shows each story exactly once. With motion,
-  // we double the track so the CSS keyframe loop is seamless.
-  const rendered = reducedMotion ? stories : [...stories, ...stories];
+  // we render multiple copies of the story set so:
+  //   1. The total track is much wider than any viewport (no empty side
+  //      gap mid-animation, which happens when one "set" is narrower than
+  //      the viewport).
+  //   2. The first half of the track is an exact pixel copy of the
+  //      second half, so translateX(-50%) loops seamlessly.
+  // We render 6 copies (3 sets per half) — works for 3+ stories on a
+  // ~1920px desktop while staying lightweight on mobile.
+  const COPIES_PER_HALF = 3;
+  const rendered = reducedMotion
+    ? stories
+    : Array.from({ length: COPIES_PER_HALF * 2 }, () => stories).flat();
 
   return (
     <div
