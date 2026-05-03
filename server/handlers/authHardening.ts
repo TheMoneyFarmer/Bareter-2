@@ -78,3 +78,22 @@ export function makeForgotPasswordRateLimiter(
     ...overrides,
   });
 }
+
+// Cookie-consent banner POSTs once per real decision; legitimate use is
+// at most a handful per visit. We allow some headroom for opening the
+// preferences dialog repeatedly but cap clearly-abusive volume from a
+// single IP so a script can't bloat the append-only audit log.
+export function makeConsentRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: {
+      message:
+        "Too many consent updates from this IP. Please slow down.",
+    },
+    ...overrides,
+  });
+}

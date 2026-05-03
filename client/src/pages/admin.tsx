@@ -921,6 +921,27 @@ export function AdminPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Compliance — Cookie Consent Log</CardTitle>
+          <CardDescription>
+            Append-only audit trail of every cookie-banner decision (accept all,
+            reject non-essential, or custom) with policy version, IP and
+            user-agent. Used to satisfy UAE PDPL / GDPR proof-of-consent
+            requests.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a
+            href="/api/admin/consent/export.csv"
+            data-testid="link-consent-export-csv"
+            className="inline-flex items-center text-sm font-medium text-bareter-teal hover:underline"
+          >
+            Download consent log (CSV)
+          </a>
+        </CardContent>
+      </Card>
     </div>
   );
 

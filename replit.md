@@ -180,6 +180,33 @@ CONFIRM_SEED_LAUNCH_PRODUCTION=yes \
   npx tsx scripts/seed-launch.ts
 ```
 
+## Cookie Consent Audit Log (UAE PDPL / GDPR)
+
+Every cookie-banner decision (accept all, reject non-essential, custom save)
+is recorded server-side in the append-only `consent_logs` table so we can
+prove what a given subject agreed to, against which policy version, at
+what time, from what IP and user-agent.
+
+- **Schema**: `consent_logs` in `shared/schema.ts` — `userId` (when logged
+  in) or `anonymousId` (UUID minted in localStorage as
+  `bareter.consentAnonId`) identifies the subject. At least one is
+  required; the API rejects payloads with neither.
+- **Policy version**: `COOKIE_POLICY_VERSION` constant lives in
+  `shared/schema.ts` and is mirrored in `client/src/lib/cookie-consent.tsx`.
+  Bump both when the public Cookie Policy changes meaningfully — the
+  banner automatically re-prompts any browser whose stored preferences
+  carry an older version.
+- **Frontend**: the cookie banner POSTs to `/api/consent` on every
+  decision (best-effort, `keepalive: true`) in addition to writing
+  localStorage. Failure to reach the server does not block the UI.
+- **Admin export**: founders/admins can download the full log as CSV from
+  *Admin → Settings → Compliance → Cookie Consent Log* (calls
+  `GET /api/admin/consent/export.csv`, requires admin session). Optional
+  `?since=<ISO timestamp>` query param to scope the export.
+- **Migration**: applied via `npm run db:push` (Drizzle). The table is
+  append-only — never UPDATE or DELETE rows; the audit trail is the
+  whole point.
+
 ## External Dependencies
 
 - **Database**: PostgreSQL.

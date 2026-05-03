@@ -770,6 +770,62 @@ export const legalPageVersions = pgTable("legal_page_versions", {
 }));
 export type LegalPageVersion = typeof legalPageVersions.$inferSelect;
 
+// Cookie consent — current policy version. Bump this whenever the cookie
+// policy / Cookie Policy doc changes meaningfully. The frontend banner
+// re-prompts any user whose stored consent record is for an older
+// version, and the server stamps the version into every consent_logs
+// row so an auditor can see which policy text the user actually agreed
+// to.
+export const COOKIE_POLICY_VERSION = 1;
+
+export const COOKIE_CONSENT_DECISIONS = [
+  "accept_all",
+  "reject_non_essential",
+  "custom",
+] as const;
+export type CookieConsentDecision = (typeof COOKIE_CONSENT_DECISIONS)[number];
+
+// One row per consent decision. Append-only — never updated, never deleted.
+// `userId` is set when a logged-in user makes the choice; `anonymousId` is
+// a UUID minted in localStorage for unauthenticated visitors so we can
+// still tie a decision back to a single browser. At least one of the two
+// is required (enforced at the API layer).
+export const consentLogs = pgTable("consent_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  anonymousId: varchar("anonymous_id", { length: 64 }),
+  policyVersion: integer("policy_version").notNull(),
+  decision: text("decision").notNull(), // accept_all | reject_non_essential | custom
+  essential: boolean("essential").notNull().default(true),
+  analytics: boolean("analytics").notNull().default(false),
+  marketing: boolean("marketing").notNull().default(false),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("consent_logs_user_id_idx").on(table.userId),
+  anonIdIdx: index("consent_logs_anonymous_id_idx").on(table.anonymousId),
+  createdAtIdx: index("consent_logs_created_at_idx").on(table.createdAt),
+}));
+export type ConsentLog = typeof consentLogs.$inferSelect;
+
+export const insertConsentLogSchema = createInsertSchema(consentLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertConsentLog = z.infer<typeof insertConsentLogSchema>;
+
+// Public payload the cookie banner POSTs to /api/consent. The server adds
+// userId / anonymousId / IP / user-agent / timestamp itself.
+export const consentRequestSchema = z.object({
+  decision: z.enum(COOKIE_CONSENT_DECISIONS),
+  analytics: z.boolean(),
+  marketing: z.boolean(),
+  policyVersion: z.number().int().positive(),
+  anonymousId: z.string().min(8).max(64).optional(),
+});
+export type ConsentRequest = z.infer<typeof consentRequestSchema>;
+
 export const sessionTable = pgTable("session", {
   sid: varchar("sid").primaryKey(),
   sess: json("sess").notNull(),

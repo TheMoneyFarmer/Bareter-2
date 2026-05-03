@@ -68,6 +68,9 @@ import {
   type WaitlistEntry,
   type InsertWaitlistEntry,
   appSettings,
+  consentLogs,
+  type ConsentLog,
+  type InsertConsentLog,
   legalPages,
   legalPageVersions,
   type LegalPage,
@@ -231,6 +234,10 @@ export interface IStorage {
   // App settings (runtime-tunable key/value pairs)
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void>;
+
+  // Cookie consent log (append-only audit trail)
+  createConsentLog(log: InsertConsentLog): Promise<ConsentLog>;
+  listConsentLogs(opts?: { limit?: number; since?: Date }): Promise<ConsentLog[]>;
 
   // Legal pages (admin-editable public legal pack)
   getLegalPages(language?: string): Promise<LegalPage[]>;
@@ -1412,6 +1419,23 @@ export class DatabaseStorage implements IStorage {
       .select({ c: sql<number>`count(*)` })
       .from(legalPages);
     return Number(row?.c ?? 0);
+  }
+
+  // Cookie consent log
+  async createConsentLog(log: InsertConsentLog): Promise<ConsentLog> {
+    const [row] = await db.insert(consentLogs).values(log).returning();
+    return row;
+  }
+
+  async listConsentLogs(
+    opts: { limit?: number; since?: Date } = {},
+  ): Promise<ConsentLog[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 10000, 1), 50000);
+    const where = opts.since
+      ? sql`${consentLogs.createdAt} >= ${opts.since}`
+      : undefined;
+    const q = db.select().from(consentLogs).orderBy(desc(consentLogs.createdAt)).limit(limit);
+    return where ? await q.where(where) : await q;
   }
 
   async convertWaitlistEntryToUser(email: string, userId: string): Promise<WaitlistEntry | undefined> {

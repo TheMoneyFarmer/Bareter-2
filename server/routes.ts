@@ -11,6 +11,8 @@ import {
   loginSchema,
   registerSchema,
   adminKybStatusSchema,
+  consentRequestSchema,
+  COOKIE_POLICY_VERSION,
   insertListingSchema,
   insertDealSchema,
   insertMessageSchema,
@@ -38,6 +40,7 @@ import {
   makeLoginRateLimiter,
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
+  makeConsentRateLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -420,7 +423,130 @@ export async function registerRoutes(
   app.get("/api/config", async (_req, res) => {
     res.json({
       passwordResetEnabled: await isEmailConfigured(),
+      cookiePolicyVersion: COOKIE_POLICY_VERSION,
     });
+  });
+
+  // Cookie consent — append-only audit log so we can prove (UAE PDPL /
+  // GDPR) that a given subject made a given choice against a given policy
+  // version at a given time. The frontend cookie banner POSTs here on
+  // accept-all / reject-non-essential / save-preferences.
+  const consentLimiter = makeConsentRateLimiter();
+  app.post("/api/consent", consentLimiter, async (req, res) => {
+    try {
+      const parsed = consentRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Invalid consent payload",
+          errors: parsed.error.flatten(),
+        });
+      }
+      const data = parsed.data;
+      const userId = req.session.userId ?? null;
+      const anonymousId = userId ? null : data.anonymousId ?? null;
+      if (!userId && !anonymousId) {
+        return res.status(400).json({
+          message: "anonymousId is required for unauthenticated consent",
+        });
+      }
+
+      // Strict-mode: a stored consent for an older policy version is
+      // recorded as the current decision but stamped with the *current*
+      // policy version, so the frontend will re-prompt automatically the
+      // next time the user lands on the site.
+      // `req.ip` honours the Express `trust proxy` setting configured in
+      // server/index.ts and only trusts X-Forwarded-For from the single
+      // Replit proxy hop — clients can't spoof their IP into the audit
+      // log via a forged header.
+      const ipAddress = req.ip ?? null;
+      const userAgent = (req.headers["user-agent"] ?? "").slice(0, 500) || null;
+
+      const row = await storage.createConsentLog({
+        userId,
+        anonymousId,
+        policyVersion: COOKIE_POLICY_VERSION,
+        decision: data.decision,
+        essential: true,
+        analytics: data.analytics,
+        marketing: data.marketing,
+        ipAddress,
+        userAgent,
+      });
+
+      res.json({ id: row.id, policyVersion: row.policyVersion });
+    } catch (err) {
+      console.error("[consent] failed to record consent:", err);
+      res.status(500).json({ message: "Failed to record consent" });
+    }
+  });
+
+  // Admin: stream consent log as CSV. Used during regulator inquiries.
+  app.get("/api/admin/consent/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const sinceRaw = typeof req.query.since === "string" ? req.query.since : null;
+      const since = sinceRaw ? new Date(sinceRaw) : undefined;
+      const rows = await storage.listConsentLogs({
+        limit: 50000,
+        since: since && !isNaN(since.getTime()) ? since : undefined,
+      });
+
+      // CSV-injection-safe escape: prefix any field that starts with a
+      // formula trigger (= + - @, plus tab/CR which Excel treats the
+      // same) with a single quote so spreadsheet apps render the value
+      // literally instead of evaluating it as a formula. Then apply the
+      // standard RFC-4180 quote/escape.
+      const csvEscape = (v: string | number | boolean | null | undefined) => {
+        if (v === null || v === undefined) return "";
+        let s = String(v);
+        if (s.length > 0 && /^[=+\-@\t\r]/.test(s)) {
+          s = `'${s}`;
+        }
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const header = [
+        "id",
+        "created_at",
+        "policy_version",
+        "decision",
+        "user_id",
+        "anonymous_id",
+        "essential",
+        "analytics",
+        "marketing",
+        "ip_address",
+        "user_agent",
+      ].join(",");
+      const body = rows
+        .map((r) =>
+          [
+            r.id,
+            r.createdAt?.toISOString() ?? "",
+            r.policyVersion,
+            r.decision,
+            r.userId ?? "",
+            r.anonymousId ?? "",
+            r.essential,
+            r.analytics,
+            r.marketing,
+            r.ipAddress ?? "",
+            r.userAgent ?? "",
+          ]
+            .map(csvEscape)
+            .join(","),
+        )
+        .join("\n");
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="bareter-consent-log-${stamp}.csv"`,
+      );
+      res.send(`${header}\n${body}\n`);
+    } catch (err) {
+      console.error("[consent] export failed:", err);
+      res.status(500).json({ message: "Failed to export consent log" });
+    }
   });
 
   app.get("/api/auth/me", async (req, res) => {
