@@ -141,12 +141,12 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full" data-testid="site-header">
-      {/* Main navy bar — 64px (visual densify on scroll via transform/opacity only) */}
+      {/* Main brand-teal bar — 64px (visual densify on scroll via transform/opacity only) */}
       <div
-        className={`bareter-header-shell bg-bareter-navy text-white ${
+        className={`bareter-header-shell bg-bareter-teal text-white ${
           scrolled
-            ? "supports-[backdrop-filter]:bg-bareter-navy/85 backdrop-blur-md shadow-[0_4px_16px_rgba(0,0,0,0.25)]"
-            : "shadow-[0_2px_8px_rgba(0,0,0,0.15)]"
+            ? "supports-[backdrop-filter]:bg-bareter-teal/90 backdrop-blur-md shadow-[0_4px_16px_rgba(26,114,114,0.25)]"
+            : "shadow-[0_2px_8px_rgba(26,114,114,0.18)]"
         }`}
       >
         <div
@@ -159,7 +159,7 @@ export function Header() {
             <img
               src="/logo-full-white.png"
               alt={t("app.name") || "Bareter"}
-              className="h-8 w-auto"
+              className="h-10 sm:h-11 w-auto"
             />
           </Link>
 
@@ -525,9 +525,8 @@ export function Header() {
             ) : waitlistMode.enabled ? (
               <div className="flex items-center gap-1 sm:gap-2">
                 <Button
-                  variant="bareter"
                   size="sm"
-                  className="h-10"
+                  className="h-10 bg-white text-bareter-teal hover:bg-white/90 font-semibold shadow-sm"
                   onClick={openWaitlist}
                   data-testid="button-join-waitlist"
                 >
@@ -558,7 +557,7 @@ export function Header() {
 
         {/* Mobile expandable search row */}
         {mobileSearchOpen && (
-          <div className="md:hidden border-t border-white/10 bg-bareter-navy px-4 py-3">
+          <div className="md:hidden border-t border-white/15 bg-bareter-teal px-4 py-3">
             <form
               onSubmit={handleSearchSubmit}
               className="flex h-10 items-center bg-white rounded-full px-4"
