@@ -709,6 +709,15 @@ export const appSettings = pgTable("app_settings", {
 });
 export type AppSetting = typeof appSettings.$inferSelect;
 
+// Structured body of a legal page. Mirrors what `LegalDocPage` renders
+// (h2/h3/p/ul). Stored as jsonb in `legal_pages.blocks` so we can keep a
+// single typed shape across the DB, the API, and the React renderer.
+export type LegalBlock =
+  | { type: "h2"; text: string }
+  | { type: "h3"; text: string }
+  | { type: "p"; text: string }
+  | { type: "ul"; items: string[] };
+
 // Legal pages — admin-editable copies of the public-facing legal pack
 // (Privacy, Terms, Barter Rules, etc.). One row per (slug, language) so the
 // same document can carry an English and Arabic version side by side. The
@@ -721,7 +730,7 @@ export const legalPages = pgTable("legal_pages", {
   language: text("language").notNull(),              // 'en' | 'ar'
   title: text("title").notNull(),
   subtitle: text("subtitle").notNull().default(""),
-  blocks: jsonb("blocks").notNull(),                 // LegalBlock[]
+  blocks: jsonb("blocks").$type<LegalBlock[]>().notNull(),
   effectiveDate: text("effective_date").notNull(),   // human-readable, e.g. '3 May 2026'
   version: integer("version").notNull().default(1),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -749,7 +758,7 @@ export const legalPageVersions = pgTable("legal_page_versions", {
   version: integer("version").notNull(),
   title: text("title").notNull(),
   subtitle: text("subtitle").notNull().default(""),
-  blocks: jsonb("blocks").notNull(),
+  blocks: jsonb("blocks").$type<LegalBlock[]>().notNull(),
   effectiveDate: text("effective_date").notNull(),
   publishedAt: timestamp("published_at").notNull().defaultNow(),
   publishedBy: varchar("published_by", { length: 36 }),

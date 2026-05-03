@@ -3780,7 +3780,7 @@ export async function registerRoutes(
           language: lang,
           title: parsed.data.title,
           subtitle: parsed.data.subtitle,
-          blocks: parsed.data.blocks as any,
+          blocks: parsed.data.blocks,
           effectiveDate: parsed.data.effectiveDate,
           version: 1,
           updatedBy: req.session.userId ?? null,

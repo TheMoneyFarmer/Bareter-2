@@ -1365,12 +1365,12 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const values = {
+    const values: InsertLegalPage & { version: number; updatedAt: Date; updatedBy: string | null } = {
       slug: page.slug,
       language: page.language,
       title: page.title,
       subtitle: page.subtitle ?? "",
-      blocks: page.blocks as unknown,
+      blocks: page.blocks,
       effectiveDate: page.effectiveDate,
       version: nextVersion,
       updatedAt: new Date(),
@@ -1379,13 +1379,13 @@ export class DatabaseStorage implements IStorage {
 
     const [row] = await db
       .insert(legalPages)
-      .values(values as any)
+      .values(values)
       .onConflictDoUpdate({
         target: [legalPages.slug, legalPages.language],
         set: {
           title: values.title,
           subtitle: values.subtitle,
-          blocks: values.blocks as any,
+          blocks: values.blocks,
           effectiveDate: values.effectiveDate,
           version: values.version,
           updatedAt: values.updatedAt,

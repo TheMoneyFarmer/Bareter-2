@@ -4,6 +4,7 @@ import {
   LEGAL_EFFECTIVE_DATE,
 } from "../client/src/content/legal";
 import { LEGAL_DOCS_AR } from "../client/src/content/legal.ar";
+import type { LegalBlock } from "@shared/schema";
 
 // Idempotently backfill the database with the static legal pack so the DB
 // becomes the source of truth on first boot. Subsequent edits flow through
@@ -20,7 +21,7 @@ export async function seedLegalPages(): Promise<void> {
         language: "en",
         title: doc.title,
         subtitle: doc.subtitle ?? "",
-        blocks: doc.blocks as unknown as any,
+        blocks: doc.blocks as LegalBlock[],
         effectiveDate: LEGAL_EFFECTIVE_DATE,
         version: 1,
         updatedBy: null,
@@ -35,7 +36,7 @@ export async function seedLegalPages(): Promise<void> {
           language: "ar",
           title: ar.title,
           subtitle: ar.subtitle ?? "",
-          blocks: ar.blocks as unknown as any,
+          blocks: ar.blocks as LegalBlock[],
           effectiveDate: LEGAL_EFFECTIVE_DATE,
           version: 1,
           updatedBy: null,

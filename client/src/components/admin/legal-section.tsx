@@ -226,8 +226,9 @@ function LegalEditorDialog({
       if (!Array.isArray(parsed)) throw new Error("blocks must be an array");
       setJsonError(null);
       return parsed as LegalBlock[];
-    } catch (err: any) {
-      setJsonError(err?.message ?? "Invalid JSON");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid JSON";
+      setJsonError(message);
       return null;
     }
   }, [blocksJson]);
