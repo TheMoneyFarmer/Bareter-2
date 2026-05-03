@@ -96,7 +96,8 @@ export function BrowsePage() {
   );
   const [selectedCondition, setSelectedCondition] = useState<string>("all");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
-  const [valueRange, setValueRange] = useState([0, 100000]);
+  const VALUE_MAX = 5_000_000;
+  const [valueRange, setValueRange] = useState<[number, number]>([0, VALUE_MAX]);
   const [sortBy, setSortBy] = useState<string>("newest");
 
   useEffect(() => {
@@ -251,13 +252,25 @@ export function BrowsePage() {
 
   const filteredListings = listings?.filter((listing) => {
     if (search) {
-      const searchLower = search.toLowerCase();
-      if (
-        !listing.title.toLowerCase().includes(searchLower) &&
-        !listing.description.toLowerCase().includes(searchLower)
-      ) {
-        return false;
-      }
+      // Multi-word AND search across many fields so keywords like
+      // "dubai villa", "rolex", "photography services" all match.
+      const haystack = [
+        listing.title,
+        listing.description,
+        listing.location,
+        listing.country,
+        listing.condition,
+        listing.user?.fullName,
+        listing.user?.businessName,
+        ...(listing.categories || []),
+        ...((listing.offerItems as ExchangeItem[] | undefined) || []).map((i) => i?.name),
+        ...((listing.wantItems as ExchangeItem[] | undefined) || []).map((i) => i?.name),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.every((t) => haystack.includes(t))) return false;
     }
     if (selectedType !== "all" && listing.type !== selectedType) return false;
     if (selectedCategories.length > 0) {
@@ -269,7 +282,7 @@ export function BrowsePage() {
     if (selectedLocation !== "all" && listing.location !== selectedLocation) return false;
     if (selectedCondition !== "all" && listing.condition !== selectedCondition) return false;
     if (verifiedOnly && !(listing.user?.kycStatus === "APPROVED" || listing.user?.kybStatus === "APPROVED" || listing.user?.isVerified)) return false;
-    const value = parseFloat(listing.retailValue as string);
+    const value = parseFloat(listing.retailValue as string) || 0;
     if (value < valueRange[0] || value > valueRange[1]) return false;
     return true;
   });
@@ -304,7 +317,7 @@ export function BrowsePage() {
     setSelectedLocation("all");
     setSelectedCondition("all");
     setVerifiedOnly(false);
-    setValueRange([0, 100000]);
+    setValueRange([0, VALUE_MAX]);
   };
 
   const hasActiveFilters =
@@ -315,7 +328,16 @@ export function BrowsePage() {
     selectedCondition !== "all" ||
     verifiedOnly ||
     valueRange[0] > 0 ||
-    valueRange[1] < 100000;
+    valueRange[1] < VALUE_MAX;
+
+  const PRICE_PRESETS: { label: string; range: [number, number] }[] = [
+    { label: "Any", range: [0, VALUE_MAX] },
+    { label: "Under 1k", range: [0, 1_000] },
+    { label: "1k–10k", range: [1_000, 10_000] },
+    { label: "10k–50k", range: [10_000, 50_000] },
+    { label: "50k–250k", range: [50_000, 250_000] },
+    { label: "250k+", range: [250_000, VALUE_MAX] },
+  ];
 
   const conditionLabel = (c: string) => {
     const labels: Record<string, string> = {
@@ -398,12 +420,62 @@ export function BrowsePage() {
         </Select>
       </div>
       <div>
-        <h4 className="font-medium mb-3">Value Range (AED)</h4>
+        <h4 className="font-medium mb-3">Price Range (AED)</h4>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {PRICE_PRESETS.map((p) => {
+            const active = valueRange[0] === p.range[0] && valueRange[1] === p.range[1];
+            return (
+              <Badge
+                key={p.label}
+                variant={active ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setValueRange(p.range)}
+                data-testid={`filter-price-preset-${p.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+              >
+                {p.label}
+              </Badge>
+            );
+          })}
+        </div>
         <div className="px-2">
-          <Slider value={valueRange} onValueChange={setValueRange} max={100000} step={1000} className="mb-2" data-testid="filter-value-range" />
+          <Slider value={valueRange} onValueChange={(v) => setValueRange([v[0], v[1]] as [number, number])} max={VALUE_MAX} step={1000} className="mb-2" data-testid="filter-value-range" />
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>AED {valueRange[0].toLocaleString()}</span>
-            <span>AED {valueRange[1].toLocaleString()}</span>
+            <span>AED {valueRange[1] >= VALUE_MAX ? `${(VALUE_MAX/1_000_000).toFixed(0)}M+` : valueRange[1].toLocaleString()}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <div>
+            <label className="text-[11px] text-muted-foreground" htmlFor="filter-min-price">Min</label>
+            <Input
+              id="filter-min-price"
+              type="number"
+              min={0}
+              value={valueRange[0] || ""}
+              onChange={(e) => {
+                const v = Math.max(0, Math.min(VALUE_MAX, Number(e.target.value) || 0));
+                setValueRange([v, Math.max(v, valueRange[1])]);
+              }}
+              className="h-9"
+              data-testid="filter-min-price"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-muted-foreground" htmlFor="filter-max-price">Max</label>
+            <Input
+              id="filter-max-price"
+              type="number"
+              min={0}
+              value={valueRange[1] >= VALUE_MAX ? "" : valueRange[1]}
+              placeholder={`${VALUE_MAX.toLocaleString()}+`}
+              onChange={(e) => {
+                const raw = Number(e.target.value);
+                const v = !raw ? VALUE_MAX : Math.max(0, Math.min(VALUE_MAX, raw));
+                setValueRange([Math.min(valueRange[0], v), v]);
+              }}
+              className="h-9"
+              data-testid="filter-max-price"
+            />
           </div>
         </div>
       </div>
