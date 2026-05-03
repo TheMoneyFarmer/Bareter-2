@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -79,6 +80,7 @@ function formatValue(value: string | number | null | undefined): string {
 }
 
 function StoriesRow() {
+  const { gate } = useWaitlist();
   const { data: stories, isLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/stories"],
   });
@@ -110,6 +112,7 @@ function StoriesRow() {
       {uniqueUsers.map((story) => (
         <button
           key={story.id}
+          onClick={() => gate()}
           className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer"
           data-testid={`story-${story.id}`}
         >
@@ -237,6 +240,7 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
 
 function CommentsSection({ postId, commentCount: initialCount }: { postId: string; commentCount: number }) {
   const { user } = useAuth();
+  const { gate } = useWaitlist();
   const { toast } = useToast();
   const [offerName, setOfferName] = useState("");
   const [offerValue, setOfferValue] = useState("");
@@ -270,10 +274,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
   });
 
   const handleSubmitProposal = () => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to propose a barter" });
-      return;
-    }
+    if (!gate()) return;
     if (!offerName.trim()) {
       toast({ title: "Missing info", description: "Please enter what you want to offer", variant: "destructive" });
       return;
@@ -454,6 +455,7 @@ function BarterExchangeSection({ post, onPropose }: { post: PostWithUser; onProp
 
 function FeedCard({ post }: { post: PostWithUser }) {
   const { user } = useAuth();
+  const { gate } = useWaitlist();
   const { toast } = useToast();
   const queryClientHook = useQueryClient();
   const [, navigate] = useLocation();
@@ -500,19 +502,18 @@ function FeedCard({ post }: { post: PostWithUser }) {
   });
 
   const handleLike = () => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to like posts" });
-      return;
-    }
+    if (!gate()) return;
     likeMutation.mutate();
   };
 
   const handleBookmark = () => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to save posts" });
-      return;
-    }
+    if (!gate()) return;
     bookmarkMutation.mutate();
+  };
+
+  const handleComments = () => {
+    if (!gate()) return;
+    setShowComments((prev) => !prev);
   };
 
   const handleShare = async () => {
@@ -544,11 +545,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   };
 
   const handleContact = (type: "call" | "email" | "message") => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to contact this member" });
-      navigate("/login");
-      return;
-    }
+    if (!gate()) return;
     const poster = post.user;
     if (type === "call") {
       if (poster?.phone && poster?.showPhone !== false) {
@@ -572,13 +569,9 @@ function FeedCard({ post }: { post: PostWithUser }) {
   };
 
   const handleProposeBarter = () => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to propose a barter" });
-      navigate("/login");
-      return;
-    }
-    const kycApproved = user.kycStatus === "APPROVED";
-    const kybApproved = user.kybStatus === "APPROVED";
+    if (!gate()) return;
+    const kycApproved = user!.kycStatus === "APPROVED";
+    const kybApproved = user!.kybStatus === "APPROVED";
     if (!kycApproved && !kybApproved) {
       toast({
         title: "Verification required",
@@ -603,7 +596,15 @@ function FeedCard({ post }: { post: PostWithUser }) {
     <Card id={`post-${post.id}`} className="overflow-visible border-x-0 sm:border-x rounded-none sm:rounded-md scroll-mt-24" data-testid={`card-post-${post.id}`}>
       <CardContent className="p-0">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-          <Link href={`/users/${post.userId}`}>
+          <button
+            type="button"
+            onClick={(e) => {
+              if (!user) { e.preventDefault(); gate(); return; }
+              navigate(`/users/${post.userId}`);
+            }}
+            className="text-start min-w-0"
+            data-testid={`link-user-${post.id}`}
+          >
             <div className="flex items-center gap-3 min-w-0">
               <Avatar className="h-9 w-9">
                 <AvatarImage src={post.user?.avatarUrl || undefined} />
@@ -640,18 +641,16 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 </div>
               </div>
             </div>
-          </Link>
+          </button>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {user && (
-              <button
-                onClick={() => setShowReport(true)}
-                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                data-testid={`button-report-post-${post.id}`}
-                title="Report this post"
-              >
-                <Flag className="h-3.5 w-3.5" />
-              </button>
-            )}
+            <button
+              onClick={() => { if (!gate()) return; setShowReport(true); }}
+              className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+              data-testid={`button-report-post-${post.id}`}
+              title="Report this post"
+            >
+              <Flag className="h-3.5 w-3.5" />
+            </button>
             {post.postType === "request" ? (
               <Badge variant="outline" className="gap-1 text-xs border-amber-500/50 text-amber-600 dark:text-amber-400" data-testid={`badge-post-type-${post.id}`}>
                 <Search className="h-3 w-3" />
@@ -730,7 +729,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
                 <Heart className={`h-6 w-6 transition-colors ${liked ? "fill-destructive text-destructive" : "text-foreground"}`} />
               </button>
               <button
-                onClick={() => setShowComments((prev) => !prev)}
+                onClick={handleComments}
                 className="flex items-center gap-1"
                 data-testid={`button-comment-${post.id}`}
               >
@@ -820,7 +819,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
             )}
             {commentCount > 0 && (
               <button
-                onClick={() => setShowComments(true)}
+                onClick={handleComments}
                 className="text-sm text-muted-foreground"
                 data-testid={`button-view-comments-${post.id}`}
               >
@@ -884,7 +883,9 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
 function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
   const { user } = useAuth();
+  const { gate } = useWaitlist();
   const [, navigate] = useLocation();
+  const guarded = (path: string) => () => { if (!gate()) return; navigate(path); };
 
   const trendingCategories = [
     { name: "Services & Skills", count: 42, color: "text-blue-600 dark:text-blue-400" },
@@ -940,10 +941,10 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => navigate("/login")} data-testid="sidebar-login">
+              <Button variant="outline" size="sm" className="flex-1" onClick={guarded("/login")} data-testid="sidebar-login">
                 Sign In
               </Button>
-              <Button size="sm" className="flex-1" onClick={() => navigate("/register")} data-testid="sidebar-register">
+              <Button size="sm" className="flex-1" onClick={guarded("/register")} data-testid="sidebar-register">
                 Sign Up
               </Button>
             </div>
@@ -1104,12 +1105,12 @@ export function FeedPage() {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
-    enabled: !!user,
   });
 
-  // Auth-gate the Feed: logged-out visitors see a sign-in / join-waitlist
-  // prompt instead of the feed content (Feed is a member destination).
-  if (!authLoading && !user) {
+  // Feed is now visible to logged-out visitors (waitlist mode). Every
+  // interactive action gates through the waitlist dialog (see FeedCard,
+  // CommentsSection, StoriesRow, FeedSidebar). Share/copy-link remain open.
+  if (false && !authLoading && !user) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 sm:py-20" data-testid="feed-auth-gate">
         <Card>
