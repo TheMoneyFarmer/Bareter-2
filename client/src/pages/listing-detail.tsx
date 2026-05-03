@@ -339,7 +339,11 @@ export function ListingDetailPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => { if (!gate()) return; setShowReport(true); }}
+                    onClick={() => {
+                      if (!gate()) return;
+                      if (!user) { navigate("/login"); return; }
+                      setShowReport(true);
+                    }}
                     data-testid="button-report-listing"
                     title="Report this listing"
                   >

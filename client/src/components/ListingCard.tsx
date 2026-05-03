@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -13,6 +13,7 @@ import { isUserVerified } from "@/components/verified-badge";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { ReportModal } from "@/components/report-modal";
 import { useWaitlist } from "@/lib/waitlist";
+import { useAuth } from "@/lib/auth";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -51,6 +52,8 @@ interface ListingCardProps {
 
 export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
   const { gate } = useWaitlist();
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [showReport, setShowReport] = useState(false);
   const allImages = (listing.images as string[] | undefined) ?? [];
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
@@ -153,6 +156,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                       onSelect={(e) => {
                         e.preventDefault();
                         if (!gate()) return;
+                        if (!user) { navigate("/login"); return; }
                         setShowReport(true);
                       }}
                       className="text-destructive focus:text-destructive"
