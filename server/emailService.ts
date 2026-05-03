@@ -142,9 +142,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
       <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
         <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
           <div style="text-align: center; margin-bottom: 24px;">
-            <div style="display: inline-flex; align-items: center; justify-content: center; background: #1a1a2e; border-radius: 12px; width: 52px; height: 52px; margin-bottom: 12px;">
-              <span style="color: white; font-size: 24px;">🤝</span>
-            </div>
+            <img src="${baseUrl}/logo-icon.png" alt="${APP_NAME}" width="52" height="52" style="display: inline-block; width: 52px; height: 52px; border-radius: 12px; margin-bottom: 12px; border: 0;" />
             <h1 style="margin: 0; font-size: 22px; color: #1a1a2e;">${APP_NAME}</h1>
           </div>
 
