@@ -197,8 +197,7 @@ export function LandingPage() {
                 Trending barters now 🔥
               </h2>
               <p className="text-caption mt-1">
-
-
+               
               </p>
             </div>
             <Link
