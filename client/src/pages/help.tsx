@@ -167,9 +167,9 @@ export function HelpPage() {
             <p className="text-muted-foreground mb-4">
               For urgent matters, reach us by phone during business hours.
             </p>
-            <p className="font-medium mb-2">+971 4 123 4567</p>
+            <p className="font-medium mb-2">+971 52 313 3512</p>
             <p className="text-sm text-muted-foreground">
-              Sun - Thu: 9:00 AM - 6:00 PM (GST)
+              Mon - Fri: 9:00 AM - 6:00 PM (GST)
             </p>
           </CardContent>
         </Card>
