@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Cookie } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +14,23 @@ import {
 } from "@/components/ui/dialog";
 import { COOKIE_OPEN_EVENT, readPrefs, writePrefs } from "@/lib/cookie-consent";
 
+// Countries where Bareter operates and consent banners aren't required by
+// local law. The banner is suppressed by default for first-time visitors from
+// these countries; users can still reopen preferences from the footer.
+const BANNER_EXEMPT_COUNTRIES = new Set([
+  "AE", // United Arab Emirates
+  "SA", // Saudi Arabia
+  "QA", // Qatar
+  "KW", // Kuwait
+  "BH", // Bahrain
+  "OM", // Oman
+]);
+
+interface GeoLookup {
+  country: string;
+  countryName: string;
+}
+
 export function CookieConsent() {
   const [location] = useLocation();
   const [bannerOpen, setBannerOpen] = useState(false);
@@ -22,16 +40,33 @@ export function CookieConsent() {
 
   // Hide on the cookie policy page itself to avoid covering the doc.
   const isCookieDoc = location === "/legal/cookies";
+  const hasExistingPrefs = readPrefs() !== null;
+
+  // Geo lookup — only fetch when a decision is actually pending (no stored
+  // preference yet and we're not on the cookie doc page). Falls back to
+  // showing the banner if the lookup errors out (safer default).
+  const { data: geo, isError: geoError, isLoading: geoLoading } = useQuery<GeoLookup>({
+    queryKey: ["/api/geo/lookup"],
+    enabled: !hasExistingPrefs && !isCookieDoc,
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 60 * 1000,
+    retry: 1,
+  });
 
   useEffect(() => {
     const existing = readPrefs();
-    if (!existing && !isCookieDoc) {
-      setBannerOpen(true);
-    } else if (existing) {
+    if (existing) {
       setAnalytics(existing.analytics);
       setMarketing(existing.marketing);
+      return;
     }
-  }, [isCookieDoc]);
+    if (isCookieDoc) return;
+    if (geoLoading) return;
+    // If we have a country and it's exempt (UAE/GCC), suppress the banner.
+    const exempt = !!geo && BANNER_EXEMPT_COUNTRIES.has(geo.country);
+    // Otherwise (other region, unknown geo, or lookup errored) show it.
+    setBannerOpen(geoError || !exempt);
+  }, [isCookieDoc, geo, geoError, geoLoading]);
 
   useEffect(() => {
     const onOpen = () => {
