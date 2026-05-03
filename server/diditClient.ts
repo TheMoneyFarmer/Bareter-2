@@ -155,8 +155,16 @@ export function verifyWebhookSignature(
 export function isUserVerified(
   accountType: string,
   kycStatus: string,
-  kybStatus: string
+  kybStatus: string,
+  manualVerifiedFlag?: boolean | null,
 ): boolean {
+  // Admin-issued manual verification (the `users.is_verified` boolean)
+  // is a first-class trust signal: founders verify partners and edge
+  // cases out-of-band, and that decision must override Didit status.
+  // Without this, manually-verified accounts are blocked at every gate
+  // (proposing deals, contacting users, etc.) because their kycStatus
+  // stays at NOT_STARTED.
+  if (manualVerifiedFlag) return true;
   if (accountType === "business") {
     return kybStatus === "APPROVED";
   }

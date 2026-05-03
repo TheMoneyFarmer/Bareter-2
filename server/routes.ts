@@ -883,7 +883,8 @@ export async function registerRoutes(
       const userVerified = isUserVerified(
         listingUser.accountType || "individual",
         listingUser.kycStatus || "NOT_STARTED",
-        listingUser.kybStatus || "NOT_STARTED"
+        listingUser.kybStatus || "NOT_STARTED",
+        listingUser.isVerified,
       );
 
       if (!userVerified) {
@@ -1367,7 +1368,8 @@ export async function registerRoutes(
       const seekerVerified = isUserVerified(
         seeker.accountType || "individual",
         seeker.kycStatus || "NOT_STARTED",
-        seeker.kybStatus || "NOT_STARTED"
+        seeker.kybStatus || "NOT_STARTED",
+        seeker.isVerified,
       );
 
       if (!seekerVerified) {
@@ -1788,7 +1790,7 @@ export async function registerRoutes(
       const kybStatus = user.kybStatus || "NOT_STARTED";
 
       const statusInfo = getVerificationStatus(accountType, kycStatus, kybStatus);
-      const verified = isUserVerified(accountType, kycStatus, kybStatus);
+      const verified = isUserVerified(accountType, kycStatus, kybStatus, user.isVerified);
 
       res.json({
         accountType,
