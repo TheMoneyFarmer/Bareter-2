@@ -2,8 +2,23 @@
  * One-off: translate the 9 legal documents from English → Arabic
  * and emit `client/src/content/legal.ar.ts`.
  *
- * Run with:
- *   tsx scripts/translate-legal.ts
+ * When to run
+ * - Whenever `client/src/content/legal.ts` changes (edits to the English
+ *   source, a new document, an updated effective date, etc.).
+ *
+ * How to run
+ *   AI_INTEGRATIONS_OPENAI_API_KEY=... npx tsx scripts/translate-legal.ts
+ *
+ * Output
+ * - `client/src/content/legal.ar.ts`, fully overwritten.
+ * - The file is consumed by `client/src/components/legal-doc-page.tsx`
+ *   which picks LEGAL_DOCS_AR when `useI18n().language === "ar"`.
+ *
+ * Quality
+ * - Translation is machine-generated. Each Arabic legal page already shows
+ *   a notice that the English version prevails in case of conflict, but the
+ *   regenerated file should still be reviewed by a UAE-qualified Arabic
+ *   legal proofreader before being published to production.
  */
 import OpenAI from "openai";
 import fs from "node:fs";
