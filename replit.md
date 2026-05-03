@@ -72,6 +72,31 @@ The frontend reads the canonical URL from the `appUrl` field of
 The waitlist dialog uses it for the share link so referrals always direct
 visitors to the published custom domain.
 
+## Launch Seed (Curated Listings)
+
+Production launches with a curated set of realistic UAE listings spanning
+automotive, real estate, services, technology, hospitality, yachts, and home
+across Dubai / Abu Dhabi / Sharjah, so the homepage's Trending / Just-listed /
+Big-ticket rows are full from day one.
+
+- Source of truth: `server/launchSeed.ts` (~25 listings under 5 editorial
+  business accounts whose emails all live under `editorial*@bareter.com`).
+- Every editorial listing carries the `editorial` tag and an explicit
+  "Curated launch listing posted by the Bareter editorial team" line in the
+  description — we never present these as listings owned by real partners.
+- Runner is the one-shot script `scripts/seed-launch.ts`. It is idempotent
+  (keyed by editorial email + listing title) and safe to re-run.
+- Two safety gates: `CONFIRM_SEED_LAUNCH=yes` is always required, and when the
+  `DATABASE_URL` host is neither `localhost` nor `*.replit.dev` you must also
+  set `CONFIRM_SEED_LAUNCH_PRODUCTION=yes`. The seed never auto-runs from
+  server boot.
+
+```
+CONFIRM_SEED_LAUNCH=yes \
+CONFIRM_SEED_LAUNCH_PRODUCTION=yes \
+  npx tsx scripts/seed-launch.ts
+```
+
 ## External Dependencies
 
 - **Database**: PostgreSQL.
