@@ -1,7 +1,65 @@
 import { Link } from "wouter";
 import { Mail, MapPin, Phone } from "lucide-react";
+import {
+  SiInstagram,
+  SiLinkedin,
+  SiTiktok,
+  SiFacebook,
+  SiWhatsapp,
+} from "react-icons/si";
+import type { IconType } from "react-icons";
 import { useI18n } from "@/lib/i18n";
 import { openCookiePreferences } from "@/lib/cookie-consent";
+
+// Stylish brand-aware socials. Each item carries the on-hover brand color
+// so the footer pops with a tasteful, on-brand reveal instead of a flat
+// grey row. URLs default to "#" and can be wired up once the official
+// handles are confirmed by the founder.
+type Social = {
+  name: string;
+  href: string;
+  Icon: IconType;
+  color: string; // tailwind text color used on hover (brand color)
+  glow: string;  // tailwind shadow color used on hover
+};
+
+const SOCIALS: Social[] = [
+  {
+    name: "Instagram",
+    href: "#",
+    Icon: SiInstagram,
+    color: "group-hover:text-[#E4405F]",
+    glow: "group-hover:shadow-[0_0_24px_-4px_rgba(228,64,95,0.55)]",
+  },
+  {
+    name: "LinkedIn",
+    href: "#",
+    Icon: SiLinkedin,
+    color: "group-hover:text-[#0A66C2]",
+    glow: "group-hover:shadow-[0_0_24px_-4px_rgba(10,102,194,0.55)]",
+  },
+  {
+    name: "TikTok",
+    href: "#",
+    Icon: SiTiktok,
+    color: "group-hover:text-[#FF0050]",
+    glow: "group-hover:shadow-[0_0_24px_-4px_rgba(255,0,80,0.55)]",
+  },
+  {
+    name: "Facebook",
+    href: "#",
+    Icon: SiFacebook,
+    color: "group-hover:text-[#1877F2]",
+    glow: "group-hover:shadow-[0_0_24px_-4px_rgba(24,119,242,0.55)]",
+  },
+  {
+    name: "WhatsApp",
+    href: "https://wa.me/971523133512?text=Hi!%20I%20need%20help%20with%20Bareter%20marketplace.",
+    Icon: SiWhatsapp,
+    color: "group-hover:text-[#25D366]",
+    glow: "group-hover:shadow-[0_0_24px_-4px_rgba(37,211,102,0.55)]",
+  },
+];
 
 export function Footer() {
   const { t } = useI18n();
@@ -33,6 +91,46 @@ export function Footer() {
             <p className="text-sm text-bareter-navy/75 dark:text-white/70 leading-relaxed max-w-xs">
               Barter what you have for what you need.
             </p>
+
+            {/* Social row — stylish brand-color reveal on hover */}
+            <div
+              className="pt-2"
+              data-testid="footer-socials"
+              aria-label="Follow Bareter on social media"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-bareter-teal dark:text-bareter-teal-light mb-3">
+                Follow the trade
+              </p>
+              <ul className="flex flex-wrap items-center gap-2.5">
+                {SOCIALS.map(({ name, href, Icon, color, glow }) => (
+                  <li key={name}>
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={name}
+                      data-testid={`link-social-${name.toLowerCase()}`}
+                      className={`group relative inline-flex h-10 w-10 items-center justify-center rounded-xl
+                        bg-white/60 dark:bg-white/5 backdrop-blur-sm
+                        border border-bareter-teal/15 dark:border-white/10
+                        text-bareter-navy/70 dark:text-white/75
+                        transition-all duration-300 ease-out
+                        hover:-translate-y-0.5 hover:border-transparent
+                        ${glow}`}
+                    >
+                      {/* subtle gradient halo that fades in on hover */}
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br from-bareter-teal/0 via-bareter-teal/0 to-bareter-teal/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-hover:from-white/40 group-hover:to-white/0 dark:group-hover:from-white/10 dark:group-hover:to-white/0"
+                      />
+                      <Icon
+                        className={`relative h-[18px] w-[18px] transition-colors duration-300 ${color}`}
+                      />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           {/* About / Categories */}

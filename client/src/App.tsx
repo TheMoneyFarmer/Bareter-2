@@ -43,7 +43,6 @@ import { CreatePostPage } from "@/pages/create-post";
 import { InboxPage } from "@/pages/inbox";
 import { ForgotPasswordPage } from "@/pages/forgot-password";
 import { ResetPasswordPage } from "@/pages/reset-password";
-import { WhatsAppButton } from "@/components/whatsapp-button";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
@@ -149,7 +148,6 @@ function App() {
                   <MobileBottomNav />
                 </div>
                 <Toaster />
-                <WhatsAppButton />
                 <AiSupportChat />
                 <LocationMismatchBanner />
                 <CookieConsent />
