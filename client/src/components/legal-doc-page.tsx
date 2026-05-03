@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import {
   LEGAL_DOCS,
@@ -15,10 +16,60 @@ type LegalDocPageProps = {
   slug: string;
 };
 
+type ApiLegalDoc = {
+  slug: string;
+  language: "en" | "ar";
+  title: string;
+  subtitle: string;
+  blocks: LegalBlock[];
+  effectiveDate: string;
+  entityLine: string;
+};
+
+type ApiLegalIndex = {
+  language: "en" | "ar";
+  entityLine: string;
+  index: { slug: string; title: string; subtitle: string; effectiveDate: string }[];
+};
+
+function staticDoc(slug: string, language: "en" | "ar"): LegalDoc | undefined {
+  const docs = language === "ar" ? LEGAL_DOCS_AR : LEGAL_DOCS;
+  return docs[slug] || LEGAL_DOCS[slug];
+}
+
 export function LegalDocPage({ slug }: LegalDocPageProps) {
   const { language } = useI18n();
-  const docs = language === "ar" ? LEGAL_DOCS_AR : LEGAL_DOCS;
-  const doc = docs[slug] || LEGAL_DOCS[slug];
+
+  // Fetch the live (admin-editable) version. While the request is in
+  // flight, or if it fails, fall back to the static legal pack baked
+  // into the bundle so users never see an empty legal page.
+  const { data: apiDoc } = useQuery<ApiLegalDoc>({
+    queryKey: ["/api/legal", slug, language],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/legal/${encodeURIComponent(slug)}?lang=${language}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error(`Legal doc fetch failed: ${res.status}`);
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const fallback = staticDoc(slug, language);
+  const doc: LegalDoc | undefined = apiDoc
+    ? {
+        slug: apiDoc.slug,
+        title: apiDoc.title,
+        subtitle: apiDoc.subtitle,
+        blocks: apiDoc.blocks,
+      }
+    : fallback;
+
+  const effectiveDate = apiDoc?.effectiveDate ?? LEGAL_EFFECTIVE_DATE;
+  const entityLine = apiDoc?.entityLine ?? LEGAL_ENTITY_LINE;
+
   if (!doc) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-16">
@@ -38,21 +89,46 @@ export function LegalDocPage({ slug }: LegalDocPageProps) {
     );
   }
 
-  return <LegalDocLayout doc={doc} language={language} />;
+  return (
+    <LegalDocLayout
+      doc={doc}
+      language={language}
+      effectiveDate={effectiveDate}
+      entityLine={entityLine}
+    />
+  );
 }
 
 export function LegalDocLayout({
   doc,
   language,
+  effectiveDate = LEGAL_EFFECTIVE_DATE,
+  entityLine = LEGAL_ENTITY_LINE,
 }: {
   doc: LegalDoc;
   language: "en" | "ar";
+  effectiveDate?: string;
+  entityLine?: string;
 }) {
   const isAr = language === "ar";
   const tocItems = doc.blocks
     .map((b, idx) => (b.type === "h2" ? { id: `sec-${idx}`, text: b.text } : null))
     .filter((x): x is { id: string; text: string } => x !== null);
-  const index = isAr ? LEGAL_DOC_INDEX_AR : LEGAL_DOC_INDEX;
+
+  // Cross-link index — prefer the live API list so newly published docs
+  // (or renamed titles) appear immediately, fall back to the static index.
+  const { data: apiIndex } = useQuery<ApiLegalIndex>({
+    queryKey: ["/api/legal", language],
+    queryFn: async () => {
+      const res = await fetch(`/api/legal?lang=${language}`, { credentials: "include" });
+      if (!res.ok) throw new Error("legal index failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  const index =
+    apiIndex?.index ?? (isAr ? LEGAL_DOC_INDEX_AR : LEGAL_DOC_INDEX);
 
   return (
     <div
@@ -86,15 +162,15 @@ export function LegalDocLayout({
             <p className="mt-4 text-sm text-muted-foreground">
               <span data-testid={`legal-effective-${doc.slug}`}>
                 {isAr ? "تاريخ السريان: " : "Effective Date: "}
-                {LEGAL_EFFECTIVE_DATE}
+                {effectiveDate}
               </span>
               {" · "}
               <span data-testid={`legal-updated-${doc.slug}`}>
                 {isAr ? "آخر تحديث: " : "Last updated: "}
-                {LEGAL_EFFECTIVE_DATE}
+                {effectiveDate}
               </span>
               {" · "}
-              <span>{LEGAL_ENTITY_LINE}</span>
+              <span>{entityLine}</span>
             </p>
             {isAr && (
               <p

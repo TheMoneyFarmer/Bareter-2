@@ -68,6 +68,11 @@ import {
   type WaitlistEntry,
   type InsertWaitlistEntry,
   appSettings,
+  legalPages,
+  legalPageVersions,
+  type LegalPage,
+  type InsertLegalPage,
+  type LegalPageVersion,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -226,6 +231,16 @@ export interface IStorage {
   // App settings (runtime-tunable key/value pairs)
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void>;
+
+  // Legal pages (admin-editable public legal pack)
+  getLegalPages(language?: string): Promise<LegalPage[]>;
+  getLegalPage(slug: string, language: string): Promise<LegalPage | undefined>;
+  upsertLegalPage(
+    page: InsertLegalPage,
+    publishedBy?: string | null,
+  ): Promise<LegalPage>;
+  getLegalPageVersions(slug: string, language: string): Promise<LegalPageVersion[]>;
+  countLegalPages(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1308,6 +1323,95 @@ export class DatabaseStorage implements IStorage {
       .update(waitlistEntries)
       .set({ confirmedAt: new Date() })
       .where(eq(waitlistEntries.email, email.trim().toLowerCase()));
+  }
+
+  // ── Legal pages ────────────────────────────────────────────────────────
+  async getLegalPages(language?: string): Promise<LegalPage[]> {
+    const q = db.select().from(legalPages);
+    const rows = language
+      ? await q.where(eq(legalPages.language, language))
+      : await q;
+    return rows;
+  }
+
+  async getLegalPage(slug: string, language: string): Promise<LegalPage | undefined> {
+    const [row] = await db
+      .select()
+      .from(legalPages)
+      .where(and(eq(legalPages.slug, slug), eq(legalPages.language, language)))
+      .limit(1);
+    return row;
+  }
+
+  async upsertLegalPage(
+    page: InsertLegalPage,
+    publishedBy?: string | null,
+  ): Promise<LegalPage> {
+    const existing = await this.getLegalPage(page.slug, page.language);
+    const nextVersion = (existing?.version ?? 0) + 1;
+
+    // Snapshot the *previous* live row into the audit history before we
+    // overwrite it. The first-ever insert has nothing to snapshot.
+    if (existing) {
+      await db.insert(legalPageVersions).values({
+        slug: existing.slug,
+        language: existing.language,
+        version: existing.version,
+        title: existing.title,
+        subtitle: existing.subtitle,
+        blocks: existing.blocks,
+        effectiveDate: existing.effectiveDate,
+        publishedBy: existing.updatedBy ?? null,
+      });
+    }
+
+    const values = {
+      slug: page.slug,
+      language: page.language,
+      title: page.title,
+      subtitle: page.subtitle ?? "",
+      blocks: page.blocks as unknown,
+      effectiveDate: page.effectiveDate,
+      version: nextVersion,
+      updatedAt: new Date(),
+      updatedBy: publishedBy ?? null,
+    };
+
+    const [row] = await db
+      .insert(legalPages)
+      .values(values as any)
+      .onConflictDoUpdate({
+        target: [legalPages.slug, legalPages.language],
+        set: {
+          title: values.title,
+          subtitle: values.subtitle,
+          blocks: values.blocks as any,
+          effectiveDate: values.effectiveDate,
+          version: values.version,
+          updatedAt: values.updatedAt,
+          updatedBy: values.updatedBy,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async getLegalPageVersions(
+    slug: string,
+    language: string,
+  ): Promise<LegalPageVersion[]> {
+    return db
+      .select()
+      .from(legalPageVersions)
+      .where(and(eq(legalPageVersions.slug, slug), eq(legalPageVersions.language, language)))
+      .orderBy(desc(legalPageVersions.version));
+  }
+
+  async countLegalPages(): Promise<number> {
+    const [row] = await db
+      .select({ c: sql<number>`count(*)` })
+      .from(legalPages);
+    return Number(row?.c ?? 0);
   }
 
   async convertWaitlistEntryToUser(email: string, userId: string): Promise<WaitlistEntry | undefined> {

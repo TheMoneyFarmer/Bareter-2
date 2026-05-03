@@ -5,6 +5,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase, backfillLocationFields, topUpTrendingListings } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
+import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerImageRoutes } from "./replit_integrations/image";
 import { registerChatRoutes } from "./replit_integrations/chat";
@@ -105,6 +106,14 @@ app.use((req, res, next) => {
   // Provision the founder admin account (idempotent). Runs in every
   // environment so the same secret rotation lands in dev and prod.
   await bootstrapAdmin();
+
+  // Backfill the legal pack into the database on first boot so the admin
+  // editor and the public LegalDocPage both read from the same source.
+  try {
+    await seedLegalPages();
+  } catch (error) {
+    console.error("Failed to seed legal pages:", error);
+  }
 
   // Backfill country/city/location for legacy rows so location filters and
   // worldwide-toggle behavior work correctly across pre-expansion data.

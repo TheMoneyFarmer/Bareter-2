@@ -3650,5 +3650,160 @@ export async function registerRoutes(
 
   registerWaitlistRoutes(app, requireAdmin);
 
+  // ── Legal pages: public read + admin CRUD ──────────────────────────────
+  const LEGAL_BLOCK_SCHEMA = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("h2"), text: z.string() }),
+    z.object({ type: z.literal("h3"), text: z.string() }),
+    z.object({ type: z.literal("p"), text: z.string() }),
+    z.object({ type: z.literal("ul"), items: z.array(z.string()) }),
+  ]);
+  const LEGAL_UPSERT_SCHEMA = z.object({
+    title: z.string().min(1),
+    subtitle: z.string().default(""),
+    effectiveDate: z.string().min(1),
+    blocks: z.array(LEGAL_BLOCK_SCHEMA).min(1),
+  });
+  const LEGAL_ENTITY_LINE = "Bareter FZ-LLC | www.bareter.com";
+
+  function pickLanguage(req: Request): "en" | "ar" {
+    const raw = String((req.query.lang ?? req.query.language ?? "en")).toLowerCase();
+    return raw === "ar" ? "ar" : "en";
+  }
+
+  // Public list — used by the LegalDocPage cross-link section and any
+  // future "browse our legal pack" surface.
+  app.get("/api/legal", async (req, res) => {
+    try {
+      const language = pickLanguage(req);
+      const all = await storage.getLegalPages(language);
+      const fallback =
+        all.length === 0 && language !== "en"
+          ? await storage.getLegalPages("en")
+          : [];
+      const rows = all.length > 0 ? all : fallback;
+      res.json({
+        language,
+        entityLine: LEGAL_ENTITY_LINE,
+        index: rows.map((p) => ({
+          slug: p.slug,
+          title: p.title,
+          subtitle: p.subtitle,
+          effectiveDate: p.effectiveDate,
+          version: p.version,
+        })),
+      });
+    } catch (error) {
+      console.error("Legal list error:", error);
+      res.status(500).json({ message: "Failed to load legal pages" });
+    }
+  });
+
+  // Public single doc — falls back to English when the requested
+  // language doesn't have a published version yet.
+  app.get("/api/legal/:slug", async (req, res) => {
+    try {
+      const language = pickLanguage(req);
+      const slug = req.params.slug;
+      let doc = await storage.getLegalPage(slug, language);
+      let usedFallback = false;
+      if (!doc && language !== "en") {
+        doc = await storage.getLegalPage(slug, "en");
+        usedFallback = true;
+      }
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      res.json({
+        slug: doc.slug,
+        language: doc.language,
+        title: doc.title,
+        subtitle: doc.subtitle,
+        blocks: doc.blocks,
+        effectiveDate: doc.effectiveDate,
+        entityLine: LEGAL_ENTITY_LINE,
+        version: doc.version,
+        updatedAt: doc.updatedAt,
+        usedFallback,
+      });
+    } catch (error) {
+      console.error("Legal get error:", error);
+      res.status(500).json({ message: "Failed to load legal page" });
+    }
+  });
+
+  // Admin: list every (slug, language) combo with metadata for the editor.
+  app.get("/api/admin/legal", requireAdmin, async (_req, res) => {
+    try {
+      const all = await storage.getLegalPages();
+      res.json(
+        all
+          .map((p) => ({
+            slug: p.slug,
+            language: p.language,
+            title: p.title,
+            subtitle: p.subtitle,
+            effectiveDate: p.effectiveDate,
+            version: p.version,
+            updatedAt: p.updatedAt,
+            updatedBy: p.updatedBy,
+          }))
+          .sort((a, b) =>
+            a.slug.localeCompare(b.slug) || a.language.localeCompare(b.language),
+          ),
+      );
+    } catch (error) {
+      console.error("Admin legal list error:", error);
+      res.status(500).json({ message: "Failed to load legal pages" });
+    }
+  });
+
+  // Admin: get a single (slug, language) row for editing.
+  app.get("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
+    const lang = req.params.language === "ar" ? "ar" : "en";
+    const doc = await storage.getLegalPage(req.params.slug, lang);
+    if (!doc) return res.status(404).json({ message: "Not found" });
+    res.json(doc);
+  });
+
+  // Admin: publish a new version of a (slug, language) row. The previous
+  // live row is snapshotted into `legal_page_versions` for audit.
+  app.put("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
+    try {
+      const lang = req.params.language === "ar" ? "ar" : "en";
+      const parsed = LEGAL_UPSERT_SCHEMA.safeParse(req.body);
+      if (!parsed.success) {
+        return res
+          .status(400)
+          .json({ message: "Invalid payload", errors: parsed.error.flatten() });
+      }
+      const row = await storage.upsertLegalPage(
+        {
+          slug: req.params.slug,
+          language: lang,
+          title: parsed.data.title,
+          subtitle: parsed.data.subtitle,
+          blocks: parsed.data.blocks as any,
+          effectiveDate: parsed.data.effectiveDate,
+          version: 1,
+          updatedBy: req.session.userId ?? null,
+        },
+        req.session.userId ?? null,
+      );
+      res.json(row);
+    } catch (error) {
+      console.error("Admin legal upsert error:", error);
+      res.status(500).json({ message: "Failed to publish legal page" });
+    }
+  });
+
+  // Admin: list audit history for a (slug, language) row.
+  app.get(
+    "/api/admin/legal/:slug/:language/versions",
+    requireAdmin,
+    async (req, res) => {
+      const lang = req.params.language === "ar" ? "ar" : "en";
+      const versions = await storage.getLegalPageVersions(req.params.slug, lang);
+      res.json(versions);
+    },
+  );
+
   return httpServer;
 }

@@ -84,6 +84,8 @@ import {
   Building2,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
+import { AdminLegalSection } from "@/components/admin/legal-section";
+import { ScrollText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   LineChart,
@@ -100,7 +102,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal";
 
 type WaitlistEntryRow = {
   id: number;
@@ -256,6 +258,7 @@ export function AdminPage() {
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
+    { id: "legal" as const, label: "Legal", icon: ScrollText },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -1369,6 +1372,8 @@ export function AdminPage() {
         return renderAiLogs();
       case "waitlist":
         return renderWaitlist();
+      case "legal":
+        return <AdminLegalSection />;
       case "analytics":
         return renderAnalytics();
       case "settings":

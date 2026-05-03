@@ -709,6 +709,58 @@ export const appSettings = pgTable("app_settings", {
 });
 export type AppSetting = typeof appSettings.$inferSelect;
 
+// Legal pages — admin-editable copies of the public-facing legal pack
+// (Privacy, Terms, Barter Rules, etc.). One row per (slug, language) so the
+// same document can carry an English and Arabic version side by side. The
+// canonical structured body lives in `blocks` (the same LegalBlock[] shape
+// the LegalDocPage already renders), and the admin UI bumps `version` /
+// `effectiveDate` whenever a published copy changes.
+export const legalPages = pgTable("legal_pages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull(),                      // 'privacy' | 'terms' | …
+  language: text("language").notNull(),              // 'en' | 'ar'
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  blocks: jsonb("blocks").notNull(),                 // LegalBlock[]
+  effectiveDate: text("effective_date").notNull(),   // human-readable, e.g. '3 May 2026'
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: varchar("updated_by", { length: 36 }),
+}, (table) => ({
+  slugLangUnique: uniqueIndex("legal_pages_slug_language_unique").on(
+    table.slug, table.language,
+  ),
+}));
+export type LegalPage = typeof legalPages.$inferSelect;
+export const insertLegalPageSchema = createInsertSchema(legalPages).omit({
+  id: true,
+  updatedAt: true,
+});
+export type InsertLegalPage = z.infer<typeof insertLegalPageSchema>;
+
+// Audit history for legal pages — every publish of a (slug, language) row
+// snapshots the prior state here so admins/legal can see what changed and
+// when. We keep this append-only; the live row in `legal_pages` is always
+// the latest published version.
+export const legalPageVersions = pgTable("legal_page_versions", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull(),
+  language: text("language").notNull(),
+  version: integer("version").notNull(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  blocks: jsonb("blocks").notNull(),
+  effectiveDate: text("effective_date").notNull(),
+  publishedAt: timestamp("published_at").notNull().defaultNow(),
+  publishedBy: varchar("published_by", { length: 36 }),
+}, (table) => ({
+  slugLangVersionUnique: uniqueIndex("legal_page_versions_slug_language_version_unique").on(
+    table.slug, table.language, table.version,
+  ),
+  slugLangIdx: index("legal_page_versions_slug_language_idx").on(table.slug, table.language),
+}));
+export type LegalPageVersion = typeof legalPageVersions.$inferSelect;
+
 export const sessionTable = pgTable("session", {
   sid: varchar("sid").primaryKey(),
   sess: json("sess").notNull(),
