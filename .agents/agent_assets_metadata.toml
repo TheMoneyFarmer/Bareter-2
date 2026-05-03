@@ -203,3 +203,9 @@ id = "UXHDwSEiGrcEKIUt76X0w"
 uri = "file://attached_assets/brand-kit/README.txt"
 type = "text"
 title = "Brand kit README — what to use where"
+
+[[outputs]]
+id = "YhMcFKfEa8m_zu8OKbvBF"
+uri = "file://docs/FOUNDER_LAUNCH_CHECKLIST.md"
+type = "text"
+title = "Founder Launch Checklist — actions only humans can do"
