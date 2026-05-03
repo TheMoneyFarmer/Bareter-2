@@ -48,10 +48,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Custom Domain & Outbound Links
 
-Outbound links — e.g. waitlist welcome emails and the in-app referral share
-link in the waitlist dialog — are built from a server-trusted base URL so they
-always point at the canonical (custom) production domain instead of whatever
-host happened to serve the request.
+Production runs on the apex `bareter.com` and the `www.bareter.com`
+subdomain, both attached to the Replit Deployment with auto-renewed
+TLS certificates. Outbound links — e.g. waitlist welcome emails and
+the in-app referral share link in the waitlist dialog — are built from
+a server-trusted base URL so they always point at the canonical
+(custom) production domain instead of whatever host happened to serve
+the request.
 
 Resolution order (in `server/waitlistRoutes.ts → baseUrlOf`):
 
@@ -71,6 +74,23 @@ The frontend reads the canonical URL from the `appUrl` field of
 `GET /api/waitlist/mode`, exposed via the `appUrl` value on `useWaitlist()`.
 The waitlist dialog uses it for the share link so referrals always direct
 visitors to the published custom domain.
+
+### Pre-launch verification (founder)
+
+- **Setup checklist:**
+  [`docs/LAUNCH_CUSTOM_DOMAIN.md`](docs/LAUNCH_CUSTOM_DOMAIN.md) — the
+  step-by-step founder runbook for attaching the domain, adding DNS
+  records at the registrar, waiting for TLS issuance, and verifying the
+  green padlock from a clean browser.
+- **Audit artifact:**
+  [`docs/launch-evidence/custom-domain.md`](docs/launch-evidence/custom-domain.md)
+  — fill in the actual DNS values, certificate issuer / SAN / expiry,
+  the four green-padlock screenshots, and the quarterly TLS
+  spot-check calendar reminder before announcing publicly.
+- **DNS hygiene:** the email records owned by Task #152
+  (`resend*._domainkey`, `_dmarc`, `send.` MX, SPF on the apex) live on
+  the same domain — do **not** replace any of them while attaching the
+  custom domain. Add only what Replit's *Custom domains* tab asks for.
 
 ## Backups & Restore (Production Database)
 
