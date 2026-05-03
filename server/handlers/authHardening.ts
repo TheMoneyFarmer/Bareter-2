@@ -97,3 +97,18 @@ export function makeConsentRateLimiter(overrides: Partial<Options> = {}) {
     ...overrides,
   });
 }
+
+// Browser ErrorBoundary POSTs once per uncaught render error. Legitimate
+// volume from a single tab is tiny; cap clearly-abusive volume from a
+// single IP so a script can't flood the server log.
+export function makeClientErrorRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many client error reports from this IP." },
+    ...overrides,
+  });
+}

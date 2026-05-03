@@ -48,6 +48,7 @@ import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
 import NotFound from "@/pages/not-found";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 function RouteTransition({ children }: { children: React.ReactNode }) {
   const [loc] = useLocation();
@@ -135,22 +136,24 @@ function App() {
             <LanguageSync />
             <TooltipProvider>
               <WaitlistProvider>
-                <div className="min-h-screen flex flex-col bg-background">
-                  <Header />
-                  <main className="flex-1 pb-20 md:pb-0">
-                    <RouteTransition>
-                      <GeoGate>
-                        <Router />
-                      </GeoGate>
-                    </RouteTransition>
-                  </main>
-                  <Footer />
-                  <MobileBottomNav />
-                </div>
-                <Toaster />
-                <AiSupportChat />
-                <LocationMismatchBanner />
-                <CookieConsent />
+                <ErrorBoundary>
+                  <div className="min-h-screen flex flex-col bg-background">
+                    <Header />
+                    <main className="flex-1 pb-20 md:pb-0">
+                      <RouteTransition>
+                        <GeoGate>
+                          <Router />
+                        </GeoGate>
+                      </RouteTransition>
+                    </main>
+                    <Footer />
+                    <MobileBottomNav />
+                  </div>
+                  <Toaster />
+                  <AiSupportChat />
+                  <LocationMismatchBanner />
+                  <CookieConsent />
+                </ErrorBoundary>
               </WaitlistProvider>
             </TooltipProvider>
           </AuthProvider>

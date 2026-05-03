@@ -41,6 +41,7 @@ import {
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
   makeConsentRateLimiter,
+  makeClientErrorRateLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -478,6 +479,38 @@ export async function registerRoutes(
       console.error("[consent] failed to record consent:", err);
       res.status(500).json({ message: "Failed to record consent" });
     }
+  });
+
+  // Client-side error reports from the React ErrorBoundary. Best-effort,
+  // non-PII (we only see message/stack/url/UA + a client-minted reference
+  // id we echo to the user). Logged so a founder can grep production logs
+  // by reference id when a user complains.
+  const clientErrorLimiter = makeClientErrorRateLimiter();
+  const clientErrorSchema = z.object({
+    referenceId: z.string().max(128).optional(),
+    message: z.string().max(2000).optional(),
+    stack: z.string().max(8000).optional(),
+    componentStack: z.string().max(8000).optional(),
+    url: z.string().max(2000).optional(),
+    userAgent: z.string().max(500).optional(),
+  });
+  app.post("/api/client-errors", clientErrorLimiter, async (req, res) => {
+    const parsed = clientErrorSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid error payload" });
+    }
+    const data = parsed.data;
+    console.error("[client-error]", {
+      referenceId: data.referenceId ?? null,
+      userId: req.session.userId ?? null,
+      ip: req.ip ?? null,
+      url: data.url ?? null,
+      userAgent: data.userAgent ?? null,
+      message: data.message ?? null,
+      stack: data.stack ?? null,
+      componentStack: data.componentStack ?? null,
+    });
+    res.json({ received: true, referenceId: data.referenceId ?? null });
   });
 
   // Admin: stream consent log as CSV. Used during regulator inquiries.
