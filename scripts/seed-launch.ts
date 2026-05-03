@@ -62,6 +62,23 @@ async function main() {
   console.log(`  usersInserted     : ${report.usersInserted}`);
   console.log(`  listingsInserted  : ${report.listingsInserted}`);
   console.log(`  listingsSkipped   : ${report.listingsSkipped}`);
+
+  // Strict "refuse to run twice" per task #150: if every editorial user and
+  // every editorial listing was already present, exit non-zero so an
+  // operator can't accidentally believe a fresh seed just ran. Re-runs are
+  // still permitted (e.g. to backfill new editorial listings added later)
+  // by setting ALLOW_RERUN=yes.
+  const fullySeeded =
+    report.alreadySeeded &&
+    report.usersInserted === 0 &&
+    report.listingsInserted === 0;
+  if (fullySeeded && process.env.ALLOW_RERUN !== "yes") {
+    console.error(
+      "[seed-launch] Refusing: launch seed has already been applied to this database. " +
+        "Set ALLOW_RERUN=yes to re-run anyway (e.g. to pick up new editorial listings).",
+    );
+    process.exit(2);
+  }
   process.exit(0);
 }
 

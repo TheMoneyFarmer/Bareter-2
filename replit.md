@@ -86,10 +86,13 @@ Big-ticket rows are full from day one.
   description — we never present these as listings owned by real partners.
 - Runner is the one-shot script `scripts/seed-launch.ts`. It is idempotent
   (keyed by editorial email + listing title) and safe to re-run.
-- Two safety gates: `CONFIRM_SEED_LAUNCH=yes` is always required, and when the
+- Safety gates: `CONFIRM_SEED_LAUNCH=yes` is always required, and when the
   `DATABASE_URL` host is neither `localhost` nor `*.replit.dev` you must also
   set `CONFIRM_SEED_LAUNCH_PRODUCTION=yes`. The seed never auto-runs from
   server boot.
+- Refuses to run twice: once everything is present, the script exits non-zero
+  ("already applied") unless `ALLOW_RERUN=yes` is also set — useful when new
+  editorial listings are appended to `SEED_LISTINGS` and need backfilling.
 
 ```
 CONFIRM_SEED_LAUNCH=yes \
