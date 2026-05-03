@@ -72,6 +72,40 @@ The frontend reads the canonical URL from the `appUrl` field of
 The waitlist dialog uses it for the share link so referrals always direct
 visitors to the published custom domain.
 
+## Backups & Restore (Production Database)
+
+The production database is a Replit-managed PostgreSQL (Neon-backed) attached
+to the deployment. Replit provides **point-in-time restore (PITR)** out of
+the box — there is no separate snapshot schedule we manage.
+
+- **Recovery window**: 7 days on Core, 28 days on Pro. Confirm the active
+  plan in *Account → Billing* before launch and re-confirm whenever the plan
+  changes. Source: <https://docs.replit.com/cloud-services/storage-and-databases/production-databases>.
+- **Granularity**: any point in time within the recovery window — not a
+  fixed nightly snapshot.
+- **Where it lives**: managed by Replit/Neon; nothing to copy off-box for the
+  default policy. (Cross-region replication is explicitly out of scope.)
+- **What restore covers**: the production database state only. It does NOT
+  roll the application code back. To restore both code and data to a point
+  in time, also use Replit's checkpoint *Rollback* on the App and then
+  *Republish*.
+
+### How to restore (production)
+
+1. Open the deployed App in Replit → *Deployments* tab.
+2. Open the production PostgreSQL database for that deployment.
+3. Choose **Point-in-time restore** and pick the target timestamp (within the
+   plan's recovery window).
+4. Confirm. The production database is rolled back to that moment.
+5. If application code also needs to match that point in time: use
+   *Checkpoints → Rollback* on the App, then *Republish*.
+
+### Launch-day check (founder)
+
+Before announcing publicly, run through `docs/LAUNCH_BACKUP_CHECKLIST.md`
+once and tick every box. The checklist also includes the recurring weekly
+spot-check reminder.
+
 ## Launch Seed (Curated Listings)
 
 Production launches with a curated set of realistic UAE listings spanning
