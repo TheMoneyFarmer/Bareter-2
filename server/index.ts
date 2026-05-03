@@ -3,7 +3,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase, backfillLocationFields } from "./seed";
+import { seedDatabase, backfillLocationFields, topUpTrendingListings } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerImageRoutes } from "./replit_integrations/image";
@@ -90,6 +90,7 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV !== "production") {
     try {
       await seedDatabase();
+      await topUpTrendingListings();
     } catch (error) {
       console.error("Failed to seed database:", error);
     }

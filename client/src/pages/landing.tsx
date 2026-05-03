@@ -236,7 +236,36 @@ export function LandingPage() {
               </Link>
             </div>
           ) : (
-            <TrendingDetailedRow listings={latestListings} max={8} />
+            <div className="space-y-8">
+              <TrendingDetailedRow
+                listings={(latestListings ?? []).slice(0, 10)}
+                max={10}
+              />
+              <div>
+                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
+                  Just listed ✨
+                </h3>
+                <TrendingDetailedRow
+                  listings={(latestListings ?? []).slice(10, 20)}
+                  max={10}
+                />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
+                  Big-ticket deals 💎
+                </h3>
+                <TrendingDetailedRow
+                  listings={[...(latestListings ?? [])]
+                    .sort(
+                      (a, b) =>
+                        parseFloat((b.retailValue as string) || "0") -
+                        parseFloat((a.retailValue as string) || "0"),
+                    )
+                    .slice(0, 10)}
+                  max={10}
+                />
+              </div>
+            </div>
           )}
         </div>
       </section>

@@ -738,6 +738,313 @@ export async function seedDatabase() {
   console.log("Database seeding completed!");
 }
 
+// Idempotent top-up: adds extra trending listings (covering all category-grid
+// categories) without disturbing existing rows. Safe to run on every boot —
+// each listing is keyed by title and skipped if already present.
+export async function topUpTrendingListings() {
+  try {
+    const allUsers = await db.select().from(users);
+    if (allUsers.length === 0) return;
+
+    const pickUser = (preferredEmails: string[]) => {
+      for (const email of preferredEmails) {
+        const u = allUsers.find((x) => x.email === email);
+        if (u) return u;
+      }
+      return allUsers[Math.floor(Math.random() * allUsers.length)];
+    };
+
+    const sarah = pickUser(["sarah@bareter.com"]);
+    const omar = pickUser(["omar@bareter.com"]);
+    const fatima = pickUser(["fatima@bareter.com"]);
+    const ahmed = pickUser(["ahmed@bareter.com"]);
+    const layla = pickUser(["layla@bareter.com"]);
+    const khalid = pickUser(["khalid@bareter.com"]);
+    const noura = pickUser(["noura@bareter.com"]);
+    const rashid = pickUser(["rashid@bareter.com"]);
+    const mariam = pickUser(["mariam@bareter.com"]);
+    const hassan = pickUser(["hassan@bareter.com"]);
+
+    type ExtraListing = typeof listings.$inferInsert;
+    const extras: ExtraListing[] = [
+      // ---- Cars (Automotive) ----
+      {
+        userId: rashid.id, type: "offer",
+        title: "2023 Mercedes-Benz G63 AMG — Obsidian Black",
+        description: "Showroom-condition G63 AMG with full service history. Bartering for off-plan property, watch collection, or yacht time.",
+        categories: ["Automotive"], wantedCategories: ["Real Estate", "Yachts", "Watches"],
+        retailValue: "950000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["luxury", "suv", "mercedes", "amg"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Downtown apartment", isPriority: true }, { name: "Patek Philippe watch", isPriority: false }],
+        images: ["/images/seed/car-mercedes-g63.jpg", "/images/seed/car-range-rover.jpg", "/images/seed/car-porsche-911.jpg"],
+        likeCount: 142, viewCount: 1280, isActive: true,
+      },
+      {
+        userId: omar.id, type: "offer",
+        title: "Porsche 911 Carrera S — 2022, Guards Red",
+        description: "Low mileage Porsche 911 Carrera S, sport chrono pack. Looking to barter for commercial real estate or a serious yacht charter package.",
+        categories: ["Automotive"], wantedCategories: ["Real Estate", "Yachts"],
+        retailValue: "620000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["sportscar", "porsche", "luxury"],
+        condition: "excellent", openToOffers: true,
+        exchangeItems: [{ name: "Yacht charter (1 month)", isPriority: true }, { name: "Office space", isPriority: false }],
+        images: ["/images/seed/car-porsche-911.jpg", "/images/seed/car-mercedes-g63.jpg"],
+        likeCount: 98, viewCount: 880, isActive: true,
+      },
+      {
+        userId: hassan.id, type: "offer",
+        title: "Range Rover Autobiography 2024",
+        description: "Brand new Range Rover Autobiography, fully loaded. Bartering for premium villa, art collection, or hospitality portfolio.",
+        categories: ["Automotive"], wantedCategories: ["Real Estate", "Hospitality"],
+        retailValue: "780000.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["suv", "range rover", "luxury"],
+        condition: "brand_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Villa rental (1 year)", isPriority: true }],
+        images: ["/images/seed/car-range-rover.jpg", "/images/seed/car-mercedes-g63.jpg"],
+        likeCount: 76, viewCount: 612, isActive: true,
+      },
+
+      // ---- Real Estate ----
+      {
+        userId: layla.id, type: "offer",
+        title: "Palm Jumeirah Beachfront Villa — Direct Beach Access",
+        description: "5-bed Palm villa with private beach. Open to swap with luxury fleet, yacht, or commercial portfolio.",
+        categories: ["Real Estate"], wantedCategories: ["Automotive", "Yachts"],
+        retailValue: "12500000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["villa", "palm jumeirah", "beachfront"],
+        condition: "excellent", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Luxury car fleet", isPriority: true }, { name: "Sunseeker yacht", isPriority: true }],
+        images: ["/images/seed/villa-palm.jpg", "/images/seed/penthouse-saadiyat.jpg", "/images/seed/hotel-suite.jpg"],
+        likeCount: 312, viewCount: 4210, isActive: true,
+      },
+      {
+        userId: mariam.id, type: "offer",
+        title: "Downtown Dubai Apartment — Burj Khalifa View",
+        description: "2-bed high-floor apartment with full Burj Khalifa view. Trading for tech services, SaaS, or consulting retainers.",
+        categories: ["Real Estate"], wantedCategories: ["Technology", "Services"],
+        retailValue: "3200000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["apartment", "downtown", "burj khalifa"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Custom software build", isPriority: true }, { name: "3-year SaaS license", isPriority: false }],
+        images: ["/images/seed/apartment-downtown.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 188, viewCount: 2640, isActive: true,
+      },
+      {
+        userId: ahmed.id, type: "request",
+        title: "Wanted: Furnished Office (50 desks) in DIFC",
+        description: "Need turnkey office space for our growing team. Can offer events services, marketing, and design in return.",
+        categories: ["Real Estate"], wantedCategories: ["Services", "Events"],
+        retailValue: "180000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["office", "difc", "commercial"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Annual events package", isPriority: true }],
+        images: ["/images/seed/office-commercial.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 41, viewCount: 520, isActive: true,
+      },
+
+      // ---- Services ----
+      {
+        userId: noura.id, type: "offer",
+        title: "Brand Identity & Web Design Package",
+        description: "Full brand identity (logo, guidelines, web) by award-winning studio. Trading for hospitality stays, automotive, or premium watches.",
+        categories: ["Services"], wantedCategories: ["Hospitality", "Automotive"],
+        retailValue: "55000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["branding", "design", "creative"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Hotel stays (10 nights)", isPriority: true }, { name: "Watch", isPriority: false }],
+        images: ["/images/seed/listing-photography.jpg", "/images/seed/service-fashion.jpg"],
+        likeCount: 64, viewCount: 720, isActive: true,
+      },
+      {
+        userId: ahmed.id, type: "offer",
+        title: "End-to-End Event Management — Up to 200 Guests",
+        description: "Full corporate event production: venue, AV, catering, talent. 3-event package. Trading for marketing, real estate, or hospitality.",
+        categories: ["Services", "Events"], wantedCategories: ["Real Estate", "Services"],
+        retailValue: "120000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["events", "production"],
+        condition: "brand_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Office space (1 year)", isPriority: true }],
+        images: ["/images/seed/service-events.jpg", "/images/seed/listing-event-venue.jpg"],
+        likeCount: 53, viewCount: 480, isActive: true,
+      },
+
+      // ---- Electronics / Technology ----
+      {
+        userId: omar.id, type: "offer",
+        title: "Apple MacBook Pro M3 Max — 16\" (Bulk of 5)",
+        description: "Five brand new MacBook Pro M3 Max units, sealed. Bartering for office furniture, marketing services, or premium hospitality.",
+        categories: ["Technology"], wantedCategories: ["Services", "Hospitality"],
+        retailValue: "45000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["macbook", "apple", "tech", "bulk"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Marketing retainer (6 months)", isPriority: true }],
+        images: ["/images/seed/listing-saas.jpg", "/images/seed/service-tech.jpg"],
+        likeCount: 89, viewCount: 940, isActive: true,
+      },
+      {
+        userId: rashid.id, type: "offer",
+        title: "DJI Inspire 3 Pro Cinema Drone Kit",
+        description: "Complete cinema drone kit with full Pro Res RAW. Trading for photography services, hotel stays, or fitness equipment.",
+        categories: ["Technology"], wantedCategories: ["Services", "Hospitality"],
+        retailValue: "38000.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["drone", "cinema", "production"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Photography package", isPriority: true }],
+        images: ["/images/seed/service-tech.jpg", "/images/seed/listing-photography.jpg"],
+        likeCount: 47, viewCount: 410, isActive: true,
+      },
+
+      // ---- Hospitality ----
+      {
+        userId: sarah.id, type: "offer",
+        title: "10 Nights Presidential Suite — Marina Bay Hotel",
+        description: "Presidential suite (10 nights) with butler service, spa, dining credit, airport transfers. Trading for premium services or watches.",
+        categories: ["Hospitality"], wantedCategories: ["Services", "Watches"],
+        retailValue: "85000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["luxury", "hotel", "presidential", "marina"],
+        condition: "brand_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Brand identity package", isPriority: true }, { name: "Patek Philippe watch", isPriority: false }],
+        images: ["/images/seed/hotel-suite.jpg", "/images/seed/dining-private.jpg", "/images/seed/listing-hotel.jpg"],
+        likeCount: 124, viewCount: 1640, isActive: true,
+      },
+      {
+        userId: khalid.id, type: "offer",
+        title: "Private Chef Catering — 12 Dinners for 20 Guests",
+        description: "Michelin-trained chef, full bespoke menus, ingredients included. Trading for marketing services or hotel stays.",
+        categories: ["Hospitality", "Food"], wantedCategories: ["Services"],
+        retailValue: "60000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["catering", "private chef", "fine dining"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Social media management (1 year)", isPriority: true }],
+        images: ["/images/seed/catering-event.jpg", "/images/seed/dining-private.jpg"],
+        likeCount: 71, viewCount: 690, isActive: true,
+      },
+
+      // ---- Yachts ----
+      {
+        userId: hassan.id, type: "offer",
+        title: "Sunseeker 76 Yacht — 1-Week Charter",
+        description: "Fully crewed 76ft Sunseeker, 1-week charter from Dubai Marina. Bartering for luxury cars, watches, or premium real estate.",
+        categories: ["Yachts"], wantedCategories: ["Automotive", "Real Estate"],
+        retailValue: "180000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["yacht", "sunseeker", "charter"],
+        condition: "excellent", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Luxury car (1 year lease)", isPriority: true }],
+        images: ["/images/seed/yacht-sunseeker.jpg", "/images/seed/yacht-azimut.jpg"],
+        likeCount: 156, viewCount: 1820, isActive: true,
+      },
+      {
+        userId: rashid.id, type: "offer",
+        title: "Azimut 60 Yacht — Day & Sunset Charters (10x)",
+        description: "10 day-charter or sunset cruise vouchers on Azimut 60. Trading for hospitality services or premium electronics.",
+        categories: ["Yachts"], wantedCategories: ["Hospitality", "Technology"],
+        retailValue: "75000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["yacht", "azimut", "sunset"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Hotel stays", isPriority: true }],
+        images: ["/images/seed/yacht-azimut.jpg", "/images/seed/yacht-sunseeker.jpg"],
+        likeCount: 88, viewCount: 940, isActive: true,
+      },
+
+      // ---- Fitness / Health & Wellness ----
+      {
+        userId: noura.id, type: "offer",
+        title: "Annual Premium Gym Membership (10 passes)",
+        description: "10 corporate annual memberships at flagship Dubai Marina fitness club. Trading for marketing or hospitality.",
+        categories: ["Health & Wellness"], wantedCategories: ["Services", "Hospitality"],
+        retailValue: "60000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["gym", "fitness", "wellness", "corporate"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Brand campaign", isPriority: true }],
+        images: ["/images/seed/service-fashion.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 39, viewCount: 320, isActive: true,
+      },
+      {
+        userId: fatima.id, type: "request",
+        title: "Wanted: Private Yoga Instructor (12 months)",
+        description: "Looking for certified private yoga instructor, 3 sessions/week. Can offer designer fashion or photography services in return.",
+        categories: ["Health & Wellness"], wantedCategories: ["Services"],
+        retailValue: "42000.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["yoga", "wellness", "fitness"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Designer abaya collection", isPriority: true }],
+        images: ["/images/seed/abaya-collection.jpg", "/images/seed/service-fashion.jpg"],
+        likeCount: 28, viewCount: 240, isActive: true,
+      },
+
+      // ---- Home ----
+      {
+        userId: mariam.id, type: "offer",
+        title: "Full Interior Design — 4-Bedroom Villa",
+        description: "Turnkey interior design and furnishing for a 4-bed villa, by award-winning studio. Trading for hospitality, real estate, or automotive.",
+        categories: ["Home"], wantedCategories: ["Hospitality", "Real Estate"],
+        retailValue: "220000.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["interior design", "home", "furnishing"],
+        condition: "brand_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Hotel stays (30 nights)", isPriority: true }, { name: "Luxury car", isPriority: false }],
+        images: ["/images/seed/apartment-downtown.jpg", "/images/seed/showroom-fashion.jpg"],
+        likeCount: 67, viewCount: 580, isActive: true,
+      },
+      {
+        userId: layla.id, type: "offer",
+        title: "Smart Home Automation Install — Whole Villa",
+        description: "Premium smart home install (lighting, climate, AV, security). Trading for property, services, or watches.",
+        categories: ["Home", "Technology"], wantedCategories: ["Real Estate", "Services"],
+        retailValue: "95000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["smart home", "automation", "tech"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Office space", isPriority: true }],
+        images: ["/images/seed/service-tech.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 44, viewCount: 380, isActive: true,
+      },
+
+      // ---- Bonus: Watches / Fashion (round out the row) ----
+      {
+        userId: hassan.id, type: "offer",
+        title: "Patek Philippe Nautilus 5711 — Box & Papers",
+        description: "Patek Philippe Nautilus 5711, full set, immaculate. Trading for luxury cars, real estate, or yacht charter.",
+        categories: ["Watches", "Luxury"], wantedCategories: ["Automotive", "Real Estate"],
+        retailValue: "650000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["watch", "patek", "luxury", "nautilus"],
+        condition: "like_new", openToOffers: false, isFeatured: true,
+        exchangeItems: [{ name: "Luxury SUV", isPriority: true }],
+        images: ["/images/seed/watch-patek.jpg"],
+        likeCount: 287, viewCount: 3120, isActive: true,
+      },
+      {
+        userId: fatima.id, type: "offer",
+        title: "Designer Couture Capsule — 20 Pieces",
+        description: "Hand-finished couture capsule, ready for boutique retail. Trading for marketing, photography, or hospitality.",
+        categories: ["Fashion"], wantedCategories: ["Services", "Hospitality"],
+        retailValue: "80000.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["fashion", "couture", "designer"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Fashion campaign", isPriority: true }],
+        images: ["/images/seed/abaya-collection.jpg", "/images/seed/showroom-fashion.jpg"],
+        likeCount: 96, viewCount: 1080, isActive: true,
+      },
+    ];
+
+    const titles = extras.map((e) => e.title);
+    const existing = await db
+      .select({ title: listings.title })
+      .from(listings);
+    const existingTitles = new Set(existing.map((r) => r.title));
+    const toInsert = extras.filter((e) => !existingTitles.has(e.title));
+
+    if (toInsert.length === 0) {
+      console.log(`[topUpTrending] All ${titles.length} trending listings already present.`);
+      return;
+    }
+
+    await db.insert(listings).values(toInsert);
+    console.log(`[topUpTrending] Inserted ${toInsert.length} new trending listings.`);
+  } catch (err) {
+    console.error("[topUpTrending] error:", err);
+  }
+}
+
 async function seedAiModeration(testPosts: { id: string; title: string; caption: string | null; categories: string[] }[]) {
   try {
     const { moderateAndLog } = await import("./agents/moderationAgent");
