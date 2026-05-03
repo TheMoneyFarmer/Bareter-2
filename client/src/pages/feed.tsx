@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
+import { openCookiePreferences } from "@/lib/cookie-consent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1042,6 +1043,8 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           <Link href="/legal/vat" data-testid="sidebar-link-vat"><span className="underline">VAT</span></Link>
           {" · "}
           <Link href="/legal/cookies" data-testid="sidebar-link-cookies"><span className="underline">Cookies</span></Link>
+          {" · "}
+          <button type="button" onClick={openCookiePreferences} className="underline" data-testid="sidebar-button-cookie-prefs">Cookie preferences</button>
           {" · "}
           <Link href="/legal/acceptable-use" data-testid="sidebar-link-aup"><span className="underline">Acceptable Use</span></Link>
           {" · "}
