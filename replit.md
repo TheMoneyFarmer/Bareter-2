@@ -41,6 +41,19 @@ Preferred communication style: Simple, everyday language.
 - **Marketing Agent**: Generates weekly campaign briefs from platform data, delivered as PDFs via WhatsApp.
 - **Cookie Consent Audit Log**: Records all cookie banner decisions for compliance (UAE PDPL / GDPR).
 
+## Launch Readiness
+
+Production launch operations live under `docs/`:
+- `LAUNCH_BACKUP_CHECKLIST.md` — DB backup + restore drill (Task #151).
+- `LAUNCH_EMAIL_DELIVERABILITY.md` — Resend domain + DKIM/SPF/DMARC (Task #150).
+- `LAUNCH_CUSTOM_DOMAIN.md` — `bareter.com` + TLS (Task #154).
+- `LAUNCH_DIDIT_WEBHOOK.md` — Didit webhooks → production (Task #156).
+- `LAUNCH_SMOKE_TEST.md` — final pre-announce go/no-go walk-through on the live domain (Task #159).
+
+Audit evidence for each lives in `docs/launch-evidence/`. The smoke-test
+template at `docs/launch-evidence/smoke-test.md` is the formal launch
+sign-off record — every required row must be ticked before announcing.
+
 ## External Dependencies
 
 - **Database**: PostgreSQL (Neon-backed).
