@@ -8,21 +8,29 @@ import {
   type LegalBlock,
   type LegalDoc,
 } from "@/content/legal";
+import { LEGAL_DOCS_AR, LEGAL_DOC_INDEX_AR } from "@/content/legal.ar";
+import { useI18n } from "@/lib/i18n";
 
 type LegalDocPageProps = {
   slug: string;
 };
 
 export function LegalDocPage({ slug }: LegalDocPageProps) {
-  const doc = LEGAL_DOCS[slug];
+  const { language } = useI18n();
+  const docs = language === "ar" ? LEGAL_DOCS_AR : LEGAL_DOCS;
+  const doc = docs[slug] || LEGAL_DOCS[slug];
   if (!doc) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-16">
-        <h1 className="text-2xl font-semibold">Document not found</h1>
+        <h1 className="text-2xl font-semibold">
+          {language === "ar" ? "المستند غير موجود" : "Document not found"}
+        </h1>
         <p className="mt-2 text-muted-foreground">
-          That legal document doesn’t exist.{" "}
+          {language === "ar"
+            ? "هذا المستند القانوني غير متاح. "
+            : "That legal document doesn’t exist. "}
           <Link href="/terms" className="text-primary underline">
-            Browse our legal pack
+            {language === "ar" ? "تصفّح حزمة المستندات القانونية" : "Browse our legal pack"}
           </Link>
           .
         </p>
@@ -30,13 +38,21 @@ export function LegalDocPage({ slug }: LegalDocPageProps) {
     );
   }
 
-  return <LegalDocLayout doc={doc} />;
+  return <LegalDocLayout doc={doc} language={language} />;
 }
 
-export function LegalDocLayout({ doc }: { doc: LegalDoc }) {
+export function LegalDocLayout({
+  doc,
+  language,
+}: {
+  doc: LegalDoc;
+  language: "en" | "ar";
+}) {
+  const isAr = language === "ar";
   const tocItems = doc.blocks
     .map((b, idx) => (b.type === "h2" ? { id: `sec-${idx}`, text: b.text } : null))
     .filter((x): x is { id: string; text: string } => x !== null);
+  const index = isAr ? LEGAL_DOC_INDEX_AR : LEGAL_DOC_INDEX;
 
   return (
     <div
@@ -48,15 +64,15 @@ export function LegalDocLayout({ doc }: { doc: LegalDoc }) {
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         data-testid={`legal-back-home-${doc.slug}`}
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to home
+        <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+        {isAr ? "العودة إلى الرئيسية" : "Back to home"}
       </Link>
 
       <div className="mt-4 grid gap-10 lg:grid-cols-[1fr_240px]">
         <div className="min-w-0">
           <header className="mb-8">
             <p className="text-xs font-semibold uppercase tracking-wider text-bareter-teal">
-              Bareter Legal
+              {isAr ? "بارتر — المستندات القانونية" : "Bareter Legal"}
             </p>
             <h1
               className="mt-2 text-3xl sm:text-4xl font-bold text-foreground"
@@ -69,15 +85,26 @@ export function LegalDocLayout({ doc }: { doc: LegalDoc }) {
             )}
             <p className="mt-4 text-sm text-muted-foreground">
               <span data-testid={`legal-effective-${doc.slug}`}>
-                Effective Date: {LEGAL_EFFECTIVE_DATE}
+                {isAr ? "تاريخ السريان: " : "Effective Date: "}
+                {LEGAL_EFFECTIVE_DATE}
               </span>
               {" · "}
               <span data-testid={`legal-updated-${doc.slug}`}>
-                Last updated: {LEGAL_EFFECTIVE_DATE}
+                {isAr ? "آخر تحديث: " : "Last updated: "}
+                {LEGAL_EFFECTIVE_DATE}
               </span>
               {" · "}
               <span>{LEGAL_ENTITY_LINE}</span>
             </p>
+            {isAr && (
+              <p
+                className="mt-3 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground"
+                data-testid={`legal-translation-notice-${doc.slug}`}
+              >
+                هذه الترجمة العربية مقدّمة لأغراض الراحة فقط. في حال وجود أي تعارض بين النصّين العربي
+                والإنجليزي، يُعتدّ بالنص الإنجليزي.
+              </p>
+            )}
           </header>
 
           <article className="space-y-5 text-[15px] leading-relaxed text-foreground/90">
@@ -88,25 +115,27 @@ export function LegalDocLayout({ doc }: { doc: LegalDoc }) {
 
           <hr className="my-10 border-border" />
 
-          <section aria-label="Other legal documents">
+          <section aria-label={isAr ? "مستندات قانونية أخرى" : "Other legal documents"}>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Other legal documents
+              {isAr ? "مستندات قانونية أخرى" : "Other legal documents"}
             </h2>
             <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-              {LEGAL_DOC_INDEX.filter((d) => d.slug !== doc.slug).map((d) => (
-                <li key={d.slug}>
-                  <Link
-                    href={legalHref(d.slug)}
-                    className="block rounded-md border border-border p-3 hover:border-bareter-teal hover:bg-muted/40 transition-colors"
-                    data-testid={`legal-link-${d.slug}`}
-                  >
-                    <p className="text-sm font-medium text-foreground">{d.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-                      {d.subtitle}
-                    </p>
-                  </Link>
-                </li>
-              ))}
+              {index
+                .filter((d) => d.slug !== doc.slug)
+                .map((d) => (
+                  <li key={d.slug}>
+                    <Link
+                      href={legalHref(d.slug)}
+                      className="block rounded-md border border-border p-3 hover:border-bareter-teal hover:bg-muted/40 transition-colors"
+                      data-testid={`legal-link-${d.slug}`}
+                    >
+                      <p className="text-sm font-medium text-foreground">{d.title}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
+                        {d.subtitle}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
             </ul>
           </section>
         </div>
@@ -114,12 +143,12 @@ export function LegalDocLayout({ doc }: { doc: LegalDoc }) {
         {tocItems.length > 0 && (
           <aside
             className="hidden lg:block"
-            aria-label="On this page"
+            aria-label={isAr ? "في هذه الصفحة" : "On this page"}
             data-testid={`legal-toc-${doc.slug}`}
           >
             <div className="sticky top-24">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                On this page
+                {isAr ? "في هذه الصفحة" : "On this page"}
               </p>
               <nav className="flex flex-col gap-1.5 max-h-[70vh] overflow-y-auto pr-2">
                 {tocItems.map((item) => (
