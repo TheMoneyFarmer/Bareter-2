@@ -10,6 +10,14 @@ import { TrendingTiles } from "@/components/TrendingTiles";
 import { TrendingDetailedRow } from "@/components/TrendingDetailedRow";
 import { useReveal } from "@/hooks/use-reveal";
 import heroHandshakeImg from "@assets/generated_images/hero-handshake.png";
+import catCarsImg from "@assets/generated_images/cat-cars.png";
+import catRealEstateImg from "@assets/generated_images/cat-real-estate.png";
+import catServicesImg from "@assets/generated_images/cat-services.png";
+import catElectronicsImg from "@assets/generated_images/cat-electronics.png";
+import catHospitalityImg from "@assets/generated_images/cat-hospitality.png";
+import catYachtsImg from "@assets/generated_images/cat-yachts.png";
+import catFitnessImg from "@assets/generated_images/cat-fitness.png";
+import catHomeImg from "@assets/generated_images/cat-home.png";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useMousePosition } from "@/hooks/use-mouse-position";
 import type { ListingWithUser } from "@shared/schema";
@@ -34,15 +42,15 @@ const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
   { emoji: "🏠", label: "Home", href: "/browse?category=Home" },
 ];
 
-const CATEGORY_GRID: { label: string; emoji: string; gradient: string; href: string }[] = [
-  { label: "Cars",        emoji: "🚗", gradient: "linear-gradient(135deg, #1C2D4A 0%, #0F1923 100%)", href: "/browse?category=Automotive" },
-  { label: "Real Estate", emoji: "🏢", gradient: "linear-gradient(135deg, #0F4F4F 0%, #0F1923 100%)", href: "/browse?category=Real%20Estate" },
-  { label: "Services",    emoji: "💼", gradient: "linear-gradient(135deg, #334155 0%, #0F1923 100%)", href: "/browse?category=Services" },
-  { label: "Electronics", emoji: "📱", gradient: "linear-gradient(135deg, #1F2937 0%, #0F1923 100%)", href: "/browse?category=Technology" },
-  { label: "Hospitality", emoji: "🍽", gradient: "linear-gradient(135deg, #6B2D14 0%, #1C0F08 100%)", href: "/browse?category=Hospitality" },
-  { label: "Yachts",      emoji: "⛵", gradient: "linear-gradient(135deg, #0C4A6E 0%, #082F4A 100%)", href: "/browse?category=Yachts" },
-  { label: "Fitness",     emoji: "🏋", gradient: "linear-gradient(135deg, #14532D 0%, #052E16 100%)", href: "/browse?category=Health%20%26%20Wellness" },
-  { label: "Home",        emoji: "🏠", gradient: "linear-gradient(135deg, #1C2D4A 0%, #2D1B0F 100%)", href: "/browse?category=Home" },
+const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
+  { label: "Cars",        emoji: "🚗", image: catCarsImg,        href: "/browse?category=Automotive" },
+  { label: "Real Estate", emoji: "🏢", image: catRealEstateImg,  href: "/browse?category=Real%20Estate" },
+  { label: "Services",    emoji: "💼", image: catServicesImg,    href: "/browse?category=Services" },
+  { label: "Electronics", emoji: "📱", image: catElectronicsImg, href: "/browse?category=Technology" },
+  { label: "Hospitality", emoji: "🍽", image: catHospitalityImg, href: "/browse?category=Hospitality" },
+  { label: "Yachts",      emoji: "⛵", image: catYachtsImg,      href: "/browse?category=Yachts" },
+  { label: "Fitness",     emoji: "🏋", image: catFitnessImg,     href: "/browse?category=Health%20%26%20Wellness" },
+  { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/browse?category=Home" },
 ];
 
 export function LandingPage() {
@@ -197,7 +205,7 @@ export function LandingPage() {
                 Trending barters now 🔥
               </h2>
               <p className="text-caption mt-1">
-               
+                AI-curated deals based on your preferences
               </p>
             </div>
             <Link
@@ -244,14 +252,19 @@ export function LandingPage() {
               <Link
                 key={c.label}
                 href={c.href}
-                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border"
-                style={{ background: c.gradient }}
+                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep"
                 data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-bareter-navy-deep/70 via-bareter-navy-deep/15 to-transparent transition-opacity group-hover:from-bareter-navy-deep/80" />
+                <img
+                  src={c.image}
+                  alt={c.label}
+                  loading="lazy"
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-bareter-navy-deep/85 via-bareter-navy-deep/30 to-transparent transition-opacity group-hover:from-bareter-navy-deep/90" />
                 <div className="absolute bottom-4 start-4 text-white">
-                  <div className="text-3xl mb-1">{c.emoji}</div>
-                  <div className="text-card-title text-white">{c.label}</div>
+                  <div className="text-3xl mb-1 drop-shadow">{c.emoji}</div>
+                  <div className="text-card-title text-white drop-shadow">{c.label}</div>
                 </div>
               </Link>
             ))}

@@ -30,6 +30,54 @@ uri = "file://attached_assets/generated_images/hero-handshake.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "EpcNZfy8ZUf5WCiaX8xSw"
+uri = "file://attached_assets/generated_images/cat-cars.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "KHJD_PiQU3VAVsMxKF1-_"
+uri = "file://attached_assets/generated_images/cat-real-estate.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "fhkioVLtnAGZS4omcu1qy"
+uri = "file://attached_assets/generated_images/cat-services.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "GW3DK_o2oFR6yOaEjrJ7H"
+uri = "file://attached_assets/generated_images/cat-electronics.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "eQ3AcslguulA22GwucIwL"
+uri = "file://attached_assets/generated_images/cat-hospitality.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "6CoX3mxzkFumpyeMeD5SR"
+uri = "file://attached_assets/generated_images/cat-yachts.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "F4izwOQa6pKzG9N7_6xWE"
+uri = "file://attached_assets/generated_images/cat-fitness.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "0RLCm9Re8oVdEskGpfI6B"
+uri = "file://attached_assets/generated_images/cat-home.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "Zmdvt1wr9H48qrl2poGJ6"
 uri = "file://attached_assets/brand/logo-full-color.png"
