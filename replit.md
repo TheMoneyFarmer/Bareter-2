@@ -119,6 +119,39 @@ Both `replit.md` and `docs/launch-evidence/backup-restore-test.md` should
 be re-checked whenever the Replit plan changes (the recovery window value
 needs updating).
 
+## Email Deliverability (Resend)
+
+All transactional and campaign email is sent through **Resend** from the
+apex `bareter.com` sending domain.
+
+- **From identity (production)**: `hello@bareter.com` (set via the
+  `RESEND_FROM_EMAIL` secret).
+- **Fallback `From`**: `noreply@bareter.com` — hardcoded as `FALLBACK_FROM`
+  in `server/emailService.ts` so we never accidentally send from a
+  non-`bareter.com` address even if the secret is missing.
+- **DNS records that back the domain** (must all be green in Resend →
+  *Domains* → `bareter.com`):
+  - SPF `TXT` on `bareter.com` (Resend-issued `v=spf1 include:…`).
+  - DKIM `CNAME`s under `resend*._domainkey.bareter.com` pointing at
+    `*.dkim.amazonses.com`.
+  - Bounce-handling `MX` on `send.bareter.com`.
+  - DMARC `TXT` on `_dmarc.bareter.com` —
+    `v=DMARC1; p=quarantine; rua=mailto:dmarc@bareter.com; pct=100; adkim=s; aspf=s`
+    (move to `p=reject` once a week of clean DMARC aggregate reports has
+    landed).
+- **Pre-launch verification checklist**:
+  [`docs/LAUNCH_EMAIL_DELIVERABILITY.md`](docs/LAUNCH_EMAIL_DELIVERABILITY.md).
+- **Audit artifact** the founder fills in before launch:
+  [`docs/launch-evidence/email-deliverability.md`](docs/launch-evidence/email-deliverability.md).
+- **Deliverability test script**:
+  `RESEND_TEST_TO=you@gmail.com npx tsx scripts/resend-send-test.mjs`
+  — sends one mail through the live Resend credentials so the founder can
+  verify Inbox vs Spam in gmail/outlook/icloud.
+
+If we ever switch to a sub-domain (e.g. `mail.bareter.com`) for sending,
+re-run the full Resend domain-add flow and update this section + the
+checklist + the evidence template.
+
 ## Launch Seed (Curated Listings)
 
 Production launches with a curated set of realistic UAE listings spanning

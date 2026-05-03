@@ -5,7 +5,13 @@ import { getUncachableResendClient, invalidateResendReadyCache } from "../server
 invalidateResendReadyCache();
 
 const { client, fromEmail } = await getUncachableResendClient();
-const to = process.env.FOUNDER_EMAIL?.trim() || "thando@bareter.com";
+// RESEND_TEST_TO lets the deliverability checklist (see
+// docs/LAUNCH_EMAIL_DELIVERABILITY.md) target gmail/outlook/icloud
+// inboxes one at a time without touching the founder's pager.
+const to =
+  process.env.RESEND_TEST_TO?.trim() ||
+  process.env.FOUNDER_EMAIL?.trim() ||
+  "thando@bareter.com";
 
 console.log("from:", fromEmail);
 console.log("to:  ", to);
