@@ -24,6 +24,12 @@ uri = "file://attached_assets/generated_images/logo-concept-d.png"
 type = "image"
 title = "logo exchange arrows Bareter"
 
+[[generated]]
+id = "6pYaQBac0ySs3qRGxBmGL"
+uri = "file://attached_assets/generated_images/hero-handshake.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "Zmdvt1wr9H48qrl2poGJ6"
 uri = "file://attached_assets/brand/logo-full-color.png"

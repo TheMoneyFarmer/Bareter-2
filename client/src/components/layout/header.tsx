@@ -145,9 +145,9 @@ export function Header() {
           of the deep teal so it feels lighter on the page while still being
           on-brand. Slightly more saturated/opaque on scroll. */}
       <div
-        className={`bareter-header-shell bg-bareter-teal-light text-white ${
+        className={`bareter-header-shell bg-bareter-teal text-white ${
           scrolled
-            ? "supports-[backdrop-filter]:bg-bareter-teal-light/90 backdrop-blur-md shadow-[0_4px_16px_rgba(34,160,160,0.20)]"
+            ? "supports-[backdrop-filter]:bg-bareter-teal/90 backdrop-blur-md shadow-[0_4px_16px_rgba(26,114,114,0.25)]"
             : "shadow-[0_2px_8px_rgba(34,160,160,0.15)]"
         }`}
       >
@@ -559,7 +559,7 @@ export function Header() {
 
         {/* Mobile expandable search row */}
         {mobileSearchOpen && (
-          <div className="md:hidden border-t border-white/15 bg-bareter-teal-light px-4 py-3">
+          <div className="md:hidden border-t border-white/15 bg-bareter-teal px-4 py-3">
             <form
               onSubmit={handleSearchSubmit}
               className="flex h-10 items-center bg-white rounded-full px-4"

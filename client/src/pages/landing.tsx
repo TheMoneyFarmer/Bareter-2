@@ -8,6 +8,7 @@ import { DealTicker } from "@/components/DealTicker";
 import { SuccessStoriesMarquee } from "@/components/SuccessStoriesMarquee";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { useReveal } from "@/hooks/use-reveal";
+import heroHandshakeImg from "@assets/generated_images/hero-handshake.png";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useMousePosition } from "@/hooks/use-mouse-position";
 import type { ListingWithUser } from "@shared/schema";
@@ -77,9 +78,22 @@ export function LandingPage() {
     <div className="flex flex-col min-h-screen">
       {/* ============================ HERO ============================ */}
       <section
-        className="relative isolate overflow-hidden bg-bareter-gradient bareter-noise"
+        className="relative isolate overflow-hidden bareter-noise"
         data-testid="section-hero"
       >
+        {/* Real-life barter photo background — handshake closing a deal */}
+        <img
+          src={heroHandshakeImg}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 h-full w-full object-cover object-center"
+          loading="eager"
+        />
+        {/* Dark teal gradient overlay so white headline / search stay legible */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-gradient-to-br from-bareter-navy-deep/85 via-bareter-teal/70 to-bareter-navy-deep/80"
+        />
         <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
           <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
             <h1
@@ -92,7 +106,7 @@ export function LandingPage() {
             >
               Barter what you have for what you need.
             </h1>
-            <p className="mt-3 text-base sm:text-lg text-bareter-teal-light max-w-2xl">
+            <p className="mt-3 text-base sm:text-lg text-white/90 drop-shadow-sm max-w-2xl">
               UAE's AI-powered barter marketplace. No cash. Just value.
             </p>
 
