@@ -7,6 +7,7 @@ import { useWaitlist } from "@/lib/waitlist";
 import { DealTicker } from "@/components/DealTicker";
 import { SuccessStoriesMarquee } from "@/components/SuccessStoriesMarquee";
 import { TrendingTiles } from "@/components/TrendingTiles";
+import { TrendingDetailedRow } from "@/components/TrendingDetailedRow";
 import { useReveal } from "@/hooks/use-reveal";
 import heroHandshakeImg from "@assets/generated_images/hero-handshake.png";
 import { useCountUp } from "@/hooks/use-count-up";
@@ -193,9 +194,11 @@ export function LandingPage() {
           <div className="flex items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-section text-bareter-navy dark:text-foreground">
-                Trending barters in Dubai 🔥
+                Trending barters now 🔥
               </h2>
-              <p className="text-caption mt-1">Live mix of posts and listings, ranked by interest</p>
+              <p className="text-caption mt-1">
+                Full details — what's offered, what's wanted, value, location and interest
+              </p>
             </div>
             <Link
               href="/browse"
@@ -225,7 +228,7 @@ export function LandingPage() {
               </Link>
             </div>
           ) : (
-            <TrendingTiles title="" listings={latestListings} maxTiles={9} />
+            <TrendingDetailedRow listings={latestListings} max={8} />
           )}
         </div>
       </section>
