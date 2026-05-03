@@ -154,9 +154,12 @@ export function WaitlistDialog() {
           <>
             <DialogHeader>
               <div className="flex items-center justify-center mb-2">
-                <div className="bg-primary text-primary-foreground rounded-xl p-3">
-                  <Handshake className="h-6 w-6" />
-                </div>
+                <img
+                  src="/logo-icon.png"
+                  alt="Bareter"
+                  className="h-12 w-12 rounded-xl shadow-sm"
+                  data-testid="img-waitlist-logo"
+                />
               </div>
               <DialogTitle className="text-center text-2xl">
                 Bareter is launching soon
@@ -293,8 +296,16 @@ export function WaitlistDialog() {
         ) : (
           <div className="text-center" data-testid="waitlist-success">
             <div className="flex items-center justify-center mb-3">
-              <div className="bg-primary/10 text-primary rounded-full p-3">
-                <Trophy className="h-7 w-7" />
+              <div className="relative">
+                <img
+                  src="/logo-icon.png"
+                  alt="Bareter"
+                  className="h-14 w-14 rounded-xl shadow-sm"
+                  data-testid="img-waitlist-success-logo"
+                />
+                <span className="absolute -bottom-1 -end-1 bg-amber-400 text-amber-950 rounded-full h-6 w-6 flex items-center justify-center shadow">
+                  <Trophy className="h-3.5 w-3.5" />
+                </span>
               </div>
             </div>
             <DialogTitle className="text-2xl mb-1">
