@@ -29,6 +29,11 @@ const BANNER_EXEMPT_COUNTRIES = new Set([
 interface GeoLookup {
   country: string;
   countryName: string;
+  // "header" | "ipapi" | "ip-api" are confirmed lookups.
+  // "fallback" means the server couldn't resolve the IP (private/unknown)
+  // and defaulted to the platform's default country, which we treat as
+  // unknown for the purposes of consent banner gating.
+  source?: "header" | "ipapi" | "ip-api" | "fallback";
 }
 
 export function CookieConsent() {
@@ -62,9 +67,16 @@ export function CookieConsent() {
     }
     if (isCookieDoc) return;
     if (geoLoading) return;
-    // If we have a country and it's exempt (UAE/GCC), suppress the banner.
-    const exempt = !!geo && BANNER_EXEMPT_COUNTRIES.has(geo.country);
-    // Otherwise (other region, unknown geo, or lookup errored) show it.
+    // Only suppress for *confirmed* GCC visitors. "fallback" is the server's
+    // signal that it couldn't actually resolve the IP (private/unknown), so
+    // we treat it as unknown and still show the banner — same as for any
+    // non-exempt region or geo lookup error.
+    const isConfirmed =
+      !!geo &&
+      (geo.source === "header" ||
+        geo.source === "ipapi" ||
+        geo.source === "ip-api");
+    const exempt = isConfirmed && BANNER_EXEMPT_COUNTRIES.has(geo!.country);
     setBannerOpen(geoError || !exempt);
   }, [isCookieDoc, geo, geoError, geoLoading]);
 
