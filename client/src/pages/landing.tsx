@@ -89,10 +89,15 @@ export function LandingPage() {
           className="absolute inset-0 -z-10 h-full w-full object-cover object-center"
           loading="eager"
         />
-        {/* Dark teal gradient overlay so white headline / search stay legible */}
+        {/* Subtle dark overlay — keeps the office background visible while
+            still giving white text enough contrast in the center band. */}
         <div
           aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-gradient-to-br from-bareter-navy-deep/85 via-bareter-teal/70 to-bareter-navy-deep/80"
+          className="absolute inset-0 -z-10 bg-black/30"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-1/4 bottom-0 -z-10 bg-gradient-to-b from-transparent via-bareter-navy-deep/45 to-bareter-navy-deep/60"
         />
         <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
           <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
