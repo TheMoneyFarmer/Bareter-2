@@ -25,8 +25,12 @@ Background and the canonical "Backups & Restore" notes live in
 - [ ] **Perform a real test restore.** Pick any timestamp inside the recovery
       window. In *Deployments → Database*, choose **Point-in-time restore**,
       pick the timestamp, and confirm. Save a screenshot of the success
-      message into `docs/launch-evidence/` (filename:
-      `pitr-test-YYYYMMDD.png`).
+      message into `docs/launch-evidence/screenshots/pitr-test-YYYYMMDD.png`,
+      then record the timestamp + outcome in
+      [`launch-evidence/backup-restore-test.md`](launch-evidence/backup-restore-test.md)
+      (sections 2 and 3). **Committing that filled-in file is the launch-day
+      audit artifact** for this whole task — without it, the launch is not
+      ready.
 - [ ] **Verify the restore landed.** Connect to the production DB read-only
       (e.g. via the Database pane's SQL console) and run:
       ```sql
@@ -46,7 +50,12 @@ Background and the canonical "Backups & Restore" notes live in
 ## 2. Recurring weekly spot-check (founder)
 
 Set a recurring weekly reminder in your calendar titled
-**"Bareter: weekly DB-backup spot-check"** linking to this file.
+**"Bareter: weekly DB-backup spot-check"** linking to this file. Capture a
+screenshot of the created event into
+`docs/launch-evidence/screenshots/calendar-reminder-YYYYMMDD.png` and fill
+in section 5 of
+[`launch-evidence/backup-restore-test.md`](launch-evidence/backup-restore-test.md)
+to record that the reminder exists.
 
 Each week, verify in under 2 minutes:
 

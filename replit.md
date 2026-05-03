@@ -102,9 +102,22 @@ the box — there is no separate snapshot schedule we manage.
 
 ### Launch-day check (founder)
 
-Before announcing publicly, run through `docs/LAUNCH_BACKUP_CHECKLIST.md`
-once and tick every box. The checklist also includes the recurring weekly
-spot-check reminder.
+Before announcing publicly, the founder must:
+
+1. Run through `docs/LAUNCH_BACKUP_CHECKLIST.md` once and tick every box.
+2. Fill in `docs/launch-evidence/backup-restore-test.md` with the actual
+   values (plan, recovery window, restore timestamp, verification SQL
+   output, operator names) and commit it. That file is the audit artifact
+   that proves a real test restore happened and that the weekly spot-check
+   reminder exists.
+3. Drop the test-restore screenshot into
+   `docs/launch-evidence/screenshots/pitr-test-YYYYMMDD.png` and the
+   calendar-reminder screenshot into
+   `docs/launch-evidence/screenshots/calendar-reminder-YYYYMMDD.png`.
+
+Both `replit.md` and `docs/launch-evidence/backup-restore-test.md` should
+be re-checked whenever the Replit plan changes (the recovery window value
+needs updating).
 
 ## Launch Seed (Curated Listings)
 
