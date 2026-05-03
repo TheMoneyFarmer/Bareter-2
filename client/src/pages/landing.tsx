@@ -235,38 +235,46 @@ export function LandingPage() {
                 <Button variant="bareter">Create the first listing</Button>
               </Link>
             </div>
-          ) : (
-            <div className="space-y-8">
-              <TrendingDetailedRow
-                listings={(latestListings ?? []).slice(0, 10)}
-                max={10}
-              />
-              <div>
-                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
-                  Just listed ✨
-                </h3>
-                <TrendingDetailedRow
-                  listings={(latestListings ?? []).slice(10, 20)}
-                  max={10}
-                />
+          ) : (() => {
+            const all = latestListings ?? [];
+            const featuredRow =
+              (featuredListings && featuredListings.length > 0
+                ? featuredListings
+                : all
+              ).slice(0, 10);
+            const justListedRow = all.slice(0, 10);
+            const bigTicketRow = [...all]
+              .sort(
+                (a, b) =>
+                  parseFloat((b.retailValue as string) || "0") -
+                  parseFloat((a.retailValue as string) || "0"),
+              )
+              .slice(0, 10);
+
+            return (
+              <div className="space-y-8">
+                {featuredRow.length > 0 && (
+                  <TrendingDetailedRow listings={featuredRow} max={10} />
+                )}
+                {justListedRow.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
+                      Just listed ✨
+                    </h3>
+                    <TrendingDetailedRow listings={justListedRow} max={10} />
+                  </div>
+                )}
+                {bigTicketRow.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
+                      Big-ticket deals 💎
+                    </h3>
+                    <TrendingDetailedRow listings={bigTicketRow} max={10} />
+                  </div>
+                )}
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
-                  Big-ticket deals 💎
-                </h3>
-                <TrendingDetailedRow
-                  listings={[...(latestListings ?? [])]
-                    .sort(
-                      (a, b) =>
-                        parseFloat((b.retailValue as string) || "0") -
-                        parseFloat((a.retailValue as string) || "0"),
-                    )
-                    .slice(0, 10)}
-                  max={10}
-                />
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </section>
 
