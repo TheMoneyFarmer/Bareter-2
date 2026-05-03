@@ -1,11 +1,13 @@
 import { Link } from "wouter";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { openCookiePreferences } from "@/lib/cookie-consent";
 
 export function Footer() {
   const { t } = useI18n();
   const linkCls =
     "text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors";
+  const buttonLinkCls = `${linkCls} text-start bg-transparent p-0 border-0 cursor-pointer`;
 
   return (
     <footer
@@ -52,10 +54,25 @@ export function Footer() {
               {t("nav.support") || "Legal"}
             </h4>
             <nav className="flex flex-col gap-2">
-              <Link href="/help" className={linkCls}>{t("footer.help") || "Help center"}</Link>
-              <Link href="/faq" className={linkCls}>{t("footer.faq") || "FAQ"}</Link>
-              <Link href="/terms" className={linkCls}>{t("footer.terms") || "Terms of service"}</Link>
-              <Link href="/privacy" className={linkCls}>{t("footer.privacy") || "Privacy policy"}</Link>
+              <Link href="/help" className={linkCls} data-testid="footer-link-help">{t("footer.help") || "Help center"}</Link>
+              <Link href="/faq" className={linkCls} data-testid="footer-link-faq">{t("footer.faq") || "FAQ"}</Link>
+              <Link href="/terms" className={linkCls} data-testid="footer-link-terms">{t("footer.terms") || "Terms of Use"}</Link>
+              <Link href="/privacy" className={linkCls} data-testid="footer-link-privacy">{t("footer.privacy") || "Privacy Policy"}</Link>
+              <Link href="/legal/barter-rules" className={linkCls} data-testid="footer-link-barter-rules">Barter Rules</Link>
+              <Link href="/legal/disputes" className={linkCls} data-testid="footer-link-disputes">Dispute Resolution</Link>
+              <Link href="/legal/vat" className={linkCls} data-testid="footer-link-vat">VAT Policy</Link>
+              <Link href="/legal/cookies" className={linkCls} data-testid="footer-link-cookies">Cookie Policy</Link>
+              <Link href="/legal/acceptable-use" className={linkCls} data-testid="footer-link-aup">Acceptable Use</Link>
+              <Link href="/legal/community" className={linkCls} data-testid="footer-link-community">Community Standards</Link>
+              <Link href="/legal/customer-agreement" className={linkCls} data-testid="footer-link-customer-agreement">Customer Agreement</Link>
+              <button
+                type="button"
+                onClick={openCookiePreferences}
+                className={buttonLinkCls}
+                data-testid="footer-button-cookie-prefs"
+              >
+                Cookie preferences
+              </button>
             </nav>
           </div>
 

@@ -1,10 +1,18 @@
-import { type CSSProperties, type MouseEvent } from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link } from "wouter";
-import { MapPin, ShieldCheck, Crown, Lock, Heart } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { ListingWithUser } from "@shared/schema";
 import { isUserVerified } from "@/components/verified-badge";
 import { ImageCarousel } from "@/components/ImageCarousel";
+import { ReportModal } from "@/components/report-modal";
+import { useWaitlist } from "@/lib/waitlist";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -42,6 +50,8 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
+  const { gate } = useWaitlist();
+  const [showReport, setShowReport] = useState(false);
   const allImages = (listing.images as string[] | undefined) ?? [];
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
   const pillColor = primaryCategory ? CATEGORY_PILL_COLORS[primaryCategory] || "#374151" : "#374151";
@@ -115,6 +125,45 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                   />
                 </button>
               )}
+
+              <div
+                className="absolute top-3 end-3 z-10"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={`h-8 w-8 rounded-full bg-white/85 dark:bg-bareter-navy-deep/75 backdrop-blur-sm inline-flex items-center justify-center shadow-sm hover:bg-white dark:hover:bg-bareter-navy-deep transition-colors ${listing.isFeatured || isHighValue ? "mt-9" : ""}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      data-testid={`button-listing-menu-${listing.id}`}
+                      aria-label="Listing options"
+                    >
+                      <MoreVertical className="h-4 w-4 text-bareter-navy dark:text-white" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        if (!gate()) return;
+                        setShowReport(true);
+                      }}
+                      className="text-destructive focus:text-destructive"
+                      data-testid={`menuitem-report-listing-${listing.id}`}
+                    >
+                      <Flag className="me-2 h-4 w-4" />
+                      Report listing
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </>
           }
         />
@@ -172,6 +221,12 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
           </div>
         </div>
       </article>
+      <ReportModal
+        open={showReport}
+        onOpenChange={setShowReport}
+        targetType="listing"
+        targetId={listing.id}
+      />
     </Link>
   );
 }

@@ -29,6 +29,8 @@ import { HelpPage } from "@/pages/help";
 import { FAQPage } from "@/pages/faq";
 import { TermsPage } from "@/pages/terms";
 import { PrivacyPage } from "@/pages/privacy";
+import { LegalPage } from "@/pages/legal";
+import { CookieConsent } from "@/components/cookie-consent";
 import OnboardingPage from "@/pages/onboarding";
 import { SettingsPage } from "@/pages/settings";
 import DashboardPage from "@/pages/dashboard";
@@ -107,6 +109,7 @@ function Router() {
       <Route path="/faq" component={FAQPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/legal/:slug" component={LegalPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/dashboard" component={DashboardPage} />
@@ -149,6 +152,7 @@ function App() {
                 <WhatsAppButton />
                 <AiSupportChat />
                 <LocationMismatchBanner />
+                <CookieConsent />
               </WaitlistProvider>
             </TooltipProvider>
           </AuthProvider>

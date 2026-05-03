@@ -1035,6 +1035,20 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           {" · "}
           <Link href="/privacy" data-testid="sidebar-link-privacy"><span className="underline">Privacy</span></Link>
           {" · "}
+          <Link href="/legal/barter-rules" data-testid="sidebar-link-barter-rules"><span className="underline">Barter Rules</span></Link>
+          {" · "}
+          <Link href="/legal/disputes" data-testid="sidebar-link-disputes"><span className="underline">Disputes</span></Link>
+          {" · "}
+          <Link href="/legal/vat" data-testid="sidebar-link-vat"><span className="underline">VAT</span></Link>
+          {" · "}
+          <Link href="/legal/cookies" data-testid="sidebar-link-cookies"><span className="underline">Cookies</span></Link>
+          {" · "}
+          <Link href="/legal/acceptable-use" data-testid="sidebar-link-aup"><span className="underline">Acceptable Use</span></Link>
+          {" · "}
+          <Link href="/legal/community" data-testid="sidebar-link-community"><span className="underline">Community</span></Link>
+          {" · "}
+          <Link href="/legal/customer-agreement" data-testid="sidebar-link-customer-agreement"><span className="underline">Customer Agreement</span></Link>
+          {" · "}
           <Link href="/help" data-testid="sidebar-link-help"><span className="underline">Help</span></Link>
           {" · "}
           <Link href="/faq" data-testid="sidebar-link-faq"><span className="underline">FAQ</span></Link>

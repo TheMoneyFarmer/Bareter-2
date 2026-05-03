@@ -527,12 +527,21 @@ export function RegisterPage() {
                     <FormLabel className="text-sm font-normal">
                       I agree to the{" "}
                       <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
-                        Terms of Service
+                        Terms of Use
                       </a>
-                      {" "}and{" "}
+                      ,{" "}
                       <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
                         Privacy Policy
                       </a>
+                      , and{" "}
+                      <a href="/legal/cookies" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                        Cookie Policy
+                      </a>
+                      . See also our{" "}
+                      <a href="/legal/customer-agreement" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                        Customer Agreement
+                      </a>
+                      .
                     </FormLabel>
                     <FormMessage />
                   </div>
