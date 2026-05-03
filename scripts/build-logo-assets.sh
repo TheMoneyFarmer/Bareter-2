@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bareter logo asset builder
-# Source of truth: this script. Re-run any time to regenerate the full asset set.
+# Bareter logo asset builder — single source of truth for the brand asset set.
+#
+# Reproducibility:
+#   ./scripts/build-logo-assets.sh
+#
+# Deterministic output: uses ImageMagick + the system DejaVu-Sans-Bold font.
+# Re-run any time the brand color, wordmark, or icon glyph changes — every
+# variant in client/public AND attached_assets/brand will be regenerated in
+# lockstep so the two folders never drift out of sync.
+#
+# Requires: imagemagick (`magick` / `convert`) and the DejaVu Sans Bold font.
 
 OUT_PUB="client/public"
 OUT_BRAND="attached_assets/brand"
