@@ -49,7 +49,7 @@ export function PricingPage() {
     ? "Create a listing"
     : waitlistMode.enabled
       ? "Join the waitlist"
-      : "Create your free account";
+      : "Sign up";
 
   return (
     <div className="container px-4 py-12 mx-auto max-w-4xl" data-testid="page-pricing">
