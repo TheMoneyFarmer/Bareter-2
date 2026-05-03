@@ -2,18 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 
 export type CookiePreferences = {
   essential: true;
-  functional: boolean;
   analytics: boolean;
   marketing: boolean;
   ts: number;
 };
 
-const STORAGE_KEY = "bareter.cookieConsent.v1";
+const STORAGE_KEY = "bareter.cookieConsent";
 const OPEN_EVENT = "bareter:open-cookie-prefs";
+const CHANGE_EVENT = "bareter:cookie-consent-changed";
 
 export const DEFAULT_PREFS: CookiePreferences = {
   essential: true,
-  functional: true,
   analytics: false,
   marketing: false,
   ts: 0,
@@ -27,7 +26,6 @@ export function readPrefs(): CookiePreferences | null {
     if (typeof parsed !== "object" || parsed === null) return null;
     return {
       essential: true,
-      functional: Boolean(parsed.functional ?? true),
       analytics: Boolean(parsed.analytics),
       marketing: Boolean(parsed.marketing),
       ts: Number(parsed.ts ?? 0),
@@ -37,17 +35,16 @@ export function readPrefs(): CookiePreferences | null {
   }
 }
 
-export function writePrefs(prefs: Omit<CookiePreferences, "essential" | "ts">) {
+export function writePrefs(prefs: { analytics: boolean; marketing: boolean }) {
   const full: CookiePreferences = {
     essential: true,
-    functional: prefs.functional,
     analytics: prefs.analytics,
     marketing: prefs.marketing,
     ts: Date.now(),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(full));
-    window.dispatchEvent(new CustomEvent("bareter:cookie-consent-changed", { detail: full }));
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: full }));
   } catch {
     /* noop */
   }
@@ -66,11 +63,11 @@ export function useCookieConsent() {
       const detail = (e as CustomEvent).detail as CookiePreferences | undefined;
       if (detail) setPrefs(detail);
     };
-    window.addEventListener("bareter:cookie-consent-changed", onChange);
-    return () => window.removeEventListener("bareter:cookie-consent-changed", onChange);
+    window.addEventListener(CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(CHANGE_EVENT, onChange);
   }, []);
 
-  const save = useCallback((next: Omit<CookiePreferences, "essential" | "ts">) => {
+  const save = useCallback((next: { analytics: boolean; marketing: boolean }) => {
     const saved = writePrefs(next);
     setPrefs(saved);
   }, []);

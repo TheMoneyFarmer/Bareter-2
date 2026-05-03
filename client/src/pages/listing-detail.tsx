@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
+import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { ListingWithUser, Listing, ListingCommentWithUser } from "@shared/schema";
@@ -59,6 +60,7 @@ import { timeAgo, formatValue } from "@/lib/utils";
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { gate } = useWaitlist();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -333,11 +335,11 @@ export function ListingDetailPage() {
                   variant="ghost"
                   data-testid="button-header-share"
                 />
-                {user && listing.userId !== user.id && (
+                {(!user || listing.userId !== user.id) && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowReport(true)}
+                    onClick={() => { if (!gate()) return; setShowReport(true); }}
                     data-testid="button-report-listing"
                     title="Report this listing"
                   >

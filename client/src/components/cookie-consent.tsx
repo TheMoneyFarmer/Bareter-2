@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Cookie, X } from "lucide-react";
+import { Cookie } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -17,7 +17,6 @@ export function CookieConsent() {
   const [location] = useLocation();
   const [bannerOpen, setBannerOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
-  const [functional, setFunctional] = useState(true);
   const [analytics, setAnalytics] = useState(false);
   const [marketing, setMarketing] = useState(false);
 
@@ -29,7 +28,6 @@ export function CookieConsent() {
     if (!existing && !isCookieDoc) {
       setBannerOpen(true);
     } else if (existing) {
-      setFunctional(existing.functional);
       setAnalytics(existing.analytics);
       setMarketing(existing.marketing);
     }
@@ -39,7 +37,6 @@ export function CookieConsent() {
     const onOpen = () => {
       const existing = readPrefs();
       if (existing) {
-        setFunctional(existing.functional);
         setAnalytics(existing.analytics);
         setMarketing(existing.marketing);
       }
@@ -50,8 +47,7 @@ export function CookieConsent() {
   }, []);
 
   const acceptAll = () => {
-    writePrefs({ functional: true, analytics: true, marketing: true });
-    setFunctional(true);
+    writePrefs({ analytics: true, marketing: true });
     setAnalytics(true);
     setMarketing(true);
     setBannerOpen(false);
@@ -59,8 +55,7 @@ export function CookieConsent() {
   };
 
   const rejectNonEssential = () => {
-    writePrefs({ functional: false, analytics: false, marketing: false });
-    setFunctional(false);
+    writePrefs({ analytics: false, marketing: false });
     setAnalytics(false);
     setMarketing(false);
     setBannerOpen(false);
@@ -68,7 +63,7 @@ export function CookieConsent() {
   };
 
   const savePrefs = () => {
-    writePrefs({ functional, analytics, marketing });
+    writePrefs({ analytics, marketing });
     setBannerOpen(false);
     setManageOpen(false);
   };
@@ -78,6 +73,8 @@ export function CookieConsent() {
       {bannerOpen && !isCookieDoc && (
         <div
           className="fixed inset-x-0 bottom-0 z-[60] px-3 pb-3 sm:px-4 sm:pb-4 md:right-4 md:left-auto md:bottom-4 md:max-w-md md:px-0 md:pb-0"
+          role="dialog"
+          aria-label="Cookie consent"
           data-testid="cookie-consent-banner"
         >
           <div className="rounded-lg border border-border bg-background shadow-xl p-4 sm:p-5">
@@ -91,7 +88,8 @@ export function CookieConsent() {
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                   Bareter uses cookies to keep you signed in, remember your preferences, and
-                  understand how the platform is used. Read our{" "}
+                  understand how the platform is used. To continue using Bareter, choose how
+                  cookies should be used. Read our{" "}
                   <Link
                     href="/legal/cookies"
                     className="underline text-bareter-teal hover:text-bareter-teal/80"
@@ -102,15 +100,6 @@ export function CookieConsent() {
                   .
                 </p>
               </div>
-              <button
-                type="button"
-                aria-label="Close"
-                className="flex-shrink-0 text-muted-foreground hover:text-foreground"
-                onClick={() => setBannerOpen(false)}
-                data-testid="button-close-cookie-banner"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
 
             <div className="mt-4 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
@@ -157,13 +146,6 @@ export function CookieConsent() {
               checked
               disabled
               testId="cookie-pref-essential"
-            />
-            <PrefRow
-              title="Functional"
-              description="Remembers language, locale, and recent search/filter preferences."
-              checked={functional}
-              onCheckedChange={setFunctional}
-              testId="cookie-pref-functional"
             />
             <PrefRow
               title="Analytics"

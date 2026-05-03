@@ -285,6 +285,22 @@ export function WaitlistDialog() {
                 )}
               </Button>
 
+              <p className="text-[11px] text-muted-foreground text-center pt-1" data-testid="text-waitlist-consent">
+                By joining, you agree to our{" "}
+                <Link href="/terms" onClick={close} className="text-primary underline" data-testid="link-waitlist-terms">
+                  Terms of Use
+                </Link>
+                ,{" "}
+                <Link href="/privacy" onClick={close} className="text-primary underline" data-testid="link-waitlist-privacy">
+                  Privacy Policy
+                </Link>
+                , and{" "}
+                <Link href="/legal/cookies" onClick={close} className="text-primary underline" data-testid="link-waitlist-cookies">
+                  Cookie Policy
+                </Link>
+                .
+              </p>
+
               <p className="text-[11px] text-muted-foreground text-center pt-1">
                 Already have an account?{" "}
                 <Link href="/login" onClick={close} className="text-primary underline" data-testid="link-waitlist-login">

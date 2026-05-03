@@ -59,11 +59,11 @@ export function Footer() {
               <Link href="/terms" className={linkCls} data-testid="footer-link-terms">{t("footer.terms") || "Terms of Use"}</Link>
               <Link href="/privacy" className={linkCls} data-testid="footer-link-privacy">{t("footer.privacy") || "Privacy Policy"}</Link>
               <Link href="/legal/barter-rules" className={linkCls} data-testid="footer-link-barter-rules">Barter Rules</Link>
-              <Link href="/legal/disputes" className={linkCls} data-testid="footer-link-disputes">Dispute Resolution</Link>
+              <Link href="/legal/dispute-resolution" className={linkCls} data-testid="footer-link-disputes">Dispute Resolution</Link>
               <Link href="/legal/vat" className={linkCls} data-testid="footer-link-vat">VAT Policy</Link>
               <Link href="/legal/cookies" className={linkCls} data-testid="footer-link-cookies">Cookie Policy</Link>
               <Link href="/legal/acceptable-use" className={linkCls} data-testid="footer-link-aup">Acceptable Use</Link>
-              <Link href="/legal/community" className={linkCls} data-testid="footer-link-community">Community Standards</Link>
+              <Link href="/legal/community-standards" className={linkCls} data-testid="footer-link-community">Community Standards</Link>
               <Link href="/legal/customer-agreement" className={linkCls} data-testid="footer-link-customer-agreement">Customer Agreement</Link>
               <button
                 type="button"
