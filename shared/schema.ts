@@ -815,13 +815,18 @@ export const insertConsentLogSchema = createInsertSchema(consentLogs).omit({
 });
 export type InsertConsentLog = z.infer<typeof insertConsentLogSchema>;
 
-// Public payload the cookie banner POSTs to /api/consent. The server adds
-// userId / anonymousId / IP / user-agent / timestamp itself.
+// Public payload the cookie banner POSTs to /api/consent. The server
+// always stamps the *current* `COOKIE_POLICY_VERSION` itself (so the
+// audit log can never disagree with the deployed policy text);
+// `policyVersion` is therefore optional in the request and treated as
+// informational only — useful for diagnosing stale clients that haven't
+// reloaded since a policy bump. Server adds userId / anonymousId / IP /
+// user-agent / timestamp.
 export const consentRequestSchema = z.object({
   decision: z.enum(COOKIE_CONSENT_DECISIONS),
   analytics: z.boolean(),
   marketing: z.boolean(),
-  policyVersion: z.number().int().positive(),
+  policyVersion: z.number().int().positive().optional(),
   anonymousId: z.string().min(8).max(64).optional(),
 });
 export type ConsentRequest = z.infer<typeof consentRequestSchema>;

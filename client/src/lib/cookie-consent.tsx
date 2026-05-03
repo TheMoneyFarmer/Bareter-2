@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { COOKIE_POLICY_VERSION } from "@shared/schema";
 
-// Bumped whenever the public Cookie Policy / cookie practices change
-// meaningfully. Must stay in sync with `COOKIE_POLICY_VERSION` in
-// shared/schema.ts. A user whose stored prefs carry an older version is
-// treated as having no decision yet and is re-prompted with the banner.
-export const COOKIE_POLICY_VERSION = 1;
+// Re-export the single source of truth from shared/schema.ts so the
+// banner, persistence layer, and server agree on what "current policy"
+// means. A user whose stored prefs carry an older version is treated as
+// having no decision yet and is re-prompted with the banner.
+export { COOKIE_POLICY_VERSION };
 
 export type CookiePreferences = {
   essential: true;
