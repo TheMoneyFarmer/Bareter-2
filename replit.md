@@ -70,6 +70,12 @@ To switch to a new custom domain:
    (e.g. `https://bareter.com`). No trailing slash.
 3. Redeploy.
 
+The audit artifact for the production `PUBLIC_APP_URL` rollout is
+[`docs/launch-evidence/public-app-url.md`](docs/launch-evidence/public-app-url.md)
+— the founder fills it in once the secret is set in production and
+real outbound links (welcome email referral, in-app share dialog) have
+been verified to render on `https://bareter.com`.
+
 The frontend reads the canonical URL from the `appUrl` field of
 `GET /api/waitlist/mode`, exposed via the `appUrl` value on `useWaitlist()`.
 The waitlist dialog uses it for the share link so referrals always direct
