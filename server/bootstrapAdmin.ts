@@ -12,10 +12,12 @@ import { users } from "@shared/schema";
  *   1. Find or create that user. If the user exists, the password hash is
  *      refreshed to match the current secret so rotating the secret in the
  *      env actually rotates the live password on the next deploy.
- *   2. Force `isAdmin = true`, `role = "super_admin"`, `isVerified = true`,
+ *   2. Force `isAdmin = true`, `role = "super_admin"`,
  *      `founderBadge = true`. The waitlist gate already exempts admins on
  *      the client side, so this lets the founder log in even while the site
- *      is in waitlist mode.
+ *      is in waitlist mode. Verification (`isVerified`) is NOT forced — the
+ *      founder goes through the same KYC/manual-verify flow as any user, so
+ *      the production verification path can be exercised end-to-end.
  *   3. Demote every other user that currently has `isAdmin = true` or any
  *      admin-flavored `role`. This enforces the "only the founder is admin"
  *      requirement defensively at the data layer — the
@@ -63,7 +65,6 @@ export async function bootstrapAdmin(): Promise<void> {
           password: passwordHash,
           isAdmin: true,
           role: "super_admin",
-          isVerified: true,
           founderBadge: true,
           founderBadgeAt: existing.founderBadgeAt ?? new Date(),
           isPaused: false,
@@ -86,7 +87,6 @@ export async function bootstrapAdmin(): Promise<void> {
           location: "Dubai",
           isAdmin: true,
           role: "super_admin",
-          isVerified: true,
           founderBadge: true,
           founderBadgeAt: new Date(),
           profileCompleted: true,
