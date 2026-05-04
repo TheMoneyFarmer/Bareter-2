@@ -252,7 +252,7 @@ export interface IStorage {
   removeBannedEmail(email: string): Promise<void>;
 
   // Moderation logs for listings
-  getModerationLogsByTarget(targetId: string): Promise<ModerationLog[]>;
+  getModerationLogsByTarget(targetId: string, targetType?: string): Promise<ModerationLog[]>;
 
   // Legal pages (admin-editable public legal pack)
   getLegalPages(language?: string): Promise<LegalPage[]>;
@@ -1500,11 +1500,15 @@ export class DatabaseStorage implements IStorage {
     await db.delete(bannedEmails).where(eq(bannedEmails.email, email.trim().toLowerCase()));
   }
 
-  async getModerationLogsByTarget(targetId: string): Promise<ModerationLog[]> {
+  async getModerationLogsByTarget(targetId: string, targetType?: string): Promise<ModerationLog[]> {
+    const conditions = [eq(moderationLogs.targetId, targetId)];
+    if (targetType) {
+      conditions.push(eq(moderationLogs.targetType, targetType));
+    }
     return db
       .select()
       .from(moderationLogs)
-      .where(eq(moderationLogs.targetId, targetId))
+      .where(and(...conditions))
       .orderBy(desc(moderationLogs.createdAt));
   }
 }

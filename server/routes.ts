@@ -23,6 +23,26 @@ import {
   reports,
   quickInquiries,
   users,
+  deals,
+  messages,
+  ratings,
+  followers,
+  referrals,
+  wishlists,
+  posts,
+  postLikes,
+  postComments,
+  postBookmarks,
+  endorsements,
+  savedSearches,
+  dealMilestones,
+  portfolioItems,
+  listingLikes,
+  listingComments,
+  moderationLogs,
+  agentInteractions,
+  consentLogs,
+  notifications,
 } from "@shared/schema";
 import {
   isValidPrivateDocPath,
@@ -52,7 +72,7 @@ import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
-import { eq, and, desc, gte, count, lt, sql as sqlOperator } from "drizzle-orm";
+import { eq, and, desc, gte, count, lt, sql as sqlOperator, or } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -2397,33 +2417,60 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Cannot delete super admin accounts" });
       }
       await destroyUserSessions(userId);
-      const userListings = await storage.getListingsByUser(userId);
-      for (const listing of userListings) {
-        await storage.updateListing(listing.id, { isActive: false });
+
+      const userEmail = user.email;
+      await storage.addBannedEmail(userEmail, req.session.userId || "", "PDPL erasure");
+
+      const userListingRows = await storage.getListingsByUser(userId);
+      const listingIds = userListingRows.map(l => l.id);
+
+      if (listingIds.length > 0) {
+        for (const lid of listingIds) {
+          await db.delete(listingLikes).where(eq(listingLikes.listingId, lid));
+          await db.delete(listingComments).where(eq(listingComments.listingId, lid));
+          await db.delete(moderationLogs).where(and(eq(moderationLogs.targetType, "listing"), eq(moderationLogs.targetId, lid)));
+        }
+        await db.delete(listings).where(eq(listings.userId, userId));
       }
-      await storage.updateUser(userId, {
-        email: `deleted-${userId}@erased.bareter.com`,
-        fullName: "[Deleted User]",
-        bio: null,
-        avatarUrl: null,
-        businessName: null,
-        phone: null,
-        website: null,
-        socialLinks: null,
-        socialProfiles: [],
-        whatIOffer: [],
-        whatINeed: [],
-        portfolioImages: [],
-        password: "ERASED",
-        isBanned: true,
-        bannedReason: "Account deleted (PDPL erasure)",
-        bannedAt: new Date(),
-        isPaused: true,
-        passwordResetToken: null,
-        passwordResetExpires: null,
-        emailVerificationToken: null,
-      });
-      res.json({ message: "User data erased (PDPL right to erasure)" });
+
+      await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
+      await db.delete(listingComments).where(eq(listingComments.userId, userId));
+
+      await db.delete(messages).where(eq(messages.senderId, userId));
+
+      const userDealRows = await db.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+      for (const d of userDealRows) {
+        await db.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
+      }
+      await db.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+      await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+      await db.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
+      await db.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
+      await db.delete(wishlists).where(eq(wishlists.userId, userId));
+      await db.delete(postLikes).where(eq(postLikes.userId, userId));
+      await db.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
+
+      const userPosts = await db.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+      for (const p of userPosts) {
+        await db.delete(postLikes).where(eq(postLikes.postId, p.id));
+        await db.delete(postComments).where(eq(postComments.postId, p.id));
+      }
+      await db.delete(posts).where(eq(posts.userId, userId));
+
+      await db.delete(postComments).where(eq(postComments.userId, userId));
+      await db.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
+      await db.delete(savedSearches).where(eq(savedSearches.userId, userId));
+      await db.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
+      await db.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
+      await db.delete(reports).where(eq(reports.reporterId, userId));
+      await db.delete(agentInteractions).where(eq(agentInteractions.userId, userId));
+      await db.delete(moderationLogs).where(eq(moderationLogs.adminUserId, userId));
+      await db.delete(consentLogs).where(eq(consentLogs.userId, userId));
+      await db.delete(notifications).where(eq(notifications.userId, userId));
+
+      await db.delete(users).where(eq(users.id, userId));
+
+      res.json({ message: "User data permanently deleted (PDPL right to erasure)" });
     } catch (error) {
       console.error("Admin delete user (PDPL) error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -2619,7 +2666,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/listings/:id/moderation-history", requireAdmin, async (req, res) => {
     try {
-      const logs = await storage.getModerationLogsByTarget(param(req.params.id));
+      const logs = await storage.getModerationLogsByTarget(param(req.params.id), "listing");
       res.json(logs);
     } catch (error) {
       console.error("Admin moderation history error:", error);

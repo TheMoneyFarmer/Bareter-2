@@ -51,7 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser } from "@shared/schema";
+import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report } from "@shared/schema";
 import { CATEGORIES } from "@shared/schema";
 import {
   Users,
@@ -172,8 +172,10 @@ export function AdminPage() {
     open: false, user: null, subject: "", body: "",
   });
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({ open: false, user: null });
+  const [userAccountTypeFilter, setUserAccountTypeFilter] = useState<string>("all");
   const [listingStatusFilter, setListingStatusFilter] = useState<string>("all");
   const [listingCategoryFilter, setListingCategoryFilter] = useState<string>("all");
+  const [listingCityFilter, setListingCityFilter] = useState<string>("all");
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; listingId: string | null; reason: string }>({
     open: false, listingId: null, reason: "",
@@ -345,7 +347,7 @@ export function AdminPage() {
     enabled: !!selectedUserId,
   });
 
-  const { data: listingModerationHistory } = useQuery<any[]>({
+  const { data: listingModerationHistory } = useQuery<ModerationLog[]>({
     queryKey: ["/api/admin/listings", selectedListingId, "moderation-history"],
     enabled: !!selectedListingId,
   });
@@ -368,29 +370,35 @@ export function AdminPage() {
     if (userStatusFilter === "banned") return u.isBanned;
     if (userStatusFilter === "pending") return u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW";
     if (userStatusFilter === "unverified") return !u.isVerified && !u.isBanned;
+    if (userAccountTypeFilter === "individual") return u.accountType === "individual" || !u.accountType;
+    if (userAccountTypeFilter === "business") return u.accountType === "business";
+    return true;
+  }).filter((u) => {
+    if (userAccountTypeFilter === "all") return true;
+    if (userAccountTypeFilter === "individual") return u.accountType === "individual" || !u.accountType;
+    if (userAccountTypeFilter === "business") return u.accountType === "business";
     return true;
   });
+
+  const availableCities = Array.from(new Set((listings ?? []).map(l => l.city).filter(Boolean) as string[])).sort();
 
   const filteredListings = listings?.filter((l) => {
     const matchesSearch = l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
-    if (listingStatusFilter === "active") return l.isActive && l.moderationStatus !== "rejected";
-    if (listingStatusFilter === "inactive") return !l.isActive;
-    if (listingStatusFilter === "pending") return l.moderationStatus === "pending";
-    if (listingStatusFilter === "flagged") return l.moderationStatus === "flagged" || (l as any).valueFlagged || (l as any).imageFlagged;
-    if (listingStatusFilter === "rejected") return l.moderationStatus === "rejected";
-    if (listingStatusFilter === "featured") return l.isFeatured;
+    if (listingStatusFilter === "active" && (!l.isActive || l.moderationStatus === "rejected")) return false;
+    if (listingStatusFilter === "inactive" && l.isActive) return false;
+    if (listingStatusFilter === "pending" && l.moderationStatus !== "pending") return false;
+    if (listingStatusFilter === "flagged" && l.moderationStatus !== "flagged" && !l.valueFlagged && !l.imageFlagged) return false;
+    if (listingStatusFilter === "rejected" && l.moderationStatus !== "rejected") return false;
+    if (listingStatusFilter === "featured" && !l.isFeatured) return false;
     if (listingCategoryFilter !== "all") {
       const cats = (l.categories as string[]) || [];
       if (!cats.includes(listingCategoryFilter)) return false;
     }
+    if (listingCityFilter !== "all" && l.city !== listingCityFilter) return false;
     return true;
-  }).filter((l) => {
-    if (listingCategoryFilter === "all") return true;
-    const cats = (l.categories as string[]) || [];
-    return cats.includes(listingCategoryFilter);
   });
 
   const filteredDeals = deals?.filter(
@@ -586,6 +594,16 @@ export function AdminPage() {
               <SelectItem value="banned">Banned</SelectItem>
               <SelectItem value="pending">Pending Verification</SelectItem>
               <SelectItem value="unverified">Unverified</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={userAccountTypeFilter} onValueChange={setUserAccountTypeFilter}>
+            <SelectTrigger className="w-[140px]" data-testid="select-user-account-type-filter">
+              <SelectValue placeholder="Account type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="individual">Individual</SelectItem>
+              <SelectItem value="business">Business</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative w-64">
@@ -799,6 +817,19 @@ export function AdminPage() {
               ))}
             </SelectContent>
           </Select>
+          {availableCities.length > 0 && (
+            <Select value={listingCityFilter} onValueChange={setListingCityFilter}>
+              <SelectTrigger className="w-[140px]" data-testid="select-listing-city-filter">
+                <SelectValue placeholder="City" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Cities</SelectItem>
+                {availableCities.map(city => (
+                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -847,12 +878,12 @@ export function AdminPage() {
                           {l.isFeatured && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0" />}
                         </div>
                         <div className="flex gap-1 flex-wrap">
-                          {(l as any).valueFlagged && (
+                          {l.valueFlagged && (
                             <Badge variant="outline" className="text-[10px] gap-1 border-amber-500/60 text-amber-600">
                               <AlertTriangle className="h-2.5 w-2.5" />Value flagged
                             </Badge>
                           )}
-                          {(l as any).imageFlagged && (
+                          {l.imageFlagged && (
                             <Badge variant="outline" className="text-[10px] gap-1 border-red-500/60 text-red-600">
                               <AlertTriangle className="h-2.5 w-2.5" />Image flagged
                             </Badge>
@@ -907,7 +938,7 @@ export function AdminPage() {
                             View Details
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
-                            <Link href={`/listings/${l.id}`} onClick={(e: any) => e.stopPropagation()}>
+                            <Link href={`/listings/${l.id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                               <Eye className="h-4 w-4 mr-2" />
                               View on Site
                             </Link>
@@ -1206,7 +1237,7 @@ export function AdminPage() {
     </div>
   );
 
-  const { data: reportsData = [] } = useQuery<any[]>({
+  const { data: reportsData = [] } = useQuery<Report[]>({
     queryKey: ["/api/admin/reports"],
     enabled: activeSection === "reports",
   });
@@ -1268,7 +1299,7 @@ export function AdminPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                reportsData.map((report: any) => (
+                reportsData.map((report) => (
                   <TableRow key={report.id} data-testid={`row-report-${report.id}`}>
                     <TableCell>
                       <Badge variant="outline">{report.targetType}</Badge>
@@ -1286,7 +1317,7 @@ export function AdminPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(report.createdAt).toLocaleDateString()}
+                      {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -2217,12 +2248,11 @@ export function AdminPage() {
                   </div>
                 </div>
 
-                {(listing as any).valueFlagged || (listing as any).imageFlagged ? (
+                {listing.valueFlagged || listing.imageFlagged ? (
                   <div className="border border-amber-500/40 rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20">
                     <p className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1"><AlertTriangle className="h-4 w-4" />Moderation Flags</p>
-                    {(listing as any).valueFlagged && <p className="text-sm text-amber-600">Value flagged by AI moderation</p>}
-                    {(listing as any).imageFlagged && <p className="text-sm text-amber-600">Image flagged by AI moderation</p>}
-                    {(listing as any).moderationNotes && <p className="text-sm text-muted-foreground mt-1">{(listing as any).moderationNotes}</p>}
+                    {listing.valueFlagged && <p className="text-sm text-amber-600">Value flagged by AI moderation</p>}
+                    {listing.imageFlagged && <p className="text-sm text-amber-600">Image flagged by AI moderation</p>}
                   </div>
                 ) : null}
 
@@ -2235,8 +2265,8 @@ export function AdminPage() {
                   </h4>
                   {listingModerationHistory && listingModerationHistory.length > 0 ? (
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {listingModerationHistory.map((log: any, i: number) => (
-                        <div key={i} className="flex items-start gap-3 p-2 border rounded-lg">
+                      {listingModerationHistory.map((log: ModerationLog, i: number) => (
+                        <div key={log.id || i} className="flex items-start gap-3 p-2 border rounded-lg">
                           <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${
                             log.action?.includes("approve") ? "bg-green-500" :
                             log.action?.includes("reject") ? "bg-red-500" :
@@ -2244,7 +2274,7 @@ export function AdminPage() {
                           }`} />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium">{log.action}</p>
-                            {log.details && <p className="text-xs text-muted-foreground">{typeof log.details === "string" ? log.details : JSON.stringify(log.details)}</p>}
+                            {log.reason && <p className="text-xs text-muted-foreground">{log.reason}</p>}
                             <p className="text-xs text-muted-foreground mt-1">{log.createdAt ? new Date(log.createdAt).toLocaleString() : ""}</p>
                           </div>
                         </div>
