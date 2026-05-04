@@ -152,11 +152,11 @@ export function FAQPage() {
           <Link href="/help">
             <Button variant="outline" data-testid="link-help-center">Visit Help Center</Button>
           </Link>
-          <a href={`mailto:${supportEmail}`}>
-            <Button data-testid="button-contact-support">
+          <Button asChild data-testid="button-contact-support">
+            <a href={`mailto:${supportEmail}?subject=Bareter%20support%20request`}>
               Contact Support
-            </Button>
-          </a>
+            </a>
+          </Button>
         </div>
       </div>
     </div>

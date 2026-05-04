@@ -67,8 +67,17 @@ const DEFAULT_STEPS: HowItWorksStep[] = [
 
 export function LandingPage() {
   const { user } = useAuth();
-  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
+  const { mode: waitlistMode, open: openWaitlist, gate: waitlistGate } = useWaitlist();
   const [, navigate] = useLocation();
+
+  const handleCategoryClick = (e: React.MouseEvent, href: string) => {
+    if (!waitlistGate()) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    navigate(href);
+  };
   const [heroQuery, setHeroQuery] = useState("");
   const [heroCity, setHeroCity] = useState("Dubai");
   const [waitlistEmail, setWaitlistEmail] = useState("");
@@ -198,16 +207,16 @@ export function LandingPage() {
             <div className="mt-6 w-full overflow-x-auto scrollbar-hide -mx-4 px-4">
               <div className="flex items-center gap-2 justify-start sm:justify-center min-w-min">
                 {HERO_CATEGORY_PILLS.map((p) => (
-                  <Link key={p.label} href={p.href}>
-                    <button
-                      type="button"
-                      className="bareter-pill-fill px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full whitespace-nowrap"
-                      data-testid={`pill-hero-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      <span className="me-1.5">{p.emoji}</span>
-                      {p.label}
-                    </button>
-                  </Link>
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={(e) => handleCategoryClick(e, p.href)}
+                    className="bareter-pill-fill px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full whitespace-nowrap"
+                    data-testid={`pill-hero-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <span className="me-1.5">{p.emoji}</span>
+                    {p.label}
+                  </button>
                 ))}
               </div>
             </div>
@@ -314,10 +323,11 @@ export function LandingPage() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {CATEGORY_GRID.map((c) => (
-              <Link
+              <a
                 key={c.label}
                 href={c.href}
-                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep"
+                onClick={(e) => handleCategoryClick(e, c.href)}
+                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep cursor-pointer"
                 data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 <img
@@ -331,7 +341,7 @@ export function LandingPage() {
                   <div className="text-3xl mb-1 drop-shadow">{c.emoji}</div>
                   <div className="text-card-title text-white drop-shadow">{c.label}</div>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         </div>
