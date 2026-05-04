@@ -1573,9 +1573,16 @@ export class DatabaseStorage implements IStorage {
       ? await query.where(eq(disputes.status, opts.status))
       : await query;
 
-    return rows.map((r: any) => {
-      const { password: _pA, ...partyAData } = r.partyA || {};
-      const { password: _pB, ...partyBData } = r.partyB || {};
+    type DisputeRow = {
+      disputes: Dispute;
+      partyA: User | null;
+      partyB: User | null;
+      decisionAdmin: User | null;
+    };
+
+    return (rows as DisputeRow[]).map((r) => {
+      const { password: _pA, ...partyAData } = r.partyA || {} as User;
+      const { password: _pB, ...partyBData } = r.partyB || {} as User;
       const decisionByAdmin = r.decisionAdmin
         ? (() => { const { password: _pD, ...d } = r.decisionAdmin; return d; })()
         : null;
@@ -1584,7 +1591,7 @@ export class DatabaseStorage implements IStorage {
         partyA: partyAData,
         partyB: partyBData,
         decisionByAdmin,
-      };
+      } as DisputeWithParties;
     });
   }
 
@@ -1602,9 +1609,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(disputes.id, id));
 
     if (!rows.length) return undefined;
-    const r: any = rows[0];
-    const { password: _pA, ...partyAData } = r.partyA || {};
-    const { password: _pB, ...partyBData } = r.partyB || {};
+    type DisputeRow = {
+      disputes: Dispute;
+      partyA: User | null;
+      partyB: User | null;
+      decisionAdmin: User | null;
+    };
+    const r = rows[0] as DisputeRow;
+    const { password: _pA, ...partyAData } = r.partyA || {} as User;
+    const { password: _pB, ...partyBData } = r.partyB || {} as User;
     const decisionByAdmin = r.decisionAdmin
       ? (() => { const { password: _pD, ...d } = r.decisionAdmin; return d; })()
       : null;
@@ -1613,7 +1626,7 @@ export class DatabaseStorage implements IStorage {
       partyA: partyAData,
       partyB: partyBData,
       decisionByAdmin,
-    };
+    } as DisputeWithParties;
   }
 
   async createDispute(dispute: InsertDispute): Promise<Dispute> {
@@ -1638,7 +1651,7 @@ export class DatabaseStorage implements IStorage {
   async getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string }): Promise<AdminAuditLog[]> {
     const limit = Math.min(opts?.limit ?? 100, 500);
     const offset = opts?.offset ?? 0;
-    const conditions: any[] = [];
+    const conditions: ReturnType<typeof eq>[] = [];
     if (opts?.action) conditions.push(eq(adminAuditLogs.action, opts.action));
     if (opts?.adminId) conditions.push(eq(adminAuditLogs.adminId, opts.adminId));
     const query = db.select().from(adminAuditLogs).orderBy(desc(adminAuditLogs.createdAt)).limit(limit).offset(offset);

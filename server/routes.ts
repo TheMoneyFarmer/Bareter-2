@@ -50,6 +50,10 @@ import {
   disputes,
   adminAuditLogs,
   failedLoginAttempts,
+  type Dispute,
+  type DisputeEvidence,
+  insertDisputeSchema,
+  DISPUTE_OUTCOMES,
 } from "@shared/schema";
 import {
   isValidPrivateDocPath,
@@ -503,6 +507,13 @@ export async function registerRoutes(
       // server/index.ts and only trusts X-Forwarded-For from the single
       // Replit proxy hop — clients can't spoof their IP into the audit
       // log via a forged header.
+      const dcSetting = await storage.getAppSetting("data_collection_disabled");
+      if (dcSetting === "true") {
+        return res.status(503).json({
+          message: "Data collection is temporarily disabled by the platform administrator",
+        });
+      }
+
       const ipAddress = req.ip ?? null;
       const userAgent = (req.headers["user-agent"] ?? "").slice(0, 500) || null;
 
@@ -2784,12 +2795,18 @@ export async function registerRoutes(
     }
   }
 
+  const dealStateSchema = z.object({
+    state: z.enum(["completed", "cancelled"]),
+    reason: z.string().max(2000).optional(),
+  });
+
   app.patch("/api/admin/deals/:id/state", requireAdmin, async (req, res) => {
     try {
-      const { state, reason } = req.body;
-      if (!["completed", "cancelled"].includes(state)) {
+      const parsed = dealStateSchema.safeParse(req.body);
+      if (!parsed.success) {
         return res.status(400).json({ message: "State must be completed or cancelled" });
       }
+      const { state, reason } = parsed.data;
       const dealId = param(req.params.id);
       const deal = await storage.getDeal(dealId);
       if (!deal) {
@@ -2834,12 +2851,22 @@ export async function registerRoutes(
     }
   });
 
+  const createDisputeSchema = z.object({
+    partyAId: z.string().min(1),
+    partyBId: z.string().min(1),
+    subject: z.string().min(1).max(500),
+    description: z.string().max(5000).optional().nullable(),
+    dealId: z.string().optional().nullable(),
+    reportId: z.string().optional().nullable(),
+  });
+
   app.post("/api/admin/disputes", requireAdmin, async (req, res) => {
     try {
-      const { partyAId, partyBId, dealId, reportId, subject, description } = req.body;
-      if (!partyAId || !partyBId || !subject) {
-        return res.status(400).json({ message: "partyAId, partyBId, and subject are required" });
+      const parsed = createDisputeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
+      const { partyAId, partyBId, dealId, reportId, subject, description } = parsed.data;
       const dispute = await storage.createDispute({
         partyAId,
         partyBId,
@@ -2858,18 +2885,23 @@ export async function registerRoutes(
     }
   });
 
+  const disputeStatusSchema = z.object({
+    status: z.enum(["open", "in_mediation", "resolved"]),
+  });
+
   app.patch("/api/admin/disputes/:id/status", requireAdmin, async (req, res) => {
     try {
-      const { status } = req.body;
-      if (!["open", "in_mediation", "resolved"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+      const parsed = disputeStatusSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid status. Must be open, in_mediation, or resolved" });
       }
+      const { status } = parsed.data;
       const disputeId = param(req.params.id);
       const existing = await storage.getDispute(disputeId);
       if (!existing) {
         return res.status(404).json({ message: "Dispute not found" });
       }
-      const updates: Record<string, any> = { status };
+      const updates: Partial<Dispute> = { status };
       if (status === "resolved") {
         updates.resolvedAt = new Date();
       }
@@ -2882,12 +2914,19 @@ export async function registerRoutes(
     }
   });
 
+  const disputeDecisionSchema = z.object({
+    decision: z.string().min(1).max(5000),
+    decisionReasoning: z.string().max(5000).optional().nullable(),
+    outcome: z.enum(DISPUTE_OUTCOMES),
+  });
+
   app.patch("/api/admin/disputes/:id/decision", requireAdmin, async (req, res) => {
     try {
-      const { decision, decisionReasoning, outcome } = req.body;
-      if (!decision || !outcome) {
-        return res.status(400).json({ message: "decision and outcome are required" });
+      const parsed = disputeDecisionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
+      const { decision, decisionReasoning, outcome } = parsed.data;
       const disputeId = param(req.params.id);
       const existing = await storage.getDispute(disputeId);
       if (!existing) {
@@ -2936,9 +2975,62 @@ export async function registerRoutes(
         status: "in_mediation",
       });
       await logAdminAction(req, "dispute_escalated", "dispute", disputeId, { subject: existing.subject });
+
+      const { notifyFounder } = await import("./companyOs/twilio");
+      const admin = await storage.getUser(req.session.userId!);
+      notifyFounder(
+        `🚨 *Dispute Escalated*\n\n` +
+        `Subject: ${existing.subject}\n` +
+        `Party A: ${existing.partyA?.fullName || existing.partyAId}\n` +
+        `Party B: ${existing.partyB?.fullName || existing.partyBId}\n` +
+        `Escalated by: ${admin?.fullName || "Admin"}\n` +
+        `Status: In Mediation\n\n` +
+        `Review at /admin → Disputes`
+      ).catch(err => console.error("[dispute] WhatsApp escalation notify failed:", err));
+
       res.json(updated);
     } catch (error) {
       console.error("Admin dispute escalate error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  const evidenceSchema = z.object({
+    description: z.string().min(1).max(5000),
+    fileUrls: z.array(z.string().url()).optional(),
+    submittedByName: z.string().max(200).optional(),
+  });
+
+  app.post("/api/admin/disputes/:id/evidence", requireAdmin, async (req, res) => {
+    try {
+      const parsed = evidenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
+      }
+      const disputeId = param(req.params.id);
+      const existing = await storage.getDispute(disputeId);
+      if (!existing) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      if (existing.status === "resolved") {
+        return res.status(400).json({ message: "Cannot add evidence to a resolved dispute" });
+      }
+      const admin = await storage.getUser(req.session.userId!);
+      const newEvidence: DisputeEvidence = {
+        submittedBy: req.session.userId!,
+        submittedByName: parsed.data.submittedByName || admin?.fullName || "Admin",
+        description: parsed.data.description,
+        fileUrls: parsed.data.fileUrls || [],
+        submittedAt: new Date().toISOString(),
+      };
+      const currentEvidence: DisputeEvidence[] = Array.isArray(existing.evidence) ? existing.evidence : [];
+      const updated = await storage.updateDispute(disputeId, {
+        evidence: [...currentEvidence, newEvidence],
+      });
+      await logAdminAction(req, "dispute_evidence_added", "dispute", disputeId, { description: parsed.data.description.slice(0, 100) });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin dispute evidence error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3043,9 +3135,15 @@ export async function registerRoutes(
     }
   });
 
+  const dataCollectionSchema = z.object({ disabled: z.boolean() });
+
   app.patch("/api/admin/settings/data-collection", requireAdmin, async (req, res) => {
     try {
-      const { disabled } = req.body;
+      const parsed = dataCollectionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "disabled must be a boolean" });
+      }
+      const { disabled } = parsed.data;
       await storage.setAppSetting("data_collection_disabled", disabled ? "true" : "false", req.session.userId);
       await logAdminAction(req, disabled ? "data_collection_disabled" : "data_collection_enabled", "settings", "data_collection_disabled");
       res.json({ dataCollectionDisabled: !!disabled });
@@ -3065,9 +3163,15 @@ export async function registerRoutes(
     }
   });
 
+  const marketingConsentSchema = z.object({ marketingEmails: z.boolean() });
+
   app.patch("/api/admin/users/:id/marketing-consent", requireAdmin, async (req, res) => {
     try {
-      const { marketingEmails } = req.body;
+      const parsed = marketingConsentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "marketingEmails must be a boolean" });
+      }
+      const { marketingEmails } = parsed.data;
       const user = await storage.updateUser(param(req.params.id), { marketingEmails: !!marketingEmails });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -4181,6 +4285,10 @@ export async function registerRoutes(
   // ========== Behavioral Flags ==========
   app.get("/api/admin/behavioral-flags", requireAuth, requireAdmin, async (req, res) => {
     try {
+      const dcDisabled = await storage.getAppSetting("data_collection_disabled");
+      if (dcDisabled === "true") {
+        return res.json({ rapidPosters: [], reportedUsers: [], newAccountsWithDeals: [], dataCollectionDisabled: true });
+      }
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 

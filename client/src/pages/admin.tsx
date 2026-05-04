@@ -105,6 +105,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Megaphone,
+  Plus,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -456,6 +457,20 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
       setSelectedDispute(null);
       toast({ title: "Success", description: "Dispute deleted" });
+    },
+  });
+
+  const [evidenceText, setEvidenceText] = useState("");
+  const addEvidenceMutation = useMutation({
+    mutationFn: async ({ id, description }: { id: string; description: string }) => {
+      const res = await apiRequest("POST", `/api/admin/disputes/${id}/evidence`, { description });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      setSelectedDispute(data);
+      setEvidenceText("");
+      toast({ title: "Success", description: "Evidence added" });
     },
   });
 
@@ -2986,6 +3001,54 @@ export function AdminPage() {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Description</p>
                   <p className="text-sm border rounded-lg p-3">{selectedDispute.description}</p>
+                </div>
+              )}
+
+              {Array.isArray(selectedDispute.evidence) && selectedDispute.evidence.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1"><FileText className="h-3 w-3" />Evidence ({selectedDispute.evidence.length})</p>
+                  <div className="space-y-2">
+                    {selectedDispute.evidence.map((ev: { submittedBy: string; submittedByName?: string; description: string; fileUrls?: string[]; submittedAt: string }, idx: number) => (
+                      <div key={idx} className="border rounded-lg p-3 text-sm space-y-1" data-testid={`evidence-item-${idx}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-xs">{ev.submittedByName || "Unknown"}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(ev.submittedAt).toLocaleString()}</span>
+                        </div>
+                        <p>{ev.description}</p>
+                        {ev.fileUrls && ev.fileUrls.length > 0 && (
+                          <div className="flex gap-1 flex-wrap">
+                            {ev.fileUrls.map((url: string, fi: number) => (
+                              <a key={fi} href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">File {fi + 1}</a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedDispute.status !== "resolved" && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Add Evidence</p>
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={evidenceText}
+                      onChange={(e) => setEvidenceText(e.target.value)}
+                      placeholder="Describe the evidence..."
+                      className="text-sm min-h-[60px]"
+                      data-testid="input-evidence-description"
+                    />
+                    <Button
+                      size="sm"
+                      className="gap-1 self-end"
+                      disabled={!evidenceText.trim() || addEvidenceMutation.isPending}
+                      onClick={() => addEvidenceMutation.mutate({ id: selectedDispute.id, description: evidenceText.trim() })}
+                      data-testid="button-add-evidence"
+                    >
+                      <Plus className="h-3 w-3" />{addEvidenceMutation.isPending ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
                 </div>
               )}
 
