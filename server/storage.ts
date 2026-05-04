@@ -249,6 +249,7 @@ export interface IStorage {
   // Banned emails
   isBannedEmail(email: string): Promise<boolean>;
   addBannedEmail(email: string, bannedBy: string, reason?: string): Promise<BannedEmail>;
+  addBannedEmailHash(emailHash: string, reason?: string): Promise<BannedEmail>;
   removeBannedEmail(email: string): Promise<void>;
 
   // Moderation logs for listings
@@ -1475,11 +1476,17 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  private hashEmail(email: string): string {
+    const crypto = require("crypto") as typeof import("crypto");
+    return crypto.createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+  }
+
   async isBannedEmail(email: string): Promise<boolean> {
+    const hash = this.hashEmail(email);
     const [row] = await db
       .select()
       .from(bannedEmails)
-      .where(eq(bannedEmails.email, email.trim().toLowerCase()));
+      .where(or(eq(bannedEmails.email, email.trim().toLowerCase()), eq(bannedEmails.email, hash)));
     return !!row;
   }
 
@@ -1496,8 +1503,22 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async addBannedEmailHash(emailHash: string, reason?: string): Promise<BannedEmail> {
+    const [row] = await db
+      .insert(bannedEmails)
+      .values({ email: emailHash, bannedBy: null, reason: reason || null })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) {
+      const [existing] = await db.select().from(bannedEmails).where(eq(bannedEmails.email, emailHash));
+      return existing;
+    }
+    return row;
+  }
+
   async removeBannedEmail(email: string): Promise<void> {
-    await db.delete(bannedEmails).where(eq(bannedEmails.email, email.trim().toLowerCase()));
+    const hash = this.hashEmail(email);
+    await db.delete(bannedEmails).where(or(eq(bannedEmails.email, email.trim().toLowerCase()), eq(bannedEmails.email, hash)));
   }
 
   async getModerationLogsByTarget(targetId: string, targetType?: string): Promise<ModerationLog[]> {

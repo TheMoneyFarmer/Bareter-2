@@ -2427,10 +2427,13 @@ export async function registerRoutes(
 
       const userEmail = user.email;
 
+      const crypto = await import("crypto");
+      const emailHash = crypto.createHash("sha256").update(userEmail.trim().toLowerCase()).digest("hex");
+
       await db.transaction(async (tx) => {
         await tx.update(bannedEmails).set({ bannedBy: null }).where(eq(bannedEmails.bannedBy, userId));
 
-        await storage.addBannedEmail(userEmail, req.session.userId || "", "PDPL erasure");
+        await tx.insert(bannedEmails).values({ email: emailHash, bannedBy: null, reason: "PDPL erasure" }).onConflictDoNothing();
 
         const userDealRows = await tx.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
         for (const d of userDealRows) {
