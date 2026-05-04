@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getUncachableResendClient, isResendReady } from "./resendClient";
+import { storage } from "./storage";
 
 function createSmtpTransport() {
   const host = process.env.SMTP_HOST;
@@ -121,6 +122,23 @@ async function sendMail(opts: MailOptions): Promise<boolean> {
   return false;
 }
 
+async function getCustomTemplate(key: string): Promise<string | null> {
+  try {
+    const val = await storage.getAppSetting(key);
+    return val && val.trim() ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTemplateVars(template: string, vars: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+  }
+  return result;
+}
+
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
@@ -135,7 +153,10 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
     return;
   }
 
-  const html = `
+  const customTemplate = await getCustomTemplate("email_template_password_reset");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { resetUrl, appName: APP_NAME, baseUrl })
+    : `
       <!DOCTYPE html>
       <html>
       <head><meta charset="utf-8" /></head>
@@ -246,7 +267,10 @@ export async function sendDealCompletedEmail(
     return;
   }
 
-  const html = `<!DOCTYPE html>
+  const customTemplate = await getCustomTemplate("email_template_deal_completed");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, counterpartyName: opts.counterpartyName, dealUrl, appName: APP_NAME })
+    : `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
   <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -479,7 +503,10 @@ export async function sendListingRejectionEmail(
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   const escapedTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const escapedReason = opts.reason.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
-  const html = `<!DOCTYPE html>
+  const customTemplate = await getCustomTemplate("email_template_listing_rejected");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: escapedTitle, reason: escapedReason, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
   <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -550,7 +577,10 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
     return;
   }
 
-  const html = `
+  const customTemplate = await getCustomTemplate("email_template_welcome");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { fullName, appName: APP_NAME, email: toEmail })
+    : `
       <!DOCTYPE html>
       <html>
       <head><meta charset="utf-8" /></head>

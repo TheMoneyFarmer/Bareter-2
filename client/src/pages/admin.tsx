@@ -215,6 +215,7 @@ export function AdminPage() {
   const [broadcastVerification, setBroadcastVerification] = useState("all");
   const [dealsExportFrom, setDealsExportFrom] = useState("");
   const [dealsExportTo, setDealsExportTo] = useState("");
+  const [dealsExportState, setDealsExportState] = useState("completed");
   const [reportsExportFrom, setReportsExportFrom] = useState("");
   const [reportsExportTo, setReportsExportTo] = useState("");
   const [editingTemplateKey, setEditingTemplateKey] = useState<string | null>(null);
@@ -1265,9 +1266,18 @@ export function AdminPage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <Select value={dealsExportState} onValueChange={setDealsExportState}>
+              <SelectTrigger className="w-32 h-9 text-xs" data-testid="select-deals-export-state"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="proposed">Proposed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
             <Input type="date" value={dealsExportFrom} onChange={(e) => setDealsExportFrom(e.target.value)} className="w-36 h-9 text-xs" placeholder="From" data-testid="input-deals-export-from" />
             <Input type="date" value={dealsExportTo} onChange={(e) => setDealsExportTo(e.target.value)} className="w-36 h-9 text-xs" placeholder="To" data-testid="input-deals-export-to" />
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (dealsExportFrom) params.set("from", dealsExportFrom); if (dealsExportTo) params.set("to", dealsExportTo); window.open(`/api/admin/deals/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Deals CSV download started" }); }} data-testid="button-export-deals-csv">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); params.set("state", dealsExportState); if (dealsExportFrom) params.set("from", dealsExportFrom); if (dealsExportTo) params.set("to", dealsExportTo); window.open(`/api/admin/deals/export.csv?${params}`, "_blank"); toast({ title: "Exporting", description: "Deals CSV download started" }); }} data-testid="button-export-deals-csv">
               <Download className="h-4 w-4" />
               Export CSV
             </Button>

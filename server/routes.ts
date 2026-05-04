@@ -2529,14 +2529,15 @@ export async function registerRoutes(
             sentBy: req.session.userId,
           });
           if (ok) sent++; else failed++;
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           await storage.createEmailLog({
             recipientEmail: recipient.email,
             subject,
             status: "failed",
             source: "broadcast",
             broadcastId,
-            errorMessage: err?.message?.slice(0, 200),
+            errorMessage: errMsg.slice(0, 200),
             sentBy: req.session.userId,
           });
           failed++;
@@ -2625,6 +2626,8 @@ export async function registerRoutes(
     try {
       const allDeals = await storage.getAllDeals();
       let filtered = allDeals;
+      const stateFilter = (req.query.state as string) || "completed";
+      filtered = filtered.filter(d => d.state === stateFilter);
       if (req.query.from) {
         const from = new Date(req.query.from as string);
         filtered = filtered.filter(d => d.createdAt && new Date(d.createdAt) >= from);
@@ -2633,9 +2636,6 @@ export async function registerRoutes(
         const to = new Date(req.query.to as string);
         to.setHours(23, 59, 59, 999);
         filtered = filtered.filter(d => d.createdAt && new Date(d.createdAt) <= to);
-      }
-      if (req.query.state) {
-        filtered = filtered.filter(d => d.state === req.query.state);
       }
       const escCsv = (v: string | null | undefined) => {
         if (v == null) return "";
