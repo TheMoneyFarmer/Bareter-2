@@ -176,6 +176,7 @@ export function AdminPage() {
   const [listingStatusFilter, setListingStatusFilter] = useState<string>("all");
   const [listingCategoryFilter, setListingCategoryFilter] = useState<string>("all");
   const [listingCityFilter, setListingCityFilter] = useState<string>("all");
+  const [listingValueFilter, setListingValueFilter] = useState<string>("all");
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; listingId: string | null; reason: string }>({
     open: false, listingId: null, reason: "",
@@ -398,6 +399,13 @@ export function AdminPage() {
       if (!cats.includes(listingCategoryFilter)) return false;
     }
     if (listingCityFilter !== "all" && l.city !== listingCityFilter) return false;
+    if (listingValueFilter !== "all") {
+      const val = parseFloat(l.retailValue || "0");
+      if (listingValueFilter === "under1000" && val >= 1000) return false;
+      if (listingValueFilter === "1000to5000" && (val < 1000 || val > 5000)) return false;
+      if (listingValueFilter === "5000to20000" && (val < 5000 || val > 20000)) return false;
+      if (listingValueFilter === "over20000" && val <= 20000) return false;
+    }
     return true;
   });
 
@@ -830,6 +838,18 @@ export function AdminPage() {
               </SelectContent>
             </Select>
           )}
+          <Select value={listingValueFilter} onValueChange={setListingValueFilter}>
+            <SelectTrigger className="w-[160px]" data-testid="select-listing-value-filter">
+              <SelectValue placeholder="Value range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Values</SelectItem>
+              <SelectItem value="under1000">Under 1,000 AED</SelectItem>
+              <SelectItem value="1000to5000">1,000–5,000 AED</SelectItem>
+              <SelectItem value="5000to20000">5,000–20,000 AED</SelectItem>
+              <SelectItem value="over20000">Over 20,000 AED</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -2174,7 +2194,7 @@ export function AdminPage() {
                 <div className="flex items-start gap-4">
                   {listing.images && (listing.images as string[]).length > 0 && (
                     <div className="flex gap-2 flex-wrap">
-                      {(listing.images as string[]).slice(0, 4).map((url, i) => (
+                      {(listing.images as string[]).map((url, i) => (
                         <img key={i} src={url} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
                       ))}
                     </div>
@@ -2275,7 +2295,10 @@ export function AdminPage() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium">{log.action}</p>
                             {log.reason && <p className="text-xs text-muted-foreground">{log.reason}</p>}
-                            <p className="text-xs text-muted-foreground mt-1">{log.createdAt ? new Date(log.createdAt).toLocaleString() : ""}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {log.adminUserId ? "By admin" : "By AI"}{log.confidence ? ` (${(parseFloat(log.confidence) * 100).toFixed(0)}% confidence)` : ""}
+                              {" · "}{log.createdAt ? new Date(log.createdAt).toLocaleString() : ""}
+                            </p>
                           </div>
                         </div>
                       ))}

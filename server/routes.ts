@@ -2421,9 +2421,20 @@ export async function registerRoutes(
       const userEmail = user.email;
       await storage.addBannedEmail(userEmail, req.session.userId || "", "PDPL erasure");
 
+      const userDealRows = await db.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+      for (const d of userDealRows) {
+        await db.delete(messages).where(eq(messages.dealId, d.id));
+        await db.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
+      }
+      await db.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+
+      await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+
+      await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
+      await db.delete(listingComments).where(eq(listingComments.userId, userId));
+
       const userListingRows = await storage.getListingsByUser(userId);
       const listingIds = userListingRows.map(l => l.id);
-
       if (listingIds.length > 0) {
         for (const lid of listingIds) {
           await db.delete(listingLikes).where(eq(listingLikes.listingId, lid));
@@ -2433,31 +2444,20 @@ export async function registerRoutes(
         await db.delete(listings).where(eq(listings.userId, userId));
       }
 
-      await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
-      await db.delete(listingComments).where(eq(listingComments.userId, userId));
-
-      await db.delete(messages).where(eq(messages.senderId, userId));
-
-      const userDealRows = await db.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
-      for (const d of userDealRows) {
-        await db.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
-      }
-      await db.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
-      await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+      await db.delete(wishlists).where(eq(wishlists.userId, userId));
       await db.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
       await db.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
-      await db.delete(wishlists).where(eq(wishlists.userId, userId));
+
       await db.delete(postLikes).where(eq(postLikes.userId, userId));
       await db.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
-
       const userPosts = await db.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
       for (const p of userPosts) {
         await db.delete(postLikes).where(eq(postLikes.postId, p.id));
         await db.delete(postComments).where(eq(postComments.postId, p.id));
       }
+      await db.delete(postComments).where(eq(postComments.userId, userId));
       await db.delete(posts).where(eq(posts.userId, userId));
 
-      await db.delete(postComments).where(eq(postComments.userId, userId));
       await db.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
       await db.delete(savedSearches).where(eq(savedSearches.userId, userId));
       await db.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
@@ -2572,13 +2572,22 @@ export async function registerRoutes(
 
   app.patch("/api/admin/listings/:id/approve", requireAdmin, async (req, res) => {
     try {
-      const listing = await storage.updateListing(param(req.params.id), {
+      const listingId = param(req.params.id);
+      const listing = await storage.updateListing(listingId, {
         isActive: true,
         moderationStatus: "approved",
       });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await db.insert(moderationLogs).values({
+        targetType: "listing",
+        targetId: listingId,
+        action: "approved",
+        reason: "Approved by admin",
+        reviewedByAdmin: true,
+        adminUserId: req.session.userId || null,
+      });
       res.json(listing);
     } catch (error) {
       console.error("Admin approve listing error:", error);
@@ -2592,13 +2601,22 @@ export async function registerRoutes(
       if (!reason) {
         return res.status(400).json({ message: "Rejection reason is required" });
       }
-      const listing = await storage.updateListing(param(req.params.id), {
+      const listingId = param(req.params.id);
+      const listing = await storage.updateListing(listingId, {
         isActive: false,
         moderationStatus: "rejected",
       });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await db.insert(moderationLogs).values({
+        targetType: "listing",
+        targetId: listingId,
+        action: "rejected",
+        reason,
+        reviewedByAdmin: true,
+        adminUserId: req.session.userId || null,
+      });
       const owner = await storage.getUser(listing.userId);
       if (owner) {
         const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
@@ -2621,8 +2639,9 @@ export async function registerRoutes(
 
   app.patch("/api/admin/listings/:id/edit", requireAdmin, async (req, res) => {
     try {
+      const listingId = param(req.params.id);
       const { categories, retailValue, title, description } = req.body;
-      const updates: any = {};
+      const updates: Record<string, string | string[]> = {};
       if (categories !== undefined) updates.categories = categories;
       if (retailValue !== undefined) updates.retailValue = retailValue;
       if (title !== undefined) updates.title = title;
@@ -2630,10 +2649,19 @@ export async function registerRoutes(
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }
-      const listing = await storage.updateListing(param(req.params.id), updates);
+      const listing = await storage.updateListing(listingId, updates);
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      const changedFields = Object.keys(updates).join(", ");
+      await db.insert(moderationLogs).values({
+        targetType: "listing",
+        targetId: listingId,
+        action: "edited",
+        reason: `Admin edited fields: ${changedFields}`,
+        reviewedByAdmin: true,
+        adminUserId: req.session.userId || null,
+      });
       res.json(listing);
     } catch (error) {
       console.error("Admin edit listing error:", error);
@@ -2643,20 +2671,24 @@ export async function registerRoutes(
 
   app.patch("/api/admin/listings/:id/feature", requireAdmin, async (req, res) => {
     try {
+      const listingId = param(req.params.id);
       const { featured, durationDays } = req.body;
-      const updates: any = {
-        isFeatured: !!featured,
-      };
-      if (featured) {
-        const days = durationDays || 7;
-        updates.featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      } else {
-        updates.featuredUntil = null;
-      }
-      const listing = await storage.updateListing(param(req.params.id), updates);
+      const isFeatured = !!featured;
+      const featuredUntil = featured
+        ? new Date(Date.now() + (durationDays || 7) * 24 * 60 * 60 * 1000)
+        : null;
+      const listing = await storage.updateListing(listingId, { isFeatured, featuredUntil });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await db.insert(moderationLogs).values({
+        targetType: "listing",
+        targetId: listingId,
+        action: isFeatured ? "featured" : "unfeatured",
+        reason: isFeatured ? `Featured for ${durationDays || 7} days` : "Removed from featured",
+        reviewedByAdmin: true,
+        adminUserId: req.session.userId || null,
+      });
       res.json(listing);
     } catch (error) {
       console.error("Admin feature listing error:", error);
