@@ -289,6 +289,9 @@ export interface IStorage {
   // Email logs
   createEmailLog(log: { recipientEmail: string; subject: string; status: string; source: string; broadcastId?: string; errorMessage?: string; sentBy?: string }): Promise<EmailLog>;
   getEmailStats(): Promise<{ total: number; sent: number; failed: number }>;
+  createBroadcastJob(job: { id: string; subject: string; body: string; filter?: unknown; recipientCount: number; sentBy?: string }): Promise<BroadcastJob>;
+  getBroadcastJob(id: string): Promise<BroadcastJob | undefined>;
+  updateBroadcastJob(id: string, data: Partial<Pick<BroadcastJob, "status" | "sent" | "failed" | "startedAt" | "completedAt">>): Promise<void>;
 
   // Analytics helpers
   getUserSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
