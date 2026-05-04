@@ -553,7 +553,7 @@ export function AdminPage() {
       const res = await apiRequest("POST", "/api/admin/email/broadcast", data);
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { broadcastId: string; recipientCount: number; sent: number; failed: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
       setBroadcastSubject("");
       setBroadcastBody("");
@@ -1270,8 +1270,8 @@ export function AdminPage() {
               <SelectTrigger className="w-32 h-9 text-xs" data-testid="select-deals-export-state"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="proposed">Proposed</SelectItem>
+                <SelectItem value="accepted">Accepted</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>

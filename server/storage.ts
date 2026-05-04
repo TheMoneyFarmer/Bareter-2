@@ -1733,7 +1733,7 @@ export class DatabaseStorage implements IStorage {
   // ── Analytics helpers ─────────────────────────────────────────────
   async getUserSignupsByDay(days: number): Promise<{ date: string; count: number }[]> {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const rows = await db.execute<any>(sql`
+    const rows = await db.execute(sql`
       SELECT TO_CHAR(DATE_TRUNC('day', created_at), 'YYYY-MM-DD') AS date,
              COUNT(*)::int AS count
       FROM users
@@ -1741,8 +1741,8 @@ export class DatabaseStorage implements IStorage {
       GROUP BY 1
       ORDER BY 1
     `);
-    const list = (rows as any).rows ?? rows;
-    return list.map((r: any) => ({ date: r.date, count: Number(r.count) }));
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    return (list as { date: string; count: number | string }[]).map((r) => ({ date: r.date, count: Number(r.count) }));
   }
 
   async getNewListingsToday(): Promise<number> {
@@ -1756,7 +1756,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTopListings(limit: number = 10): Promise<{ id: string; title: string; viewCount: number; proposalCount: number }[]> {
-    const rows = await db.execute<any>(sql`
+    const rows = await db.execute(sql`
       SELECT l.id, l.title, COALESCE(l.view_count, 0)::int AS "viewCount",
              (SELECT COUNT(*)::int FROM deals d WHERE d.seeker_listing_id = l.id OR d.provider_listing_id = l.id) AS "proposalCount"
       FROM listings l
@@ -1764,8 +1764,8 @@ export class DatabaseStorage implements IStorage {
       ORDER BY COALESCE(l.view_count, 0) DESC, "proposalCount" DESC
       LIMIT ${limit}
     `);
-    const list = (rows as any).rows ?? rows;
-    return list.map((r: any) => ({
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    return (list as { id: string; title: string; viewCount: number | string; proposalCount: number | string }[]).map((r) => ({
       id: r.id,
       title: r.title,
       viewCount: Number(r.viewCount),
