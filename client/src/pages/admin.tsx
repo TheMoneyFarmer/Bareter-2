@@ -569,6 +569,19 @@ export function AdminPage() {
     },
   });
 
+  const broadcastTestMutation = useMutation({
+    mutationFn: async (data: { subject: string; body: string }) => {
+      const res = await apiRequest("POST", "/api/admin/email/broadcast/test", data);
+      return res.json();
+    },
+    onSuccess: (data: { message: string }) => {
+      toast({ title: "Test email sent", description: data.message });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send test email", variant: "destructive" });
+    },
+  });
+
   const { data: broadcastJobStatus } = useQuery<{ id: string; status: string; recipientCount: number; sent: number; failed: number; completedAt: string | null }>({
     queryKey: ["/api/admin/email/broadcast", broadcastJobId],
     enabled: !!broadcastJobId,
@@ -1614,25 +1627,36 @@ export function AdminPage() {
             </div>
           </div>
           <div className="flex flex-col gap-3">
-            <Button
-              onClick={() => {
-                setBroadcastJobId(null);
-                broadcastMutation.mutate({
-                  subject: broadcastSubject,
-                  body: broadcastBody,
-                  filter: {
-                    city: broadcastCityFilter || undefined,
-                    accountType: broadcastAccountType,
-                    verificationStatus: broadcastVerification,
-                  },
-                });
-              }}
-              disabled={!broadcastSubject || !broadcastBody || broadcastMutation.isPending || (!!broadcastJobId && broadcastJobStatus?.status !== "completed" && broadcastJobStatus?.status !== "failed")}
-              className="gap-2 self-start"
-              data-testid="button-send-broadcast"
-            >
-              {broadcastMutation.isPending ? "Queueing…" : <><Mail className="h-4 w-4" /> Send Broadcast</>}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setBroadcastJobId(null);
+                  broadcastMutation.mutate({
+                    subject: broadcastSubject,
+                    body: broadcastBody,
+                    filter: {
+                      city: broadcastCityFilter || undefined,
+                      accountType: broadcastAccountType,
+                      verificationStatus: broadcastVerification,
+                    },
+                  });
+                }}
+                disabled={!broadcastSubject || !broadcastBody || broadcastMutation.isPending || (!!broadcastJobId && broadcastJobStatus?.status !== "completed" && broadcastJobStatus?.status !== "failed")}
+                className="gap-2"
+                data-testid="button-send-broadcast"
+              >
+                {broadcastMutation.isPending ? "Queueing…" : <><Mail className="h-4 w-4" /> Send Broadcast</>}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => broadcastTestMutation.mutate({ subject: broadcastSubject, body: broadcastBody })}
+                disabled={!broadcastSubject || !broadcastBody || broadcastTestMutation.isPending}
+                className="gap-2"
+                data-testid="button-send-test-broadcast"
+              >
+                {broadcastTestMutation.isPending ? "Sending…" : <><Mail className="h-4 w-4" /> Send test to me</>}
+              </Button>
+            </div>
             {broadcastJobId && broadcastJobStatus && (
               <div className="rounded-md border px-4 py-3 text-sm space-y-1" data-testid="broadcast-job-status">
                 <div className="flex items-center gap-2 font-medium">

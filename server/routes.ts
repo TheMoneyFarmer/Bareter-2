@@ -2489,6 +2489,44 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/email/broadcast/test", requireAdmin, async (req, res) => {
+    try {
+      const { subject, body } = req.body;
+      if (!subject || !body) {
+        return res.status(400).json({ message: "Subject and body are required" });
+      }
+      const adminUserId = req.session.userId;
+      const admin = await storage.getUser(adminUserId);
+      if (!admin) {
+        return res.status(404).json({ message: "Admin user not found" });
+      }
+      const { sendAdminEmail } = await import("./emailService");
+      const sampleVars: Record<string, string> = {
+        name: admin.fullName || "Admin",
+        email: admin.email,
+        city: admin.city || "Dubai",
+        businessName: admin.businessName || "Acme Trading LLC",
+        accountType: admin.accountType || "individual",
+        appName: "Bareter",
+      };
+      const ok = await sendAdminEmail(admin.email, {
+        recipientName: admin.fullName,
+        subject: `[TEST] ${subject}`,
+        body,
+        vars: sampleVars,
+      });
+      if (ok) {
+        await logAdminAction(req, "email_broadcast_test", "system", adminUserId, { subject });
+        res.json({ message: `Test email sent to ${admin.email}` });
+      } else {
+        res.status(500).json({ message: "Failed to send test email — check email configuration" });
+      }
+    } catch (error) {
+      console.error("Broadcast test email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/admin/email/broadcast", requireAdmin, async (req, res) => {
     try {
       const { subject, body, filter } = req.body;
