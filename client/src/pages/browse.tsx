@@ -486,7 +486,7 @@ export function BrowsePage() {
         </label>
       </div>
       {hasActiveFilters && (
-        <Button variant="outline" onClick={clearFilters} className="w-full" data-testid="button-clear-filters"><X className="h-4 w-4 mr-2" />Clear All Filters</Button>
+        <Button variant="outline" onClick={clearFilters} className="w-full" data-testid="button-clear-filters"><X className="h-4 w-4 me-2" />Clear All Filters</Button>
       )}
     </div>
   );
@@ -594,7 +594,7 @@ export function BrowsePage() {
                             <div className="flex items-center gap-2 mt-1">
                               {recUser.credibilityScore > 0 && (
                                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{recUser.credibilityScore}
+                                  <CheckCircle2 className="h-2.5 w-2.5 me-0.5" />{recUser.credibilityScore}
                                 </Badge>
                               )}
                               {recUser.totalCompletedDeals > 0 && (
@@ -646,7 +646,7 @@ export function BrowsePage() {
             <div className="flex gap-2 flex-wrap">
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[180px]" data-testid="select-sort">
-                  <ArrowUpDown className="h-4 w-4 mr-2" /><SelectValue placeholder="Sort by" />
+                  <ArrowUpDown className="h-4 w-4 me-2" /><SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest First</SelectItem>
@@ -659,8 +659,8 @@ export function BrowsePage() {
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="outline" className="md:hidden" data-testid="button-filters-mobile">
-                    <Filter className="h-4 w-4 mr-2" />Filters
-                    {hasActiveFilters && <Badge variant="secondary" className="ml-2">{selectedCategories.length + (verifiedOnly ? 1 : 0)}</Badge>}
+                    <Filter className="h-4 w-4 me-2" />Filters
+                    {hasActiveFilters && <Badge variant="secondary" className="ms-2">{selectedCategories.length + (verifiedOnly ? 1 : 0)}</Badge>}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80">

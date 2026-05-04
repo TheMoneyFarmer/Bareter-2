@@ -289,9 +289,9 @@ export function ListingDetailPage() {
               className="absolute top-4 start-4"
             >
               {listing.type === "offer" ? (
-                <><Package className="h-3 w-3 mr-1" /> Offer</>
+                <><Package className="h-3 w-3 me-1" /> Offer</>
               ) : (
-                <><ShoppingCart className="h-3 w-3 mr-1" /> Request</>
+                <><ShoppingCart className="h-3 w-3 me-1" /> Request</>
               )}
             </Badge>
           </button>
@@ -574,7 +574,7 @@ export function ListingDetailPage() {
               {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED") && (
                 <div className="pt-2 border-t" data-testid="proposal-verify-prompt">
                   <p className="text-xs text-muted-foreground text-center py-2">
-                    <Shield className="h-3.5 w-3.5 inline mr-1 text-primary" />
+                    <Shield className="h-3.5 w-3.5 inline me-1 text-primary" />
                     <Link href="/profile" className="text-primary hover:underline">Verify your identity</Link> to propose a barter
                   </p>
                 </div>
@@ -598,7 +598,7 @@ export function ListingDetailPage() {
                         value={commentOfferValue}
                         onChange={(e) => setCommentOfferValue(e.target.value)}
                         placeholder="Value"
-                        className="text-sm pl-10"
+                        className="text-sm ps-10"
                         min="1"
                         data-testid="input-comment-offer-value"
                       />
@@ -732,7 +732,7 @@ export function ListingDetailPage() {
                     Tell {listing.user?.fullName} what you can offer in exchange
                   </DialogDescription>
                 </DialogHeader>
-                <ScrollArea className="flex-1 pr-4">
+                <ScrollArea className="flex-1 pe-4">
                   <div className="space-y-4 py-4">
                     <div className="p-3 bg-muted rounded-lg">
                       <p className="text-xs text-muted-foreground mb-1">They are offering:</p>
@@ -766,7 +766,7 @@ export function ListingDetailPage() {
                           placeholder="0.00"
                           value={counterValue}
                           onChange={(e) => setCounterValue(e.target.value)}
-                          className="pl-14"
+                          className="ps-14"
                           data-testid="input-counter-value"
                         />
                       </div>
@@ -833,12 +833,12 @@ export function ListingDetailPage() {
                   >
                     {proposeTradeMutation.isPending ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="me-2 h-4 w-4 animate-spin" />
                         Sending...
                       </>
                     ) : (
                       <>
-                        <MessageSquare className="mr-2 h-4 w-4" />
+                        <MessageSquare className="me-2 h-4 w-4" />
                         Send Proposal
                       </>
                     )}

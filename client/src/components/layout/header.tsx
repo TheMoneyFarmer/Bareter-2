@@ -183,7 +183,7 @@ export function Header() {
             <button
               type="button"
               onClick={() => setLocationPickerOpen(true)}
-              className="hidden lg:inline-flex items-center gap-1 ps-3 text-xs font-medium text-bareter-navy border-l border-bareter-border max-w-[140px]"
+              className="hidden lg:inline-flex items-center gap-1 ps-3 text-xs font-medium text-bareter-navy border-s border-bareter-border max-w-[140px]"
               data-testid="button-header-location-pill"
               title="Change location"
             >
