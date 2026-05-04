@@ -203,6 +203,9 @@ export function AdminPage() {
   });
   const [settingsTab, setSettingsTab] = useState<string>("platform");
   const [auditLogActionFilter, setAuditLogActionFilter] = useState<string>("all");
+  const [auditLogAdminFilter, setAuditLogAdminFilter] = useState<string>("all");
+  const [auditLogDateFrom, setAuditLogDateFrom] = useState<string>("");
+  const [auditLogDateTo, setAuditLogDateTo] = useState<string>("");
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -377,8 +380,16 @@ export function AdminPage() {
     enabled: activeSection === "disputes",
   });
 
+  const auditLogQueryParams = new URLSearchParams();
+  if (auditLogActionFilter !== "all") auditLogQueryParams.set("action", auditLogActionFilter);
+  if (auditLogAdminFilter !== "all") auditLogQueryParams.set("adminId", auditLogAdminFilter);
+  if (auditLogDateFrom) auditLogQueryParams.set("from", new Date(auditLogDateFrom).toISOString());
+  if (auditLogDateTo) auditLogQueryParams.set("to", new Date(auditLogDateTo + "T23:59:59").toISOString());
+  const auditLogUrl = `/api/admin/audit-logs${auditLogQueryParams.toString() ? `?${auditLogQueryParams}` : ""}`;
+
   const { data: auditLogs = [] } = useQuery<AdminAuditLog[]>({
-    queryKey: ["/api/admin/audit-logs"],
+    queryKey: ["/api/admin/audit-logs", auditLogActionFilter, auditLogAdminFilter, auditLogDateFrom, auditLogDateTo],
+    queryFn: () => fetch(auditLogUrl, { credentials: "include" }).then(r => r.json()),
     enabled: activeSection === "settings" && settingsTab === "audit",
   });
 
@@ -1472,9 +1483,7 @@ export function AdminPage() {
     </div>
   );
 
-  const filteredAuditLogs = auditLogs.filter(l =>
-    auditLogActionFilter === "all" || l.action === auditLogActionFilter
-  );
+  const auditAdmins = Array.from(new Set(auditLogs.map(l => ({ id: l.adminId, email: l.adminEmail })).filter(a => a.email).map(a => JSON.stringify(a)))).map(s => JSON.parse(s) as { id: string; email: string });
   const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();
 
   const renderSettings = () => (
@@ -1572,21 +1581,50 @@ export function AdminPage() {
                   </CardTitle>
                   <CardDescription>Track all admin actions for accountability</CardDescription>
                 </div>
-                <Select value={auditLogActionFilter} onValueChange={setAuditLogActionFilter}>
-                  <SelectTrigger className="w-[200px]" data-testid="select-audit-action-filter">
-                    <SelectValue placeholder="All actions" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All actions</SelectItem>
-                    {auditActions.map(a => (
-                      <SelectItem key={a} value={a}>{a.replace(/_/g, " ")}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-wrap gap-2">
+                  <Select value={auditLogActionFilter} onValueChange={setAuditLogActionFilter}>
+                    <SelectTrigger className="w-[180px]" data-testid="select-audit-action-filter">
+                      <SelectValue placeholder="All actions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All actions</SelectItem>
+                      {auditActions.map(a => (
+                        <SelectItem key={a} value={a}>{a.replace(/_/g, " ")}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={auditLogAdminFilter} onValueChange={setAuditLogAdminFilter}>
+                    <SelectTrigger className="w-[180px]" data-testid="select-audit-admin-filter">
+                      <SelectValue placeholder="All admins" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All admins</SelectItem>
+                      {auditAdmins.map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input
+                    type="date"
+                    value={auditLogDateFrom}
+                    onChange={e => setAuditLogDateFrom(e.target.value)}
+                    className="border rounded-md px-2 py-1 text-sm h-9"
+                    placeholder="From"
+                    data-testid="input-audit-date-from"
+                  />
+                  <input
+                    type="date"
+                    value={auditLogDateTo}
+                    onChange={e => setAuditLogDateTo(e.target.value)}
+                    className="border rounded-md px-2 py-1 text-sm h-9"
+                    placeholder="To"
+                    data-testid="input-audit-date-to"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {filteredAuditLogs.length === 0 ? (
+              {auditLogs.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">No audit log entries</div>
               ) : (
                 <Table>
@@ -1601,7 +1639,7 @@ export function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredAuditLogs.map((log) => (
+                    {auditLogs.map((log) => (
                       <TableRow key={log.id} data-testid={`row-audit-${log.id}`}>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                           {log.createdAt ? new Date(log.createdAt).toLocaleString() : "-"}
@@ -2313,47 +2351,35 @@ export function AdminPage() {
               </div>
 
               <div>
-                <p className="text-xs text-muted-foreground mb-2">State History</p>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="flex flex-col items-center">
-                    <div className="w-3 h-3 rounded-full bg-primary" />
-                    <div className="w-px h-4 bg-border" />
-                  </div>
-                  <div>
-                    <span className="font-medium">Created</span>
-                    <span className="text-muted-foreground ml-2">{selectedDeal.createdAt ? new Date(selectedDeal.createdAt).toLocaleString() : "-"}</span>
-                  </div>
+                <p className="text-xs text-muted-foreground mb-2">State Lifecycle</p>
+                <div className="space-y-0">
+                  {[
+                    { label: "Created", ts: selectedDeal.createdAt, color: "bg-primary", always: true },
+                    { label: "Proposed", ts: (selectedDeal as DealWithUsers & { proposedAt?: string }).proposedAt, color: "bg-blue-500", always: false },
+                    { label: "Accepted", ts: (selectedDeal as DealWithUsers & { acceptedAt?: string }).acceptedAt, color: "bg-indigo-500", always: false },
+                    { label: "Completed", ts: (selectedDeal as DealWithUsers & { completedAt?: string }).completedAt, color: "bg-green-500", always: false },
+                    { label: "Cancelled", ts: (selectedDeal as DealWithUsers & { cancelledAt?: string }).cancelledAt, color: "bg-red-500", always: false },
+                  ].filter(step => step.always || step.ts).map((step, idx, arr) => (
+                    <div key={step.label} className="flex items-center gap-2 text-xs">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-3 h-3 rounded-full ${step.ts ? step.color : "border-2 border-muted-foreground"}`} />
+                        {idx < arr.length - 1 && <div className="w-px h-4 bg-border" />}
+                      </div>
+                      <div>
+                        <span className="font-medium">{step.label}</span>
+                        <span className="text-muted-foreground ml-2">{step.ts ? new Date(step.ts).toLocaleString() : ""}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (
+                    <div className="flex items-center gap-2 text-xs mt-1">
+                      <div className="flex flex-col items-center">
+                        <div className="w-3 h-3 rounded-full border-2 border-muted-foreground animate-pulse" />
+                      </div>
+                      <span className="text-muted-foreground italic">Awaiting next step</span>
+                    </div>
+                  )}
                 </div>
-                {(selectedDeal as Record<string, unknown>).completedAt && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 rounded-full bg-green-500" />
-                    </div>
-                    <div>
-                      <span className="font-medium">Completed</span>
-                      <span className="text-muted-foreground ml-2">{new Date((selectedDeal as Record<string, unknown>).completedAt as string).toLocaleString()}</span>
-                    </div>
-                  </div>
-                )}
-                {(selectedDeal as Record<string, unknown>).cancelledAt && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 rounded-full bg-red-500" />
-                    </div>
-                    <div>
-                      <span className="font-medium">Cancelled</span>
-                      <span className="text-muted-foreground ml-2">{new Date((selectedDeal as Record<string, unknown>).cancelledAt as string).toLocaleString()}</span>
-                    </div>
-                  </div>
-                )}
-                {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 rounded-full border-2 border-muted-foreground animate-pulse" />
-                    </div>
-                    <span className="text-muted-foreground italic">In progress</span>
-                  </div>
-                )}
               </div>
 
               {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (

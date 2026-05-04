@@ -1648,12 +1648,14 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string }): Promise<AdminAuditLog[]> {
+  async getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string; from?: Date; to?: Date }): Promise<AdminAuditLog[]> {
     const limit = Math.min(opts?.limit ?? 100, 500);
     const offset = opts?.offset ?? 0;
     const conditions: ReturnType<typeof eq>[] = [];
     if (opts?.action) conditions.push(eq(adminAuditLogs.action, opts.action));
     if (opts?.adminId) conditions.push(eq(adminAuditLogs.adminId, opts.adminId));
+    if (opts?.from) conditions.push(sql`${adminAuditLogs.createdAt} >= ${opts.from}` as ReturnType<typeof eq>);
+    if (opts?.to) conditions.push(sql`${adminAuditLogs.createdAt} <= ${opts.to}` as ReturnType<typeof eq>);
     const query = db.select().from(adminAuditLogs).orderBy(desc(adminAuditLogs.createdAt)).limit(limit).offset(offset);
     return conditions.length > 0 ? await query.where(and(...conditions)) : await query;
   }

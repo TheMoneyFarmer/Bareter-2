@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { imageScans } from "@shared/schema";
+import { storage } from "./storage";
 import dns from "node:dns/promises";
 import net from "node:net";
 
@@ -83,12 +84,15 @@ export async function scanImageUrl(imageUrl: string, listingId?: string): Promis
       console.warn("[vision] rejected unsafe image URL:", (err as Error).message);
       if (listingId) {
         try {
-          await db.insert(imageScans).values({
-            imageUrl,
-            listingId,
-            flagged: false,
-            reason: null,
-          });
+          const dcDisabled = await storage.getAppSetting("data_collection_disabled");
+          if (dcDisabled !== "true") {
+            await db.insert(imageScans).values({
+              imageUrl,
+              listingId,
+              flagged: false,
+              reason: null,
+            });
+          }
         } catch {}
       }
       return result;
@@ -138,12 +142,15 @@ export async function scanImageUrl(imageUrl: string, listingId?: string): Promis
 
   if (listingId) {
     try {
-      await db.insert(imageScans).values({
-        imageUrl,
-        listingId,
-        flagged: result.flagged,
-        reason: result.reason,
-      });
+      const dcDisabled = await storage.getAppSetting("data_collection_disabled");
+      if (dcDisabled !== "true") {
+        await db.insert(imageScans).values({
+          imageUrl,
+          listingId,
+          flagged: result.flagged,
+          reason: result.reason,
+        });
+      }
     } catch {
     }
   }

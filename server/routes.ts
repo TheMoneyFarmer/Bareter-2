@@ -1704,11 +1704,17 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only the provider can upload provider proof" });
       }
 
-      let updated = await storage.updateDeal(param(req.params.id), data);
+      const stateTimestamps: Record<string, unknown> = {};
+      if (data.state === "proposed") stateTimestamps.proposedAt = new Date();
+      if (data.state === "accepted") stateTimestamps.acceptedAt = new Date();
+      if (data.state === "completed") stateTimestamps.completedAt = new Date();
+      if (data.state === "cancelled") stateTimestamps.cancelledAt = new Date();
+
+      let updated = await storage.updateDeal(param(req.params.id), { ...data, ...stateTimestamps });
 
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
-        updated = await storage.updateDeal(param(req.params.id), { state: "completed" });
+        updated = await storage.updateDeal(param(req.params.id), { state: "completed", completedAt: new Date() });
 
         // Notify both parties so they remember to leave a rating.
         try {
@@ -3062,7 +3068,9 @@ export async function registerRoutes(
       const offset = parseInt(req.query.offset as string) || 0;
       const action = req.query.action as string | undefined;
       const adminId = req.query.adminId as string | undefined;
-      const logs = await storage.getAuditLogs({ limit, offset, action, adminId });
+      const from = req.query.from ? new Date(req.query.from as string) : undefined;
+      const to = req.query.to ? new Date(req.query.to as string) : undefined;
+      const logs = await storage.getAuditLogs({ limit, offset, action, adminId, from, to });
       res.json(logs);
     } catch (error) {
       console.error("Admin audit logs error:", error);
@@ -3111,6 +3119,28 @@ export async function registerRoutes(
       const userNotifications = await storage.getNotificationsByUser(userId);
       const userFollowers = await storage.getFollowers(userId);
       const userFollowing = await storage.getFollowing(userId);
+      const userEndorsements = await storage.getEndorsementsByUser(userId);
+      const userSavedSearches = await storage.getSavedSearchesByUser(userId);
+
+      const userDealIds = userDeals.map(d => d.id);
+      const [userPosts, userConsentLogs, userSentMessages, userReports] = await Promise.all([
+        db.select().from(posts).where(eq(posts.userId, userId)),
+        db.select().from(consentLogs).where(eq(consentLogs.userId, userId)),
+        db.select().from(messages).where(eq(messages.senderId, userId)),
+        db.select().from(reports).where(eq(reports.reporterId, userId)),
+      ]);
+      let userReceivedMessages: typeof userSentMessages = [];
+      if (userDealIds.length > 0) {
+        userReceivedMessages = await db.select().from(messages).where(
+          and(
+            sqlOperator`${messages.dealId} IN (${sqlOperator.join(userDealIds.map(id => sqlOperator`${id}`), sqlOperator`, `)})`,
+            sqlOperator`${messages.senderId} != ${userId}`
+          )
+        );
+      }
+      const userMessages = [...userSentMessages, ...userReceivedMessages].sort((a, b) =>
+        new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+      );
 
       const { password, passwordResetToken, passwordResetExpires, ...safeUser } = user;
       const exportData = {
@@ -3126,6 +3156,12 @@ export async function registerRoutes(
         notifications: userNotifications,
         followers: userFollowers.map(f => ({ id: f.follower.id, name: f.follower.fullName })),
         following: userFollowing.map(f => ({ id: f.following.id, name: f.following.fullName })),
+        endorsements: userEndorsements,
+        savedSearches: userSavedSearches,
+        posts: userPosts,
+        consentLogs: userConsentLogs,
+        messages: userMessages,
+        reports: userReports,
       };
       await logAdminAction(req, "dsar_export", "user", userId, { email: user.email });
       res.setHeader("Content-Type", "application/json");
