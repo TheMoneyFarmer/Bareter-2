@@ -253,8 +253,9 @@ export async function registerRoutes(
   app.use(async (req: Request, res: Response, next: NextFunction) => {
     if (
       !req.path.startsWith("/api/") ||
-      req.path.startsWith("/api/auth/") ||
       req.path.startsWith("/api/admin/") ||
+      req.path === "/api/auth/me" ||
+      req.path === "/api/auth/login" ||
       req.path === "/api/config" ||
       req.path === "/api/public/settings" ||
       req.path === "/api/waitlist/mode"
@@ -279,6 +280,7 @@ export async function registerRoutes(
         "announcement_banner_enabled", "announcement_banner_text", "announcement_banner_link",
         "active_emirates", "maintenance_mode", "maintenance_message", "registration_enabled", "invite_only_mode",
         "high_value_threshold",
+        "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
       ];
       const result: Record<string, string | null> = {};
       for (const key of publicKeys) {
@@ -305,9 +307,17 @@ export async function registerRoutes(
 
       const inviteOnly = await storage.getAppSetting("invite_only_mode");
       if (inviteOnly === "true") {
+        const inviteCode = req.body.inviteCode as string | undefined;
+        let invited = false;
         const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => null);
-        if (!waitlistEntry) {
-          return res.status(403).json({ message: "Registration is by invitation only. Please join the waitlist first." });
+        if (waitlistEntry) {
+          invited = true;
+        } else if (inviteCode) {
+          const codeEntry = await storage.getWaitlistEntryByReferralCode(inviteCode).catch(() => null);
+          if (codeEntry) invited = true;
+        }
+        if (!invited) {
+          return res.status(403).json({ message: "Registration is by invitation only. Please join the waitlist or use a valid invite code." });
         }
       }
 
@@ -1206,7 +1216,9 @@ export async function registerRoutes(
       const { isValueFlagged } = await import("./marketValues");
       const rawCategories = req.body.categories || [];
       const retailVal = parseFloat(req.body.retailValue) || 0;
-      const valueFlagged = isValueFlagged(retailVal, rawCategories);
+      const hvtSetting = await storage.getAppSetting("high_value_threshold");
+      const highValueThreshold = hvtSetting ? parseFloat(hvtSetting) : 50000;
+      const valueFlagged = isValueFlagged(retailVal, rawCategories) || (retailVal >= highValueThreshold);
 
       const data = insertListingSchema.parse({
         ...req.body,
@@ -2965,6 +2977,10 @@ export async function registerRoutes(
 
   app.post("/api/admin/disputes", requireAdmin, async (req, res) => {
     try {
+      const disputesEnabled = await storage.getAppSetting("disputes_enabled");
+      if (disputesEnabled === "false") {
+        return res.status(403).json({ message: "Dispute management is currently disabled." });
+      }
       const parsed = createDisputeSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0].message });
@@ -3303,6 +3319,7 @@ export async function registerRoutes(
     "active_emirates", "high_value_threshold", "max_listings_per_user",
     "contact_email", "support_email", "support_phone",
     "hero_headline", "hero_tagline", "hero_cta", "how_it_works_steps", "faq_entries",
+    "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
   ];
 
   app.get("/api/admin/settings/platform", requireAdmin, async (_req, res) => {
@@ -3327,7 +3344,7 @@ export async function registerRoutes(
       if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
         return res.status(400).json({ message: "Invalid request body" });
       }
-      const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled"];
+      const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled", "waitlist_enabled", "disputes_enabled", "ai_matching_enabled"];
       const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user"];
       const JSON_KEYS = ["how_it_works_steps", "faq_entries", "active_emirates"];
       const STRING_KEYS = ["announcement_banner_text", "announcement_banner_link", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline", "hero_cta", "maintenance_message"];
@@ -4783,6 +4800,10 @@ export async function registerRoutes(
   // Smart matching
   app.get("/api/ai/matches", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
+      const aiMatchingEnabled = await storage.getAppSetting("ai_matching_enabled");
+      if (aiMatchingEnabled === "false") {
+        return res.status(403).json({ message: "AI matching is currently disabled." });
+      }
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ message: "User not found" });
       const allListings = await storage.getListings();

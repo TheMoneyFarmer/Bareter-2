@@ -8,6 +8,17 @@ export function isWaitlistMode(): boolean {
   return String(process.env.WAITLIST_MODE || "").toLowerCase() === "true";
 }
 
+const WAITLIST_ENABLED_TTL = 5_000;
+let waitlistEnabledCache = { value: true, at: 0 };
+export async function isWaitlistEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (now - waitlistEnabledCache.at < WAITLIST_ENABLED_TTL) return waitlistEnabledCache.value;
+  const val = await storage.getAppSetting("waitlist_enabled");
+  const enabled = val !== "false";
+  waitlistEnabledCache = { value: enabled, at: now };
+  return enabled;
+}
+
 // Public-facing position offset. The DB stores raw signup order (1, 2, 3…),
 // but the public UI/email shows positions starting at #311 to reflect early
 // pre-signups, founders, and partners not represented as DB rows. The same
@@ -159,6 +170,10 @@ export function registerWaitlistRoutes(
       return res.status(429).json({ message: "Too many submissions. Please try again later." });
     }
     try {
+      const waitlistOn = await isWaitlistEnabled();
+      if (!waitlistOn) {
+        return res.status(403).json({ message: "The waitlist is currently closed." });
+      }
       const body = submitSchema.parse(req.body);
       if (body.company_website && body.company_website.length > 0) {
         // Honeypot tripped — pretend success

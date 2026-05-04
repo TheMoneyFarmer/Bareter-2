@@ -144,6 +144,9 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [maintenanceMode, setMaintenanceMode] = useState(settings.maintenance_mode === "true");
   const [registrationEnabled, setRegistrationEnabled] = useState(settings.registration_enabled !== "false");
   const [inviteOnly, setInviteOnly] = useState(settings.invite_only_mode === "true");
+  const [waitlistEnabled, setWaitlistEnabled] = useState(settings.waitlist_enabled !== "false");
+  const [disputesEnabled, setDisputesEnabled] = useState(settings.disputes_enabled !== "false");
+  const [aiMatchingEnabled, setAiMatchingEnabled] = useState(settings.ai_matching_enabled !== "false");
   const [bannerEnabled, setBannerEnabled] = useState(settings.announcement_banner_enabled === "true");
   const [bannerText, setBannerText] = useState(settings.announcement_banner_text || "");
   const [bannerLink, setBannerLink] = useState(settings.announcement_banner_link || "");
@@ -153,6 +156,9 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
     setMaintenanceMode(settings.maintenance_mode === "true");
     setRegistrationEnabled(settings.registration_enabled !== "false");
     setInviteOnly(settings.invite_only_mode === "true");
+    setWaitlistEnabled(settings.waitlist_enabled !== "false");
+    setDisputesEnabled(settings.disputes_enabled !== "false");
+    setAiMatchingEnabled(settings.ai_matching_enabled !== "false");
     setBannerEnabled(settings.announcement_banner_enabled === "true");
     setBannerText(settings.announcement_banner_text || "");
     setBannerLink(settings.announcement_banner_link || "");
@@ -165,6 +171,9 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
       maintenance_message: maintenanceMessage,
       registration_enabled: registrationEnabled ? "true" : "false",
       invite_only_mode: inviteOnly ? "true" : "false",
+      waitlist_enabled: waitlistEnabled ? "true" : "false",
+      disputes_enabled: disputesEnabled ? "true" : "false",
+      ai_matching_enabled: aiMatchingEnabled ? "true" : "false",
       announcement_banner_enabled: bannerEnabled ? "true" : "false",
       announcement_banner_text: bannerText,
       announcement_banner_link: bannerLink,
@@ -229,13 +238,55 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
             <div>
               <p className="font-medium">Invite-Only Mode</p>
               <p className="text-sm text-muted-foreground">
-                Only users who are on the waitlist can register
+                Only users who are on the waitlist or have a valid invite code can register
               </p>
             </div>
             <Switch
               checked={inviteOnly}
               onCheckedChange={setInviteOnly}
               data-testid="switch-invite-only"
+            />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Waitlist Enabled</p>
+              <p className="text-sm text-muted-foreground">
+                Allow new waitlist signups. Disable to close the waitlist.
+              </p>
+            </div>
+            <Switch
+              checked={waitlistEnabled}
+              onCheckedChange={setWaitlistEnabled}
+              data-testid="switch-waitlist-enabled"
+            />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Disputes Enabled</p>
+              <p className="text-sm text-muted-foreground">
+                Allow creation and management of disputes
+              </p>
+            </div>
+            <Switch
+              checked={disputesEnabled}
+              onCheckedChange={setDisputesEnabled}
+              data-testid="switch-disputes-enabled"
+            />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">AI Matching Enabled</p>
+              <p className="text-sm text-muted-foreground">
+                Enable AI-powered barter matching suggestions
+              </p>
+            </div>
+            <Switch
+              checked={aiMatchingEnabled}
+              onCheckedChange={setAiMatchingEnabled}
+              data-testid="switch-ai-matching-enabled"
             />
           </div>
         </CardContent>
