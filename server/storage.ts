@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount } from "drizzle-orm";
 import {
   users,
   listings,
@@ -90,6 +90,9 @@ import {
   failedLoginAttempts,
   type FailedLoginAttempt,
   type InsertFailedLoginAttempt,
+  emailLogs,
+  type EmailLog,
+  agentBudgets,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -280,6 +283,20 @@ export interface IStorage {
   // Failed Login Attempts
   createFailedLoginAttempt(attempt: InsertFailedLoginAttempt): Promise<FailedLoginAttempt>;
   getFailedLoginAttempts(opts?: { limit?: number; email?: string }): Promise<FailedLoginAttempt[]>;
+
+  // Email logs
+  createEmailLog(log: { recipientEmail: string; subject: string; status: string; source: string; broadcastId?: string; errorMessage?: string; sentBy?: string }): Promise<EmailLog>;
+  getEmailStats(): Promise<{ total: number; sent: number; failed: number }>;
+
+  // Analytics helpers
+  getUserSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
+  getNewListingsToday(): Promise<number>;
+  getTopListings(limit?: number): Promise<{ id: string; title: string; viewCount: number; proposalCount: number }[]>;
+
+  // Agent toggles
+  getAgentEnabled(agentName: string): Promise<boolean>;
+  setAgentEnabled(agentName: string, enabled: boolean): Promise<void>;
+  getAllAgentToggles(): Promise<{ agentName: string; enabled: boolean }[]>;
 
   // Legal pages (admin-editable public legal pack)
   getLegalPages(language?: string): Promise<LegalPage[]>;
@@ -1691,6 +1708,90 @@ export class DatabaseStorage implements IStorage {
     const limit = Math.min(opts?.limit ?? 100, 500);
     const query = db.select().from(failedLoginAttempts).orderBy(desc(failedLoginAttempts.createdAt)).limit(limit);
     return opts?.email ? await query.where(eq(failedLoginAttempts.email, opts.email)) : await query;
+  }
+  // ── Email logs ──────────────────────────────────────────────────────
+  async createEmailLog(log: { recipientEmail: string; subject: string; status: string; source: string; broadcastId?: string; errorMessage?: string; sentBy?: string }): Promise<EmailLog> {
+    const [row] = await db.insert(emailLogs).values(log).returning();
+    return row;
+  }
+
+  async getEmailStats(): Promise<{ total: number; sent: number; failed: number }> {
+    const rows = await db
+      .select({ status: emailLogs.status, c: sql<number>`count(*)` })
+      .from(emailLogs)
+      .groupBy(emailLogs.status);
+    let total = 0, sent = 0, failed = 0;
+    for (const r of rows) {
+      const n = Number(r.c);
+      total += n;
+      if (r.status === "sent") sent += n;
+      if (r.status === "failed") failed += n;
+    }
+    return { total, sent, failed };
+  }
+
+  // ── Analytics helpers ─────────────────────────────────────────────
+  async getUserSignupsByDay(days: number): Promise<{ date: string; count: number }[]> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db.execute<any>(sql`
+      SELECT TO_CHAR(DATE_TRUNC('day', created_at), 'YYYY-MM-DD') AS date,
+             COUNT(*)::int AS count
+      FROM users
+      WHERE created_at >= ${since}
+      GROUP BY 1
+      ORDER BY 1
+    `);
+    const list = (rows as any).rows ?? rows;
+    return list.map((r: any) => ({ date: r.date, count: Number(r.count) }));
+  }
+
+  async getNewListingsToday(): Promise<number> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [row] = await db
+      .select({ c: sql<number>`count(*)` })
+      .from(listings)
+      .where(gte(listings.createdAt, todayStart));
+    return Number(row?.c ?? 0);
+  }
+
+  async getTopListings(limit: number = 10): Promise<{ id: string; title: string; viewCount: number; proposalCount: number }[]> {
+    const rows = await db.execute<any>(sql`
+      SELECT l.id, l.title, COALESCE(l.view_count, 0)::int AS "viewCount",
+             (SELECT COUNT(*)::int FROM deals d WHERE d.seeker_listing_id = l.id OR d.provider_listing_id = l.id) AS "proposalCount"
+      FROM listings l
+      WHERE l.is_active = true
+      ORDER BY COALESCE(l.view_count, 0) DESC, "proposalCount" DESC
+      LIMIT ${limit}
+    `);
+    const list = (rows as any).rows ?? rows;
+    return list.map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      viewCount: Number(r.viewCount),
+      proposalCount: Number(r.proposalCount),
+    }));
+  }
+
+  // ── Agent toggles ─────────────────────────────────────────────────
+  async getAgentEnabled(agentName: string): Promise<boolean> {
+    const [row] = await db.select({ enabled: agentBudgets.enabled }).from(agentBudgets).where(eq(agentBudgets.agentName, agentName));
+    return row?.enabled !== false;
+  }
+
+  async setAgentEnabled(agentName: string, enabled: boolean): Promise<void> {
+    await db
+      .insert(agentBudgets)
+      .values({ agentName, monthlyCapAed: "40.00", enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: agentBudgets.agentName,
+        set: { enabled, updatedAt: new Date() },
+      });
+  }
+
+  async getAllAgentToggles(): Promise<{ agentName: string; enabled: boolean }[]> {
+    const rows = await db.select({ agentName: agentBudgets.agentName, enabled: agentBudgets.enabled }).from(agentBudgets);
+    return rows.map(r => ({ agentName: r.agentName, enabled: r.enabled !== false }));
   }
 }
 

@@ -1187,6 +1187,7 @@ export const boardReports = pgTable("board_reports", {
 export const agentBudgets = pgTable("agent_budgets", {
   agentName: text("agent_name").primaryKey(), // canonical short name
   monthlyCapAed: decimal("monthly_cap_aed", { precision: 10, scale: 2 }).notNull(),
+  enabled: boolean("enabled").default(true),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -1726,6 +1727,24 @@ export const insertFailedLoginAttemptSchema = createInsertSchema(failedLoginAtte
 });
 export type InsertFailedLoginAttempt = z.infer<typeof insertFailedLoginAttemptSchema>;
 export type FailedLoginAttempt = typeof failedLoginAttempts.$inferSelect;
+
+export const emailLogs = pgTable("email_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  recipientEmail: text("recipient_email").notNull(),
+  subject: text("subject").notNull(),
+  status: text("status").notNull().default("sent"),
+  source: text("source").notNull().default("admin"),
+  broadcastId: varchar("broadcast_id", { length: 36 }),
+  errorMessage: text("error_message"),
+  sentBy: varchar("sent_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("email_logs_status_idx").on(table.status),
+  broadcastIdx: index("email_logs_broadcast_idx").on(table.broadcastId),
+  createdAtIdx: index("email_logs_created_at_idx").on(table.createdAt),
+}));
+
+export type EmailLog = typeof emailLogs.$inferSelect;
 
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };

@@ -29,6 +29,20 @@ import {
   BOARD_REPORT_SIGNED_URL_TTL_SEC,
 } from "./boardReportAgent";
 import { withRetry } from "./retry";
+import { storage } from "../storage";
+
+const AGENT_JOB_MAP: Record<string, string> = {
+  dailyBriefing: "manager",
+  hourlyFinanceSnapshot: "finance",
+  budgetWarning: "finance",
+  weeklyMarketingBrief: "marketing",
+  dailyMetaCampaignSync: "marketing",
+  dailySalesSync: "sales",
+  weeklyDisputeRisk: "legal",
+  dailyDashboardSnapshot: "dashboard",
+  intelligenceSweep: "intelligence",
+  monthlyBoardReport: "manager",
+};
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
 const isProd = () => process.env.NODE_ENV === "production";
@@ -40,10 +54,18 @@ function schedule(name: string, expr: string, run: () => Promise<void>) {
   const task = cron.schedule(
     expr,
     () => {
-      // Wrap each cron tick in `withRetry` so a single transient failure
-      // (e.g. brief Object Storage 5xx, OpenAI 429) doesn't silently kill
-      // the day's job. Final failures are logged to companyOsLogs.
-      withRetry(run, { agentName: "scheduler", opName: name }).catch((err) => {
+      const agentName = AGENT_JOB_MAP[name];
+      const guardedRun = async () => {
+        if (agentName) {
+          const enabled = await storage.getAgentEnabled(agentName);
+          if (!enabled) {
+            console.log(`[companyOs.scheduler] ${name} skipped — agent "${agentName}" is disabled`);
+            return;
+          }
+        }
+        await run();
+      };
+      withRetry(guardedRun, { agentName: "scheduler", opName: name }).catch((err) => {
         console.error(`[companyOs.scheduler] ${name} failed:`, err);
       });
     },

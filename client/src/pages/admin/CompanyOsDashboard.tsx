@@ -765,6 +765,31 @@ export default function CompanyOsDashboard() {
     },
   });
 
+  const agentTogglesQuery = useQuery<{ agentName: string; enabled: boolean }[]>({
+    queryKey: ["/api/admin/agents/toggles"],
+    enabled: !!user?.isAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const toggleAgentMutation = useMutation<
+    { agentName: string; enabled: boolean },
+    Error,
+    { agentName: string; enabled: boolean }
+  >({
+    mutationFn: async ({ agentName, enabled }) => {
+      const res = await apiRequest("PATCH", `/api/admin/agents/${encodeURIComponent(agentName)}/toggle`, { enabled });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/agents/toggles"] });
+      toast({ title: data.enabled ? "Agent enabled" : "Agent disabled", description: `${data.agentName} is now ${data.enabled ? "active" : "paused"}.` });
+    },
+    onError: (err) => {
+      toast({ variant: "destructive", title: "Toggle failed", description: err.message });
+    },
+  });
+
   const updateBudgetMutation = useMutation<
     { ok: boolean; agentName: string; monthlyCapAed: number },
     Error,
@@ -1427,6 +1452,39 @@ export default function CompanyOsDashboard() {
                     })
                   }
                 />
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-agent-toggles">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Bot className="h-4 w-4" /> Agent on/off toggles
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {agentTogglesQuery.isLoading && (
+                <Skeleton className="h-16 w-full" data-testid="skeleton-agent-toggles" />
+              )}
+              {!agentTogglesQuery.isLoading && (!agentTogglesQuery.data || agentTogglesQuery.data.length === 0) && (
+                <p className="text-xs text-muted-foreground" data-testid="text-agent-toggles-empty">
+                  No agents configured. Agents appear here after their first scheduled run.
+                </p>
+              )}
+              {(agentTogglesQuery.data ?? []).map((a) => (
+                <div key={a.agentName} className="flex items-center justify-between py-1" data-testid={`row-agent-toggle-${a.agentName}`}>
+                  <span className="text-xs font-medium truncate">{a.agentName}</span>
+                  <Button
+                    variant={a.enabled ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    disabled={toggleAgentMutation.isPending && toggleAgentMutation.variables?.agentName === a.agentName}
+                    onClick={() => toggleAgentMutation.mutate({ agentName: a.agentName, enabled: !a.enabled })}
+                    data-testid={`button-toggle-agent-${a.agentName}`}
+                  >
+                    {a.enabled ? <><Check className="h-3 w-3" /> On</> : <><AlertTriangle className="h-3 w-3" /> Off</>}
+                  </Button>
+                </div>
               ))}
             </CardContent>
           </Card>

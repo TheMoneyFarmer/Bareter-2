@@ -2446,6 +2446,8 @@ export async function registerRoutes(
         });
       }
       
+      const newListingsToday = await storage.getNewListingsToday();
+
       res.json({
         totalUsers: allUsers.length,
         totalDeals: allDeals.length,
@@ -2453,6 +2455,7 @@ export async function registerRoutes(
         completedDeals: completedDeals.length,
         totalListings: allListings.length,
         activeListings: allListings.filter(l => l.isActive).length,
+        newListingsToday,
         totalGMV,
         monthlyGMV,
         pendingVerifications,
@@ -2461,6 +2464,247 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Admin analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/analytics/user-growth", requireAdmin, async (_req, res) => {
+    try {
+      const data = await storage.getUserSignupsByDay(30);
+      res.json(data);
+    } catch (error) {
+      console.error("User growth error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/analytics/top-listings", requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 10, 50);
+      const data = await storage.getTopListings(limit);
+      res.json(data);
+    } catch (error) {
+      console.error("Top listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/email/broadcast", requireAdmin, async (req, res) => {
+    try {
+      const { subject, body, filter } = req.body;
+      if (!subject || !body) {
+        return res.status(400).json({ message: "Subject and body are required" });
+      }
+      const allUsers = await storage.getAllUsers();
+      let recipients = allUsers.filter(u => !u.isBanned);
+      if (filter?.city) {
+        recipients = recipients.filter(u => u.city?.toLowerCase() === filter.city.toLowerCase());
+      }
+      if (filter?.accountType && filter.accountType !== "all") {
+        recipients = recipients.filter(u => u.accountType === filter.accountType);
+      }
+      if (filter?.verificationStatus && filter.verificationStatus !== "all") {
+        if (filter.verificationStatus === "verified") {
+          recipients = recipients.filter(u => u.kycStatus === "APPROVED" || u.kybStatus === "APPROVED");
+        } else if (filter.verificationStatus === "unverified") {
+          recipients = recipients.filter(u => u.kycStatus !== "APPROVED" && u.kybStatus !== "APPROVED");
+        }
+      }
+      const broadcastId = crypto.randomUUID();
+      const { sendAdminEmail } = await import("./emailService");
+      let sent = 0, failed = 0;
+      for (const recipient of recipients) {
+        try {
+          const ok = await sendAdminEmail(recipient.email, {
+            recipientName: recipient.fullName,
+            subject,
+            body,
+          });
+          await storage.createEmailLog({
+            recipientEmail: recipient.email,
+            subject,
+            status: ok ? "sent" : "failed",
+            source: "broadcast",
+            broadcastId,
+            sentBy: req.session.userId,
+          });
+          if (ok) sent++; else failed++;
+        } catch (err: any) {
+          await storage.createEmailLog({
+            recipientEmail: recipient.email,
+            subject,
+            status: "failed",
+            source: "broadcast",
+            broadcastId,
+            errorMessage: err?.message?.slice(0, 200),
+            sentBy: req.session.userId,
+          });
+          failed++;
+        }
+      }
+      await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
+      res.json({ broadcastId, recipientCount: recipients.length, sent, failed });
+    } catch (error) {
+      console.error("Broadcast email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/email/stats", requireAdmin, async (_req, res) => {
+    try {
+      const stats = await storage.getEmailStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Email stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
+    try {
+      const templates: Record<string, string> = {};
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected"];
+      for (const key of keys) {
+        const val = await storage.getAppSetting(key);
+        templates[key] = val || "";
+      }
+      res.json(templates);
+    } catch (error) {
+      console.error("Email templates error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/admin/email/templates", requireAdmin, async (req, res) => {
+    try {
+      const { templates } = req.body;
+      if (!templates || typeof templates !== "object") {
+        return res.status(400).json({ message: "Templates object is required" });
+      }
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected"];
+      for (const [key, value] of Object.entries(templates)) {
+        if (validKeys.includes(key) && typeof value === "string") {
+          await storage.setAppSetting(key, value, req.session.userId);
+        }
+      }
+      await logAdminAction(req, "email_templates_updated", "system", "templates", { keys: Object.keys(templates) });
+      res.json({ message: "Templates updated" });
+    } catch (error) {
+      console.error("Update email templates error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/agents/toggles", requireAdmin, async (_req, res) => {
+    try {
+      const toggles = await storage.getAllAgentToggles();
+      res.json(toggles);
+    } catch (error) {
+      console.error("Agent toggles error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/agents/:name/toggle", requireAdmin, async (req, res) => {
+    try {
+      const { enabled } = req.body;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "enabled (boolean) is required" });
+      }
+      const agentName = req.params.name;
+      await storage.setAgentEnabled(agentName, enabled);
+      await logAdminAction(req, enabled ? "agent_enabled" : "agent_disabled", "system", agentName, { agentName });
+      res.json({ agentName, enabled });
+    } catch (error) {
+      console.error("Agent toggle error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/deals/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const allDeals = await storage.getAllDeals();
+      let filtered = allDeals;
+      if (req.query.from) {
+        const from = new Date(req.query.from as string);
+        filtered = filtered.filter(d => d.createdAt && new Date(d.createdAt) >= from);
+      }
+      if (req.query.to) {
+        const to = new Date(req.query.to as string);
+        to.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(d => d.createdAt && new Date(d.createdAt) <= to);
+      }
+      if (req.query.state) {
+        filtered = filtered.filter(d => d.state === req.query.state);
+      }
+      const escCsv = (v: string | null | undefined) => {
+        if (v == null) return "";
+        let s = String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const headers = ["Deal Number","State","Seeker","Seeker Email","Provider","Provider Email","Seeker Offer","Seeker Value (AED)","Provider Offer","Provider Value (AED)","Created At","Completed At"];
+      const rows = filtered.map(d => [
+        escCsv(d.dealNumber), d.state,
+        escCsv(d.seeker?.fullName), escCsv(d.seeker?.email),
+        escCsv(d.provider?.fullName), escCsv(d.provider?.email),
+        escCsv(d.seekerOffer), d.seekerValue, escCsv(d.providerOffer), d.providerValue,
+        d.createdAt ? new Date(d.createdAt).toISOString() : "",
+        d.completedAt ? new Date(d.completedAt).toISOString() : "",
+      ].join(","));
+      const csv = [headers.join(","), ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="bareter-deals-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Deals CSV export error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/reports/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const fromDate = req.query.from ? new Date(req.query.from as string) : undefined;
+      const toDate = req.query.to ? new Date(req.query.to as string) : undefined;
+      if (toDate) toDate.setHours(23, 59, 59, 999);
+      const allReports = await db.select().from(reports).orderBy(desc(reports.createdAt));
+      let filtered = allReports;
+      if (fromDate) filtered = filtered.filter(r => r.createdAt && new Date(r.createdAt) >= fromDate);
+      if (toDate) filtered = filtered.filter(r => r.createdAt && new Date(r.createdAt) <= toDate);
+      const allDisputes = await db.select().from(disputes).orderBy(desc(disputes.createdAt));
+      let filteredDisputes = allDisputes;
+      if (fromDate) filteredDisputes = filteredDisputes.filter(d => d.createdAt && new Date(d.createdAt) >= fromDate);
+      if (toDate) filteredDisputes = filteredDisputes.filter(d => d.createdAt && new Date(d.createdAt) <= toDate);
+      const escCsv = (v: string | null | undefined) => {
+        if (v == null) return "";
+        let s = String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const lines: string[] = [];
+      lines.push("Type,ID,Reporter/Party A,Target/Party B,Reason/Subject,Status,Notes/Description,Created At");
+      for (const r of filtered) {
+        lines.push([
+          "Report", r.id, r.reporterId, r.targetId,
+          escCsv(r.reason), r.status, escCsv(r.notes),
+          r.createdAt ? new Date(r.createdAt).toISOString() : "",
+        ].join(","));
+      }
+      for (const d of filteredDisputes) {
+        lines.push([
+          "Dispute", d.id, d.partyAId, d.partyBId,
+          escCsv(d.subject), d.status, escCsv(d.description),
+          d.createdAt ? new Date(d.createdAt).toISOString() : "",
+        ].join(","));
+      }
+      const csv = lines.join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="bareter-reports-disputes-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Reports/disputes CSV export error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2517,7 +2761,8 @@ export async function registerRoutes(
       const headers = ["ID","Full Name","Email","Business Name","Role","Verified","Banned","KYC Status","KYB Status","Country","City","Location","Account Type","Onboarding Completed","Created At"];
       const escCsv = (v: string | null | undefined) => {
         if (v == null) return "";
-        const s = String(v);
+        let s = String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
         if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
         return s;
       };

@@ -127,7 +127,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email";
 
 type WaitlistEntryRow = {
   id: number;
@@ -154,6 +154,7 @@ type AnalyticsData = {
   completedDeals: number;
   totalListings: number;
   activeListings: number;
+  newListingsToday: number;
   totalGMV: number;
   monthlyGMV: number;
   pendingVerifications: number;
@@ -207,6 +208,11 @@ export function AdminPage() {
   const [auditLogAdminFilter, setAuditLogAdminFilter] = useState<string>("all");
   const [auditLogDateFrom, setAuditLogDateFrom] = useState<string>("");
   const [auditLogDateTo, setAuditLogDateTo] = useState<string>("");
+  const [broadcastSubject, setBroadcastSubject] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastCityFilter, setBroadcastCityFilter] = useState("");
+  const [broadcastAccountType, setBroadcastAccountType] = useState("all");
+  const [broadcastVerification, setBroadcastVerification] = useState("all");
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -225,6 +231,21 @@ export function AdminPage() {
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const { data: userGrowth } = useQuery<{ date: string; count: number }[]>({
+    queryKey: ["/api/admin/analytics/user-growth"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const { data: topListings } = useQuery<{ id: string; title: string; viewCount: number; proposalCount: number }[]>({
+    queryKey: ["/api/admin/analytics/top-listings"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const { data: emailStats } = useQuery<{ total: number; sent: number; failed: number }>({
+    queryKey: ["/api/admin/email/stats"],
     enabled: !!user?.isAdmin,
   });
 
@@ -515,6 +536,22 @@ export function AdminPage() {
     },
   });
 
+  const broadcastMutation = useMutation({
+    mutationFn: async (data: { subject: string; body: string; filter?: { city?: string; accountType?: string; verificationStatus?: string } }) => {
+      const res = await apiRequest("POST", "/api/admin/email/broadcast", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
+      setBroadcastSubject("");
+      setBroadcastBody("");
+      toast({ title: "Broadcast sent", description: `${data.sent} sent, ${data.failed} failed out of ${data.recipientCount} recipients` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send broadcast", variant: "destructive" });
+    },
+  });
+
   // NOTE: do NOT early-return here. There are more hooks declared further
   // down (useQuery for /api/admin/reports, /api/admin/behavioral-flags,
   // /api/admin/ai-logs and a few useState hooks) and an early return on
@@ -589,6 +626,7 @@ export function AdminPage() {
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
     { id: "legal" as const, label: "Legal", icon: ScrollText },
+    { id: "email" as const, label: "Email", icon: Mail },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -659,6 +697,20 @@ export function AdminPage() {
               </div>
               <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
                 <Clock className="h-5 w-5 text-orange-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-new-listings-today">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">New Listings Today</p>
+                <p className="text-2xl font-bold" data-testid="text-new-listings-today">{analytics?.newListingsToday || 0}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                <Package className="h-5 w-5 text-purple-500" />
               </div>
             </div>
           </CardContent>
@@ -1175,15 +1227,21 @@ export function AdminPage() {
           <h2 className="text-2xl font-bold mb-1">Deals Management</h2>
           <p className="text-muted-foreground">View all deals and their details</p>
         </div>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search deals..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-search-deals"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search deals..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-deals"
+            />
+          </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => { window.open("/api/admin/deals/export.csv", "_blank"); toast({ title: "Exporting", description: "Deals CSV download started" }); }} data-testid="button-export-deals-csv">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
@@ -1385,6 +1443,100 @@ export function AdminPage() {
     </div>
   );
 
+  const renderEmail = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Email Management</h2>
+        <p className="text-muted-foreground">Broadcast emails and delivery tracking</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card data-testid="stat-emails-total">
+          <CardContent className="pt-6 text-center">
+            <p className="text-3xl font-bold">{emailStats?.total || 0}</p>
+            <p className="text-sm text-muted-foreground">Total Sent</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="stat-emails-delivered">
+          <CardContent className="pt-6 text-center">
+            <p className="text-3xl font-bold text-green-500">{emailStats?.sent || 0}</p>
+            <p className="text-sm text-muted-foreground">Delivered</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="stat-emails-failed">
+          <CardContent className="pt-6 text-center">
+            <p className="text-3xl font-bold text-destructive">{emailStats?.failed || 0}</p>
+            <p className="text-sm text-muted-foreground">Failed</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Megaphone className="h-5 w-5" />
+            Broadcast Email
+          </CardTitle>
+          <CardDescription>Send bulk emails to filtered user groups</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>City filter</Label>
+              <Input placeholder="e.g. Dubai (leave empty for all)" value={broadcastCityFilter} onChange={(e) => setBroadcastCityFilter(e.target.value)} data-testid="input-broadcast-city" />
+            </div>
+            <div className="space-y-2">
+              <Label>Account type</Label>
+              <Select value={broadcastAccountType} onValueChange={setBroadcastAccountType}>
+                <SelectTrigger data-testid="select-broadcast-account-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="individual">Individual</SelectItem>
+                  <SelectItem value="business">Business</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Verification</Label>
+              <Select value={broadcastVerification} onValueChange={setBroadcastVerification}>
+                <SelectTrigger data-testid="select-broadcast-verification"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="unverified">Unverified</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Subject</Label>
+            <Input placeholder="Email subject..." value={broadcastSubject} onChange={(e) => setBroadcastSubject(e.target.value)} data-testid="input-broadcast-subject" />
+          </div>
+          <div className="space-y-2">
+            <Label>Body</Label>
+            <Textarea placeholder="Email body (HTML supported)..." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
+          </div>
+          <Button
+            onClick={() => broadcastMutation.mutate({
+              subject: broadcastSubject,
+              body: broadcastBody,
+              filter: {
+                city: broadcastCityFilter || undefined,
+                accountType: broadcastAccountType,
+                verificationStatus: broadcastVerification,
+              },
+            })}
+            disabled={!broadcastSubject || !broadcastBody || broadcastMutation.isPending}
+            className="gap-2"
+            data-testid="button-send-broadcast"
+          >
+            {broadcastMutation.isPending ? "Sending..." : <><Mail className="h-4 w-4" /> Send Broadcast</>}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderAnalytics = () => (
     <div className="space-y-6">
       <div>
@@ -1393,6 +1545,26 @@ export function AdminPage() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>User Growth (30 days)</CardTitle>
+            <CardDescription>New user signups per day</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={userGrowth || []}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => v?.slice(5)} />
+                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                  <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} name="Signups" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Deals Per Week</CardTitle>
@@ -1456,13 +1628,38 @@ export function AdminPage() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Listings</CardTitle>
+            <CardDescription>Most viewed active listings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {topListings && topListings.length > 0 ? topListings.slice(0, 8).map((l, i) => (
+                <div key={l.id} className="flex items-center justify-between gap-2" data-testid={`row-top-listing-${l.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-bold text-muted-foreground w-5">{i + 1}</span>
+                    <span className="text-sm truncate">{l.title}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {l.viewCount}</span>
+                    <span className="flex items-center gap-1"><Handshake className="h-3 w-3" /> {l.proposalCount}</span>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No listings yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Platform Summary</CardTitle>
             <CardDescription>All-time platform metrics</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
               <div className="text-center">
                 <p className="text-3xl font-bold text-primary">{analytics?.totalUsers || 0}</p>
                 <p className="text-sm text-muted-foreground">Total Users</p>
@@ -1476,6 +1673,14 @@ export function AdminPage() {
                   AED {analytics?.totalGMV ? (analytics.totalGMV / 1000).toFixed(0) : 0}K
                 </p>
                 <p className="text-sm text-muted-foreground">Total GMV</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-purple-500">{analytics?.newListingsToday || 0}</p>
+                <p className="text-sm text-muted-foreground">New Today</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-orange-500">{analytics?.activeListings || 0}</p>
+                <p className="text-sm text-muted-foreground">Active Listings</p>
               </div>
             </div>
           </CardContent>
@@ -1732,9 +1937,15 @@ export function AdminPage() {
 
   const renderReports = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-1">Reports</h2>
-        <p className="text-muted-foreground">User-submitted reports for review</p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Reports</h2>
+          <p className="text-muted-foreground">User-submitted reports for review</p>
+        </div>
+        <Button variant="outline" size="sm" className="gap-2" onClick={() => { window.open("/api/admin/reports/export.csv", "_blank"); toast({ title: "Exporting", description: "Reports & disputes CSV download started" }); }} data-testid="button-export-reports-csv">
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
       </div>
       <Card>
         <CardContent className="p-0">
@@ -2147,6 +2358,8 @@ export function AdminPage() {
         return renderWaitlist();
       case "legal":
         return <AdminLegalSection />;
+      case "email":
+        return renderEmail();
       case "analytics":
         return renderAnalytics();
       case "settings":
