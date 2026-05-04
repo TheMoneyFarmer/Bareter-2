@@ -76,6 +76,10 @@ import {
   type LegalPage,
   type InsertLegalPage,
   type LegalPageVersion,
+  bannedEmails,
+  type BannedEmail,
+  moderationLogs,
+  type ModerationLog,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -238,6 +242,17 @@ export interface IStorage {
   // Cookie consent log (append-only audit trail)
   createConsentLog(log: InsertConsentLog): Promise<ConsentLog>;
   listConsentLogs(opts?: { limit?: number; since?: Date }): Promise<ConsentLog[]>;
+
+  // Admin - all listings (including inactive)
+  getAllListingsAdmin(): Promise<ListingWithUser[]>;
+
+  // Banned emails
+  isBannedEmail(email: string): Promise<boolean>;
+  addBannedEmail(email: string, bannedBy: string, reason?: string): Promise<BannedEmail>;
+  removeBannedEmail(email: string): Promise<void>;
+
+  // Moderation logs for listings
+  getModerationLogsByTarget(targetId: string): Promise<ModerationLog[]>;
 
   // Legal pages (admin-editable public legal pack)
   getLegalPages(language?: string): Promise<LegalPage[]>;
@@ -1445,6 +1460,52 @@ export class DatabaseStorage implements IStorage {
       .where(eq(waitlistEntries.email, email.trim().toLowerCase()))
       .returning();
     return row;
+  }
+
+  async getAllListingsAdmin(): Promise<ListingWithUser[]> {
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .orderBy(desc(listings.createdAt));
+
+    return result.map(({ listings: listing, users: user }) => ({
+      ...listing,
+      user: user!,
+    }));
+  }
+
+  async isBannedEmail(email: string): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(bannedEmails)
+      .where(eq(bannedEmails.email, email.trim().toLowerCase()));
+    return !!row;
+  }
+
+  async addBannedEmail(email: string, bannedBy: string, reason?: string): Promise<BannedEmail> {
+    const [row] = await db
+      .insert(bannedEmails)
+      .values({ email: email.trim().toLowerCase(), bannedBy, reason: reason || null })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) {
+      const [existing] = await db.select().from(bannedEmails).where(eq(bannedEmails.email, email.trim().toLowerCase()));
+      return existing;
+    }
+    return row;
+  }
+
+  async removeBannedEmail(email: string): Promise<void> {
+    await db.delete(bannedEmails).where(eq(bannedEmails.email, email.trim().toLowerCase()));
+  }
+
+  async getModerationLogsByTarget(targetId: string): Promise<ModerationLog[]> {
+    return db
+      .select()
+      .from(moderationLogs)
+      .where(eq(moderationLogs.targetId, targetId))
+      .orderBy(desc(moderationLogs.createdAt));
   }
 }
 

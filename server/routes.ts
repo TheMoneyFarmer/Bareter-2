@@ -221,6 +221,11 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email already registered" });
       }
 
+      const isBanned = await storage.isBannedEmail(data.email);
+      if (isBanned) {
+        return res.status(403).json({ message: "This email address has been suspended from the platform" });
+      }
+
       const hashedPassword = await hashPassword(data.password);
 
       // Auto-grant Founder Badge if email matches a waitlist entry
@@ -2168,7 +2173,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/listings", requireAdmin, async (req, res) => {
     try {
-      const listings = await storage.getListings();
+      const listings = await storage.getAllListingsAdmin();
       const commentCounts = await storage.getListingCommentCounts();
       const enriched = listings.map(l => ({
         ...l,
@@ -2317,10 +2322,190 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      if (banned && user.email) {
+        await storage.addBannedEmail(user.email, req.session.userId!, reason || undefined);
+      } else if (!banned && user.email) {
+        await storage.removeBannedEmail(user.email);
+      }
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Admin ban user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/users/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const headers = ["ID","Full Name","Email","Business Name","Role","Verified","Banned","KYC Status","KYB Status","Country","City","Location","Account Type","Onboarding Completed","Created At"];
+      const escCsv = (v: string | null | undefined) => {
+        if (v == null) return "";
+        const s = String(v);
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const rows = allUsers.map(u => [
+        u.id, escCsv(u.fullName), escCsv(u.email), escCsv(u.businessName),
+        u.role, u.isVerified ? "Yes" : "No", u.isBanned ? "Yes" : "No",
+        u.kycStatus, u.kybStatus, u.country, u.city, escCsv(u.location),
+        u.accountType, u.onboardingCompleted ? "Yes" : "No",
+        u.createdAt ? new Date(u.createdAt).toISOString() : "",
+      ].join(","));
+      const csv = [headers.join(","), ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="bareter-users-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Admin export users CSV error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(param(req.params.id));
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000);
+      await storage.updateUser(user.id, {
+        passwordResetToken: hashResetToken(token),
+        passwordResetExpires: expires,
+      });
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+      const { sendPasswordResetEmail } = await import("./emailService");
+      await sendPasswordResetEmail(user.email, token, baseUrl);
+      res.json({ message: "Password reset email sent" });
+    } catch (error) {
+      console.error("Admin reset password error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const userId = param(req.params.id);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (user.role === "super_admin") {
+        return res.status(403).json({ message: "Cannot delete super admin accounts" });
+      }
+      await destroyUserSessions(userId);
+      const userListings = await storage.getListingsByUser(userId);
+      for (const listing of userListings) {
+        await storage.updateListing(listing.id, { isActive: false });
+      }
+      await storage.updateUser(userId, {
+        email: `deleted-${userId}@erased.bareter.com`,
+        fullName: "[Deleted User]",
+        bio: null,
+        avatarUrl: null,
+        businessName: null,
+        phone: null,
+        website: null,
+        socialLinks: null,
+        socialProfiles: [],
+        whatIOffer: [],
+        whatINeed: [],
+        portfolioImages: [],
+        password: "ERASED",
+        isBanned: true,
+        bannedReason: "Account deleted (PDPL erasure)",
+        bannedAt: new Date(),
+        isPaused: true,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        emailVerificationToken: null,
+      });
+      res.json({ message: "User data erased (PDPL right to erasure)" });
+    } catch (error) {
+      console.error("Admin delete user (PDPL) error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/verification-tier", requireAdmin, async (req, res) => {
+    try {
+      const { tier } = req.body;
+      if (!["basic", "verified", "business"].includes(tier)) {
+        return res.status(400).json({ message: "Invalid tier. Must be basic, verified, or business" });
+      }
+      const updates: any = {};
+      if (tier === "basic") {
+        updates.isVerified = false;
+        updates.kycStatus = "NOT_STARTED";
+        updates.kybStatus = "NOT_STARTED";
+        updates.accountType = "individual";
+      } else if (tier === "verified") {
+        updates.isVerified = true;
+        updates.kycStatus = "APPROVED";
+        updates.accountType = "individual";
+      } else if (tier === "business") {
+        updates.isVerified = true;
+        updates.kycStatus = "APPROVED";
+        updates.kybStatus = "APPROVED";
+        updates.accountType = "business";
+      }
+      const user = await storage.updateUser(param(req.params.id), updates);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin verification tier error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/email", requireAdmin, async (req, res) => {
+    try {
+      const { subject, body } = req.body;
+      if (!subject || !body) {
+        return res.status(400).json({ message: "Subject and body are required" });
+      }
+      const user = await storage.getUser(param(req.params.id));
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { sendAdminEmail } = await import("./emailService");
+      const sent = await sendAdminEmail(user.email, {
+        recipientName: user.fullName,
+        subject,
+        body,
+      });
+      if (!sent) {
+        return res.status(500).json({ message: "Failed to send email. Email service may not be configured." });
+      }
+      res.json({ message: "Email sent successfully" });
+    } catch (error) {
+      console.error("Admin send email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/users/:id/detail", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(param(req.params.id));
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const userListings = await storage.getListingsByUser(user.id);
+      const userDeals = await storage.getDealsByUser(user.id);
+      const { password, ...userWithoutPassword } = user;
+      res.json({
+        ...userWithoutPassword,
+        listings: userListings,
+        deals: userDeals,
+      });
+    } catch (error) {
+      console.error("Admin user detail error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2334,6 +2519,110 @@ export async function registerRoutes(
       res.json({ message: "Listing removed successfully" });
     } catch (error) {
       console.error("Admin delete listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/listings/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const listing = await storage.updateListing(param(req.params.id), {
+        isActive: true,
+        moderationStatus: "approved",
+      });
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      res.json(listing);
+    } catch (error) {
+      console.error("Admin approve listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/listings/:id/reject", requireAdmin, async (req, res) => {
+    try {
+      const { reason } = req.body;
+      if (!reason) {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+      const listing = await storage.updateListing(param(req.params.id), {
+        isActive: false,
+        moderationStatus: "rejected",
+      });
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      const owner = await storage.getUser(listing.userId);
+      if (owner) {
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const baseUrl = `${protocol}://${host}`;
+        const { sendListingRejectionEmail } = await import("./emailService");
+        sendListingRejectionEmail(owner.email, {
+          recipientName: owner.fullName,
+          listingTitle: listing.title,
+          reason,
+          baseUrl,
+        }).catch(err => console.error("Failed to send rejection email:", err));
+      }
+      res.json(listing);
+    } catch (error) {
+      console.error("Admin reject listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/listings/:id/edit", requireAdmin, async (req, res) => {
+    try {
+      const { categories, retailValue, title, description } = req.body;
+      const updates: any = {};
+      if (categories !== undefined) updates.categories = categories;
+      if (retailValue !== undefined) updates.retailValue = retailValue;
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      const listing = await storage.updateListing(param(req.params.id), updates);
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      res.json(listing);
+    } catch (error) {
+      console.error("Admin edit listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/listings/:id/feature", requireAdmin, async (req, res) => {
+    try {
+      const { featured, durationDays } = req.body;
+      const updates: any = {
+        isFeatured: !!featured,
+      };
+      if (featured) {
+        const days = durationDays || 7;
+        updates.featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      } else {
+        updates.featuredUntil = null;
+      }
+      const listing = await storage.updateListing(param(req.params.id), updates);
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      res.json(listing);
+    } catch (error) {
+      console.error("Admin feature listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/listings/:id/moderation-history", requireAdmin, async (req, res) => {
+    try {
+      const logs = await storage.getModerationLogsByTarget(param(req.params.id));
+      res.json(logs);
+    } catch (error) {
+      console.error("Admin moderation history error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

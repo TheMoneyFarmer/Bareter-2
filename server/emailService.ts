@@ -437,6 +437,77 @@ export async function sendCriticalAlertEmail(
   });
 }
 
+export async function sendAdminEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; subject: string; body: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Admin email to ${toEmail} skipped (email not configured). Subject: ${opts.subject}`);
+    return false;
+  }
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const escapedBody = opts.body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br />");
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${escapedBody}</p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${opts.body}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: opts.subject, html, text });
+}
+
+export async function sendListingRejectionEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; reason: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Listing rejection email to ${toEmail} skipped (email not configured). Listing: ${opts.listingTitle}`);
+    return false;
+  }
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const escapedTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapedReason = opts.reason.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Listing Not Approved</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      ${greeting} your listing <strong>"${escapedTitle}"</strong> was reviewed by our moderation team and could not be approved at this time.
+    </p>
+    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #991b1b; font-size: 13px; font-weight: 600;">Reason</p>
+      <p style="margin: 0; color: #7f1d1d; font-size: 13px; line-height: 1.5;">${escapedReason}</p>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      You can update your listing and resubmit it for review. If you believe this was a mistake, please contact our support team.
+    </p>
+    <a href="${opts.baseUrl}/my-listings" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      View My Listings
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour listing "${opts.listingTitle}" was reviewed and could not be approved.\n\nReason: ${opts.reason}\n\nYou can update your listing and resubmit it for review.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

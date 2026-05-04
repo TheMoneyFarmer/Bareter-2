@@ -419,6 +419,15 @@ export const listings = pgTable("listings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Banned emails table - prevents re-registration of banned users
+export const bannedEmails = pgTable("banned_emails", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  bannedBy: varchar("banned_by", { length: 36 }).references(() => users.id),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Deals table
 export const deals = pgTable("deals", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -1604,6 +1613,8 @@ export const insertWaitlistEntrySchema = createInsertSchema(waitlistEntries)
   });
 export type InsertWaitlistEntry = z.infer<typeof insertWaitlistEntrySchema>;
 export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
+
+export type BannedEmail = typeof bannedEmails.$inferSelect;
 
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };

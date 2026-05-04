@@ -34,7 +34,7 @@ Preferred communication style: Simple, everyday language.
 - **Content & Discovery**: Explore/Discover hub, Instagram-style feed, advanced search.
 - **Marketplace**: Listing creation, AI-powered matching, valuation, moderation, and quality control.
 - **Communication & Deals**: Real-time direct messaging, deal negotiation, and contract generation with off-platform keyword detection.
-- **Admin & Analytics**: User and Admin Dashboards for platform management, moderation, and analytics.
+- **Admin & Analytics**: User and Admin Dashboards for platform management, moderation, and analytics. Admin panel includes comprehensive user management (status filters, detail drawer, CSV export, password reset, PDPL erasure, verification tier control, email compose, ban with re-registration prevention) and listing management (status/category filters, detail dialog with moderation history, approve/reject/edit/feature actions).
 - **Waitlist Mode**: Configurable waitlist with referral tracking.
 - **AI Agents Platform**: Integration of 6 specialized OpenAI-powered AI agents for moderation, support, matching, valuation, engagement, and administration.
 - **Company OS (WhatsApp control plane)**: Founder-only WhatsApp interface for platform insights, marketing post drafting/publishing, campaign updates, and LLM-powered queries.

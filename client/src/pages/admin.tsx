@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -39,10 +40,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser } from "@shared/schema";
+import { CATEGORIES } from "@shared/schema";
 import {
   Users,
   Package,
@@ -82,6 +92,11 @@ import {
   Bot,
   Sparkles,
   Building2,
+  Mail,
+  KeyRound,
+  BadgeCheck,
+  Pencil,
+  X,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -150,6 +165,21 @@ export function AdminPage() {
     open: false,
     user: null,
     reason: "",
+  });
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; user: User | null; subject: string; body: string }>({
+    open: false, user: null, subject: "", body: "",
+  });
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user: User | null }>({ open: false, user: null });
+  const [listingStatusFilter, setListingStatusFilter] = useState<string>("all");
+  const [listingCategoryFilter, setListingCategoryFilter] = useState<string>("all");
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; listingId: string | null; reason: string }>({
+    open: false, listingId: null, reason: "",
+  });
+  const [editListingDialog, setEditListingDialog] = useState<{ open: boolean; listing: ListingWithUser | null; categories: string[]; retailValue: string }>({
+    open: false, listing: null, categories: [], retailValue: "",
   });
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
@@ -220,6 +250,106 @@ export function AdminPage() {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("POST", `/api/admin/users/${userId}/reset-password`);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Password reset email sent" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send password reset email", variant: "destructive" });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("DELETE", `/api/admin/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      setDeleteDialog({ open: false, user: null });
+      setSelectedUserId(null);
+      toast({ title: "Success", description: "User data erased (PDPL)" });
+    },
+  });
+
+  const verificationTierMutation = useMutation({
+    mutationFn: async ({ userId, tier }: { userId: string; tier: string }) => {
+      await apiRequest("PATCH", `/api/admin/users/${userId}/verification-tier`, { tier });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Success", description: "Verification tier updated" });
+    },
+  });
+
+  const sendEmailMutation = useMutation({
+    mutationFn: async ({ userId, subject, body }: { userId: string; subject: string; body: string }) => {
+      await apiRequest("POST", `/api/admin/users/${userId}/email`, { subject, body });
+    },
+    onSuccess: () => {
+      setEmailDialog({ open: false, user: null, subject: "", body: "" });
+      toast({ title: "Success", description: "Email sent successfully" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to send email", variant: "destructive" });
+    },
+  });
+
+  const approveListingMutation = useMutation({
+    mutationFn: async (listingId: string) => {
+      await apiRequest("PATCH", `/api/admin/listings/${listingId}/approve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      toast({ title: "Success", description: "Listing approved" });
+    },
+  });
+
+  const rejectListingMutation = useMutation({
+    mutationFn: async ({ listingId, reason }: { listingId: string; reason: string }) => {
+      await apiRequest("PATCH", `/api/admin/listings/${listingId}/reject`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      setRejectDialog({ open: false, listingId: null, reason: "" });
+      toast({ title: "Success", description: "Listing rejected and user notified" });
+    },
+  });
+
+  const editListingMutation = useMutation({
+    mutationFn: async ({ listingId, categories, retailValue }: { listingId: string; categories: string[]; retailValue: string }) => {
+      await apiRequest("PATCH", `/api/admin/listings/${listingId}/edit`, { categories, retailValue });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      setEditListingDialog({ open: false, listing: null, categories: [], retailValue: "" });
+      toast({ title: "Success", description: "Listing updated" });
+    },
+  });
+
+  const featureListingMutation = useMutation({
+    mutationFn: async ({ listingId, featured }: { listingId: string; featured: boolean }) => {
+      await apiRequest("PATCH", `/api/admin/listings/${listingId}/feature`, { featured, durationDays: 7 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      toast({ title: "Success", description: "Listing feature status updated" });
+    },
+  });
+
+  const { data: userDetail } = useQuery<User & { listings: Listing[]; deals: DealWithUsers[] }>({
+    queryKey: ["/api/admin/users", selectedUserId, "detail"],
+    enabled: !!selectedUserId,
+  });
+
+  const { data: listingModerationHistory } = useQuery<any[]>({
+    queryKey: ["/api/admin/listings", selectedListingId, "moderation-history"],
+    enabled: !!selectedListingId,
+  });
+
   // NOTE: do NOT early-return here. There are more hooks declared further
   // down (useQuery for /api/admin/reports, /api/admin/behavioral-flags,
   // /api/admin/ai-logs and a few useState hooks) and an early return on
@@ -230,17 +360,38 @@ export function AdminPage() {
   // has been declared. The server-side `requireAdmin` middleware is
   // the real authority — this is just a friendly client-side message.
 
-  const filteredUsers = users?.filter(
-    (u) =>
-      u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users?.filter((u) => {
+    const matchesSearch = u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (userStatusFilter === "active") return !u.isBanned && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS");
+    if (userStatusFilter === "banned") return u.isBanned;
+    if (userStatusFilter === "pending") return u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW";
+    if (userStatusFilter === "unverified") return !u.isVerified && !u.isBanned;
+    return true;
+  });
 
-  const filteredListings = listings?.filter(
-    (l) =>
-      l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredListings = listings?.filter((l) => {
+    const matchesSearch = l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (listingStatusFilter === "active") return l.isActive && l.moderationStatus !== "rejected";
+    if (listingStatusFilter === "inactive") return !l.isActive;
+    if (listingStatusFilter === "pending") return l.moderationStatus === "pending";
+    if (listingStatusFilter === "flagged") return l.moderationStatus === "flagged" || (l as any).valueFlagged || (l as any).imageFlagged;
+    if (listingStatusFilter === "rejected") return l.moderationStatus === "rejected";
+    if (listingStatusFilter === "featured") return l.isFeatured;
+    if (listingCategoryFilter !== "all") {
+      const cats = (l.categories as string[]) || [];
+      if (!cats.includes(listingCategoryFilter)) return false;
+    }
+    return true;
+  }).filter((l) => {
+    if (listingCategoryFilter === "all") return true;
+    const cats = (l.categories as string[]) || [];
+    return cats.includes(listingCategoryFilter);
+  });
 
   const filteredDeals = deals?.filter(
     (d) =>
@@ -412,6 +563,11 @@ export function AdminPage() {
     </div>
   );
 
+  const handleExportCSV = () => {
+    window.open("/api/admin/users/export.csv", "_blank");
+    toast({ title: "Exporting", description: "CSV download started" });
+  };
+
   const renderUsers = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -419,15 +575,33 @@ export function AdminPage() {
           <h2 className="text-2xl font-bold mb-1">Users Management</h2>
           <p className="text-muted-foreground">Manage registered users and verification status</p>
         </div>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-search-users"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-user-status-filter">
+              <SelectValue placeholder="Filter status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="banned">Banned</SelectItem>
+              <SelectItem value="pending">Pending Verification</SelectItem>
+              <SelectItem value="unverified">Unverified</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-users"
+            />
+          </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCSV} data-testid="button-export-csv">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
@@ -447,6 +621,7 @@ export function AdminPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Onboarding</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
@@ -454,7 +629,7 @@ export function AdminPage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers?.map((u) => (
-                  <TableRow key={u.id} className={u.isBanned ? "opacity-50" : ""}>
+                  <TableRow key={u.id} className={`${u.isBanned ? "opacity-50" : ""} cursor-pointer`} onClick={() => setSelectedUserId(u.id)}>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
@@ -497,6 +672,13 @@ export function AdminPage() {
                         )}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {u.onboardingCompleted ? (
+                        <Badge variant="outline" className="text-green-600 gap-1"><CheckCircle className="h-3 w-3" />Done</Badge>
+                      ) : (
+                        <Badge variant="secondary">Step {u.onboardingStep || 1}/4</Badge>
+                      )}
+                    </TableCell>
                     <TableCell>{u.location || "-"}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "-"}
@@ -504,39 +686,58 @@ export function AdminPage() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" data-testid={`button-user-actions-${u.id}`}>
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()} data-testid={`button-user-actions-${u.id}`}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => verifyUserMutation.mutate({ userId: u.id, verified: !u.isVerified })}
-                            data-testid={`button-verify-user-${u.id}`}
-                          >
-                            {u.isVerified ? (
-                              <>
-                                <ShieldX className="h-4 w-4 mr-2" />
-                                Remove Verification
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="h-4 w-4 mr-2" />
-                                Verify User
-                              </>
-                            )}
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedUserId(u.id); }} data-testid={`button-view-user-${u.id}`}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={() => changeRoleMutation.mutate({ userId: u.id, role: u.role === "admin" ? "user" : "admin" })}
-                            data-testid={`button-toggle-admin-${u.id}`}
+                            onClick={(e) => { e.stopPropagation(); verifyUserMutation.mutate({ userId: u.id, verified: !u.isVerified }); }}
+                            data-testid={`button-verify-user-${u.id}`}
                           >
+                            {u.isVerified ? (
+                              <><ShieldX className="h-4 w-4 mr-2" />Remove Verification</>
+                            ) : (
+                              <><UserCheck className="h-4 w-4 mr-2" />Verify User</>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); changeRoleMutation.mutate({ userId: u.id, role: u.role === "admin" ? "user" : "admin" }); }} data-testid={`button-toggle-admin-${u.id}`}>
                             <Crown className="h-4 w-4 mr-2" />
                             {u.role === "admin" || u.role === "super_admin" ? "Remove Admin" : "Make Admin"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem disabled className="text-xs text-muted-foreground font-medium opacity-100 cursor-default">
+                            <BadgeCheck className="h-4 w-4 mr-2" />
+                            Set Verification Tier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); verificationTierMutation.mutate({ userId: u.id, tier: "basic" }); }} data-testid={`button-tier-basic-${u.id}`}>
+                            <span className="ml-6">Basic {!u.isVerified && u.kybStatus !== "APPROVED" ? "✓" : ""}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); verificationTierMutation.mutate({ userId: u.id, tier: "verified" }); }} data-testid={`button-tier-verified-${u.id}`}>
+                            <span className="ml-6">Verified {u.isVerified && u.kybStatus !== "APPROVED" ? "✓" : ""}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); verificationTierMutation.mutate({ userId: u.id, tier: "business" }); }} data-testid={`button-tier-business-${u.id}`}>
+                            <span className="ml-6">Business {u.kybStatus === "APPROVED" ? "✓" : ""}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); resetPasswordMutation.mutate(u.id); }} data-testid={`button-reset-password-${u.id}`}>
+                            <KeyRound className="h-4 w-4 mr-2" />
+                            Send Password Reset
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEmailDialog({ open: true, user: u, subject: "", body: "" }); }} data-testid={`button-send-email-${u.id}`}>
+                            <Mail className="h-4 w-4 mr-2" />
+                            Send Email
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               if (u.isBanned) {
                                 banUserMutation.mutate({ userId: u.id, banned: false });
                               } else {
@@ -547,6 +748,10 @@ export function AdminPage() {
                           >
                             <Ban className="h-4 w-4 mr-2" />
                             {u.isBanned ? "Unban User" : "Ban User"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteDialog({ open: true, user: u }); }} data-testid={`button-delete-user-${u.id}`}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Account (PDPL)
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -568,15 +773,42 @@ export function AdminPage() {
           <h2 className="text-2xl font-bold mb-1">Listings Management</h2>
           <p className="text-muted-foreground">View and moderate all platform listings</p>
         </div>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search listings..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-search-listings"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <Select value={listingStatusFilter} onValueChange={setListingStatusFilter}>
+            <SelectTrigger className="w-[140px]" data-testid="select-listing-status-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="flagged">Flagged</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="featured">Featured</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={listingCategoryFilter} onValueChange={setListingCategoryFilter}>
+            <SelectTrigger className="w-[140px]" data-testid="select-listing-category-filter">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {CATEGORIES.map(cat => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search listings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-listings"
+            />
+          </div>
         </div>
       </div>
 
@@ -597,15 +829,14 @@ export function AdminPage() {
                   <TableHead>Value (AED)</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Moderation</TableHead>
                   <TableHead>Views</TableHead>
-                  <TableHead>Likes</TableHead>
-                  <TableHead>Proposals</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredListings?.map((l) => (
-                  <TableRow key={l.id}>
+                  <TableRow key={l.id} className="cursor-pointer" onClick={() => setSelectedListingId(l.id)}>
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
@@ -613,6 +844,7 @@ export function AdminPage() {
                             {l.type === "offer" ? "Offer" : "Request"}
                           </Badge>
                           <span className="font-medium line-clamp-1">{l.title}</span>
+                          {l.isFeatured && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0" />}
                         </div>
                         <div className="flex gap-1 flex-wrap">
                           {(l as any).valueFlagged && (
@@ -642,9 +874,7 @@ export function AdminPage() {
                     </TableCell>
                     <TableCell>
                       {((l.categories as string[]) || []).slice(0, 1).map((cat) => (
-                        <Badge key={cat} variant="outline" className="text-xs">
-                          {cat}
-                        </Badge>
+                        <Badge key={cat} variant="outline" className="text-xs">{cat}</Badge>
                       ))}
                     </TableCell>
                     <TableCell>
@@ -654,27 +884,58 @@ export function AdminPage() {
                         <Badge variant="secondary">Inactive</Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        l.moderationStatus === "approved" ? "default" :
+                        l.moderationStatus === "rejected" ? "destructive" :
+                        l.moderationStatus === "flagged" ? "outline" : "secondary"
+                      } className={l.moderationStatus === "flagged" ? "text-amber-600 border-amber-500/60" : ""}>
+                        {l.moderationStatus || "pending"}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{l.viewCount || 0}</TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-likes-${l.id}`}>{l.likeCount || 0}</TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-comments-${l.id}`}>{l.commentCount || 0}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" data-testid={`button-listing-actions-${l.id}`}>
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()} data-testid={`button-listing-actions-${l.id}`}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedListingId(l.id); }} data-testid={`button-view-listing-${l.id}`}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
                           <DropdownMenuItem asChild>
-                            <Link href={`/listings/${l.id}`}>
+                            <Link href={`/listings/${l.id}`} onClick={(e: any) => e.stopPropagation()}>
                               <Eye className="h-4 w-4 mr-2" />
-                              View Listing
+                              View on Site
                             </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {l.moderationStatus !== "approved" && (
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); approveListingMutation.mutate(l.id); }} data-testid={`button-approve-listing-${l.id}`}>
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Approve
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRejectDialog({ open: true, listingId: l.id, reason: "" }); }} data-testid={`button-reject-listing-${l.id}`}>
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Reject
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditListingDialog({ open: true, listing: l, categories: (l.categories as string[]) || [], retailValue: String(l.retailValue) }); }}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit Category/Value
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); featureListingMutation.mutate({ listingId: l.id, featured: !l.isFeatured }); }} data-testid={`button-feature-listing-${l.id}`}>
+                            <Star className="h-4 w-4 mr-2" />
+                            {l.isFeatured ? "Remove Featured" : "Mark as Featured"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => deleteListingMutation.mutate(l.id)}
+                            onClick={(e) => { e.stopPropagation(); deleteListingMutation.mutate(l.id); }}
                             data-testid={`button-delete-listing-${l.id}`}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -1650,6 +1911,461 @@ export function AdminPage() {
               data-testid="button-confirm-ban"
             >
               Ban User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* User Detail Drawer */}
+      <Sheet open={!!selectedUserId} onOpenChange={(open) => !open && setSelectedUserId(null)}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="drawer-user-detail">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-3">
+              {userDetail && (
+                <>
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={userDetail.avatarUrl || undefined} />
+                    <AvatarFallback>{userDetail.fullName.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {userDetail.fullName}
+                      {userDetail.isVerified && <VerifiedBadge kycStatus={userDetail.kycStatus} kybStatus={userDetail.kybStatus} size="sm" />}
+                    </div>
+                    <p className="text-sm font-normal text-muted-foreground">{userDetail.email}</p>
+                  </div>
+                </>
+              )}
+            </SheetTitle>
+            <SheetDescription>User account details and activity</SheetDescription>
+          </SheetHeader>
+
+          {userDetail && (
+            <div className="mt-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Role</p>
+                  <Badge variant={userDetail.role === "admin" ? "destructive" : "secondary"}>{userDetail.role}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  {userDetail.isBanned ? (
+                    <Badge variant="destructive">Banned</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-green-600">Active</Badge>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Business</p>
+                  <p className="text-sm font-medium">{userDetail.businessName || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Location</p>
+                  <p className="text-sm font-medium">{userDetail.location || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">KYC Status</p>
+                  <Badge variant="outline">{userDetail.kycStatus || "none"}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">KYB Status</p>
+                  <Badge variant="outline">{userDetail.kybStatus || "none"}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Joined</p>
+                  <p className="text-sm">{userDetail.createdAt ? new Date(userDetail.createdAt).toLocaleDateString() : "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Onboarding</p>
+                  <p className="text-sm">{userDetail.onboardingCompleted ? "Completed" : `Step ${userDetail.onboardingStep || 1}/4`}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Listings ({userDetail.listings?.length || 0})
+                </h4>
+                {userDetail.listings && userDetail.listings.length > 0 ? (
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {userDetail.listings.map((listing: Listing) => (
+                      <div key={listing.id} className="flex items-center justify-between p-2 border rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium line-clamp-1">{listing.title}</p>
+                          <p className="text-xs text-muted-foreground">AED {parseFloat(listing.retailValue as string).toLocaleString()}</p>
+                        </div>
+                        <Badge variant={listing.isActive ? "outline" : "secondary"} className={listing.isActive ? "text-green-600" : ""}>
+                          {listing.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No listings</p>
+                )}
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Handshake className="h-4 w-4" />
+                  Deals ({userDetail.deals?.length || 0})
+                </h4>
+                {userDetail.deals && userDetail.deals.length > 0 ? (
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {userDetail.deals.map((deal: DealWithUsers) => (
+                      <div key={deal.id} className="flex items-center justify-between p-2 border rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium">Deal #{deal.dealNumber}</p>
+                          <p className="text-xs text-muted-foreground">{deal.seekerOffer} ↔ {deal.providerOffer}</p>
+                        </div>
+                        <Badge>{deal.state}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No deals</p>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEmailDialog({ open: true, user: userDetail, subject: "", body: "" }); }} data-testid="button-drawer-email">
+                  <Mail className="h-3.5 w-3.5" />Email
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => resetPasswordMutation.mutate(userDetail.id)} data-testid="button-drawer-reset-password">
+                  <KeyRound className="h-3.5 w-3.5" />Reset Password
+                </Button>
+                <Button size="sm" variant="destructive" className="gap-1" onClick={() => setDeleteDialog({ open: true, user: userDetail })} data-testid="button-drawer-delete">
+                  <Trash2 className="h-3.5 w-3.5" />Delete (PDPL)
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Send Email Dialog */}
+      <Dialog open={emailDialog.open} onOpenChange={(open) => !open && setEmailDialog({ open: false, user: null, subject: "", body: "" })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Email to {emailDialog.user?.fullName}</DialogTitle>
+            <DialogDescription>
+              Send an email from the Bareter admin team to {emailDialog.user?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Input
+                placeholder="Email subject..."
+                value={emailDialog.subject}
+                onChange={(e) => setEmailDialog({ ...emailDialog, subject: e.target.value })}
+                data-testid="input-email-subject"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Message</Label>
+              <Textarea
+                placeholder="Write your message..."
+                value={emailDialog.body}
+                onChange={(e) => setEmailDialog({ ...emailDialog, body: e.target.value })}
+                className="min-h-[150px]"
+                data-testid="input-email-body"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialog({ open: false, user: null, subject: "", body: "" })}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!emailDialog.subject || !emailDialog.body || sendEmailMutation.isPending}
+              onClick={() => emailDialog.user && sendEmailMutation.mutate({ userId: emailDialog.user.id, subject: emailDialog.subject, body: emailDialog.body })}
+              data-testid="button-send-email"
+            >
+              {sendEmailMutation.isPending ? "Sending..." : "Send Email"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User (PDPL) Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => !open && setDeleteDialog({ open: false, user: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Delete User Account</DialogTitle>
+            <DialogDescription>
+              This will permanently erase all data for <strong>{deleteDialog.user?.fullName}</strong> ({deleteDialog.user?.email}) under UAE PDPL compliance. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 border rounded-lg p-4 bg-destructive/5">
+            <p className="text-sm font-medium text-destructive mb-2">The following will be permanently deleted:</p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li>User profile and personal data</li>
+              <li>All listings created by this user</li>
+              <li>All deals and messages</li>
+              <li>KYC/KYB verification records</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, user: null })}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteUserMutation.isPending}
+              onClick={() => deleteDialog.user && deleteUserMutation.mutate(deleteDialog.user.id)}
+              data-testid="button-confirm-delete-user"
+            >
+              {deleteUserMutation.isPending ? "Deleting..." : "Permanently Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Listing Detail Dialog */}
+      <Dialog open={!!selectedListingId} onOpenChange={(open) => !open && setSelectedListingId(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-listing-detail">
+          <DialogHeader>
+            <DialogTitle>Listing Details</DialogTitle>
+            <DialogDescription>Full listing information and moderation history</DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const listing = listings?.find(l => l.id === selectedListingId);
+            if (!listing) return <p className="text-muted-foreground text-sm">Loading...</p>;
+            return (
+              <div className="space-y-6">
+                <div className="flex items-start gap-4">
+                  {listing.images && (listing.images as string[]).length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {(listing.images as string[]).slice(0, 4).map((url, i) => (
+                        <img key={i} src={url} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Title</p>
+                      <p className="font-medium">{listing.title}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Description</p>
+                      <p className="text-sm">{listing.description}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Type</p>
+                      <Badge>{listing.type}</Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Retail Value</p>
+                      <p className="font-medium">AED {parseFloat(listing.retailValue as string).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Categories</p>
+                      <div className="flex gap-1 flex-wrap">
+                        {((listing.categories as string[]) || []).map(cat => (
+                          <Badge key={cat} variant="outline">{cat}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Owner</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={listing.user.avatarUrl || undefined} />
+                          <AvatarFallback className="text-xs">{listing.user.fullName.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{listing.user.fullName}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Status</p>
+                        <Badge variant={listing.isActive ? "outline" : "secondary"} className={listing.isActive ? "text-green-600" : ""}>
+                          {listing.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Moderation</p>
+                        <Badge variant={
+                          listing.moderationStatus === "approved" ? "default" :
+                          listing.moderationStatus === "rejected" ? "destructive" : "secondary"
+                        }>{listing.moderationStatus || "pending"}</Badge>
+                      </div>
+                      {listing.isFeatured && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Featured</p>
+                          <Badge className="bg-amber-500 text-white gap-1"><Star className="h-3 w-3" />Featured</Badge>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-4 text-sm text-muted-foreground">
+                      <span>{listing.viewCount || 0} views</span>
+                      <span>{listing.likeCount || 0} likes</span>
+                      <span>{listing.commentCount || 0} proposals</span>
+                    </div>
+                  </div>
+                </div>
+
+                {(listing as any).valueFlagged || (listing as any).imageFlagged ? (
+                  <div className="border border-amber-500/40 rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20">
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1"><AlertTriangle className="h-4 w-4" />Moderation Flags</p>
+                    {(listing as any).valueFlagged && <p className="text-sm text-amber-600">Value flagged by AI moderation</p>}
+                    {(listing as any).imageFlagged && <p className="text-sm text-amber-600">Image flagged by AI moderation</p>}
+                    {(listing as any).moderationNotes && <p className="text-sm text-muted-foreground mt-1">{(listing as any).moderationNotes}</p>}
+                  </div>
+                ) : null}
+
+                <Separator />
+
+                <div>
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Moderation History
+                  </h4>
+                  {listingModerationHistory && listingModerationHistory.length > 0 ? (
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                      {listingModerationHistory.map((log: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 p-2 border rounded-lg">
+                          <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${
+                            log.action?.includes("approve") ? "bg-green-500" :
+                            log.action?.includes("reject") ? "bg-red-500" :
+                            log.action?.includes("flag") ? "bg-amber-500" : "bg-gray-400"
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{log.action}</p>
+                            {log.details && <p className="text-xs text-muted-foreground">{typeof log.details === "string" ? log.details : JSON.stringify(log.details)}</p>}
+                            <p className="text-xs text-muted-foreground mt-1">{log.createdAt ? new Date(log.createdAt).toLocaleString() : ""}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No moderation history</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {listing.moderationStatus !== "approved" && (
+                    <Button size="sm" className="gap-1" onClick={() => approveListingMutation.mutate(listing.id)} data-testid="button-dialog-approve">
+                      <CheckCircle className="h-3.5 w-3.5" />Approve
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="gap-1 text-destructive" onClick={() => setRejectDialog({ open: true, listingId: listing.id, reason: "" })} data-testid="button-dialog-reject">
+                    <XCircle className="h-3.5 w-3.5" />Reject
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => setEditListingDialog({ open: true, listing, categories: (listing.categories as string[]) || [], retailValue: String(listing.retailValue) })} data-testid="button-dialog-edit">
+                    <Pencil className="h-3.5 w-3.5" />Edit
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => featureListingMutation.mutate({ listingId: listing.id, featured: !listing.isFeatured })} data-testid="button-dialog-feature">
+                    <Star className="h-3.5 w-3.5" />{listing.isFeatured ? "Unfeature" : "Feature"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Listing Dialog */}
+      <Dialog open={rejectDialog.open} onOpenChange={(open) => !open && setRejectDialog({ open: false, listingId: null, reason: "" })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Listing</DialogTitle>
+            <DialogDescription>
+              Provide a reason for rejecting this listing. The owner will be notified via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <Label>Reason for rejection</Label>
+            <Textarea
+              placeholder="Enter the reason for rejection..."
+              value={rejectDialog.reason}
+              onChange={(e) => setRejectDialog({ ...rejectDialog, reason: e.target.value })}
+              className="min-h-[100px]"
+              data-testid="input-reject-reason"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialog({ open: false, listingId: null, reason: "" })}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!rejectDialog.reason || rejectListingMutation.isPending}
+              onClick={() => rejectDialog.listingId && rejectListingMutation.mutate({ listingId: rejectDialog.listingId, reason: rejectDialog.reason })}
+              data-testid="button-confirm-reject"
+            >
+              {rejectListingMutation.isPending ? "Rejecting..." : "Reject Listing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Listing Dialog */}
+      <Dialog open={editListingDialog.open} onOpenChange={(open) => !open && setEditListingDialog({ open: false, listing: null, categories: [], retailValue: "" })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Listing</DialogTitle>
+            <DialogDescription>
+              Update the categories or retail value for "{editListingDialog.listing?.title}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Retail Value (AED)</Label>
+              <Input
+                type="number"
+                value={editListingDialog.retailValue}
+                onChange={(e) => setEditListingDialog({ ...editListingDialog, retailValue: e.target.value })}
+                data-testid="input-edit-retail-value"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Categories</Label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(cat => (
+                  <Badge
+                    key={cat}
+                    variant={editListingDialog.categories.includes(cat) ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      const cats = editListingDialog.categories.includes(cat)
+                        ? editListingDialog.categories.filter(c => c !== cat)
+                        : [...editListingDialog.categories, cat];
+                      setEditListingDialog({ ...editListingDialog, categories: cats });
+                    }}
+                  >
+                    {cat}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditListingDialog({ open: false, listing: null, categories: [], retailValue: "" })}>
+              Cancel
+            </Button>
+            <Button
+              disabled={editListingMutation.isPending || editListingDialog.categories.length === 0}
+              onClick={() => editListingDialog.listing && editListingMutation.mutate({
+                listingId: editListingDialog.listing.id,
+                categories: editListingDialog.categories,
+                retailValue: editListingDialog.retailValue,
+              })}
+              data-testid="button-confirm-edit-listing"
+            >
+              {editListingMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
