@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 
 export function useCountUp(end: number, duration = 1500, start = false) {
-  const [count, setCount] = useState(0);
-  const prevEnd = useRef(0);
+  const [count, setCount] = useState(end);
+  const prevEnd = useRef<number | null>(null);
+  const initialized = useRef(false);
 
   useEffect(() => {
     if (!start) return;
+
+    if (!initialized.current) {
+      initialized.current = true;
+      setCount(end);
+      prevEnd.current = end;
+      return;
+    }
 
     if (end === 0) {
       setCount(0);
@@ -22,7 +30,7 @@ export function useCountUp(end: number, duration = 1500, start = false) {
       return;
     }
 
-    const from = prevEnd.current;
+    const from = prevEnd.current ?? end;
     prevEnd.current = end;
 
     if (from === end) return;

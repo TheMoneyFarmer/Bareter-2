@@ -424,14 +424,14 @@ const STATIC_TRUST_STATS: TrustStatItem[] = [
 
 function TrustBar() {
   const { ref, isVisible } = useReveal<HTMLElement>();
-  const { data: counter } = useQuery<{ count: number }>({
+  const { data: counter, isLoading: countLoading } = useQuery<{ count: number }>({
     queryKey: ["/api/waitlist/count"],
     refetchInterval: 10_000,
   });
-  const liveCount = counter?.count ?? 0;
 
+  const waitlistReady = !countLoading && counter?.count !== undefined;
   const stats: TrustStatItem[] = [
-    { icon: Users, label: "Waitlist Signups", desc: "Join the community", countTo: liveCount, suffix: "+" },
+    { icon: Users, label: "Waitlist Signups", desc: "Join the community", countTo: waitlistReady ? counter.count : undefined, suffix: "+" },
     ...STATIC_TRUST_STATS,
   ];
 

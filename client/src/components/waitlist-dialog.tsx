@@ -58,7 +58,7 @@ export function WaitlistDialog() {
     enabled: isOpen,
     refetchInterval: 15000,
   });
-  const totalCount = counter?.count ?? mode.count ?? 0;
+  const totalCount = counter?.count ?? mode.count ?? null;
 
   // Lookup referrer name
   const { data: referrer } = useQuery<{ referralCode: string; name: string | null; country: string | null }>({
@@ -171,7 +171,7 @@ export function WaitlistDialog() {
               </DialogTitle>
               <DialogDescription className="text-center">
                 Join the waitlist and grab a <strong>Founder Badge</strong> for your profile at launch.
-                {totalCount > 0 && (
+                {totalCount != null && totalCount > 0 && (
                   <> {" "}
                     <span className="font-semibold text-foreground">{totalCount.toLocaleString()}</span>{" "}
                     people already in.
