@@ -39,7 +39,7 @@ type PlatformSettings = Record<string, string | null>;
 type HowItWorksStep = { n: number; emoji: string; title: string; desc: string };
 type FaqEntry = { category: string; questions: { q: string; a: string }[] };
 
-const ALL_EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "RAK", "Fujairah", "Umm Al Quwain"];
+const ALL_EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"];
 
 export function AdminPlatformSettings() {
   const { toast } = useToast();

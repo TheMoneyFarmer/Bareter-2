@@ -1360,7 +1360,7 @@ export class DatabaseStorage implements IStorage {
       .from(listings)
       .where(and(
         eq(listings.userId, userId),
-        sql`${listings.status} NOT IN ('rejected', 'deleted')`
+        eq(listings.isActive, true)
       ));
     return Number(row?.c ?? 0);
   }

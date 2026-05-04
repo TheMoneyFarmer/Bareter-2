@@ -262,9 +262,13 @@ export async function registerRoutes(
     ) return next();
     try {
       if (await isMaintenanceMode()) {
-        if (req.path.startsWith("/api/")) {
-          return res.status(503).json({ message: "Bareter is currently under maintenance. Please try again later.", maintenance: true });
+        if (req.session?.userId) {
+          const sessionUser = await storage.getUser(req.session.userId).catch(() => null);
+          if (sessionUser?.isAdmin || sessionUser?.role === "admin" || sessionUser?.role === "super_admin") {
+            return next();
+          }
         }
+        return res.status(503).json({ message: "Bareter is currently under maintenance. Please try again later.", maintenance: true });
       }
     } catch { /* proceed on error */ }
     next();
@@ -1179,7 +1183,12 @@ export async function registerRoutes(
       if (activeEmiratesStr) {
         try {
           const activeEmirates = JSON.parse(activeEmiratesStr) as string[];
-          if (Array.isArray(activeEmirates) && activeEmirates.length > 0) {
+          if (Array.isArray(activeEmirates)) {
+            if (activeEmirates.length === 0) {
+              return res.status(403).json({
+                message: "Listing creation is currently disabled — no active emirates configured.",
+              });
+            }
             const listingCity = (req.body.location || listingUser.city || "").trim();
             if (listingCity && !activeEmirates.some(e => e.toLowerCase() === listingCity.toLowerCase())) {
               return res.status(403).json({

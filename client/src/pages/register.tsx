@@ -112,6 +112,12 @@ export function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [signupType, setSignupType] = useState<SignupType | null>(null);
+  const [inviteCode, setInviteCode] = useState(() => {
+    try {
+      const url = new URL(window.location.href);
+      return url.searchParams.get("invite") || "";
+    } catch { return ""; }
+  });
   const [socialForm, setSocialForm] = useState<SocialFormState>({
     instagram: { username: "", followerCount: "" },
     tiktok: { username: "", followerCount: "" },
@@ -223,6 +229,7 @@ export function RegisterPage() {
         city: formValues.city,
         signupType: signupType || undefined,
         socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
+        inviteCode: inviteCode.trim() || undefined,
       });
       toast({
         title: t("auth.accountCreated"),
@@ -509,6 +516,21 @@ export function RegisterPage() {
                   </FormItem>
                 )}
               />
+            </div>
+
+            <div>
+              <FormLabel>Invite Code (optional)</FormLabel>
+              <Input
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                placeholder="e.g. ABC123"
+                maxLength={16}
+                className="mt-1.5"
+                data-testid="input-invite-code"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                If you have an invite code from a friend, enter it here
+              </p>
             </div>
 
             <FormField

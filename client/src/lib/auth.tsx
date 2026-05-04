@@ -11,6 +11,7 @@ interface RegisterData {
   city?: string;
   signupType?: string;
   socialProfiles?: SocialProfile[];
+  inviteCode?: string;
 }
 
 interface AuthContextType {
