@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -70,7 +70,9 @@ function RouteTransition({ children }: { children: React.ReactNode }) {
   // users always start at the page header — but skip on back/forward so the
   // browser's native scroll restoration works, and skip when the URL has a
   // hash (e.g. /feed#post-123) so deep-link anchors keep default behavior.
-  useEffect(() => {
+  // useLayoutEffect instead of useEffect so the scroll happens BEFORE the
+  // browser paints — prevents the footer from flashing into view first.
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     if (popNavRef.current) {
       popNavRef.current = false;
