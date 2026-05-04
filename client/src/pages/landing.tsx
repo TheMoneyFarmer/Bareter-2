@@ -459,11 +459,11 @@ function TrustStat({
   stat: TrustStatItem;
   active: boolean;
 }) {
-  const value = useCountUp(stat.countTo ?? 0, 1500, active);
+  const value = useCountUp(stat.countTo ?? null, 1500, active);
   return (
     <div className="flex flex-col items-center text-center px-3 sm:px-6 py-1">
       <stat.icon className="h-7 w-7 text-bareter-teal mb-2" />
-      {stat.countTo !== undefined ? (
+      {value !== null ? (
         <p
           className="text-card-title text-bareter-navy dark:text-foreground tabular-nums"
           data-testid={`stat-trust-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}

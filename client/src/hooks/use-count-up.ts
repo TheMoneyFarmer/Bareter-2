@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useCountUp(end: number, duration = 1500, start = false) {
-  const [count, setCount] = useState(end);
+export function useCountUp(end: number | null, duration = 1500, start = false): number | null {
+  const [count, setCount] = useState<number | null>(end);
   const prevEnd = useRef<number | null>(null);
-  const initialized = useRef(false);
 
   useEffect(() => {
-    if (!start) return;
+    if (!start || end === null) return;
 
-    if (!initialized.current) {
-      initialized.current = true;
+    if (prevEnd.current === null) {
       setCount(end);
       prevEnd.current = end;
       return;
     }
 
+    const from = prevEnd.current;
+    prevEnd.current = end;
+
+    if (from === end) return;
+
     if (end === 0) {
       setCount(0);
-      prevEnd.current = 0;
       return;
     }
 
@@ -26,14 +28,8 @@ export function useCountUp(end: number, duration = 1500, start = false) {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ) {
       setCount(end);
-      prevEnd.current = end;
       return;
     }
-
-    const from = prevEnd.current ?? end;
-    prevEnd.current = end;
-
-    if (from === end) return;
 
     let raf = 0;
     const startTime = performance.now();
