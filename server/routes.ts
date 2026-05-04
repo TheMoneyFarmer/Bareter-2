@@ -261,7 +261,9 @@ export async function registerRoutes(
     ) return next();
     try {
       if (await isMaintenanceMode()) {
-        return res.status(503).json({ message: "Bareter is currently under maintenance. Please try again later.", maintenance: true });
+        if (req.path.startsWith("/api/")) {
+          return res.status(503).json({ message: "Bareter is currently under maintenance. Please try again later.", maintenance: true });
+        }
       }
     } catch { /* proceed on error */ }
     next();
@@ -272,10 +274,11 @@ export async function registerRoutes(
     try {
       const all = await storage.getAllAppSettings();
       const publicKeys = [
-        "hero_headline", "hero_tagline", "how_it_works_steps", "faq_entries",
+        "hero_headline", "hero_tagline", "hero_cta", "how_it_works_steps", "faq_entries",
         "contact_email", "support_email", "support_phone",
-        "announcement_banner_enabled", "announcement_banner_text",
-        "active_emirates", "maintenance_mode", "registration_enabled", "invite_only_mode",
+        "announcement_banner_enabled", "announcement_banner_text", "announcement_banner_link",
+        "active_emirates", "maintenance_mode", "maintenance_message", "registration_enabled", "invite_only_mode",
+        "high_value_threshold",
       ];
       const result: Record<string, string | null> = {};
       for (const key of publicKeys) {
@@ -3295,11 +3298,11 @@ export async function registerRoutes(
 
   // ── Admin platform settings (bulk GET / PUT) ─────────────────────
   const ADMIN_SETTINGS_KEYS = [
-    "maintenance_mode", "registration_enabled", "invite_only_mode",
-    "announcement_banner_enabled", "announcement_banner_text",
+    "maintenance_mode", "maintenance_message", "registration_enabled", "invite_only_mode",
+    "announcement_banner_enabled", "announcement_banner_text", "announcement_banner_link",
     "active_emirates", "high_value_threshold", "max_listings_per_user",
     "contact_email", "support_email", "support_phone",
-    "hero_headline", "hero_tagline", "how_it_works_steps", "faq_entries",
+    "hero_headline", "hero_tagline", "hero_cta", "how_it_works_steps", "faq_entries",
   ];
 
   app.get("/api/admin/settings/platform", requireAdmin, async (_req, res) => {
@@ -3327,7 +3330,7 @@ export async function registerRoutes(
       const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled"];
       const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user"];
       const JSON_KEYS = ["how_it_works_steps", "faq_entries", "active_emirates"];
-      const STRING_KEYS = ["announcement_banner_text", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline"];
+      const STRING_KEYS = ["announcement_banner_text", "announcement_banner_link", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline", "hero_cta", "maintenance_message"];
 
       const changedKeys: string[] = [];
       for (const [key, value] of Object.entries(updates)) {

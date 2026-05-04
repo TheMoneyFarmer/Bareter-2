@@ -146,6 +146,8 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [inviteOnly, setInviteOnly] = useState(settings.invite_only_mode === "true");
   const [bannerEnabled, setBannerEnabled] = useState(settings.announcement_banner_enabled === "true");
   const [bannerText, setBannerText] = useState(settings.announcement_banner_text || "");
+  const [bannerLink, setBannerLink] = useState(settings.announcement_banner_link || "");
+  const [maintenanceMessage, setMaintenanceMessage] = useState(settings.maintenance_message || "");
 
   useEffect(() => {
     setMaintenanceMode(settings.maintenance_mode === "true");
@@ -153,15 +155,19 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
     setInviteOnly(settings.invite_only_mode === "true");
     setBannerEnabled(settings.announcement_banner_enabled === "true");
     setBannerText(settings.announcement_banner_text || "");
+    setBannerLink(settings.announcement_banner_link || "");
+    setMaintenanceMessage(settings.maintenance_message || "");
   }, [settings]);
 
   const handleSave = () => {
     onSave({
       maintenance_mode: maintenanceMode ? "true" : "false",
+      maintenance_message: maintenanceMessage,
       registration_enabled: registrationEnabled ? "true" : "false",
       invite_only_mode: inviteOnly ? "true" : "false",
       announcement_banner_enabled: bannerEnabled ? "true" : "false",
       announcement_banner_text: bannerText,
+      announcement_banner_link: bannerLink,
     });
   };
 
@@ -192,6 +198,20 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
               data-testid="switch-maintenance-mode"
             />
           </div>
+          {maintenanceMode && (
+            <div className="ml-6 border-l-2 border-destructive/30 pl-4">
+              <Label htmlFor="maintenance-message">Maintenance Message</Label>
+              <Input
+                id="maintenance-message"
+                value={maintenanceMessage}
+                onChange={(e) => setMaintenanceMessage(e.target.value)}
+                placeholder="We'll be back soon! We're performing scheduled maintenance."
+                className="mt-1.5"
+                data-testid="input-maintenance-message"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Custom message shown on the maintenance page</p>
+            </div>
+          )}
           <Separator />
           <div className="flex items-center justify-between">
             <div>
@@ -250,6 +270,18 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
               data-testid="input-banner-text"
             />
           </div>
+          <div>
+            <Label htmlFor="banner-link">Banner Link (optional)</Label>
+            <Input
+              id="banner-link"
+              value={bannerLink}
+              onChange={(e) => setBannerLink(e.target.value)}
+              placeholder="e.g. /pricing or https://..."
+              className="mt-1.5"
+              data-testid="input-banner-link"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Optional URL - makes the banner text clickable</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -264,6 +296,7 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
 function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings; onSave: (u: Record<string, string>) => void; saving: boolean }) {
   const [headline, setHeadline] = useState(settings.hero_headline || "");
   const [tagline, setTagline] = useState(settings.hero_tagline || "");
+  const [ctaText, setCtaText] = useState(settings.hero_cta || "");
   const [steps, setSteps] = useState<HowItWorksStep[]>(() => {
     try {
       return settings.how_it_works_steps ? JSON.parse(settings.how_it_works_steps) : [];
@@ -278,16 +311,19 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
   useEffect(() => {
     setHeadline(settings.hero_headline || "");
     setTagline(settings.hero_tagline || "");
+    setCtaText(settings.hero_cta || "");
     try { setSteps(settings.how_it_works_steps ? JSON.parse(settings.how_it_works_steps) : []); } catch { setSteps([]); }
     try { setFaqEntries(settings.faq_entries ? JSON.parse(settings.faq_entries) : []); } catch { setFaqEntries([]); }
   }, [settings]);
 
   const handleSave = () => {
-    const updates: Record<string, string> = {};
-    if (headline) updates.hero_headline = headline;
-    if (tagline) updates.hero_tagline = tagline;
-    if (steps.length > 0) updates.how_it_works_steps = JSON.stringify(steps);
-    if (faqEntries.length > 0) updates.faq_entries = JSON.stringify(faqEntries);
+    const updates: Record<string, string> = {
+      hero_headline: headline,
+      hero_tagline: tagline,
+      hero_cta: ctaText,
+      how_it_works_steps: steps.length > 0 ? JSON.stringify(steps) : "",
+      faq_entries: faqEntries.length > 0 ? JSON.stringify(faqEntries) : "",
+    };
     onSave(updates);
   };
 
@@ -365,6 +401,18 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
               className="mt-1.5"
               data-testid="input-hero-tagline"
             />
+          </div>
+          <div>
+            <Label htmlFor="hero-cta">CTA Button Text</Label>
+            <Input
+              id="hero-cta"
+              value={ctaText}
+              onChange={(e) => setCtaText(e.target.value)}
+              placeholder="Start Bartering"
+              className="mt-1.5"
+              data-testid="input-hero-cta"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Leave blank to use the default button label</p>
           </div>
         </CardContent>
       </Card>

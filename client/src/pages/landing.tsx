@@ -81,6 +81,7 @@ export function LandingPage() {
 
   const heroHeadline = cmsSettings?.hero_headline || DEFAULT_HEADLINE;
   const heroTagline = cmsSettings?.hero_tagline || DEFAULT_TAGLINE;
+  const heroCta = cmsSettings?.hero_cta || null;
   let howItWorksSteps = DEFAULT_STEPS;
   try {
     if (cmsSettings?.how_it_works_steps) {
@@ -416,7 +417,7 @@ export function LandingPage() {
                 className="h-12 px-6 rounded-full"
                 data-testid="button-waitlist-submit"
               >
-                Get early access
+                {heroCta || "Get early access"}
               </Button>
             </form>
             <p className="mt-3 text-caption text-white/50">

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
@@ -49,6 +49,7 @@ import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
 import NotFound from "@/pages/not-found";
+import { MaintenancePage } from "@/pages/maintenance";
 import { ErrorBoundary } from "@/components/error-boundary";
 
 function RouteTransition({ children }: { children: React.ReactNode }) {
@@ -130,6 +131,26 @@ function Router() {
   );
 }
 
+function MaintenanceGate({ children }: { children: React.ReactNode }) {
+  const { data: config } = useQuery<{ maintenanceMode: boolean }>({
+    queryKey: ["/api/config"],
+    staleTime: 15_000,
+  });
+
+  const { data: user } = useQuery<{ role?: string } | null>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+  });
+
+  const isAdmin = user?.role === "admin";
+
+  if (config?.maintenanceMode && !isAdmin) {
+    return <MaintenancePage />;
+  }
+
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -140,23 +161,25 @@ function App() {
             <TooltipProvider>
               <WaitlistProvider>
                 <ErrorBoundary>
-                  <div className="min-h-screen flex flex-col bg-background">
-                    <AnnouncementBanner />
-                    <Header />
-                    <main className="flex-1 pb-20 md:pb-0">
-                      <RouteTransition>
-                        <GeoGate>
-                          <Router />
-                        </GeoGate>
-                      </RouteTransition>
-                    </main>
-                    <Footer />
-                    <MobileBottomNav />
-                  </div>
-                  <Toaster />
-                  <AiSupportChat />
-                  <LocationMismatchBanner />
-                  <CookieConsent />
+                  <MaintenanceGate>
+                    <div className="min-h-screen flex flex-col bg-background">
+                      <AnnouncementBanner />
+                      <Header />
+                      <main className="flex-1 pb-20 md:pb-0">
+                        <RouteTransition>
+                          <GeoGate>
+                            <Router />
+                          </GeoGate>
+                        </RouteTransition>
+                      </main>
+                      <Footer />
+                      <MobileBottomNav />
+                    </div>
+                    <Toaster />
+                    <AiSupportChat />
+                    <LocationMismatchBanner />
+                    <CookieConsent />
+                  </MaintenanceGate>
                 </ErrorBoundary>
               </WaitlistProvider>
             </TooltipProvider>

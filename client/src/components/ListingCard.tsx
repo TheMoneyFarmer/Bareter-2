@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -39,7 +40,7 @@ const CATEGORY_PILL_COLORS: Record<string, string> = {
   Entertainment: "#7C2D12",
 };
 
-const HIGH_VALUE_THRESHOLD_AED = 50000;
+const DEFAULT_HIGH_VALUE_THRESHOLD = 50000;
 
 interface ListingCardProps {
   listing: ListingWithUser;
@@ -55,11 +56,20 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [showReport, setShowReport] = useState(false);
+
+  const { data: pubSettings } = useQuery<Record<string, string | null>>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+  const highValueThreshold = pubSettings?.high_value_threshold
+    ? parseFloat(pubSettings.high_value_threshold)
+    : DEFAULT_HIGH_VALUE_THRESHOLD;
+
   const allImages = (listing.images as string[] | undefined) ?? [];
   const primaryCategory = (listing.categories as string[] | undefined)?.[0] || null;
   const pillColor = primaryCategory ? CATEGORY_PILL_COLORS[primaryCategory] || "#374151" : "#374151";
   const valueNum = parseFloat(listing.retailValue as string);
-  const isHighValue = !Number.isNaN(valueNum) && valueNum >= HIGH_VALUE_THRESHOLD_AED;
+  const isHighValue = !Number.isNaN(valueNum) && valueNum >= highValueThreshold;
   const verified = isUserVerified(listing.user?.kycStatus, listing.user?.kybStatus);
 
   // Build the "Looking for" line from priority exchange items, falling back to wantedCategories
