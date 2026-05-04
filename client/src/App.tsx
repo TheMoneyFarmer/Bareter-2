@@ -137,7 +137,7 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
     staleTime: 15_000,
   });
 
-  const { data: user } = useQuery<{ role?: string } | null>({
+  const { data: user } = useQuery<{ role?: string; isAdmin?: boolean } | null>({
     queryKey: ["/api/auth/me"],
     retry: false,
   });
