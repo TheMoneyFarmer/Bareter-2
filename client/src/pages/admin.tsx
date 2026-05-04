@@ -1494,19 +1494,19 @@ export function AdminPage() {
         <Card data-testid="stat-emails-total">
           <CardContent className="pt-6 text-center">
             <p className="text-3xl font-bold">{emailStats?.total || 0}</p>
-            <p className="text-sm text-muted-foreground">Total Sent</p>
+            <p className="text-sm text-muted-foreground">Total Send Attempts</p>
           </CardContent>
         </Card>
         <Card data-testid="stat-emails-delivered">
           <CardContent className="pt-6 text-center">
             <p className="text-3xl font-bold text-green-500">{emailStats?.sent || 0}</p>
-            <p className="text-sm text-muted-foreground">Delivered</p>
+            <p className="text-sm text-muted-foreground">Accepted by Provider</p>
           </CardContent>
         </Card>
         <Card data-testid="stat-emails-failed">
           <CardContent className="pt-6 text-center">
             <p className="text-3xl font-bold text-destructive">{emailStats?.failed || 0}</p>
-            <p className="text-sm text-muted-foreground">Failed</p>
+            <p className="text-sm text-muted-foreground">Failed to Send</p>
           </CardContent>
         </Card>
       </div>

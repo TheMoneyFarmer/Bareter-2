@@ -2598,8 +2598,14 @@ export async function registerRoutes(
 
   app.get("/api/admin/agents/toggles", requireAdmin, async (_req, res) => {
     try {
-      const toggles = await storage.getAllAgentToggles();
-      res.json(toggles);
+      const KNOWN_AGENTS = ["manager", "finance", "marketing", "sales", "legal", "dashboard", "intelligence"];
+      const dbToggles = await storage.getAllAgentToggles();
+      const toggleMap = new Map(dbToggles.map(t => [t.agentName, t.enabled]));
+      const result = KNOWN_AGENTS.map(name => ({
+        agentName: name,
+        enabled: toggleMap.has(name) ? toggleMap.get(name)! : true,
+      }));
+      res.json(result);
     } catch (error) {
       console.error("Agent toggles error:", error);
       res.status(500).json({ message: "Internal server error" });
