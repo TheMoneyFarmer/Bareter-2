@@ -213,6 +213,12 @@ export function AdminPage() {
   const [broadcastCityFilter, setBroadcastCityFilter] = useState("");
   const [broadcastAccountType, setBroadcastAccountType] = useState("all");
   const [broadcastVerification, setBroadcastVerification] = useState("all");
+  const [dealsExportFrom, setDealsExportFrom] = useState("");
+  const [dealsExportTo, setDealsExportTo] = useState("");
+  const [reportsExportFrom, setReportsExportFrom] = useState("");
+  const [reportsExportTo, setReportsExportTo] = useState("");
+  const [editingTemplateKey, setEditingTemplateKey] = useState<string | null>(null);
+  const [editingTemplateValue, setEditingTemplateValue] = useState("");
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -246,6 +252,11 @@ export function AdminPage() {
 
   const { data: emailStats } = useQuery<{ total: number; sent: number; failed: number }>({
     queryKey: ["/api/admin/email/stats"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const { data: emailTemplates } = useQuery<Record<string, string>>({
+    queryKey: ["/api/admin/email/templates"],
     enabled: !!user?.isAdmin,
   });
 
@@ -549,6 +560,21 @@ export function AdminPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to send broadcast", variant: "destructive" });
+    },
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: string }) => {
+      await apiRequest("PUT", "/api/admin/email/templates", { templates: { [key]: value } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/templates"] });
+      setEditingTemplateKey(null);
+      setEditingTemplateValue("");
+      toast({ title: "Template saved" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save template", variant: "destructive" });
     },
   });
 
@@ -1227,7 +1253,7 @@ export function AdminPage() {
           <h2 className="text-2xl font-bold mb-1">Deals Management</h2>
           <p className="text-muted-foreground">View all deals and their details</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -1238,10 +1264,14 @@ export function AdminPage() {
               data-testid="input-search-deals"
             />
           </div>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => { window.open("/api/admin/deals/export.csv", "_blank"); toast({ title: "Exporting", description: "Deals CSV download started" }); }} data-testid="button-export-deals-csv">
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            <Input type="date" value={dealsExportFrom} onChange={(e) => setDealsExportFrom(e.target.value)} className="w-36 h-9 text-xs" placeholder="From" data-testid="input-deals-export-from" />
+            <Input type="date" value={dealsExportTo} onChange={(e) => setDealsExportTo(e.target.value)} className="w-36 h-9 text-xs" placeholder="To" data-testid="input-deals-export-to" />
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (dealsExportFrom) params.set("from", dealsExportFrom); if (dealsExportTo) params.set("to", dealsExportTo); window.open(`/api/admin/deals/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Deals CSV download started" }); }} data-testid="button-export-deals-csv">
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1532,6 +1562,61 @@ export function AdminPage() {
           >
             {broadcastMutation.isPending ? "Sending..." : <><Mail className="h-4 w-4" /> Send Broadcast</>}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Email Templates
+          </CardTitle>
+          <CardDescription>View and edit email templates used for system notifications</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[
+              { key: "email_template_welcome", label: "Welcome / Onboarding" },
+              { key: "email_template_password_reset", label: "Password Reset" },
+              { key: "email_template_deal_completed", label: "Deal Completed" },
+              { key: "email_template_listing_rejected", label: "Listing Rejected" },
+            ].map(({ key, label }) => (
+              <div key={key} className="border rounded-lg p-4" data-testid={`template-${key}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm">{label}</span>
+                  {editingTemplateKey === key ? (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { setEditingTemplateKey(null); setEditingTemplateValue(""); }} data-testid={`button-cancel-template-${key}`}>Cancel</Button>
+                      <Button size="sm" onClick={() => saveTemplateMutation.mutate({ key, value: editingTemplateValue })} disabled={saveTemplateMutation.isPending} data-testid={`button-save-template-${key}`}>
+                        {saveTemplateMutation.isPending ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingTemplateKey(key); setEditingTemplateValue(emailTemplates?.[key] || ""); }} data-testid={`button-edit-template-${key}`}>
+                      <Pencil className="h-3 w-3" /> Edit
+                    </Button>
+                  )}
+                </div>
+                {editingTemplateKey === key ? (
+                  <Textarea
+                    rows={8}
+                    value={editingTemplateValue}
+                    onChange={(e) => setEditingTemplateValue(e.target.value)}
+                    placeholder="Enter template HTML content..."
+                    data-testid={`textarea-template-${key}`}
+                  />
+                ) : (
+                  <div className="text-sm text-muted-foreground bg-muted/50 rounded p-3 min-h-[60px]">
+                    {emailTemplates?.[key] ? (
+                      <span className="text-foreground whitespace-pre-wrap">{emailTemplates[key].substring(0, 200)}{emailTemplates[key].length > 200 ? "..." : ""}</span>
+                    ) : (
+                      <span className="italic">No custom template set — using system default</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1942,10 +2027,14 @@ export function AdminPage() {
           <h2 className="text-2xl font-bold mb-1">Reports</h2>
           <p className="text-muted-foreground">User-submitted reports for review</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => { window.open("/api/admin/reports/export.csv", "_blank"); toast({ title: "Exporting", description: "Reports & disputes CSV download started" }); }} data-testid="button-export-reports-csv">
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Input type="date" value={reportsExportFrom} onChange={(e) => setReportsExportFrom(e.target.value)} className="w-36 h-9 text-xs" placeholder="From" data-testid="input-reports-export-from" />
+          <Input type="date" value={reportsExportTo} onChange={(e) => setReportsExportTo(e.target.value)} className="w-36 h-9 text-xs" placeholder="To" data-testid="input-reports-export-to" />
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (reportsExportFrom) params.set("from", reportsExportFrom); if (reportsExportTo) params.set("to", reportsExportTo); window.open(`/api/admin/reports/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Reports & disputes CSV download started" }); }} data-testid="button-export-reports-csv">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
       <Card>
         <CardContent className="p-0">
