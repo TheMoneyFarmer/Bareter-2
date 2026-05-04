@@ -1207,6 +1207,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "proposed_at": {
+          "name": "proposed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "completed_at": {
           "name": "completed_at",
           "type": "timestamp",
