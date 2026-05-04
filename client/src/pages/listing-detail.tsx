@@ -928,7 +928,7 @@ export function ListingDetailPage() {
                     >
                       <ArrowLeft className="h-5 w-5 rotate-180" />
                     </button>
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-bareter-navy-deep/60 text-white text-xs">
+                    <div className="absolute bottom-3 inset-x-0 mx-auto w-fit px-3 py-1 rounded-full bg-bareter-navy-deep/60 text-white text-xs">
                       {lightboxIndex + 1} / {listing.images.length}
                     </div>
                   </>

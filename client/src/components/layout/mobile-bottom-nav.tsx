@@ -137,7 +137,7 @@ export function MobileBottomNav() {
         {user ? (
           <Link
             href="/create-listing"
-            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
             data-testid="mobile-tab-create-listing"
             aria-label="List a barter"
           >
@@ -147,7 +147,7 @@ export function MobileBottomNav() {
           <button
             type="button"
             onClick={openWaitlist}
-            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
             data-testid="mobile-tab-create-listing"
             aria-label="Join the waitlist to list"
           >
@@ -156,7 +156,7 @@ export function MobileBottomNav() {
         ) : (
           <Link
             href="/login"
-            className="absolute left-1/2 -top-6 -translate-x-1/2 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
+            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
             data-testid="mobile-tab-create-listing"
             aria-label="Sign in to list a barter"
           >
