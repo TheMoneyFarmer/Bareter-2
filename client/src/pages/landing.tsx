@@ -29,6 +29,7 @@ import {
   FileSignature,
   ArrowRight,
   CheckCircle2,
+  Users,
 } from "lucide-react";
 
 const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
@@ -407,14 +408,15 @@ export function LandingPage() {
 }
 
 /* ============================ TRUST BAR (count-up) ============================ */
-const TRUST_STATS: {
+type TrustStatItem = {
   icon: typeof ShieldCheck;
   label: string;
   desc: string;
   countTo?: number;
   suffix?: string;
-}[] = [
-  { icon: ShieldCheck,   label: "Verified Users",    desc: "KYC + KYB checks",      countTo: 500, suffix: "+" },
+};
+
+const STATIC_TRUST_STATS: TrustStatItem[] = [
   { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart barter engine",    countTo: 1200, suffix: "+" },
   { icon: FileSignature, label: "Auto Contracts",    desc: "E-signed agreements" },
   { icon: CheckCircle2,  label: "🇦🇪 UAE Compliant", desc: "VAT-ready receipts"   },
@@ -422,6 +424,17 @@ const TRUST_STATS: {
 
 function TrustBar() {
   const { ref, isVisible } = useReveal<HTMLElement>();
+  const { data: counter } = useQuery<{ count: number }>({
+    queryKey: ["/api/waitlist/count"],
+    refetchInterval: 10_000,
+  });
+  const liveCount = counter?.count ?? 0;
+
+  const stats: TrustStatItem[] = [
+    { icon: Users, label: "Waitlist Signups", desc: "Join the community", countTo: liveCount, suffix: "+" },
+    ...STATIC_TRUST_STATS,
+  ];
+
   return (
     <section
       ref={ref}
@@ -430,7 +443,7 @@ function TrustBar() {
     >
       <div className="container mx-auto max-w-7xl px-4 py-7">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 sm:gap-y-0 divide-y sm:divide-y-0 sm:divide-x divide-bareter-border dark:divide-border">
-          {TRUST_STATS.map((t, i) => (
+          {stats.map((t, i) => (
             <TrustStat key={i} stat={t} active={isVisible} />
           ))}
         </div>
@@ -443,7 +456,7 @@ function TrustStat({
   stat,
   active,
 }: {
-  stat: (typeof TRUST_STATS)[number];
+  stat: TrustStatItem;
   active: boolean;
 }) {
   const value = useCountUp(stat.countTo ?? 0, 1500, active);

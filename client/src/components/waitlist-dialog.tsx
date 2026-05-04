@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useWaitlist } from "@/lib/waitlist";
 import { COUNTRIES } from "@shared/schema";
 import { Handshake, Loader2, Copy, Check, Share2, Trophy } from "lucide-react";
@@ -24,6 +24,7 @@ type SubmitResponse = {
   position: number;
   referralCode: string;
   referralCount: number;
+  totalCount: number;
 };
 
 export function WaitlistDialog() {
@@ -91,6 +92,10 @@ export function WaitlistDialog() {
     onSuccess: (data) => {
       setSuccess(data);
       setStep("success");
+      if (data.totalCount !== undefined) {
+        queryClient.setQueryData(["/api/waitlist/count"], { count: data.totalCount });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist/mode"] });
     },
     onError: (err: any) => {
       toast({
