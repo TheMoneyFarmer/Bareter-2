@@ -72,3 +72,6 @@ ADMIN_EMAIL_ALLOWLIST = "thando@bareter.com"
 
 [userenv.production]
 PUBLIC_APP_URL = "https://bareter.com "
+
+[objectStorage]
+defaultBucketID = "replit-objstore-7e5628f2-57c3-4e06-a847-99cef1d8fb27"

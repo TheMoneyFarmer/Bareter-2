@@ -109,9 +109,9 @@ export function LandingPage() {
           className="absolute inset-x-0 top-1/4 bottom-0 -z-10 bg-gradient-to-b from-transparent via-bareter-navy-deep/45 to-bareter-navy-deep/60"
         />
         <div className="container relative z-10 mx-auto max-w-7xl px-4 py-20 md:py-28 lg:py-32">
-          <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
+          <div className="flex flex-col items-center text-center max-w-5xl mx-auto">
             <h1
-              className="text-hero text-white"
+              className="text-hero text-white sm:whitespace-nowrap"
               data-testid="text-hero-headline"
               style={{
                 transform: `translate3d(${(headlineParallax.x * 3).toFixed(2)}px, ${(headlineParallax.y * 3).toFixed(2)}px, 0)`,
@@ -120,7 +120,7 @@ export function LandingPage() {
             >
               Barter what you have for what you need.
             </h1>
-            <p className="mt-3 text-base sm:text-lg text-white/90 drop-shadow-sm max-w-2xl">
+            <p className="hero-tagline mt-4 drop-shadow-sm" data-testid="text-hero-tagline">
               UAE's AI-powered barter marketplace. No cash. Just value.
             </p>
 
