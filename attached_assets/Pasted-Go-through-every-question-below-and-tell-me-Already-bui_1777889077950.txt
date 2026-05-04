@@ -1,0 +1,155 @@
+Go through every question below and tell me: ✅ Already built | ❌ Not built | ⚠️ Partially built. For anything not built, build it before we consider the platform launch-ready.
+
+USER MANAGEMENT — VIEW AND SEARCH
+
+Can admins view all registered users in a searchable table — searchable by name, email, city, user type, and join date?
+Can admins filter users by status — active, suspended, and pending verification?
+Can admins view a full individual user profile showing their listings, deals, KYC status, join date, and activity log?
+Can admins see which users have completed onboarding versus dropped off mid-flow?
+Can admins export the full user list as a CSV?
+
+USER MANAGEMENT — ACTIONS
+
+Can admins manually verify or approve a user's KYC if DIDIT flags it for human review?
+Can admins suspend a user account immediately — suspension must be instant?
+Can admins permanently ban a user and prevent re-registration with the same email address?
+Can admins reinstate a suspended account?
+Can admins manually change a user's verification tier between Basic, Verified, and Business?
+Can admins send a direct message or email to any individual user from the admin panel?
+Can admins reset a user's password or trigger a password reset email?
+Can admins delete a user account and all associated data to comply with UAE PDPL right to erasure?
+
+
+LISTINGS — VIEW AND SEARCH
+
+Can admins view all active, pending, flagged, and removed listings in one place?
+Can admins filter listings by category, city, value range, and verification status?
+Can admins search listings by keyword, user name, or listing ID?
+Can admins see which listings are marked as high-value above AED 50,000 since these require enhanced verification?
+Can admins view a full listing detail including all images, description, value, and the user who created it?
+
+LISTINGS — ACTIONS
+
+Can admins approve a pending listing?
+Can admins reject a listing and send the rejection reason to the user automatically?
+Can admins remove or unpublish any live listing immediately?
+Can admins edit a listing's category or value if the user has mislabelled it?
+Can admins mark a listing as featured?
+Can admins view the full moderation history of a listing — who flagged it, when, and why?
+
+
+DEALS AND DISPUTES — DEAL MANAGEMENT
+
+Can admins view all active, completed, and cancelled deals on the platform?
+Can admins see the full deal timeline showing when a deal was proposed, accepted, and completed?
+Can admins view the auto-generated barter contract for any deal?
+Can admins manually mark a deal as completed or cancelled if needed?
+Can admins view the in-platform chat messages for any deal for dispute investigation purposes?
+
+DEALS AND DISPUTES — DISPUTE MANAGEMENT
+
+Can admins view all open, in-mediation, and resolved disputes?
+Can admins see the full dispute log including evidence submitted by both parties?
+Can admins make a final binding decision on a dispute from the admin panel?
+Can admins send a decision notification to both parties from within the dispute panel?
+Can admins escalate a dispute to the founder with a WhatsApp notification?
+Can admins close a dispute and log the resolution outcome?
+
+
+AI AGENTS — AGENT CONTROLS
+
+Can admins see all 15 agents listed with their current on or off status?
+Can admins toggle any individual agent on or off without touching code?
+Can admins see each agent's last run time, total run count, and error count?
+Can admins view the full log of any agent's recent inputs and outputs?
+Can admins see the monthly AI cost per agent and the total spend versus the AED 400 budget?
+Can admins trigger any agent to run manually on demand?
+Is there a hard cost limit that automatically stops agents running if the monthly budget is exceeded?
+
+AI AGENTS — CONTENT APPROVAL
+
+Can admins review and approve or reject AI-drafted social media posts before they are published?
+Can admins review AI-generated campaign briefs in the admin panel?
+Can admins see all auto-generated barter contracts and their risk levels — low, medium, or high?
+Can admins override or edit an auto-generated contract before it is sent to users?
+
+
+CONTENT AND COMMUNICATIONS — PLATFORM CONTENT
+
+Can admins edit the homepage hero text, tagline, and CTA button without a code deployment?
+Can admins add, edit, or remove items from the how it works section?
+Can admins manage the FAQ page content from the admin panel?
+Can admins publish a platform-wide announcement banner for notices like we are live or maintenance windows?
+Can admins manage the waitlist — view all emails, export the list, and send the launch notification?
+
+CONTENT AND COMMUNICATIONS — EMAIL AND NOTIFICATIONS
+
+Can admins send a platform-wide email to all registered users?
+Can admins send an email to a specific user or filtered group such as all Dubai users?
+Can admins view email delivery stats — sent, opened, and bounced?
+Can admins manage email templates for onboarding, welcome, and launch emails?
+Can admins trigger the launch email sequence to the full waitlist from a single button?
+
+
+ANALYTICS AND REPORTS — PLATFORM KPIs
+
+Can admins see total users, new users today, and active users in the last 7 days?
+Can admins see total listings, active listings, and new listings today?
+Can admins see total deals, completed deals, and the overall deal completion rate?
+Can admins see GMV — total barter value facilitated — displayed in AED?
+Can admins see a breakdown of activity by category and by emirate — Dubai, Abu Dhabi, Sharjah, and others?
+Can admins see user growth over time displayed as a chart?
+Can admins see which listings get the most views and matches?
+
+ANALYTICS AND REPORTS — EXPORTS
+
+Can admins export a weekly KPI report to Google Sheets from the admin panel?
+Can admins generate and download the monthly board report?
+Can admins export a list of all completed deals with values in AED for legal and compliance records?
+Can admins export dispute logs for any selected time period?
+
+
+SECURITY AND COMPLIANCE — SECURITY
+
+Is the admin panel protected by authentication and completely inaccessible to regular users?
+Does the admin panel have a separate login or two-factor authentication from the regular user login?
+Can admins view a full admin activity log showing who did what and when — every admin action must be logged?
+Can admins view all failed login attempts and suspicious access events?
+Can admins immediately revoke any active user session?
+Are all admin API routes protected with server-side authentication middleware — not just frontend guards?
+
+SECURITY AND COMPLIANCE — PDPL AND LEGAL
+
+Can admins action a user data deletion request — right to erasure — and complete it within 15 days as required by UAE PDPL?
+Can admins export all data held about a specific user to fulfil a data subject access request as required by UAE PDPL?
+Can admins view and manage user marketing consent records?
+Can admins view all auto-generated legal contracts stored in Google Drive from within the admin panel?
+Is there a data breach response mechanism — can admins disable data collection immediately if needed?
+
+
+PLATFORM SETTINGS — GENERAL
+
+Can admins update the site contact email and support email without a code deployment?
+Can admins enable maintenance mode which takes the site offline with a custom message?
+Can admins manage which UAE emirates are active for listings?
+Can admins update the high-value listing threshold which is currently set at AED 50,000?
+
+PLATFORM SETTINGS — FEATURE FLAGS
+
+Can admins enable or disable new user registrations — essential for a controlled launch?
+Can admins enable or disable the waitlist popup independently from the registration setting?
+Can admins turn off specific features such as disputes or matching for maintenance without a full deployment?
+Can admins set a maximum number of listings per user?
+Can admins put the platform in invite-only mode for a soft launch where only pre-approved users can register?
+
+
+After going through all 87 questions, give me a summary table showing:
+
+Total built
+Total not built
+Total partially built
+List of everything not built grouped by category
+Estimated time to build each missing item
+Which ones are blocking launch and must be done first
+
+Build everything that is missing, starting with the critical items marked above, before we consider this platform ready to launch.
