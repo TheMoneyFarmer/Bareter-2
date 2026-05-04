@@ -367,7 +367,7 @@ export function AdminPage() {
     const matchesSearch = u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
-    if (userStatusFilter === "active") return !u.isBanned && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS");
+    if (userStatusFilter === "active") return !u.isBanned && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW");
     if (userStatusFilter === "banned") return u.isBanned;
     if (userStatusFilter === "pending") return u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW";
     if (userStatusFilter === "unverified") return !u.isVerified && !u.isBanned;

@@ -2333,12 +2333,12 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
     try {
       const { banned, reason } = req.body;
-      const updates: any = { 
+      const banUpdates: Record<string, boolean | string | Date | null> = { 
         isBanned: banned,
         bannedReason: banned ? reason : null,
         bannedAt: banned ? new Date() : null
       };
-      const user = await storage.updateUser(param(req.params.id), updates);
+      const user = await storage.updateUser(param(req.params.id), banUpdates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -2483,23 +2483,23 @@ export async function registerRoutes(
       if (!["basic", "verified", "business"].includes(tier)) {
         return res.status(400).json({ message: "Invalid tier. Must be basic, verified, or business" });
       }
-      const updates: any = {};
+      const tierUpdates: Record<string, boolean | string> = {};
       if (tier === "basic") {
-        updates.isVerified = false;
-        updates.kycStatus = "NOT_STARTED";
-        updates.kybStatus = "NOT_STARTED";
-        updates.accountType = "individual";
+        tierUpdates.isVerified = false;
+        tierUpdates.kycStatus = "NOT_STARTED";
+        tierUpdates.kybStatus = "NOT_STARTED";
+        tierUpdates.accountType = "individual";
       } else if (tier === "verified") {
-        updates.isVerified = true;
-        updates.kycStatus = "APPROVED";
-        updates.accountType = "individual";
+        tierUpdates.isVerified = true;
+        tierUpdates.kycStatus = "APPROVED";
+        tierUpdates.accountType = "individual";
       } else if (tier === "business") {
-        updates.isVerified = true;
-        updates.kycStatus = "APPROVED";
-        updates.kybStatus = "APPROVED";
-        updates.accountType = "business";
+        tierUpdates.isVerified = true;
+        tierUpdates.kycStatus = "APPROVED";
+        tierUpdates.kybStatus = "APPROVED";
+        tierUpdates.accountType = "business";
       }
-      const user = await storage.updateUser(param(req.params.id), updates);
+      const user = await storage.updateUser(param(req.params.id), tierUpdates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
