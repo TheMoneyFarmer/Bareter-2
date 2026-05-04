@@ -1,11 +1,14 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Sparkles } from "lucide-react";
+import { CheckCircle, Sparkles, Users } from "lucide-react";
 import { useWaitlist } from "@/lib/waitlist";
 import { useAuth } from "@/lib/auth";
+import { useCountUp } from "@/hooks/use-count-up";
+import { useReveal } from "@/hooks/use-reveal";
 
 const features = [
   { name: "Create unlimited listings", included: true },
@@ -24,6 +27,14 @@ export function PricingPage() {
   const { user } = useAuth();
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const [, navigate] = useLocation();
+  const { ref: ctaRef, isVisible } = useReveal<HTMLDivElement>();
+  const { data: counter, isLoading: countLoading } = useQuery<{ count: number }>({
+    queryKey: ["/api/waitlist/count"],
+    refetchInterval: 10_000,
+    enabled: waitlistMode.enabled,
+  });
+  const waitlistReady = waitlistMode.enabled && !countLoading && counter?.count !== undefined;
+  const animatedCount = useCountUp(waitlistReady ? counter.count : null, 1500, isVisible);
 
   useEffect(() => {
     const prev = document.title;
@@ -92,7 +103,7 @@ export function PricingPage() {
               </li>
             ))}
           </ul>
-          <div className="text-center mt-8">
+          <div ref={ctaRef} className="text-center mt-8">
             <Button
               size="lg"
               onClick={onPrimaryClick}
@@ -100,6 +111,16 @@ export function PricingPage() {
             >
               {ctaLabel}
             </Button>
+            {waitlistReady && animatedCount !== null && (
+              <p
+                className="mt-3 text-sm text-muted-foreground flex items-center justify-center gap-1.5"
+                data-testid="text-pricing-waitlist-count"
+              >
+                <Users className="h-4 w-4 text-bareter-teal" />
+                <span className="font-semibold text-foreground">{animatedCount.toLocaleString()}+</span>{" "}
+                businesses already on the waitlist
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
