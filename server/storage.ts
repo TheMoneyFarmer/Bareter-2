@@ -1780,9 +1780,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async setAgentEnabled(agentName: string, enabled: boolean): Promise<void> {
+    const { AGENT_LIMITS_AED } = await import("./companyOs/costTracker.js");
+    const defaultCap = AGENT_LIMITS_AED[agentName] ?? 40;
     await db
       .insert(agentBudgets)
-      .values({ agentName, monthlyCapAed: "40.00", enabled, updatedAt: new Date() })
+      .values({ agentName, monthlyCapAed: defaultCap.toFixed(2), enabled, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: agentBudgets.agentName,
         set: { enabled, updatedAt: new Date() },

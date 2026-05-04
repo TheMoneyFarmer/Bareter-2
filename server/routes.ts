@@ -2618,7 +2618,11 @@ export async function registerRoutes(
       if (typeof enabled !== "boolean") {
         return res.status(400).json({ message: "enabled (boolean) is required" });
       }
+      const KNOWN_AGENTS_SET = new Set(["manager", "finance", "marketing", "sales", "legal", "dashboard", "intelligence"]);
       const agentName = req.params.name;
+      if (!KNOWN_AGENTS_SET.has(agentName)) {
+        return res.status(400).json({ message: `Unknown agent: ${agentName}` });
+      }
       await storage.setAgentEnabled(agentName, enabled);
       await logAdminAction(req, enabled ? "agent_enabled" : "agent_disabled", "system", agentName, { agentName });
       res.json({ agentName, enabled });
