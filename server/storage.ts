@@ -1477,7 +1477,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   private hashEmail(email: string): string {
-    const crypto = require("crypto") as typeof import("crypto");
     return crypto.createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
   }
 

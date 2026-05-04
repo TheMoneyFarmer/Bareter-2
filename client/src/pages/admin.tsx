@@ -2034,6 +2034,58 @@ export function AdminPage() {
 
               <Separator />
 
+              {(userDetail.verificationDocUrl || userDetail.businessLicenseUrl) && (
+                <>
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Verification Documents
+                    </h4>
+                    <div className="space-y-2">
+                      {userDetail.verificationDocUrl && (
+                        <div className="flex items-center gap-2 p-2 border rounded-lg">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <a href={userDetail.verificationDocUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline" data-testid="link-kyc-doc">KYC Document</a>
+                        </div>
+                      )}
+                      {userDetail.businessLicenseUrl && (
+                        <div className="flex items-center gap-2 p-2 border rounded-lg">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <a href={userDetail.businessLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline" data-testid="link-kyb-doc">Business License</a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Separator />
+                </>
+              )}
+
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Activity Summary
+                </h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center p-2 border rounded-lg">
+                    <p className="text-lg font-bold">{userDetail.listings?.length || 0}</p>
+                    <p className="text-xs text-muted-foreground">Listings</p>
+                  </div>
+                  <div className="text-center p-2 border rounded-lg">
+                    <p className="text-lg font-bold">{userDetail.deals?.length || 0}</p>
+                    <p className="text-xs text-muted-foreground">Deals</p>
+                  </div>
+                  <div className="text-center p-2 border rounded-lg">
+                    <p className="text-lg font-bold">{userDetail.deals?.filter((d: DealWithUsers) => d.state === "completed").length || 0}</p>
+                    <p className="text-xs text-muted-foreground">Completed</p>
+                  </div>
+                </div>
+                {userDetail.lastActiveAt && (
+                  <p className="text-xs text-muted-foreground mt-2">Last active: {new Date(userDetail.lastActiveAt).toLocaleString()}</p>
+                )}
+              </div>
+
+              <Separator />
+
               <div>
                 <h4 className="font-medium mb-3 flex items-center gap-2">
                   <Package className="h-4 w-4" />
