@@ -43,6 +43,10 @@ import {
   agentInteractions,
   consentLogs,
   notifications,
+  imageScans,
+  salesLeads,
+  salesReengagementEvents,
+  bannedEmails,
 } from "@shared/schema";
 import {
   isValidPrivateDocPath,
@@ -2409,6 +2413,9 @@ export async function registerRoutes(
   app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
     try {
       const userId = param(req.params.id);
+      if (userId === req.session.userId) {
+        return res.status(400).json({ message: "Cannot delete your own account while logged in as admin" });
+      }
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -2419,56 +2426,69 @@ export async function registerRoutes(
       await destroyUserSessions(userId);
 
       const userEmail = user.email;
-      await storage.addBannedEmail(userEmail, req.session.userId || "", "PDPL erasure");
 
-      const userDealRows = await db.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
-      for (const d of userDealRows) {
-        await db.delete(messages).where(eq(messages.dealId, d.id));
-        await db.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
-      }
-      await db.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+      await db.transaction(async (tx) => {
+        await tx.update(bannedEmails).set({ bannedBy: null }).where(eq(bannedEmails.bannedBy, userId));
 
-      await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+        await storage.addBannedEmail(userEmail, req.session.userId || "", "PDPL erasure");
 
-      await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
-      await db.delete(listingComments).where(eq(listingComments.userId, userId));
-
-      const userListingRows = await storage.getListingsByUser(userId);
-      const listingIds = userListingRows.map(l => l.id);
-      if (listingIds.length > 0) {
-        for (const lid of listingIds) {
-          await db.delete(listingLikes).where(eq(listingLikes.listingId, lid));
-          await db.delete(listingComments).where(eq(listingComments.listingId, lid));
-          await db.delete(moderationLogs).where(and(eq(moderationLogs.targetType, "listing"), eq(moderationLogs.targetId, lid)));
+        const userDealRows = await tx.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+        for (const d of userDealRows) {
+          await tx.delete(messages).where(eq(messages.dealId, d.id));
+          await tx.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
         }
-        await db.delete(listings).where(eq(listings.userId, userId));
-      }
+        await tx.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
 
-      await db.delete(wishlists).where(eq(wishlists.userId, userId));
-      await db.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
-      await db.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
+        await tx.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
 
-      await db.delete(postLikes).where(eq(postLikes.userId, userId));
-      await db.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
-      const userPosts = await db.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
-      for (const p of userPosts) {
-        await db.delete(postLikes).where(eq(postLikes.postId, p.id));
-        await db.delete(postComments).where(eq(postComments.postId, p.id));
-      }
-      await db.delete(postComments).where(eq(postComments.userId, userId));
-      await db.delete(posts).where(eq(posts.userId, userId));
+        await tx.delete(listingLikes).where(eq(listingLikes.userId, userId));
+        await tx.delete(listingComments).where(eq(listingComments.userId, userId));
 
-      await db.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
-      await db.delete(savedSearches).where(eq(savedSearches.userId, userId));
-      await db.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
-      await db.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
-      await db.delete(reports).where(eq(reports.reporterId, userId));
-      await db.delete(agentInteractions).where(eq(agentInteractions.userId, userId));
-      await db.delete(moderationLogs).where(eq(moderationLogs.adminUserId, userId));
-      await db.delete(consentLogs).where(eq(consentLogs.userId, userId));
-      await db.delete(notifications).where(eq(notifications.userId, userId));
+        const userListingRows = await tx.select({ id: listings.id }).from(listings).where(eq(listings.userId, userId));
+        const listingIds = userListingRows.map(l => l.id);
+        if (listingIds.length > 0) {
+          for (const lid of listingIds) {
+            await tx.delete(imageScans).where(eq(imageScans.listingId, lid));
+            await tx.delete(listingLikes).where(eq(listingLikes.listingId, lid));
+            await tx.delete(listingComments).where(eq(listingComments.listingId, lid));
+            await tx.delete(moderationLogs).where(and(eq(moderationLogs.targetType, "listing"), eq(moderationLogs.targetId, lid)));
+          }
+          await tx.delete(listings).where(eq(listings.userId, userId));
+        }
 
-      await db.delete(users).where(eq(users.id, userId));
+        await tx.delete(wishlists).where(eq(wishlists.userId, userId));
+        await tx.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
+        await tx.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
+
+        await tx.delete(postLikes).where(eq(postLikes.userId, userId));
+        await tx.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
+        const userPosts = await tx.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+        for (const p of userPosts) {
+          await tx.delete(postLikes).where(eq(postLikes.postId, p.id));
+          await tx.delete(postComments).where(eq(postComments.postId, p.id));
+        }
+        await tx.delete(postComments).where(eq(postComments.userId, userId));
+        await tx.delete(posts).where(eq(posts.userId, userId));
+
+        await tx.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
+        await tx.delete(savedSearches).where(eq(savedSearches.userId, userId));
+        await tx.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
+        await tx.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
+        await tx.delete(reports).where(eq(reports.reporterId, userId));
+        await tx.delete(agentInteractions).where(eq(agentInteractions.userId, userId));
+        await tx.delete(moderationLogs).where(eq(moderationLogs.adminUserId, userId));
+        await tx.delete(consentLogs).where(eq(consentLogs.userId, userId));
+        await tx.delete(notifications).where(eq(notifications.userId, userId));
+
+        const userSalesLeads = await tx.select({ id: salesLeads.id }).from(salesLeads).where(eq(salesLeads.userId, userId));
+        for (const sl of userSalesLeads) {
+          await tx.delete(salesReengagementEvents).where(eq(salesReengagementEvents.leadId, sl.id));
+        }
+        await tx.delete(salesReengagementEvents).where(eq(salesReengagementEvents.userId, userId));
+        await tx.delete(salesLeads).where(eq(salesLeads.userId, userId));
+
+        await tx.delete(users).where(eq(users.id, userId));
+      });
 
       res.json({ message: "User data permanently deleted (PDPL right to erasure)" });
     } catch (error) {
