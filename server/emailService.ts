@@ -508,6 +508,42 @@ export async function sendListingRejectionEmail(
   return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text });
 }
 
+export async function sendWaitlistLaunchEmail(
+  toEmail: string,
+  opts: { name?: string | null; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Launch email skipped for ${toEmail} (email not configured).`);
+    return false;
+  }
+  const greeting = opts.name ? `Hi ${opts.name},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <a href="${opts.baseUrl}/" style="text-decoration: none;">
+        <img src="${opts.baseUrl}/logo-full-color.png" alt="${APP_NAME}" width="160" height="auto" style="display: inline-block; max-width: 160px; height: auto; border: 0;" />
+      </a>
+    </div>
+    <h2 style="font-size: 22px; color: #111; margin-bottom: 8px;">We're live! 🚀</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      ${greeting} the wait is over — <strong>${APP_NAME}</strong> is now open for business! As an early supporter, you've earned a <strong>Founder Badge</strong> on your profile.
+    </p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
+      Create your account now and start bartering with verified businesses across the UAE.
+    </p>
+    <a href="${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Create Your Account
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nThe wait is over — ${APP_NAME} is now open for business!\n\nAs an early supporter, you've earned a Founder Badge on your profile.\n\nCreate your account: ${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `${APP_NAME} is live — claim your Founder Badge!`, html, text });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

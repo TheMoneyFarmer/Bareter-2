@@ -247,7 +247,9 @@ export interface IStorage {
 
   // App settings (runtime-tunable key/value pairs)
   getAppSetting(key: string): Promise<string | null>;
+  getAllAppSettings(): Promise<Record<string, string>>;
   setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void>;
+  countUserActiveListings(userId: string): Promise<number>;
 
   // Cookie consent log (append-only audit trail)
   createConsentLog(log: InsertConsentLog): Promise<ConsentLog>;
@@ -1333,6 +1335,15 @@ export class DatabaseStorage implements IStorage {
     return row?.value ?? null;
   }
 
+  async getAllAppSettings(): Promise<Record<string, string>> {
+    const rows = await db.select().from(appSettings);
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
   async setAppSetting(key: string, value: string, updatedBy?: string | null): Promise<void> {
     await db
       .insert(appSettings)
@@ -1341,6 +1352,17 @@ export class DatabaseStorage implements IStorage {
         target: appSettings.key,
         set: { value, updatedBy: updatedBy ?? null, updatedAt: new Date() },
       });
+  }
+
+  async countUserActiveListings(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ c: sql<number>`count(*)` })
+      .from(listings)
+      .where(and(
+        eq(listings.userId, userId),
+        sql`${listings.status} NOT IN ('rejected', 'deleted')`
+      ));
+    return Number(row?.c ?? 0);
   }
 
   async getWaitlistStatsByCountry(): Promise<{ country: string | null; count: number }[]> {

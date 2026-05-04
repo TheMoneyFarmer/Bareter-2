@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Mail, MapPin, Phone } from "lucide-react";
 import {
   SiInstagram,
@@ -61,8 +62,16 @@ const SOCIALS: Social[] = [
   },
 ];
 
+type PublicSettings = Record<string, string | null>;
+
 export function Footer() {
   const { t } = useI18n();
+  const { data: pubSettings } = useQuery<PublicSettings>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+  const contactEmail = pubSettings?.contact_email || "hello@bareter.com";
+  const supportPhone = pubSettings?.support_phone || "+971 52 313 3512";
   const linkCls =
     "text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors";
   const buttonLinkCls = `${linkCls} text-start bg-transparent p-0 border-0 cursor-pointer`;
@@ -185,15 +194,15 @@ export function Footer() {
                 <span>Dubai, United Arab Emirates</span>
               </div>
               <a
-                href="mailto:hello@bareter.com"
+                href={`mailto:${contactEmail}`}
                 className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors"
               >
                 <Mail className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
-                <span>hello@bareter.com</span>
+                <span>{contactEmail}</span>
               </a>
               <div className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70">
                 <Phone className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
-                <span>+971 52 313 3512</span>
+                <span>{supportPhone}</span>
               </div>
             </div>
           </div>

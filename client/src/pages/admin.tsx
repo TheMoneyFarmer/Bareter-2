@@ -109,6 +109,7 @@ import {
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
+import { AdminPlatformSettings } from "@/components/admin/platform-settings";
 import { ScrollText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -1501,53 +1502,31 @@ export function AdminPage() {
         </TabsList>
 
         <TabsContent value="platform" className="space-y-6">
+          <AdminPlatformSettings />
+
           <Card>
             <CardHeader>
-              <CardTitle>Platform Settings</CardTitle>
-              <CardDescription>Configure platform-wide settings</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-destructive" />
+                Emergency Data Collection Disable
+              </CardTitle>
+              <CardDescription>Kill-switch to stop all non-essential data collection immediately</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Platform Pricing</p>
-                    <p className="text-sm text-muted-foreground">Bareter is free for all users</p>
-                  </div>
-                  <Badge variant="secondary">Free</Badge>
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Verification Required</p>
-                    <p className="text-sm text-muted-foreground">KYC/KYB required for bartering</p>
-                  </div>
-                  <Badge>Enabled</Badge>
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-destructive" />
-                      Emergency Data Collection Disable
-                    </p>
-                    <p className="text-sm text-muted-foreground">Kill-switch to stop all non-essential data collection immediately</p>
-                  </div>
-                  <Button
-                    variant={dataCollectionSetting?.dataCollectionDisabled ? "destructive" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => dataCollectionMutation.mutate(!dataCollectionSetting?.dataCollectionDisabled)}
-                    disabled={dataCollectionMutation.isPending}
-                    data-testid="button-toggle-data-collection"
-                  >
-                    {dataCollectionSetting?.dataCollectionDisabled ? (
-                      <><ToggleRight className="h-4 w-4" />Collection Disabled</>
-                    ) : (
-                      <><ToggleLeft className="h-4 w-4" />Collection Active</>
-                    )}
-                  </Button>
-                </div>
-              </div>
+            <CardContent>
+              <Button
+                variant={dataCollectionSetting?.dataCollectionDisabled ? "destructive" : "outline"}
+                size="sm"
+                className="gap-2"
+                onClick={() => dataCollectionMutation.mutate(!dataCollectionSetting?.dataCollectionDisabled)}
+                disabled={dataCollectionMutation.isPending}
+                data-testid="button-toggle-data-collection"
+              >
+                {dataCollectionSetting?.dataCollectionDisabled ? (
+                  <><ToggleRight className="h-4 w-4" />Collection Disabled</>
+                ) : (
+                  <><ToggleLeft className="h-4 w-4" />Collection Active</>
+                )}
+              </Button>
             </CardContent>
           </Card>
 

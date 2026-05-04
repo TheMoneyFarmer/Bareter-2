@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,8 @@ import {
   Phone,
   ArrowRight,
 } from "lucide-react";
+
+type PublicSettings = Record<string, string | null>;
 
 const categories = [
   {
@@ -87,6 +90,12 @@ const categories = [
 
 export function HelpPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { data: settings } = useQuery<PublicSettings>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+  const supportEmail = settings?.support_email || "support@bareter.com";
+  const supportPhone = settings?.support_phone || "+971 52 313 3512";
 
   return (
     <div className="container px-4 py-12 mx-auto max-w-6xl">
@@ -123,7 +132,7 @@ export function HelpPage() {
                 {category.articles.map((article) => (
                   <li key={article}>
                     <a
-                      href={`mailto:support@bareter.com?subject=${encodeURIComponent(article)}`}
+                      href={`mailto:${supportEmail}?subject=${encodeURIComponent(article)}`}
                       className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2 group"
                     >
                       <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -149,7 +158,7 @@ export function HelpPage() {
             <p className="text-muted-foreground mb-4">
               Can't find what you're looking for? Our support team is here to help.
             </p>
-            <p className="font-medium mb-2">support@bareter.com</p>
+            <p className="font-medium mb-2">{supportEmail}</p>
             <p className="text-sm text-muted-foreground">
               Response time: Within 24 hours (business days)
             </p>
@@ -167,7 +176,7 @@ export function HelpPage() {
             <p className="text-muted-foreground mb-4">
               For urgent matters, reach us by phone during business hours.
             </p>
-            <p className="font-medium mb-2">+971 52 313 3512</p>
+            <p className="font-medium mb-2">{supportPhone}</p>
             <p className="text-sm text-muted-foreground">
               Mon - Fri: 9:00 AM - 6:00 PM (GST)
             </p>

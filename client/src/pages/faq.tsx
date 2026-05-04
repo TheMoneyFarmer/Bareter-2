@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -7,7 +8,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const faqs = [
+type PublicSettings = Record<string, string | null>;
+type FaqEntry = { category: string; questions: { q: string; a: string }[] };
+
+const DEFAULT_FAQS: FaqEntry[] = [
   {
     category: "General",
     questions: [
@@ -91,6 +95,21 @@ const faqs = [
 ];
 
 export function FAQPage() {
+  const { data: settings } = useQuery<PublicSettings>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+
+  let faqs = DEFAULT_FAQS;
+  try {
+    if (settings?.faq_entries) {
+      const parsed = JSON.parse(settings.faq_entries);
+      if (Array.isArray(parsed) && parsed.length > 0) faqs = parsed;
+    }
+  } catch {}
+
+  const supportEmail = settings?.support_email || "support@bareter.com";
+
   return (
     <div className="container px-4 py-12 mx-auto max-w-4xl">
       <div className="text-center mb-12">
@@ -133,9 +152,11 @@ export function FAQPage() {
           <Link href="/help">
             <Button variant="outline" data-testid="link-help-center">Visit Help Center</Button>
           </Link>
-          <Button data-testid="button-contact-support">
-            Contact Support
-          </Button>
+          <a href={`mailto:${supportEmail}`}>
+            <Button data-testid="button-contact-support">
+              Contact Support
+            </Button>
+          </a>
         </div>
       </div>
     </div>

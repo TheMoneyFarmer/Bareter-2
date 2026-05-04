@@ -54,6 +54,17 @@ const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string
   { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/browse?category=Home" },
 ];
 
+type PublicSettings = Record<string, string | null>;
+type HowItWorksStep = { n: number; emoji: string; title: string; desc: string };
+
+const DEFAULT_HEADLINE = "Barter what you have for what you need.";
+const DEFAULT_TAGLINE = "UAE's AI-powered barter marketplace. No cash. Just value.";
+const DEFAULT_STEPS: HowItWorksStep[] = [
+  { n: 1, emoji: "📋", title: "List what you have", desc: "Describe your item or service in minutes." },
+  { n: 2, emoji: "🤖", title: "Get AI-matched", desc: "Our engine finds the perfect barter partner." },
+  { n: 3, emoji: "🤝", title: "Close the deal", desc: "Contract auto-generated, exchange confirmed." },
+];
+
 export function LandingPage() {
   const { user } = useAuth();
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
@@ -62,6 +73,21 @@ export function LandingPage() {
   const [heroCity, setHeroCity] = useState("Dubai");
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const headlineParallax = useMousePosition();
+
+  const { data: cmsSettings } = useQuery<PublicSettings>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+
+  const heroHeadline = cmsSettings?.hero_headline || DEFAULT_HEADLINE;
+  const heroTagline = cmsSettings?.hero_tagline || DEFAULT_TAGLINE;
+  let howItWorksSteps = DEFAULT_STEPS;
+  try {
+    if (cmsSettings?.how_it_works_steps) {
+      const parsed = JSON.parse(cmsSettings.how_it_works_steps);
+      if (Array.isArray(parsed) && parsed.length > 0) howItWorksSteps = parsed;
+    }
+  } catch {}
 
   const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/featured"],
@@ -119,10 +145,10 @@ export function LandingPage() {
                 transition: "transform 0.15s ease-out",
               }}
             >
-              Barter what you have for what you need.
+              {heroHeadline}
             </h1>
             <p className="hero-tagline mt-4 drop-shadow-sm" data-testid="text-hero-tagline">
-              UAE's AI-powered barter marketplace. No cash. Just value.
+              {heroTagline}
             </p>
 
             {/* Hero search pill */}
@@ -319,11 +345,7 @@ export function LandingPage() {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6 relative">
-            {[
-              { n: 1, emoji: "📋", title: "List what you have",   desc: "Describe your item or service in minutes." },
-              { n: 2, emoji: "🤖", title: "Get AI-matched",       desc: "Our engine finds the perfect barter partner." },
-              { n: 3, emoji: "🤝", title: "Close the deal",       desc: "Contract auto-generated, exchange confirmed." },
-            ].map((s, i, arr) => (
+            {howItWorksSteps.map((s, i, arr) => (
               <div key={s.n} className="relative flex flex-col items-center text-center">
                 <div
                   className="h-14 w-14 rounded-full bg-bareter-teal text-white text-xl font-bold flex items-center justify-center mb-4 shadow-bareter-hover"

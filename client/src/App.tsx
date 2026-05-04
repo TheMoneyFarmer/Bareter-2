@@ -31,6 +31,7 @@ import { TermsPage } from "@/pages/terms";
 import { PrivacyPage } from "@/pages/privacy";
 import { LegalPage } from "@/pages/legal";
 import { CookieConsent } from "@/components/cookie-consent";
+import { AnnouncementBanner } from "@/components/announcement-banner";
 import OnboardingPage from "@/pages/onboarding";
 import { SettingsPage } from "@/pages/settings";
 import DashboardPage from "@/pages/dashboard";
@@ -140,6 +141,7 @@ function App() {
               <WaitlistProvider>
                 <ErrorBoundary>
                   <div className="min-h-screen flex flex-col bg-background">
+                    <AnnouncementBanner />
                     <Header />
                     <main className="flex-1 pb-20 md:pb-0">
                       <RouteTransition>

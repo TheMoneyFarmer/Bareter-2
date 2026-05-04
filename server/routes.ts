@@ -81,7 +81,7 @@ import {
 import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
-import { isEmailConfigured } from "./emailService";
+import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { eq, and, desc, gte, count, lt, sql as sqlOperator, or } from "drizzle-orm";
 
@@ -240,12 +240,73 @@ export async function registerRoutes(
     })
   );
 
+  // ── Maintenance mode middleware ──────────────────────────────────────
+  let maintenanceCache: { value: boolean; at: number } = { value: false, at: 0 };
+  const MAINTENANCE_TTL = 5_000;
+  async function isMaintenanceMode(): Promise<boolean> {
+    const now = Date.now();
+    if (now - maintenanceCache.at < MAINTENANCE_TTL) return maintenanceCache.value;
+    const val = await storage.getAppSetting("maintenance_mode");
+    maintenanceCache = { value: val === "true", at: now };
+    return maintenanceCache.value;
+  }
+  app.use(async (req: Request, res: Response, next: NextFunction) => {
+    if (
+      !req.path.startsWith("/api/") ||
+      req.path.startsWith("/api/auth/") ||
+      req.path.startsWith("/api/admin/") ||
+      req.path === "/api/config" ||
+      req.path === "/api/public/settings" ||
+      req.path === "/api/waitlist/mode"
+    ) return next();
+    try {
+      if (await isMaintenanceMode()) {
+        return res.status(503).json({ message: "Bareter is currently under maintenance. Please try again later.", maintenance: true });
+      }
+    } catch { /* proceed on error */ }
+    next();
+  });
+
+  // ── Public settings (CMS content, contact info, banner) ────────────
+  app.get("/api/public/settings", async (_req, res) => {
+    try {
+      const all = await storage.getAllAppSettings();
+      const publicKeys = [
+        "hero_headline", "hero_tagline", "how_it_works_steps", "faq_entries",
+        "contact_email", "support_email", "support_phone",
+        "announcement_banner_enabled", "announcement_banner_text",
+        "active_emirates", "maintenance_mode", "registration_enabled", "invite_only_mode",
+      ];
+      const result: Record<string, string | null> = {};
+      for (const key of publicKeys) {
+        const v = all[key];
+        result[key] = (v != null && v !== "") ? v : null;
+      }
+      res.json(result);
+    } catch {
+      res.status(500).json({ message: "Failed to load settings" });
+    }
+  });
+
   // Auth routes. The strict-schema validation is mounted as a separate
   // middleware so the security test suite can exercise the 400 response
   // for unknown fields without needing a database.
   app.post("/api/auth/register", registerLimiter, makeRegisterValidator(), async (req, res) => {
     try {
       const data = res.locals.registerData as ReturnType<typeof registerSchema.parse>;
+
+      const regEnabled = await storage.getAppSetting("registration_enabled");
+      if (regEnabled === "false") {
+        return res.status(403).json({ message: "Registration is currently disabled. Please check back later." });
+      }
+
+      const inviteOnly = await storage.getAppSetting("invite_only_mode");
+      if (inviteOnly === "true") {
+        const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => null);
+        if (!waitlistEntry) {
+          return res.status(403).json({ message: "Registration is by invitation only. Please join the waitlist first." });
+        }
+      }
 
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
@@ -470,9 +531,14 @@ export async function registerRoutes(
 
   // Public client config — what features are wired up in this environment.
   app.get("/api/config", async (_req, res) => {
+    const [passwordResetEnabled, maintenanceMode] = await Promise.all([
+      isEmailConfigured(),
+      storage.getAppSetting("maintenance_mode"),
+    ]);
     res.json({
-      passwordResetEnabled: await isEmailConfigured(),
+      passwordResetEnabled,
       cookiePolicyVersion: COOKIE_POLICY_VERSION,
+      maintenanceMode: maintenanceMode === "true",
     });
   });
 
@@ -1083,6 +1149,32 @@ export async function registerRoutes(
       // Pause gate
       if (listingUser.isPaused) {
         return res.status(403).json({ message: "Your account has been paused. Please contact support.", isPaused: true });
+      }
+
+      const maxListingsStr = await storage.getAppSetting("max_listings_per_user");
+      const maxListings = maxListingsStr ? parseInt(maxListingsStr, 10) : 0;
+      if (maxListings > 0) {
+        const activeCount = await storage.countUserActiveListings(req.session.userId!);
+        if (activeCount >= maxListings) {
+          return res.status(403).json({
+            message: `You have reached the maximum of ${maxListings} active listings. Please remove or complete existing listings first.`,
+          });
+        }
+      }
+
+      const activeEmiratesStr = await storage.getAppSetting("active_emirates");
+      if (activeEmiratesStr) {
+        try {
+          const activeEmirates = JSON.parse(activeEmiratesStr) as string[];
+          if (Array.isArray(activeEmirates) && activeEmirates.length > 0) {
+            const listingCity = (req.body.location || listingUser.city || "").trim();
+            if (listingCity && !activeEmirates.some(e => e.toLowerCase() === listingCity.toLowerCase())) {
+              return res.status(403).json({
+                message: `Listings are currently only allowed in: ${activeEmirates.join(", ")}. Your location "${listingCity}" is not active.`,
+              });
+            }
+          }
+        } catch {}
       }
 
       // Business license gate
@@ -3198,6 +3290,127 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Admin get data collection setting error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin platform settings (bulk GET / PUT) ─────────────────────
+  const ADMIN_SETTINGS_KEYS = [
+    "maintenance_mode", "registration_enabled", "invite_only_mode",
+    "announcement_banner_enabled", "announcement_banner_text",
+    "active_emirates", "high_value_threshold", "max_listings_per_user",
+    "contact_email", "support_email", "support_phone",
+    "hero_headline", "hero_tagline", "how_it_works_steps", "faq_entries",
+  ];
+
+  app.get("/api/admin/settings/platform", requireAdmin, async (_req, res) => {
+    try {
+      const all = await storage.getAllAppSettings();
+      const result: Record<string, string | null> = {};
+      for (const key of ADMIN_SETTINGS_KEYS) {
+        result[key] = all[key] ?? null;
+      }
+      result["data_collection_disabled"] = all["data_collection_disabled"] ?? null;
+      result["waitlist_launch_email_sent_at"] = all["waitlist_launch_email_sent_at"] ?? null;
+      res.json(result);
+    } catch (error) {
+      console.error("Admin get platform settings error:", error);
+      res.status(500).json({ message: "Failed to load settings" });
+    }
+  });
+
+  app.put("/api/admin/settings/platform", requireAdmin, async (req, res) => {
+    try {
+      const updates = req.body as Record<string, string | null>;
+      if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
+        return res.status(400).json({ message: "Invalid request body" });
+      }
+      const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled"];
+      const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user"];
+      const JSON_KEYS = ["how_it_works_steps", "faq_entries", "active_emirates"];
+      const STRING_KEYS = ["announcement_banner_text", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline"];
+
+      const changedKeys: string[] = [];
+      for (const [key, value] of Object.entries(updates)) {
+        if (!ADMIN_SETTINGS_KEYS.includes(key)) continue;
+
+        if (value === null || value === "") {
+          await storage.setAppSetting(key, "", req.session.userId ?? null);
+          changedKeys.push(key);
+          continue;
+        }
+
+        const strVal = String(value);
+
+        if (BOOLEAN_KEYS.includes(key)) {
+          if (strVal !== "true" && strVal !== "false") {
+            return res.status(400).json({ message: `${key} must be "true" or "false"` });
+          }
+        } else if (NUMERIC_KEYS.includes(key)) {
+          const num = Number(strVal);
+          if (isNaN(num) || num < 0) {
+            return res.status(400).json({ message: `${key} must be a non-negative number` });
+          }
+        } else if (JSON_KEYS.includes(key)) {
+          try { JSON.parse(strVal); } catch {
+            return res.status(400).json({ message: `${key} must be valid JSON` });
+          }
+        } else if (STRING_KEYS.includes(key)) {
+          if (strVal.length > 2000) {
+            return res.status(400).json({ message: `${key} exceeds maximum length` });
+          }
+        }
+
+        await storage.setAppSetting(key, strVal, req.session.userId ?? null);
+        changedKeys.push(key);
+      }
+      if (changedKeys.includes("maintenance_mode")) {
+        maintenanceCache = { value: false, at: 0 };
+      }
+      await logAdminAction(req, "platform_settings_updated", "settings", "bulk", { keys: changedKeys });
+      const all = await storage.getAllAppSettings();
+      const result: Record<string, string | null> = {};
+      for (const key of ADMIN_SETTINGS_KEYS) {
+        const v = all[key];
+        result[key] = (v != null && v !== "") ? v : null;
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Admin update platform settings error:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
+  // ── Waitlist launch email ─────────────────────────────────────────
+  app.post("/api/admin/waitlist/launch-email", requireAdmin, async (req, res) => {
+    try {
+      const entries = await storage.listWaitlistEntries({ limit: 10000 });
+      const eligible = entries.filter(e => e.confirmedAt && !e.convertedUserId);
+      let sent = 0;
+      let failed = 0;
+      const configuredUrl = process.env.PUBLIC_APP_URL?.trim();
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+      const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+      const baseUrl = configuredUrl
+        ? configuredUrl.replace(/\/+$/, "")
+        : replitDomain
+          ? `https://${replitDomain}`
+          : devDomain
+            ? `https://${devDomain}`
+            : "http://localhost:5000";
+      for (const entry of eligible) {
+        try {
+          const ok = await sendWaitlistLaunchEmail(entry.email, { name: entry.name, baseUrl });
+          if (ok) sent++; else failed++;
+        } catch {
+          failed++;
+        }
+      }
+      await storage.setAppSetting("waitlist_launch_email_sent_at", new Date().toISOString(), req.session.userId ?? null);
+      await logAdminAction(req, "waitlist_launch_email_sent", "waitlist", "bulk", { sent, failed, total: eligible.length });
+      res.json({ sent, failed, total: eligible.length });
+    } catch (error) {
+      console.error("Admin waitlist launch email error:", error);
+      res.status(500).json({ message: "Failed to send launch emails" });
     }
   });
 
