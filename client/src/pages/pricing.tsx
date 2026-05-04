@@ -111,7 +111,7 @@ export function PricingPage() {
             >
               {ctaLabel}
             </Button>
-            {waitlistReady && animatedCount !== null && (
+            {waitlistReady && !user && animatedCount !== null && (
               <p
                 className="mt-3 text-sm text-muted-foreground flex items-center justify-center gap-1.5"
                 data-testid="text-pricing-waitlist-count"
