@@ -2511,42 +2511,80 @@ export async function registerRoutes(
         }
       }
       const broadcastId = crypto.randomUUID();
-      const { sendAdminEmail } = await import("./emailService");
-      let sent = 0, failed = 0;
-      for (const recipient of recipients) {
+      const adminUserId = req.session.userId;
+
+      await storage.createBroadcastJob({
+        id: broadcastId,
+        subject,
+        body,
+        filter: filter ?? null,
+        recipientCount: recipients.length,
+        sentBy: adminUserId,
+      });
+
+      // Return 202 immediately — processing happens in the background
+      res.status(202).json({ broadcastId, recipientCount: recipients.length, status: "queued" });
+
+      // Background worker — runs after response is sent
+      setImmediate(async () => {
         try {
-          const ok = await sendAdminEmail(recipient.email, {
-            recipientName: recipient.fullName,
-            subject,
-            body,
-          });
-          await storage.createEmailLog({
-            recipientEmail: recipient.email,
-            subject,
-            status: ok ? "sent" : "failed",
-            source: "broadcast",
-            broadcastId,
-            sentBy: req.session.userId,
-          });
-          if (ok) sent++; else failed++;
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          await storage.createEmailLog({
-            recipientEmail: recipient.email,
-            subject,
-            status: "failed",
-            source: "broadcast",
-            broadcastId,
-            errorMessage: errMsg.slice(0, 200),
-            sentBy: req.session.userId,
-          });
-          failed++;
+          const { sendAdminEmail } = await import("./emailService");
+          await storage.updateBroadcastJob(broadcastId, { status: "processing", startedAt: new Date() });
+          let sent = 0, failed = 0;
+          const BATCH_SIZE = 10;
+          for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+            const batch = recipients.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(async (recipient) => {
+              try {
+                const ok = await sendAdminEmail(recipient.email, {
+                  recipientName: recipient.fullName,
+                  subject,
+                  body,
+                });
+                await storage.createEmailLog({
+                  recipientEmail: recipient.email,
+                  subject,
+                  status: ok ? "sent" : "failed",
+                  source: "broadcast",
+                  broadcastId,
+                  sentBy: adminUserId,
+                });
+                if (ok) sent++; else failed++;
+              } catch (err: unknown) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                await storage.createEmailLog({
+                  recipientEmail: recipient.email,
+                  subject,
+                  status: "failed",
+                  source: "broadcast",
+                  broadcastId,
+                  errorMessage: errMsg.slice(0, 200),
+                  sentBy: adminUserId,
+                });
+                failed++;
+              }
+            }));
+          }
+          await storage.updateBroadcastJob(broadcastId, { status: "completed", sent, failed, completedAt: new Date() });
+          await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
+        } catch (workerErr) {
+          console.error("Broadcast worker error:", workerErr);
+          await storage.updateBroadcastJob(broadcastId, { status: "failed", completedAt: new Date() });
         }
-      }
-      await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
-      res.json({ broadcastId, recipientCount: recipients.length, sent, failed });
+      });
     } catch (error) {
       console.error("Broadcast email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/email/broadcast/:id", requireAdmin, async (req, res) => {
+    try {
+      const job = await storage.getBroadcastJob(req.params.id);
+      if (!job) return res.status(404).json({ message: "Broadcast job not found" });
+      res.json(job);
+    } catch (error) {
+      console.error("Broadcast status error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -92,6 +92,8 @@ import {
   type InsertFailedLoginAttempt,
   emailLogs,
   type EmailLog,
+  broadcastJobs,
+  type BroadcastJob,
   agentBudgets,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
@@ -1709,6 +1711,29 @@ export class DatabaseStorage implements IStorage {
     const query = db.select().from(failedLoginAttempts).orderBy(desc(failedLoginAttempts.createdAt)).limit(limit);
     return opts?.email ? await query.where(eq(failedLoginAttempts.email, opts.email)) : await query;
   }
+  // ── Broadcast jobs ───────────────────────────────────────────────
+  async createBroadcastJob(job: { id: string; subject: string; body: string; filter?: unknown; recipientCount: number; sentBy?: string }): Promise<BroadcastJob> {
+    const [row] = await db.insert(broadcastJobs).values({
+      id: job.id,
+      subject: job.subject,
+      body: job.body,
+      filter: job.filter ?? null,
+      recipientCount: job.recipientCount,
+      status: "queued",
+      sentBy: job.sentBy,
+    }).returning();
+    return row;
+  }
+
+  async getBroadcastJob(id: string): Promise<BroadcastJob | undefined> {
+    const [row] = await db.select().from(broadcastJobs).where(eq(broadcastJobs.id, id));
+    return row;
+  }
+
+  async updateBroadcastJob(id: string, data: Partial<Pick<BroadcastJob, "status" | "sent" | "failed" | "startedAt" | "completedAt">>): Promise<void> {
+    await db.update(broadcastJobs).set(data).where(eq(broadcastJobs.id, id));
+  }
+
   // ── Email logs ──────────────────────────────────────────────────────
   async createEmailLog(log: { recipientEmail: string; subject: string; status: string; source: string; broadcastId?: string; errorMessage?: string; sentBy?: string }): Promise<EmailLog> {
     const [row] = await db.insert(emailLogs).values(log).returning();

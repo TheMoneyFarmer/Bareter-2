@@ -1728,6 +1728,22 @@ export const insertFailedLoginAttemptSchema = createInsertSchema(failedLoginAtte
 export type InsertFailedLoginAttempt = z.infer<typeof insertFailedLoginAttemptSchema>;
 export type FailedLoginAttempt = typeof failedLoginAttempts.$inferSelect;
 
+export const broadcastJobs = pgTable("broadcast_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  filter: jsonb("filter"),
+  status: text("status").notNull().default("queued"),
+  recipientCount: integer("recipient_count").notNull().default(0),
+  sent: integer("sent").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  sentBy: varchar("sent_by", { length: 36 }).references(() => users.id),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type BroadcastJob = typeof broadcastJobs.$inferSelect;
+
 export const emailLogs = pgTable("email_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   recipientEmail: text("recipient_email").notNull(),

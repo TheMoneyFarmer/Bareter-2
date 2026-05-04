@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -213,6 +213,7 @@ export function AdminPage() {
   const [broadcastCityFilter, setBroadcastCityFilter] = useState("");
   const [broadcastAccountType, setBroadcastAccountType] = useState("all");
   const [broadcastVerification, setBroadcastVerification] = useState("all");
+  const [broadcastJobId, setBroadcastJobId] = useState<string | null>(null);
   const [dealsExportFrom, setDealsExportFrom] = useState("");
   const [dealsExportTo, setDealsExportTo] = useState("");
   const [dealsExportState, setDealsExportState] = useState("completed");
@@ -553,16 +554,31 @@ export function AdminPage() {
       const res = await apiRequest("POST", "/api/admin/email/broadcast", data);
       return res.json();
     },
-    onSuccess: (data: { broadcastId: string; recipientCount: number; sent: number; failed: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
+    onSuccess: (data: { broadcastId: string; recipientCount: number; status: string }) => {
+      setBroadcastJobId(data.broadcastId);
       setBroadcastSubject("");
       setBroadcastBody("");
-      toast({ title: "Broadcast sent", description: `${data.sent} sent, ${data.failed} failed out of ${data.recipientCount} recipients` });
+      toast({ title: "Broadcast queued", description: `Sending to ${data.recipientCount} recipients in the background…` });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to send broadcast", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to start broadcast", variant: "destructive" });
     },
   });
+
+  const { data: broadcastJobStatus } = useQuery<{ id: string; status: string; recipientCount: number; sent: number; failed: number; completedAt: string | null }>({
+    queryKey: ["/api/admin/email/broadcast", broadcastJobId],
+    enabled: !!broadcastJobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "completed" || status === "failed" ? false : 3000;
+    },
+  });
+
+  useEffect(() => {
+    if (broadcastJobStatus?.status === "completed" || broadcastJobStatus?.status === "failed") {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
+    }
+  }, [broadcastJobStatus?.status]);
 
   const saveTemplateMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: string }) => {
@@ -1556,22 +1572,48 @@ export function AdminPage() {
             <Label>Body</Label>
             <Textarea placeholder="Email body (HTML supported)..." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
           </div>
-          <Button
-            onClick={() => broadcastMutation.mutate({
-              subject: broadcastSubject,
-              body: broadcastBody,
-              filter: {
-                city: broadcastCityFilter || undefined,
-                accountType: broadcastAccountType,
-                verificationStatus: broadcastVerification,
-              },
-            })}
-            disabled={!broadcastSubject || !broadcastBody || broadcastMutation.isPending}
-            className="gap-2"
-            data-testid="button-send-broadcast"
-          >
-            {broadcastMutation.isPending ? "Sending..." : <><Mail className="h-4 w-4" /> Send Broadcast</>}
-          </Button>
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => {
+                setBroadcastJobId(null);
+                broadcastMutation.mutate({
+                  subject: broadcastSubject,
+                  body: broadcastBody,
+                  filter: {
+                    city: broadcastCityFilter || undefined,
+                    accountType: broadcastAccountType,
+                    verificationStatus: broadcastVerification,
+                  },
+                });
+              }}
+              disabled={!broadcastSubject || !broadcastBody || broadcastMutation.isPending || (!!broadcastJobId && broadcastJobStatus?.status !== "completed" && broadcastJobStatus?.status !== "failed")}
+              className="gap-2 self-start"
+              data-testid="button-send-broadcast"
+            >
+              {broadcastMutation.isPending ? "Queueing…" : <><Mail className="h-4 w-4" /> Send Broadcast</>}
+            </Button>
+            {broadcastJobId && broadcastJobStatus && (
+              <div className="rounded-md border px-4 py-3 text-sm space-y-1" data-testid="broadcast-job-status">
+                <div className="flex items-center gap-2 font-medium">
+                  {broadcastJobStatus.status === "completed" ? (
+                    <span className="text-green-600">Broadcast complete</span>
+                  ) : broadcastJobStatus.status === "failed" ? (
+                    <span className="text-destructive">Broadcast failed</span>
+                  ) : (
+                    <span className="text-muted-foreground animate-pulse">
+                      {broadcastJobStatus.status === "processing" ? "Sending…" : "Queued…"}
+                    </span>
+                  )}
+                </div>
+                {(broadcastJobStatus.status === "completed" || broadcastJobStatus.status === "processing") && (
+                  <p className="text-muted-foreground">
+                    {broadcastJobStatus.sent} sent · {broadcastJobStatus.failed} failed · {broadcastJobStatus.recipientCount} total
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground font-mono">ID: {broadcastJobId}</p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
