@@ -129,7 +129,9 @@ export function registerWaitlistRoutes(
   // Public — frontend reads this to decide whether to gate UI
   app.get("/api/waitlist/mode", async (req, res) => {
     try {
-      const enabled = isWaitlistMode();
+      const envEnabled = isWaitlistMode();
+      const settingEnabled = await isWaitlistEnabled();
+      const enabled = envEnabled && settingEnabled;
       const offset = await getWaitlistOffset();
       const rawCount = enabled ? await storage.getWaitlistCount() : 0;
       const count = enabled ? publicCount(rawCount, offset) : 0;

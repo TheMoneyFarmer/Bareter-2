@@ -30,6 +30,8 @@ import {
   Users,
   ToggleLeft,
   ToggleRight,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
 type PlatformSettings = Record<string, string | null>;
@@ -386,6 +388,14 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
     setSteps(steps.filter((_, i) => i !== index).map((s, i) => ({ ...s, n: i + 1 })));
   };
 
+  const moveStep = (index: number, direction: "up" | "down") => {
+    const newSteps = [...steps];
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= newSteps.length) return;
+    [newSteps[index], newSteps[target]] = [newSteps[target], newSteps[index]];
+    setSteps(newSteps.map((s, i) => ({ ...s, n: i + 1 })));
+  };
+
   const updateStep = (index: number, field: keyof HowItWorksStep, value: string | number) => {
     setSteps(steps.map((s, i) => i === index ? { ...s, [field]: value } : s));
   };
@@ -396,6 +406,25 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
 
   const removeFaqCategory = (index: number) => {
     setFaqEntries(faqEntries.filter((_, i) => i !== index));
+  };
+
+  const moveFaqCategory = (index: number, direction: "up" | "down") => {
+    const newEntries = [...faqEntries];
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= newEntries.length) return;
+    [newEntries[index], newEntries[target]] = [newEntries[target], newEntries[index]];
+    setFaqEntries(newEntries);
+  };
+
+  const moveFaqQuestion = (catIndex: number, qIndex: number, direction: "up" | "down") => {
+    const target = direction === "up" ? qIndex - 1 : qIndex + 1;
+    setFaqEntries(faqEntries.map((c, i) => {
+      if (i !== catIndex) return c;
+      const qs = [...c.questions];
+      if (target < 0 || target >= qs.length) return c;
+      [qs[qIndex], qs[target]] = [qs[target], qs[qIndex]];
+      return { ...c, questions: qs };
+    }));
   };
 
   const addFaqQuestion = (catIndex: number) => {
@@ -488,9 +517,17 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
             <div key={i} className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <Badge variant="secondary">Step {step.n}</Badge>
-                <Button variant="ghost" size="icon" onClick={() => removeStep(i)} data-testid={`button-remove-step-${i}`}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => moveStep(i, "up")} disabled={i === 0} data-testid={`button-move-step-up-${i}`}>
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => moveStep(i, "down")} disabled={i === steps.length - 1} data-testid={`button-move-step-down-${i}`}>
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => removeStep(i)} data-testid={`button-remove-step-${i}`}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -539,9 +576,17 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
                     data-testid={`input-faq-category-${ci}`}
                   />
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => removeFaqCategory(ci)} data-testid={`button-remove-faq-category-${ci}`}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => moveFaqCategory(ci, "up")} disabled={ci === 0} data-testid={`button-move-faq-cat-up-${ci}`}>
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => moveFaqCategory(ci, "down")} disabled={ci === faqEntries.length - 1} data-testid={`button-move-faq-cat-down-${ci}`}>
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => removeFaqCategory(ci)} data-testid={`button-remove-faq-category-${ci}`}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
               {cat.questions.map((q, qi) => (
                 <div key={qi} className="ml-4 border-l-2 border-muted pl-4 space-y-2">
@@ -561,9 +606,17 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
                         data-testid={`input-faq-a-${ci}-${qi}`}
                       />
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeFaqQuestion(ci, qi)} data-testid={`button-remove-faq-q-${ci}-${qi}`}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
+                    <div className="flex flex-col gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => moveFaqQuestion(ci, qi, "up")} disabled={qi === 0} data-testid={`button-move-faq-q-up-${ci}-${qi}`}>
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => moveFaqQuestion(ci, qi, "down")} disabled={qi === cat.questions.length - 1} data-testid={`button-move-faq-q-down-${ci}-${qi}`}>
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => removeFaqQuestion(ci, qi)} data-testid={`button-remove-faq-q-${ci}-${qi}`}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}

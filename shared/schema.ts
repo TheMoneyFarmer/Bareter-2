@@ -1397,6 +1397,7 @@ export const registerSchema = z
         }),
       )
       .optional(),
+    inviteCode: z.string().max(16).optional(),
   })
   .strict();
 

@@ -307,7 +307,7 @@ export async function registerRoutes(
 
       const inviteOnly = await storage.getAppSetting("invite_only_mode");
       if (inviteOnly === "true") {
-        const inviteCode = req.body.inviteCode as string | undefined;
+        const inviteCode = data.inviteCode;
         let invited = false;
         const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => null);
         if (waitlistEntry) {

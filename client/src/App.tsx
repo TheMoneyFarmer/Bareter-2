@@ -142,7 +142,7 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
     retry: false,
   });
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.isAdmin === true || user?.role === "admin" || user?.role === "super_admin";
 
   if (config?.maintenanceMode && !isAdmin) {
     return <MaintenancePage />;
