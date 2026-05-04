@@ -585,7 +585,7 @@ export function AdminPage() {
   }, [broadcastJobStatus?.status]);
 
   const previewMutation = useMutation({
-    mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string> }) => {
+    mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string>; mode?: "broadcast" | "template" }) => {
       const res = await apiRequest("POST", "/api/admin/email/preview", data);
       return res.json() as Promise<{ html: string }>;
     },
