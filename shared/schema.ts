@@ -449,6 +449,8 @@ export const deals = pgTable("deals", {
   seekerCompleted: boolean("seeker_completed").default(false),
   providerCompleted: boolean("provider_completed").default(false),
   contractPdfUrl: text("contract_pdf_url"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1242,6 +1244,8 @@ export const insertDealSchema = createInsertSchema(deals).omit({
   seekerCompleted: true,
   providerCompleted: true,
   contractPdfUrl: true,
+  completedAt: true,
+  cancelledAt: true,
 });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({

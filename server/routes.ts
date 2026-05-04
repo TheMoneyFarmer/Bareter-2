@@ -2617,10 +2617,12 @@ export async function registerRoutes(
 
   app.delete("/api/admin/listings/:id", requireAdmin, async (req, res) => {
     try {
-      const listing = await storage.updateListing(param(req.params.id), { isActive: false });
+      const listingId = param(req.params.id);
+      const listing = await storage.updateListing(listingId, { isActive: false });
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await logAdminAction(req, "listing_removed", "listing", listingId, { title: listing.title });
       res.json({ message: "Listing removed successfully" });
     } catch (error) {
       console.error("Admin delete listing error:", error);
@@ -2817,7 +2819,7 @@ export async function registerRoutes(
       }
       const updated = await storage.updateDeal(dealId, {
         state,
-        ...(state === "completed" ? { completedAt: new Date() } : {}),
+        ...(state === "completed" ? { completedAt: new Date() } : { cancelledAt: new Date() }),
       });
       await logAdminAction(req, `deal_${state}`, "deal", dealId, { previousState: deal.state, reason });
       res.json(updated);
@@ -4792,6 +4794,7 @@ export async function registerRoutes(
         },
         req.session.userId ?? null,
       );
+      await logAdminAction(req, "legal_page_updated", "legal_page", row.id, { slug: req.params.slug, language: lang, title: parsed.data.title });
       res.json(row);
     } catch (error) {
       console.error("Admin legal upsert error:", error);

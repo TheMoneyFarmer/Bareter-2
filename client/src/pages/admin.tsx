@@ -2312,6 +2312,50 @@ export function AdminPage() {
                 )}
               </div>
 
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">State History</p>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="flex flex-col items-center">
+                    <div className="w-3 h-3 rounded-full bg-primary" />
+                    <div className="w-px h-4 bg-border" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Created</span>
+                    <span className="text-muted-foreground ml-2">{selectedDeal.createdAt ? new Date(selectedDeal.createdAt).toLocaleString() : "-"}</span>
+                  </div>
+                </div>
+                {(selectedDeal as Record<string, unknown>).completedAt && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                    </div>
+                    <div>
+                      <span className="font-medium">Completed</span>
+                      <span className="text-muted-foreground ml-2">{new Date((selectedDeal as Record<string, unknown>).completedAt as string).toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+                {(selectedDeal as Record<string, unknown>).cancelledAt && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                    </div>
+                    <div>
+                      <span className="font-medium">Cancelled</span>
+                      <span className="text-muted-foreground ml-2">{new Date((selectedDeal as Record<string, unknown>).cancelledAt as string).toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+                {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex flex-col items-center">
+                      <div className="w-3 h-3 rounded-full border-2 border-muted-foreground animate-pulse" />
+                    </div>
+                    <span className="text-muted-foreground italic">In progress</span>
+                  </div>
+                )}
+              </div>
+
               {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (
                 <div className="flex gap-2">
                   <Button
