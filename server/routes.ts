@@ -2540,6 +2540,14 @@ export async function registerRoutes(
                   recipientName: recipient.fullName,
                   subject,
                   body,
+                  vars: {
+                    name: recipient.fullName || "",
+                    email: recipient.email,
+                    city: recipient.city || "",
+                    businessName: recipient.businessName || "",
+                    accountType: recipient.accountType || "individual",
+                    appName: "Bareter",
+                  },
                 });
                 await storage.createEmailLog({
                   recipientEmail: recipient.email,
@@ -2595,6 +2603,21 @@ export async function registerRoutes(
       res.json(stats);
     } catch (error) {
       console.error("Email stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/email/preview", requireAdmin, async (req, res) => {
+    try {
+      const { body, recipientName, vars } = req.body;
+      if (typeof body !== "string") {
+        return res.status(400).json({ message: "body (string) is required" });
+      }
+      const { renderBroadcastEmailHtml } = await import("./emailService");
+      const html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });
+      res.json({ html });
+    } catch (error) {
+      console.error("Email preview error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

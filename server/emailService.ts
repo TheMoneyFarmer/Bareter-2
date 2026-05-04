@@ -131,12 +131,39 @@ async function getCustomTemplate(key: string): Promise<string | null> {
   }
 }
 
-function applyTemplateVars(template: string, vars: Record<string, string>): string {
+export function applyTemplateVars(template: string, vars: Record<string, string>): string {
   let result = template;
   for (const [key, value] of Object.entries(vars)) {
     result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
   }
   return result;
+}
+
+export function renderBroadcastEmailHtml(opts: {
+  recipientName?: string | null;
+  body: string;
+  vars?: Record<string, string>;
+}): string {
+  const substituted = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const escapedBody = substituted
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br />");
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${escapedBody}</p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
 }
 
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
@@ -463,32 +490,16 @@ export async function sendCriticalAlertEmail(
 
 export async function sendAdminEmail(
   toEmail: string,
-  opts: { recipientName?: string | null; subject: string; body: string },
+  opts: { recipientName?: string | null; subject: string; body: string; vars?: Record<string, string> },
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Admin email to ${toEmail} skipped (email not configured). Subject: ${opts.subject}`);
     return false;
   }
+  const html = renderBroadcastEmailHtml({ recipientName: opts.recipientName, body: opts.body, vars: opts.vars });
+  const substitutedBody = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
-  const escapedBody = opts.body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br />");
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${escapedBody}</p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
-  const text = `${greeting}\n\n${opts.body}\n\n— ${APP_NAME}`;
+  const text = `${greeting}\n\n${substitutedBody}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: opts.subject, html, text });
 }
 

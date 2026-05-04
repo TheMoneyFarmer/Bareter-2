@@ -214,6 +214,10 @@ export function AdminPage() {
   const [broadcastAccountType, setBroadcastAccountType] = useState("all");
   const [broadcastVerification, setBroadcastVerification] = useState("all");
   const [broadcastJobId, setBroadcastJobId] = useState<string | null>(null);
+  const [broadcastPreviewHtml, setBroadcastPreviewHtml] = useState<string | null>(null);
+  const [broadcastPreviewOpen, setBroadcastPreviewOpen] = useState(false);
+  const [templatePreviewHtml, setTemplatePreviewHtml] = useState<string | null>(null);
+  const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
   const [dealsExportFrom, setDealsExportFrom] = useState("");
   const [dealsExportTo, setDealsExportTo] = useState("");
   const [dealsExportState, setDealsExportState] = useState("completed");
@@ -579,6 +583,13 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
     }
   }, [broadcastJobStatus?.status]);
+
+  const previewMutation = useMutation({
+    mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string> }) => {
+      const res = await apiRequest("POST", "/api/admin/email/preview", data);
+      return res.json() as Promise<{ html: string }>;
+    },
+  });
 
   const saveTemplateMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: string }) => {
@@ -1569,8 +1580,38 @@ export function AdminPage() {
             <Input placeholder="Email subject..." value={broadcastSubject} onChange={(e) => setBroadcastSubject(e.target.value)} data-testid="input-broadcast-subject" />
           </div>
           <div className="space-y-2">
-            <Label>Body</Label>
-            <Textarea placeholder="Email body (HTML supported)..." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
+            <div className="flex items-center justify-between">
+              <Label>Body</Label>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                onClick={async () => {
+                  const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
+                  const result = await previewMutation.mutateAsync({ body: broadcastBody || "Hello {{name}}, welcome to {{appName}}!", recipientName: "Sarah Al-Hassan", vars: sampleVars });
+                  setBroadcastPreviewHtml(result.html);
+                  setBroadcastPreviewOpen(true);
+                }}
+                disabled={previewMutation.isPending}
+                data-testid="button-broadcast-preview"
+              >
+                <Eye className="h-3 w-3" />
+                {previewMutation.isPending ? "Loading…" : "Preview"}
+              </button>
+            </div>
+            <Textarea placeholder="Email body... Use {{name}}, {{email}}, {{city}}, {{businessName}}, {{accountType}}, {{appName}} for personalisation." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
+            <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
+              {["{{name}}", "{{email}}", "{{city}}", "{{businessName}}", "{{accountType}}", "{{appName}}"].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setBroadcastBody((prev) => prev + v)}
+                  className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid={`chip-var-${v.replace(/\{|\}/g, "")}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex flex-col gap-3">
             <Button
@@ -1627,17 +1668,31 @@ export function AdminPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {[
-              { key: "email_template_welcome", label: "Welcome / Onboarding" },
-              { key: "email_template_password_reset", label: "Password Reset" },
-              { key: "email_template_deal_completed", label: "Deal Completed" },
-              { key: "email_template_listing_rejected", label: "Listing Rejected" },
-            ].map(({ key, label }) => (
+            {([
+              { key: "email_template_welcome", label: "Welcome / Onboarding", vars: ["{{name}}", "{{email}}", "{{appName}}"], sampleVars: { name: "Sarah Al-Hassan", email: "sarah@example.com", appName: "Bareter" } },
+              { key: "email_template_password_reset", label: "Password Reset", vars: ["{{resetUrl}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { resetUrl: "https://bareter.com/reset-password?token=sample", appName: "Bareter", baseUrl: "https://bareter.com" } },
+              { key: "email_template_deal_completed", label: "Deal Completed", vars: ["{{name}}", "{{dealTitle}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { name: "Sarah Al-Hassan", dealTitle: "Photography for Catering", appName: "Bareter", baseUrl: "https://bareter.com" } },
+              { key: "email_template_listing_rejected", label: "Listing Rejected", vars: ["{{greeting}}", "{{listingTitle}}", "{{reason}}", "{{appName}}"], sampleVars: { greeting: "Hi Sarah,", listingTitle: "Premium Photography Package", reason: "The listing does not meet our quality standards.", appName: "Bareter" } },
+            ] as const).map(({ key, label, vars, sampleVars }) => (
               <div key={key} className="border rounded-lg p-4" data-testid={`template-${key}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm">{label}</span>
                   {editingTemplateKey === key ? (
                     <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2"
+                        onClick={async () => {
+                          const result = await previewMutation.mutateAsync({ body: editingTemplateValue, vars: sampleVars });
+                          setTemplatePreviewHtml(result.html);
+                          setTemplatePreviewOpen(true);
+                        }}
+                        disabled={!editingTemplateValue || previewMutation.isPending}
+                        data-testid={`button-preview-template-${key}`}
+                      >
+                        <Eye className="h-3 w-3" />
+                        {previewMutation.isPending ? "…" : "Preview"}
+                      </button>
                       <Button size="sm" variant="outline" onClick={() => { setEditingTemplateKey(null); setEditingTemplateValue(""); }} data-testid={`button-cancel-template-${key}`}>Cancel</Button>
                       <Button size="sm" onClick={() => saveTemplateMutation.mutate({ key, value: editingTemplateValue })} disabled={saveTemplateMutation.isPending} data-testid={`button-save-template-${key}`}>
                         {saveTemplateMutation.isPending ? "Saving..." : "Save"}
@@ -1650,13 +1705,28 @@ export function AdminPage() {
                   )}
                 </div>
                 {editingTemplateKey === key ? (
-                  <Textarea
-                    rows={8}
-                    value={editingTemplateValue}
-                    onChange={(e) => setEditingTemplateValue(e.target.value)}
-                    placeholder="Enter template HTML content..."
-                    data-testid={`textarea-template-${key}`}
-                  />
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={8}
+                      value={editingTemplateValue}
+                      onChange={(e) => setEditingTemplateValue(e.target.value)}
+                      placeholder="Enter template HTML content..."
+                      data-testid={`textarea-template-${key}`}
+                    />
+                    <div className="flex flex-wrap gap-1.5" data-testid={`template-vars-${key}`}>
+                      {vars.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setEditingTemplateValue((prev) => prev + v)}
+                          className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                          data-testid={`chip-template-var-${v.replace(/\{|\}/g, "")}`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-sm text-muted-foreground bg-muted/50 rounded p-3 min-h-[60px]">
                     {emailTemplates?.[key] ? (
@@ -1671,6 +1741,46 @@ export function AdminPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Broadcast preview dialog */}
+      <Dialog open={broadcastPreviewOpen} onOpenChange={setBroadcastPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-broadcast-preview">
+          <DialogHeader>
+            <DialogTitle>Broadcast Preview</DialogTitle>
+            <DialogDescription>Rendered with sample recipient: Sarah Al-Hassan · sarah@example.com · Dubai</DialogDescription>
+          </DialogHeader>
+          {broadcastPreviewHtml && (
+            <iframe
+              srcDoc={broadcastPreviewHtml}
+              className="w-full border rounded-md"
+              style={{ height: "420px" }}
+              sandbox="allow-same-origin"
+              title="Email preview"
+              data-testid="iframe-broadcast-preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Template preview dialog */}
+      <Dialog open={templatePreviewOpen} onOpenChange={setTemplatePreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-template-preview">
+          <DialogHeader>
+            <DialogTitle>Template Preview</DialogTitle>
+            <DialogDescription>Rendered with sample variable values</DialogDescription>
+          </DialogHeader>
+          {templatePreviewHtml && (
+            <iframe
+              srcDoc={templatePreviewHtml}
+              className="w-full border rounded-md"
+              style={{ height: "420px" }}
+              sandbox="allow-same-origin"
+              title="Template preview"
+              data-testid="iframe-template-preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
