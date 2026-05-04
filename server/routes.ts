@@ -2515,6 +2515,7 @@ export async function registerRoutes(
       } else if (tier === "verified") {
         tierUpdates.isVerified = true;
         tierUpdates.kycStatus = "APPROVED";
+        tierUpdates.kybStatus = "NOT_STARTED";
         tierUpdates.accountType = "individual";
       } else if (tier === "business") {
         tierUpdates.isVerified = true;
