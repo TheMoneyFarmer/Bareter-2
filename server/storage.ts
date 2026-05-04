@@ -273,7 +273,7 @@ export interface IStorage {
 
   // Admin Audit Logs
   createAuditLog(log: InsertAdminAuditLog): Promise<AdminAuditLog>;
-  getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string }): Promise<AdminAuditLog[]>;
+  getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string; from?: Date; to?: Date }): Promise<AdminAuditLog[]>;
 
   // Failed Login Attempts
   createFailedLoginAttempt(attempt: InsertFailedLoginAttempt): Promise<FailedLoginAttempt>;
