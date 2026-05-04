@@ -80,6 +80,16 @@ import {
   type BannedEmail,
   moderationLogs,
   type ModerationLog,
+  disputes,
+  type Dispute,
+  type InsertDispute,
+  type DisputeWithParties,
+  adminAuditLogs,
+  type AdminAuditLog,
+  type InsertAdminAuditLog,
+  failedLoginAttempts,
+  type FailedLoginAttempt,
+  type InsertFailedLoginAttempt,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -254,6 +264,20 @@ export interface IStorage {
 
   // Moderation logs for listings
   getModerationLogsByTarget(targetId: string, targetType?: string): Promise<ModerationLog[]>;
+
+  // Disputes
+  getDisputes(opts?: { status?: string }): Promise<DisputeWithParties[]>;
+  getDispute(id: string): Promise<DisputeWithParties | undefined>;
+  createDispute(dispute: InsertDispute): Promise<Dispute>;
+  updateDispute(id: string, data: Partial<Dispute>): Promise<Dispute | undefined>;
+
+  // Admin Audit Logs
+  createAuditLog(log: InsertAdminAuditLog): Promise<AdminAuditLog>;
+  getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string }): Promise<AdminAuditLog[]>;
+
+  // Failed Login Attempts
+  createFailedLoginAttempt(attempt: InsertFailedLoginAttempt): Promise<FailedLoginAttempt>;
+  getFailedLoginAttempts(opts?: { limit?: number; email?: string }): Promise<FailedLoginAttempt[]>;
 
   // Legal pages (admin-editable public legal pack)
   getLegalPages(language?: string): Promise<LegalPage[]>;
@@ -1530,6 +1554,106 @@ export class DatabaseStorage implements IStorage {
       .from(moderationLogs)
       .where(and(...conditions))
       .orderBy(desc(moderationLogs.createdAt));
+  }
+
+  async getDisputes(opts?: { status?: string }): Promise<DisputeWithParties[]> {
+    const partyA = db.select().from(users).as("partyA");
+    const partyB = db.select().from(users).as("partyB");
+    const decisionAdmin = db.select().from(users).as("decisionAdmin");
+
+    let query = db
+      .select()
+      .from(disputes)
+      .leftJoin(partyA, eq(disputes.partyAId, sql`"partyA"."id"`))
+      .leftJoin(partyB, eq(disputes.partyBId, sql`"partyB"."id"`))
+      .leftJoin(decisionAdmin, eq(disputes.decisionBy, sql`"decisionAdmin"."id"`))
+      .orderBy(desc(disputes.createdAt));
+
+    const rows = opts?.status
+      ? await query.where(eq(disputes.status, opts.status))
+      : await query;
+
+    return rows.map((r: any) => {
+      const { password: _pA, ...partyAData } = r.partyA || {};
+      const { password: _pB, ...partyBData } = r.partyB || {};
+      const decisionByAdmin = r.decisionAdmin
+        ? (() => { const { password: _pD, ...d } = r.decisionAdmin; return d; })()
+        : null;
+      return {
+        ...r.disputes,
+        partyA: partyAData,
+        partyB: partyBData,
+        decisionByAdmin,
+      };
+    });
+  }
+
+  async getDispute(id: string): Promise<DisputeWithParties | undefined> {
+    const partyA = db.select().from(users).as("partyA");
+    const partyB = db.select().from(users).as("partyB");
+    const decisionAdmin = db.select().from(users).as("decisionAdmin");
+
+    const rows = await db
+      .select()
+      .from(disputes)
+      .leftJoin(partyA, eq(disputes.partyAId, sql`"partyA"."id"`))
+      .leftJoin(partyB, eq(disputes.partyBId, sql`"partyB"."id"`))
+      .leftJoin(decisionAdmin, eq(disputes.decisionBy, sql`"decisionAdmin"."id"`))
+      .where(eq(disputes.id, id));
+
+    if (!rows.length) return undefined;
+    const r: any = rows[0];
+    const { password: _pA, ...partyAData } = r.partyA || {};
+    const { password: _pB, ...partyBData } = r.partyB || {};
+    const decisionByAdmin = r.decisionAdmin
+      ? (() => { const { password: _pD, ...d } = r.decisionAdmin; return d; })()
+      : null;
+    return {
+      ...r.disputes,
+      partyA: partyAData,
+      partyB: partyBData,
+      decisionByAdmin,
+    };
+  }
+
+  async createDispute(dispute: InsertDispute): Promise<Dispute> {
+    const [row] = await db.insert(disputes).values(dispute).returning();
+    return row;
+  }
+
+  async updateDispute(id: string, data: Partial<Dispute>): Promise<Dispute | undefined> {
+    const [row] = await db
+      .update(disputes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(disputes.id, id))
+      .returning();
+    return row;
+  }
+
+  async createAuditLog(log: InsertAdminAuditLog): Promise<AdminAuditLog> {
+    const [row] = await db.insert(adminAuditLogs).values(log).returning();
+    return row;
+  }
+
+  async getAuditLogs(opts?: { limit?: number; offset?: number; action?: string; adminId?: string }): Promise<AdminAuditLog[]> {
+    const limit = Math.min(opts?.limit ?? 100, 500);
+    const offset = opts?.offset ?? 0;
+    const conditions: any[] = [];
+    if (opts?.action) conditions.push(eq(adminAuditLogs.action, opts.action));
+    if (opts?.adminId) conditions.push(eq(adminAuditLogs.adminId, opts.adminId));
+    const query = db.select().from(adminAuditLogs).orderBy(desc(adminAuditLogs.createdAt)).limit(limit).offset(offset);
+    return conditions.length > 0 ? await query.where(and(...conditions)) : await query;
+  }
+
+  async createFailedLoginAttempt(attempt: InsertFailedLoginAttempt): Promise<FailedLoginAttempt> {
+    const [row] = await db.insert(failedLoginAttempts).values(attempt).returning();
+    return row;
+  }
+
+  async getFailedLoginAttempts(opts?: { limit?: number; email?: string }): Promise<FailedLoginAttempt[]> {
+    const limit = Math.min(opts?.limit ?? 100, 500);
+    const query = db.select().from(failedLoginAttempts).orderBy(desc(failedLoginAttempts.createdAt)).limit(limit);
+    return opts?.email ? await query.where(eq(failedLoginAttempts.email, opts.email)) : await query;
   }
 }
 

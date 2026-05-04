@@ -51,7 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report } from "@shared/schema";
+import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report, DisputeWithParties, AdminAuditLog, FailedLoginAttempt } from "@shared/schema";
 import { CATEGORIES } from "@shared/schema";
 import {
   Users,
@@ -97,6 +97,14 @@ import {
   BadgeCheck,
   Pencil,
   X,
+  Gavel,
+  ShieldAlert,
+  ClipboardList,
+  LogIn,
+  Power,
+  ToggleLeft,
+  ToggleRight,
+  Megaphone,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -117,7 +125,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal";
 
 type WaitlistEntryRow = {
   id: number;
@@ -184,6 +192,16 @@ export function AdminPage() {
   const [editListingDialog, setEditListingDialog] = useState<{ open: boolean; listing: ListingWithUser | null; categories: string[]; retailValue: string }>({
     open: false, listing: null, categories: [], retailValue: "",
   });
+  const [disputeStatusFilter, setDisputeStatusFilter] = useState<string>("all");
+  const [selectedDispute, setSelectedDispute] = useState<DisputeWithParties | null>(null);
+  const [disputeDecisionDialog, setDisputeDecisionDialog] = useState<{ open: boolean; dispute: DisputeWithParties | null; decision: string; reasoning: string; outcome: string }>({
+    open: false, dispute: null, decision: "", reasoning: "", outcome: "",
+  });
+  const [createDisputeDialog, setCreateDisputeDialog] = useState<{ open: boolean; partyAId: string; partyBId: string; subject: string; description: string; dealId: string }>({
+    open: false, partyAId: "", partyBId: "", subject: "", description: "", dealId: "",
+  });
+  const [settingsTab, setSettingsTab] = useState<string>("platform");
+  const [auditLogActionFilter, setAuditLogActionFilter] = useState<string>("all");
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -353,6 +371,123 @@ export function AdminPage() {
     enabled: !!selectedListingId,
   });
 
+  const { data: disputesData = [], isLoading: disputesLoading } = useQuery<DisputeWithParties[]>({
+    queryKey: ["/api/admin/disputes"],
+    enabled: activeSection === "disputes",
+  });
+
+  const { data: auditLogs = [] } = useQuery<AdminAuditLog[]>({
+    queryKey: ["/api/admin/audit-logs"],
+    enabled: activeSection === "settings" && settingsTab === "audit",
+  });
+
+  const { data: failedLogins = [] } = useQuery<FailedLoginAttempt[]>({
+    queryKey: ["/api/admin/failed-logins"],
+    enabled: activeSection === "settings" && settingsTab === "security",
+  });
+
+  const { data: dataCollectionSetting } = useQuery<{ dataCollectionDisabled: boolean }>({
+    queryKey: ["/api/admin/settings/data-collection"],
+    enabled: activeSection === "settings",
+  });
+
+  const dealStateMutation = useMutation({
+    mutationFn: async ({ dealId, state, reason }: { dealId: string; state: string; reason?: string }) => {
+      await apiRequest("PATCH", `/api/admin/deals/${dealId}/state`, { state, reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
+      setSelectedDeal(null);
+      toast({ title: "Success", description: "Deal state updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update deal state", variant: "destructive" });
+    },
+  });
+
+  const createDisputeMutation = useMutation({
+    mutationFn: async (data: { partyAId: string; partyBId: string; subject: string; description?: string; dealId?: string }) => {
+      await apiRequest("POST", "/api/admin/disputes", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      setCreateDisputeDialog({ open: false, partyAId: "", partyBId: "", subject: "", description: "", dealId: "" });
+      toast({ title: "Success", description: "Dispute created" });
+    },
+  });
+
+  const disputeStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PATCH", `/api/admin/disputes/${id}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      toast({ title: "Success", description: "Dispute status updated" });
+    },
+  });
+
+  const disputeDecisionMutation = useMutation({
+    mutationFn: async ({ id, decision, decisionReasoning, outcome }: { id: string; decision: string; decisionReasoning: string; outcome: string }) => {
+      await apiRequest("PATCH", `/api/admin/disputes/${id}/decision`, { decision, decisionReasoning, outcome });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" });
+      setSelectedDispute(null);
+      toast({ title: "Success", description: "Dispute resolved and parties notified" });
+    },
+  });
+
+  const disputeEscalateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/admin/disputes/${id}/escalate`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      toast({ title: "Success", description: "Dispute escalated to mediation" });
+    },
+  });
+
+  const disputeDeleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/admin/disputes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      setSelectedDispute(null);
+      toast({ title: "Success", description: "Dispute deleted" });
+    },
+  });
+
+  const revokeSessionsMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("POST", `/api/admin/users/${userId}/revoke-sessions`);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "All sessions revoked" });
+    },
+  });
+
+  const dataCollectionMutation = useMutation({
+    mutationFn: async (disabled: boolean) => {
+      await apiRequest("PATCH", "/api/admin/settings/data-collection", { disabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings/data-collection"] });
+      toast({ title: "Success", description: "Data collection setting updated" });
+    },
+  });
+
+  const marketingConsentMutation = useMutation({
+    mutationFn: async ({ userId, marketingEmails }: { userId: string; marketingEmails: boolean }) => {
+      await apiRequest("PATCH", `/api/admin/users/${userId}/marketing-consent`, { marketingEmails });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Success", description: "Marketing consent updated" });
+    },
+  });
+
   // NOTE: do NOT early-return here. There are more hooks declared further
   // down (useQuery for /api/admin/reports, /api/admin/behavioral-flags,
   // /api/admin/ai-logs and a few useState hooks) and an early return on
@@ -421,6 +556,7 @@ export function AdminPage() {
     { id: "users" as const, label: "Users", icon: Users },
     { id: "listings" as const, label: "Listings", icon: Package },
     { id: "deals" as const, label: "Deals", icon: Handshake },
+    { id: "disputes" as const, label: "Disputes", icon: Gavel },
     { id: "reports" as const, label: "Reports", icon: Flag },
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
@@ -1102,6 +1238,126 @@ export function AdminPage() {
     </div>
   );
 
+  const filteredDisputes = disputesData.filter(d => {
+    if (disputeStatusFilter !== "all" && d.status !== disputeStatusFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return d.subject.toLowerCase().includes(q) ||
+        d.partyA?.fullName?.toLowerCase().includes(q) ||
+        d.partyB?.fullName?.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const renderDisputes = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Disputes</h2>
+          <p className="text-muted-foreground">Manage disputes between parties</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={disputeStatusFilter} onValueChange={setDisputeStatusFilter}>
+            <SelectTrigger className="w-[140px]" data-testid="select-dispute-status-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="in_mediation">In Mediation</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setCreateDisputeDialog({ ...createDisputeDialog, open: true })} data-testid="button-create-dispute">
+            Create Dispute
+          </Button>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {disputesLoading ? (
+            <div className="p-6 space-y-3">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}
+            </div>
+          ) : filteredDisputes.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">No disputes found</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Party A</TableHead>
+                  <TableHead>Party B</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="w-[180px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDisputes.map((d) => (
+                  <TableRow key={d.id} data-testid={`row-dispute-${d.id}`}>
+                    <TableCell className="font-medium max-w-[200px] truncate">{d.subject}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-xs">{d.partyA?.fullName?.charAt(0) || "?"}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{d.partyA?.fullName || "Unknown"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-xs">{d.partyB?.fullName?.charAt(0) || "?"}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{d.partyB?.fullName || "Unknown"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        d.status === "resolved" ? "default" :
+                        d.status === "in_mediation" ? "secondary" :
+                        "outline"
+                      }>
+                        {d.status.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {d.createdAt ? new Date(d.createdAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setSelectedDispute(d)} data-testid={`button-view-dispute-${d.id}`}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {d.status === "open" && (
+                          <Button variant="outline" size="sm" onClick={() => disputeEscalateMutation.mutate(d.id)} data-testid={`button-escalate-dispute-${d.id}`}>
+                            Escalate
+                          </Button>
+                        )}
+                        {d.status !== "resolved" && (
+                          <Button variant="outline" size="sm" onClick={() => setDisputeDecisionDialog({ open: true, dispute: d, decision: "", reasoning: "", outcome: "" })} data-testid={`button-decide-dispute-${d.id}`}>
+                            Decide
+                          </Button>
+                        )}
+                        {d.status !== "in_mediation" && (
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { if (confirm("Delete this dispute permanently?")) disputeDeleteMutation.mutate(d.id); }} data-testid={`button-delete-dispute-${d.id}`}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderAnalytics = () => (
     <div className="space-y-6">
       <div>
@@ -1201,59 +1457,209 @@ export function AdminPage() {
     </div>
   );
 
+  const filteredAuditLogs = auditLogs.filter(l =>
+    auditLogActionFilter === "all" || l.action === auditLogActionFilter
+  );
+  const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-1">Settings</h2>
-        <p className="text-muted-foreground">Platform configuration and preferences</p>
+        <p className="text-muted-foreground">Platform configuration, security, and compliance</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Platform Settings</CardTitle>
-          <CardDescription>Configure platform-wide settings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Platform Pricing</p>
-                <p className="text-sm text-muted-foreground">Bareter is free for all users</p>
-              </div>
-              <Badge variant="secondary">Free</Badge>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Verification Required</p>
-                <p className="text-sm text-muted-foreground">KYC/KYB required for bartering</p>
-              </div>
-              <Badge>Enabled</Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={settingsTab} onValueChange={setSettingsTab}>
+        <TabsList>
+          <TabsTrigger value="platform" data-testid="tab-settings-platform">Platform</TabsTrigger>
+          <TabsTrigger value="audit" data-testid="tab-settings-audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="security" data-testid="tab-settings-security">Security</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Compliance — Cookie Consent Log</CardTitle>
-          <CardDescription>
-            Append-only audit trail of every cookie-banner decision (accept all,
-            reject non-essential, or custom) with policy version, IP and
-            user-agent. Used to satisfy UAE PDPL / GDPR proof-of-consent
-            requests.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <a
-            href="/api/admin/consent/export.csv"
-            data-testid="link-consent-export-csv"
-            className="inline-flex items-center text-sm font-medium text-bareter-teal hover:underline"
-          >
-            Download consent log (CSV)
-          </a>
-        </CardContent>
-      </Card>
+        <TabsContent value="platform" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Platform Settings</CardTitle>
+              <CardDescription>Configure platform-wide settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Platform Pricing</p>
+                    <p className="text-sm text-muted-foreground">Bareter is free for all users</p>
+                  </div>
+                  <Badge variant="secondary">Free</Badge>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Verification Required</p>
+                    <p className="text-sm text-muted-foreground">KYC/KYB required for bartering</p>
+                  </div>
+                  <Badge>Enabled</Badge>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-destructive" />
+                      Emergency Data Collection Disable
+                    </p>
+                    <p className="text-sm text-muted-foreground">Kill-switch to stop all non-essential data collection immediately</p>
+                  </div>
+                  <Button
+                    variant={dataCollectionSetting?.dataCollectionDisabled ? "destructive" : "outline"}
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => dataCollectionMutation.mutate(!dataCollectionSetting?.dataCollectionDisabled)}
+                    disabled={dataCollectionMutation.isPending}
+                    data-testid="button-toggle-data-collection"
+                  >
+                    {dataCollectionSetting?.dataCollectionDisabled ? (
+                      <><ToggleRight className="h-4 w-4" />Collection Disabled</>
+                    ) : (
+                      <><ToggleLeft className="h-4 w-4" />Collection Active</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Compliance — Cookie Consent Log</CardTitle>
+              <CardDescription>
+                Append-only audit trail of every cookie-banner decision. Used for UAE PDPL / GDPR compliance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <a
+                href="/api/admin/consent/export.csv"
+                data-testid="link-consent-export-csv"
+                className="inline-flex items-center text-sm font-medium text-bareter-teal hover:underline"
+              >
+                Download consent log (CSV)
+              </a>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="audit" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5" />
+                    Admin Audit Log
+                  </CardTitle>
+                  <CardDescription>Track all admin actions for accountability</CardDescription>
+                </div>
+                <Select value={auditLogActionFilter} onValueChange={setAuditLogActionFilter}>
+                  <SelectTrigger className="w-[200px]" data-testid="select-audit-action-filter">
+                    <SelectValue placeholder="All actions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All actions</SelectItem>
+                    {auditActions.map(a => (
+                      <SelectItem key={a} value={a}>{a.replace(/_/g, " ")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {filteredAuditLogs.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">No audit log entries</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Admin</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Target</TableHead>
+                      <TableHead>Details</TableHead>
+                      <TableHead>IP</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAuditLogs.map((log) => (
+                      <TableRow key={log.id} data-testid={`row-audit-${log.id}`}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {log.createdAt ? new Date(log.createdAt).toLocaleString() : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">{log.adminEmail || log.adminId.slice(0, 8)}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{log.action.replace(/_/g, " ")}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <span className="text-muted-foreground">{log.targetType}</span>
+                          {log.targetId && <span className="font-mono text-xs ml-1">{log.targetId.slice(0, 8)}…</span>}
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[200px] truncate text-muted-foreground">
+                          {log.details ? JSON.stringify(log.details).slice(0, 80) : "—"}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{log.ipAddress || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LogIn className="h-5 w-5" />
+                Failed Login Attempts
+              </CardTitle>
+              <CardDescription>Recent failed login attempts for monitoring</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {failedLogins.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">No failed login attempts recorded</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>IP Address</TableHead>
+                      <TableHead>User Agent</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {failedLogins.map((attempt) => (
+                      <TableRow key={attempt.id} data-testid={`row-failed-login-${attempt.id}`}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {attempt.createdAt ? new Date(attempt.createdAt).toLocaleString() : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">{attempt.email}</TableCell>
+                        <TableCell>
+                          <Badge variant={attempt.reason === "invalid_password" ? "destructive" : "secondary"}>
+                            {(attempt.reason || "unknown").replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{attempt.ipAddress || "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[200px] truncate text-muted-foreground">
+                          {attempt.userAgent || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 
@@ -1697,6 +2103,8 @@ export function AdminPage() {
         return renderListings();
       case "deals":
         return renderDeals();
+      case "disputes":
+        return renderDisputes();
       case "reports":
         return renderReports();
       case "flags":
@@ -1888,6 +2296,31 @@ export function AdminPage() {
                   </div>
                 )}
               </div>
+
+              {selectedDeal.state !== "completed" && selectedDeal.state !== "cancelled" && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    className="gap-2"
+                    onClick={() => dealStateMutation.mutate({ dealId: selectedDeal.id, state: "completed" })}
+                    disabled={dealStateMutation.isPending}
+                    data-testid="button-deal-complete"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Mark Complete
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="gap-2"
+                    onClick={() => dealStateMutation.mutate({ dealId: selectedDeal.id, state: "cancelled" })}
+                    disabled={dealStateMutation.isPending}
+                    data-testid="button-deal-cancel"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Cancel Deal
+                  </Button>
+                </div>
+              )}
 
               {selectedDeal.contractPdfUrl && (
                 <Button variant="outline" className="gap-2" asChild>
@@ -2136,12 +2569,41 @@ export function AdminPage() {
 
               <Separator />
 
+              <div>
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <Megaphone className="h-4 w-4" />
+                  Marketing Consent
+                </h4>
+                <div className="flex items-center justify-between p-2 border rounded-lg">
+                  <p className="text-sm">{userDetail.marketingEmails ? "Opted in to marketing emails" : "Opted out of marketing emails"}</p>
+                  <Button
+                    size="sm"
+                    variant={userDetail.marketingEmails ? "outline" : "default"}
+                    onClick={() => marketingConsentMutation.mutate({ userId: userDetail.id, marketingEmails: !userDetail.marketingEmails })}
+                    disabled={marketingConsentMutation.isPending}
+                    data-testid="button-toggle-marketing-consent"
+                  >
+                    {userDetail.marketingEmails ? "Opt Out" : "Opt In"}
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEmailDialog({ open: true, user: userDetail, subject: "", body: "" }); }} data-testid="button-drawer-email">
                   <Mail className="h-3.5 w-3.5" />Email
                 </Button>
                 <Button size="sm" variant="outline" className="gap-1" onClick={() => resetPasswordMutation.mutate(userDetail.id)} data-testid="button-drawer-reset-password">
                   <KeyRound className="h-3.5 w-3.5" />Reset Password
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => revokeSessionsMutation.mutate(userDetail.id)} disabled={revokeSessionsMutation.isPending} data-testid="button-drawer-revoke-sessions">
+                  <Power className="h-3.5 w-3.5" />Revoke Sessions
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" asChild data-testid="button-drawer-dsar-export">
+                  <a href={`/api/admin/users/${userDetail.id}/export`} download>
+                    <Download className="h-3.5 w-3.5" />Export (DSAR)
+                  </a>
                 </Button>
                 <Button size="sm" variant="destructive" className="gap-1" onClick={() => setDeleteDialog({ open: true, user: userDetail })} data-testid="button-drawer-delete">
                   <Trash2 className="h-3.5 w-3.5" />Delete (PDPL)
@@ -2471,6 +2933,244 @@ export function AdminPage() {
               data-testid="button-confirm-edit-listing"
             >
               {editListingMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispute Detail Dialog */}
+      <Dialog open={!!selectedDispute} onOpenChange={(open) => !open && setSelectedDispute(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-dispute-detail">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gavel className="h-5 w-5" />
+              Dispute Details
+            </DialogTitle>
+            <DialogDescription>{selectedDispute?.subject}</DialogDescription>
+          </DialogHeader>
+          {selectedDispute && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Party A</p>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback className="text-xs">{selectedDispute.partyA?.fullName?.charAt(0) || "?"}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">{selectedDispute.partyA?.fullName}</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Party B</p>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback className="text-xs">{selectedDispute.partyB?.fullName?.charAt(0) || "?"}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">{selectedDispute.partyB?.fullName}</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge variant={
+                    selectedDispute.status === "resolved" ? "default" :
+                    selectedDispute.status === "in_mediation" ? "secondary" : "outline"
+                  }>{selectedDispute.status.replace("_", " ")}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Created</p>
+                  <p className="text-sm">{selectedDispute.createdAt ? new Date(selectedDispute.createdAt).toLocaleString() : "-"}</p>
+                </div>
+              </div>
+
+              {selectedDispute.description && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm border rounded-lg p-3">{selectedDispute.description}</p>
+                </div>
+              )}
+
+              {selectedDispute.escalatedAt && (
+                <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded-lg p-3">
+                  <AlertTriangle className="h-4 w-4" />
+                  Escalated on {new Date(selectedDispute.escalatedAt).toLocaleString()}
+                </div>
+              )}
+
+              {selectedDispute.decision && (
+                <div className="border rounded-lg p-4 space-y-2 bg-muted/30">
+                  <h4 className="font-medium text-sm flex items-center gap-2"><Gavel className="h-4 w-4" />Decision</h4>
+                  <p className="text-sm">{selectedDispute.decision}</p>
+                  {selectedDispute.decisionReasoning && (
+                    <p className="text-sm text-muted-foreground">{selectedDispute.decisionReasoning}</p>
+                  )}
+                  <Badge>{selectedDispute.outcome?.replace(/_/g, " ")}</Badge>
+                  {selectedDispute.decisionByAdmin && (
+                    <p className="text-xs text-muted-foreground">By {selectedDispute.decisionByAdmin.fullName} on {selectedDispute.decisionAt ? new Date(selectedDispute.decisionAt).toLocaleString() : ""}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                {selectedDispute.status !== "resolved" && (
+                  <>
+                    {selectedDispute.status === "open" && (
+                      <Button variant="outline" className="gap-2" onClick={() => disputeEscalateMutation.mutate(selectedDispute.id)} disabled={disputeEscalateMutation.isPending} data-testid="button-dialog-escalate-dispute">
+                        <AlertTriangle className="h-4 w-4" />Escalate to Mediation
+                      </Button>
+                    )}
+                    <Button className="gap-2" onClick={() => setDisputeDecisionDialog({ open: true, dispute: selectedDispute, decision: "", reasoning: "", outcome: "" })} data-testid="button-dialog-decide-dispute">
+                      <Gavel className="h-4 w-4" />Make Decision
+                    </Button>
+                  </>
+                )}
+                {selectedDispute.status !== "in_mediation" && (
+                  <Button variant="destructive" className="gap-2" onClick={() => { if (confirm("Delete this dispute permanently?")) disputeDeleteMutation.mutate(selectedDispute.id); }} disabled={disputeDeleteMutation.isPending} data-testid="button-dialog-delete-dispute">
+                    <Trash2 className="h-4 w-4" />Delete
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispute Decision Dialog */}
+      <Dialog open={disputeDecisionDialog.open} onOpenChange={(open) => !open && setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" })}>
+        <DialogContent data-testid="dialog-dispute-decision">
+          <DialogHeader>
+            <DialogTitle>Resolve Dispute</DialogTitle>
+            <DialogDescription>
+              Enter your decision for "{disputeDecisionDialog.dispute?.subject}". Both parties will be notified by email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Outcome</Label>
+              <Select value={disputeDecisionDialog.outcome} onValueChange={(v) => setDisputeDecisionDialog({ ...disputeDecisionDialog, outcome: v })}>
+                <SelectTrigger data-testid="select-dispute-outcome">
+                  <SelectValue placeholder="Select outcome" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="in_favor_party_a">In favor of Party A</SelectItem>
+                  <SelectItem value="in_favor_party_b">In favor of Party B</SelectItem>
+                  <SelectItem value="mutual">Mutual agreement</SelectItem>
+                  <SelectItem value="dismissed">Dismissed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Decision</Label>
+              <Textarea
+                placeholder="Enter your decision..."
+                value={disputeDecisionDialog.decision}
+                onChange={(e) => setDisputeDecisionDialog({ ...disputeDecisionDialog, decision: e.target.value })}
+                className="min-h-[100px]"
+                data-testid="input-dispute-decision"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Reasoning (optional)</Label>
+              <Textarea
+                placeholder="Provide reasoning for the decision..."
+                value={disputeDecisionDialog.reasoning}
+                onChange={(e) => setDisputeDecisionDialog({ ...disputeDecisionDialog, reasoning: e.target.value })}
+                data-testid="input-dispute-reasoning"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" })}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!disputeDecisionDialog.decision || !disputeDecisionDialog.outcome || disputeDecisionMutation.isPending}
+              onClick={() => disputeDecisionDialog.dispute && disputeDecisionMutation.mutate({
+                id: disputeDecisionDialog.dispute.id,
+                decision: disputeDecisionDialog.decision,
+                decisionReasoning: disputeDecisionDialog.reasoning,
+                outcome: disputeDecisionDialog.outcome,
+              })}
+              data-testid="button-confirm-dispute-decision"
+            >
+              {disputeDecisionMutation.isPending ? "Resolving..." : "Resolve Dispute"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Dispute Dialog */}
+      <Dialog open={createDisputeDialog.open} onOpenChange={(open) => !open && setCreateDisputeDialog({ open: false, partyAId: "", partyBId: "", subject: "", description: "", dealId: "" })}>
+        <DialogContent data-testid="dialog-create-dispute">
+          <DialogHeader>
+            <DialogTitle>Create Dispute</DialogTitle>
+            <DialogDescription>Open a new dispute between two parties</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Input
+                placeholder="Brief subject of the dispute"
+                value={createDisputeDialog.subject}
+                onChange={(e) => setCreateDisputeDialog({ ...createDisputeDialog, subject: e.target.value })}
+                data-testid="input-dispute-subject"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Party A (User ID)</Label>
+                <Input
+                  placeholder="User ID"
+                  value={createDisputeDialog.partyAId}
+                  onChange={(e) => setCreateDisputeDialog({ ...createDisputeDialog, partyAId: e.target.value })}
+                  data-testid="input-dispute-party-a"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Party B (User ID)</Label>
+                <Input
+                  placeholder="User ID"
+                  value={createDisputeDialog.partyBId}
+                  onChange={(e) => setCreateDisputeDialog({ ...createDisputeDialog, partyBId: e.target.value })}
+                  data-testid="input-dispute-party-b"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Deal ID (optional)</Label>
+              <Input
+                placeholder="Related deal ID"
+                value={createDisputeDialog.dealId}
+                onChange={(e) => setCreateDisputeDialog({ ...createDisputeDialog, dealId: e.target.value })}
+                data-testid="input-dispute-deal-id"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                placeholder="Describe the dispute..."
+                value={createDisputeDialog.description}
+                onChange={(e) => setCreateDisputeDialog({ ...createDisputeDialog, description: e.target.value })}
+                className="min-h-[100px]"
+                data-testid="input-dispute-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDisputeDialog({ open: false, partyAId: "", partyBId: "", subject: "", description: "", dealId: "" })}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!createDisputeDialog.subject || !createDisputeDialog.partyAId || !createDisputeDialog.partyBId || createDisputeMutation.isPending}
+              onClick={() => createDisputeMutation.mutate({
+                partyAId: createDisputeDialog.partyAId,
+                partyBId: createDisputeDialog.partyBId,
+                subject: createDisputeDialog.subject,
+                description: createDisputeDialog.description || undefined,
+                dealId: createDisputeDialog.dealId || undefined,
+              })}
+              data-testid="button-confirm-create-dispute"
+            >
+              {createDisputeMutation.isPending ? "Creating..." : "Create Dispute"}
             </Button>
           </DialogFooter>
         </DialogContent>

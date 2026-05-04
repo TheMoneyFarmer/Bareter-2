@@ -1616,6 +1616,108 @@ export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
 
 export type BannedEmail = typeof bannedEmails.$inferSelect;
 
+export const DISPUTE_STATUSES = ["open", "in_mediation", "resolved"] as const;
+export const DISPUTE_OUTCOMES = ["in_favor_party_a", "in_favor_party_b", "mutual", "dismissed"] as const;
+
+export type DisputeEvidence = {
+  submittedBy: string;
+  submittedByName?: string;
+  description: string;
+  fileUrls?: string[];
+  submittedAt: string;
+};
+
+export const disputes = pgTable("disputes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  reportId: varchar("report_id", { length: 36 }).references(() => reports.id),
+  dealId: varchar("deal_id", { length: 36 }).references(() => deals.id),
+  partyAId: varchar("party_a_id", { length: 36 }).notNull().references(() => users.id),
+  partyBId: varchar("party_b_id", { length: 36 }).notNull().references(() => users.id),
+  status: text("status").notNull().default("open"),
+  subject: text("subject").notNull(),
+  description: text("description"),
+  evidence: jsonb("evidence").$type<DisputeEvidence[]>().default([]),
+  decision: text("decision"),
+  decisionReasoning: text("decision_reasoning"),
+  decisionBy: varchar("decision_by", { length: 36 }).references(() => users.id),
+  decisionAt: timestamp("decision_at"),
+  outcome: text("outcome"),
+  escalatedAt: timestamp("escalated_at"),
+  escalatedBy: varchar("escalated_by", { length: 36 }).references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("disputes_status_idx").on(table.status),
+  partyAIdx: index("disputes_party_a_idx").on(table.partyAId),
+  partyBIdx: index("disputes_party_b_idx").on(table.partyBId),
+  createdAtIdx: index("disputes_created_at_idx").on(table.createdAt),
+}));
+
+export const insertDisputeSchema = createInsertSchema(disputes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  decision: true,
+  decisionReasoning: true,
+  decisionBy: true,
+  decisionAt: true,
+  outcome: true,
+  escalatedAt: true,
+  escalatedBy: true,
+  resolvedAt: true,
+});
+export type InsertDispute = z.infer<typeof insertDisputeSchema>;
+export type Dispute = typeof disputes.$inferSelect;
+
+export type DisputeWithParties = Dispute & {
+  partyA: Omit<User, "password">;
+  partyB: Omit<User, "password">;
+  decisionByAdmin?: Omit<User, "password"> | null;
+};
+
+export const adminAuditLogs = pgTable("admin_audit_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  adminId: varchar("admin_id", { length: 36 }).notNull().references(() => users.id),
+  adminEmail: text("admin_email"),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: varchar("target_id", { length: 36 }),
+  details: jsonb("details").$type<Record<string, unknown>>(),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  adminIdx: index("admin_audit_logs_admin_idx").on(table.adminId),
+  actionIdx: index("admin_audit_logs_action_idx").on(table.action),
+  createdAtIdx: index("admin_audit_logs_created_at_idx").on(table.createdAt),
+}));
+
+export const insertAdminAuditLogSchema = createInsertSchema(adminAuditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAdminAuditLog = z.infer<typeof insertAdminAuditLogSchema>;
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+
+export const failedLoginAttempts = pgTable("failed_login_attempts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  reason: text("reason").default("invalid_credentials"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  emailIdx: index("failed_login_email_idx").on(table.email),
+  createdAtIdx: index("failed_login_created_at_idx").on(table.createdAt),
+}));
+
+export const insertFailedLoginAttemptSchema = createInsertSchema(failedLoginAttempts).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertFailedLoginAttempt = z.infer<typeof insertFailedLoginAttemptSchema>;
+export type FailedLoginAttempt = typeof failedLoginAttempts.$inferSelect;
+
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
 

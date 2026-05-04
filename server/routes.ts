@@ -47,6 +47,9 @@ import {
   salesLeads,
   salesReengagementEvents,
   bannedEmails,
+  disputes,
+  adminAuditLogs,
+  failedLoginAttempts,
 } from "@shared/schema";
 import {
   isValidPrivateDocPath,
@@ -298,11 +301,23 @@ export async function registerRoutes(
 
       const user = await storage.getUserByEmail(data.email.trim().toLowerCase());
       if (!user) {
+        storage.createFailedLoginAttempt({
+          email: data.email.trim().toLowerCase(),
+          ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          reason: "user_not_found",
+        }).catch(() => {});
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
       const validPassword = await bcrypt.compare(data.password, user.password);
       if (!validPassword) {
+        storage.createFailedLoginAttempt({
+          email: data.email.trim().toLowerCase(),
+          ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          reason: "invalid_password",
+        }).catch(() => {});
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
@@ -2227,6 +2242,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      await logAdminAction(req, verified ? "user_verified" : "user_unverified", "user", user.id, { email: user.email });
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -2242,6 +2258,7 @@ export async function registerRoutes(
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await logAdminAction(req, flagged ? "listing_flagged" : "listing_unflagged", "listing", listing.id, { title: listing.title });
       res.json(listing);
     } catch (error) {
       console.error("Admin flag listing error:", error);
@@ -2326,6 +2343,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      await logAdminAction(req, "user_role_changed", "user", user.id, { role, email: user.email });
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -2351,6 +2369,7 @@ export async function registerRoutes(
       } else if (!banned && user.email) {
         await storage.removeBannedEmail(user.email);
       }
+      await logAdminAction(req, banned ? "user_banned" : "user_unbanned", "user", user.id, { email: user.email, reason });
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -2403,6 +2422,7 @@ export async function registerRoutes(
       const baseUrl = `${protocol}://${host}`;
       const { sendPasswordResetEmail } = await import("./emailService");
       await sendPasswordResetEmail(user.email, token, baseUrl);
+      await logAdminAction(req, "password_reset_sent", "user", user.id, { email: user.email });
       res.json({ message: "Password reset email sent" });
     } catch (error) {
       console.error("Admin reset password error:", error);
@@ -2493,6 +2513,7 @@ export async function registerRoutes(
         await tx.delete(users).where(eq(users.id, userId));
       });
 
+      await logAdminAction(req, "user_deleted_pdpl", "user", userId, { email: userEmail });
       res.json({ message: "User data permanently deleted (PDPL right to erasure)" });
     } catch (error) {
       console.error("Admin delete user (PDPL) error:", error);
@@ -2527,6 +2548,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      await logAdminAction(req, "verification_tier_changed", "user", user.id, { tier, email: user.email });
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -2554,6 +2576,7 @@ export async function registerRoutes(
       if (!sent) {
         return res.status(500).json({ message: "Failed to send email. Email service may not be configured." });
       }
+      await logAdminAction(req, "email_sent", "user", user.id, { subject });
       res.json({ message: "Email sent successfully" });
     } catch (error) {
       console.error("Admin send email error:", error);
@@ -2612,6 +2635,7 @@ export async function registerRoutes(
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
       });
+      await logAdminAction(req, "listing_approved", "listing", listingId, { title: listing.title });
       res.json(listing);
     } catch (error) {
       console.error("Admin approve listing error:", error);
@@ -2654,6 +2678,7 @@ export async function registerRoutes(
           baseUrl,
         }).catch(err => console.error("Failed to send rejection email:", err));
       }
+      await logAdminAction(req, "listing_rejected", "listing", listingId, { title: listing.title, reason });
       res.json(listing);
     } catch (error) {
       console.error("Admin reject listing error:", error);
@@ -2686,6 +2711,7 @@ export async function registerRoutes(
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
       });
+      await logAdminAction(req, "listing_edited", "listing", listingId, { changedFields, title: listing.title });
       res.json(listing);
     } catch (error) {
       console.error("Admin edit listing error:", error);
@@ -2713,6 +2739,7 @@ export async function registerRoutes(
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
       });
+      await logAdminAction(req, isFeatured ? "listing_featured" : "listing_unfeatured", "listing", listingId, { title: listing.title });
       res.json(listing);
     } catch (error) {
       console.error("Admin feature listing error:", error);
@@ -2736,6 +2763,320 @@ export async function registerRoutes(
       res.json(messages);
     } catch (error) {
       console.error("Admin get deal messages error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  async function logAdminAction(req: Request, action: string, targetType: string, targetId: string | null, details?: Record<string, unknown>) {
+    try {
+      const admin = await storage.getUser(req.session.userId!);
+      await storage.createAuditLog({
+        adminId: req.session.userId!,
+        adminEmail: admin?.email || null,
+        action,
+        targetType,
+        targetId,
+        details: details || null,
+        ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+      });
+    } catch (err) {
+      console.error("[audit] failed to log admin action:", err);
+    }
+  }
+
+  app.patch("/api/admin/deals/:id/state", requireAdmin, async (req, res) => {
+    try {
+      const { state, reason } = req.body;
+      if (!["completed", "cancelled"].includes(state)) {
+        return res.status(400).json({ message: "State must be completed or cancelled" });
+      }
+      const dealId = param(req.params.id);
+      const deal = await storage.getDeal(dealId);
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      if (deal.state === "completed" || deal.state === "cancelled") {
+        return res.status(400).json({ message: `Deal is already ${deal.state}` });
+      }
+      const updated = await storage.updateDeal(dealId, {
+        state,
+        ...(state === "completed" ? { completedAt: new Date() } : {}),
+      });
+      await logAdminAction(req, `deal_${state}`, "deal", dealId, { previousState: deal.state, reason });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin deal state error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/disputes", requireAdmin, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const result = await storage.getDisputes(status ? { status } : undefined);
+      res.json(result);
+    } catch (error) {
+      console.error("Admin get disputes error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/disputes/:id", requireAdmin, async (req, res) => {
+    try {
+      const dispute = await storage.getDispute(param(req.params.id));
+      if (!dispute) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      res.json(dispute);
+    } catch (error) {
+      console.error("Admin get dispute error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/disputes", requireAdmin, async (req, res) => {
+    try {
+      const { partyAId, partyBId, dealId, reportId, subject, description } = req.body;
+      if (!partyAId || !partyBId || !subject) {
+        return res.status(400).json({ message: "partyAId, partyBId, and subject are required" });
+      }
+      const dispute = await storage.createDispute({
+        partyAId,
+        partyBId,
+        dealId: dealId || null,
+        reportId: reportId || null,
+        subject,
+        description: description || null,
+        status: "open",
+        evidence: [],
+      });
+      await logAdminAction(req, "dispute_created", "dispute", dispute.id, { partyAId, partyBId, dealId, subject });
+      res.json(dispute);
+    } catch (error) {
+      console.error("Admin create dispute error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/disputes/:id/status", requireAdmin, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!["open", "in_mediation", "resolved"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const disputeId = param(req.params.id);
+      const existing = await storage.getDispute(disputeId);
+      if (!existing) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      const updates: Record<string, any> = { status };
+      if (status === "resolved") {
+        updates.resolvedAt = new Date();
+      }
+      const updated = await storage.updateDispute(disputeId, updates);
+      await logAdminAction(req, "dispute_status_changed", "dispute", disputeId, { from: existing.status, to: status });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin dispute status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/disputes/:id/decision", requireAdmin, async (req, res) => {
+    try {
+      const { decision, decisionReasoning, outcome } = req.body;
+      if (!decision || !outcome) {
+        return res.status(400).json({ message: "decision and outcome are required" });
+      }
+      const disputeId = param(req.params.id);
+      const existing = await storage.getDispute(disputeId);
+      if (!existing) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      const updated = await storage.updateDispute(disputeId, {
+        decision,
+        decisionReasoning: decisionReasoning || null,
+        outcome,
+        decisionBy: req.session.userId!,
+        decisionAt: new Date(),
+        status: "resolved",
+        resolvedAt: new Date(),
+      });
+      await logAdminAction(req, "dispute_decided", "dispute", disputeId, { outcome, decision });
+
+      const { sendAdminEmail } = await import("./emailService");
+      const partyA = await storage.getUser(existing.partyAId);
+      const partyB = await storage.getUser(existing.partyBId);
+      const outcomeLabel = outcome.replace(/_/g, " ");
+      for (const party of [partyA, partyB].filter(Boolean)) {
+        sendAdminEmail(party!.email, {
+          recipientName: party!.fullName,
+          subject: `Dispute Resolution: ${existing.subject}`,
+          body: `Your dispute "${existing.subject}" has been resolved.\n\nOutcome: ${outcomeLabel}\nDecision: ${decision}${decisionReasoning ? `\nReasoning: ${decisionReasoning}` : ""}`,
+        }).catch(err => console.error("Failed to send dispute resolution email:", err));
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin dispute decision error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/disputes/:id/escalate", requireAdmin, async (req, res) => {
+    try {
+      const disputeId = param(req.params.id);
+      const existing = await storage.getDispute(disputeId);
+      if (!existing) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      const updated = await storage.updateDispute(disputeId, {
+        escalatedAt: new Date(),
+        escalatedBy: req.session.userId!,
+        status: "in_mediation",
+      });
+      await logAdminAction(req, "dispute_escalated", "dispute", disputeId, { subject: existing.subject });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin dispute escalate error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/disputes/:id", requireAdmin, async (req, res) => {
+    try {
+      const disputeId = param(req.params.id);
+      const existing = await storage.getDispute(disputeId);
+      if (!existing) {
+        return res.status(404).json({ message: "Dispute not found" });
+      }
+      if (existing.status === "in_mediation") {
+        return res.status(400).json({ message: "Cannot delete a dispute that is in mediation" });
+      }
+      await db.delete(disputes).where(eq(disputes.id, disputeId));
+      await logAdminAction(req, "dispute_deleted", "dispute", disputeId, { subject: existing.subject });
+      res.json({ message: "Dispute deleted" });
+    } catch (error) {
+      console.error("Admin dispute delete error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const action = req.query.action as string | undefined;
+      const adminId = req.query.adminId as string | undefined;
+      const logs = await storage.getAuditLogs({ limit, offset, action, adminId });
+      res.json(logs);
+    } catch (error) {
+      console.error("Admin audit logs error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/failed-logins", requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const email = req.query.email as string | undefined;
+      const attempts = await storage.getFailedLoginAttempts({ limit, email });
+      res.json(attempts);
+    } catch (error) {
+      console.error("Admin failed logins error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/revoke-sessions", requireAdmin, async (req, res) => {
+    try {
+      const userId = param(req.params.id);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      await destroyUserSessions(userId);
+      await logAdminAction(req, "sessions_revoked", "user", userId, { email: user.email });
+      res.json({ message: `All sessions revoked for ${user.fullName}` });
+    } catch (error) {
+      console.error("Admin revoke sessions error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/users/:id/export", requireAdmin, async (req, res) => {
+    try {
+      const userId = param(req.params.id);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const userListings = await storage.getListingsByUser(userId);
+      const userDeals = await storage.getDealsByUser(userId);
+      const userRatings = await storage.getRatingsByUser(userId);
+      const userNotifications = await storage.getNotificationsByUser(userId);
+      const userFollowers = await storage.getFollowers(userId);
+      const userFollowing = await storage.getFollowing(userId);
+
+      const { password, passwordResetToken, passwordResetExpires, ...safeUser } = user;
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        requestType: "DSAR_EXPORT",
+        user: safeUser,
+        listings: userListings,
+        deals: userDeals.map(d => {
+          const { seeker, provider, ...dealData } = d;
+          return { ...dealData, seekerName: seeker.fullName, providerName: provider.fullName };
+        }),
+        ratings: userRatings,
+        notifications: userNotifications,
+        followers: userFollowers.map(f => ({ id: f.follower.id, name: f.follower.fullName })),
+        following: userFollowing.map(f => ({ id: f.following.id, name: f.following.fullName })),
+      };
+      await logAdminAction(req, "dsar_export", "user", userId, { email: user.email });
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="dsar-export-${userId}-${new Date().toISOString().split("T")[0]}.json"`);
+      res.json(exportData);
+    } catch (error) {
+      console.error("Admin DSAR export error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/settings/data-collection", requireAdmin, async (req, res) => {
+    try {
+      const { disabled } = req.body;
+      await storage.setAppSetting("data_collection_disabled", disabled ? "true" : "false", req.session.userId);
+      await logAdminAction(req, disabled ? "data_collection_disabled" : "data_collection_enabled", "settings", "data_collection_disabled");
+      res.json({ dataCollectionDisabled: !!disabled });
+    } catch (error) {
+      console.error("Admin data collection toggle error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/settings/data-collection", requireAdmin, async (req, res) => {
+    try {
+      const val = await storage.getAppSetting("data_collection_disabled");
+      res.json({ dataCollectionDisabled: val === "true" });
+    } catch (error) {
+      console.error("Admin get data collection setting error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/marketing-consent", requireAdmin, async (req, res) => {
+    try {
+      const { marketingEmails } = req.body;
+      const user = await storage.updateUser(param(req.params.id), { marketingEmails: !!marketingEmails });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      await logAdminAction(req, "marketing_consent_updated", "user", user.id, { marketingEmails: !!marketingEmails });
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin marketing consent error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3782,6 +4123,7 @@ export async function registerRoutes(
     try {
       const { isPaused } = req.body;
       const updated = await storage.updateUser(param(req.params.id), { isPaused: !!isPaused });
+      await logAdminAction(req, isPaused ? "user_paused" : "user_unpaused", "user", param(req.params.id));
       res.json(updated);
     } catch (error) {
       console.error("Pause account error:", error);
@@ -3823,10 +4165,12 @@ export async function registerRoutes(
       if (!["pending", "dismissed", "actioned"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
+      const reportId = param(req.params.id);
       const [updated] = await db.update(reports)
         .set({ status })
-        .where(eq(reports.id, param(req.params.id)))
+        .where(eq(reports.id, reportId))
         .returning();
+      await logAdminAction(req, "report_status_changed", "report", reportId, { status });
       res.json(updated);
     } catch (error) {
       console.error("Update report status error:", error);
