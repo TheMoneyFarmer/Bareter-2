@@ -1669,10 +1669,10 @@ export function AdminPage() {
         <CardContent>
           <div className="space-y-3">
             {([
-              { key: "email_template_welcome", label: "Welcome / Onboarding", vars: ["{{name}}", "{{email}}", "{{appName}}"], sampleVars: { name: "Sarah Al-Hassan", email: "sarah@example.com", appName: "Bareter" } },
-              { key: "email_template_password_reset", label: "Password Reset", vars: ["{{resetUrl}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { resetUrl: "https://bareter.com/reset-password?token=sample", appName: "Bareter", baseUrl: "https://bareter.com" } },
-              { key: "email_template_deal_completed", label: "Deal Completed", vars: ["{{name}}", "{{dealTitle}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { name: "Sarah Al-Hassan", dealTitle: "Photography for Catering", appName: "Bareter", baseUrl: "https://bareter.com" } },
-              { key: "email_template_listing_rejected", label: "Listing Rejected", vars: ["{{greeting}}", "{{listingTitle}}", "{{reason}}", "{{appName}}"], sampleVars: { greeting: "Hi Sarah,", listingTitle: "Premium Photography Package", reason: "The listing does not meet our quality standards.", appName: "Bareter" } },
+              { key: "email_template_welcome", label: "Welcome / Onboarding", vars: ["{{fullName}}", "{{email}}", "{{appName}}"], sampleVars: { fullName: "Sarah Al-Hassan", email: "sarah@example.com", appName: "Bareter" } },
+              { key: "email_template_password_reset", label: "Password Reset", vars: ["{{resetUrl}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { resetUrl: "https://bareter.com/reset-password?token=sample123", appName: "Bareter", baseUrl: "https://bareter.com" } },
+              { key: "email_template_deal_completed", label: "Deal Completed", vars: ["{{greeting}}", "{{counterpartyName}}", "{{dealUrl}}", "{{appName}}"], sampleVars: { greeting: "Hi Sarah,", counterpartyName: "Ahmed Al-Mansouri", dealUrl: "https://bareter.com/deals/sample-123", appName: "Bareter" } },
+              { key: "email_template_listing_rejected", label: "Listing Rejected", vars: ["{{greeting}}", "{{listingTitle}}", "{{reason}}", "{{appName}}", "{{baseUrl}}"], sampleVars: { greeting: "Hi Sarah,", listingTitle: "Premium Photography Package", reason: "The listing does not meet our quality standards.", appName: "Bareter", baseUrl: "https://bareter.com" } },
             ] as const).map(({ key, label, vars, sampleVars }) => (
               <div key={key} className="border rounded-lg p-4" data-testid={`template-${key}`}>
                 <div className="flex items-center justify-between mb-2">
@@ -1683,7 +1683,7 @@ export function AdminPage() {
                         type="button"
                         className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2"
                         onClick={async () => {
-                          const result = await previewMutation.mutateAsync({ body: editingTemplateValue, vars: sampleVars });
+                          const result = await previewMutation.mutateAsync({ body: editingTemplateValue, vars: sampleVars, mode: "template" });
                           setTemplatePreviewHtml(result.html);
                           setTemplatePreviewOpen(true);
                         }}

@@ -2609,12 +2609,19 @@ export async function registerRoutes(
 
   app.post("/api/admin/email/preview", requireAdmin, async (req, res) => {
     try {
-      const { body, recipientName, vars } = req.body;
+      const { body, recipientName, vars, mode } = req.body;
       if (typeof body !== "string") {
         return res.status(400).json({ message: "body (string) is required" });
       }
-      const { renderBroadcastEmailHtml } = await import("./emailService");
-      const html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });
+      const { renderBroadcastEmailHtml, applyTemplateVars } = await import("./emailService");
+      let html: string;
+      if (mode === "template") {
+        // System templates are full HTML — just substitute vars, no wrapping or escaping
+        html = vars ? applyTemplateVars(body, vars) : body;
+      } else {
+        // Broadcast mode: plain text body wrapped in the branded shell
+        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });
+      }
       res.json({ html });
     } catch (error) {
       console.error("Email preview error:", error);
