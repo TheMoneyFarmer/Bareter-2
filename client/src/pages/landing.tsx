@@ -463,7 +463,7 @@ function TrustStat({
   return (
     <div className="flex flex-col items-center text-center px-3 sm:px-6 py-1">
       <stat.icon className="h-7 w-7 text-bareter-teal mb-2" />
-      {stat.countTo ? (
+      {stat.countTo !== undefined ? (
         <p
           className="text-card-title text-bareter-navy dark:text-foreground tabular-nums"
           data-testid={`stat-trust-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
