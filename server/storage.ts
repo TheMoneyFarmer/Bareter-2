@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray } from "drizzle-orm";
 import {
   users,
   listings,
@@ -322,10 +322,11 @@ export interface IStorage {
   countLegalPages(): Promise<number>;
 
   // Support Tickets
-  createSupportTicket(data: InsertSupportTicket & { userId: string; subject: string }): Promise<SupportTicket>;
+  createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket>;
   getSupportTicket(id: string): Promise<SupportTicketWithUser | undefined>;
   getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicketWithUser | undefined>;
   getSupportTicketsByUser(userId: string): Promise<SupportTicketWithUser[]>;
+  getSupportTicketsByIds(ids: string[]): Promise<SupportTicketWithUser[]>;
   getAllSupportTickets(opts?: { status?: string; priority?: string; limit?: number; offset?: number }): Promise<SupportTicketWithUser[]>;
   updateSupportTicket(id: string, data: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
   getSupportMessages(ticketId: string, includeInternal?: boolean): Promise<SupportMessageWithSender[]>;
@@ -1845,7 +1846,9 @@ export class DatabaseStorage implements IStorage {
 
   // ── Support Tickets ─────────────────────────────────────────────
   private async enrichTicket(ticket: SupportTicket): Promise<SupportTicketWithUser> {
-    const [user] = await db.select().from(users).where(eq(users.id, ticket.userId));
+    const [user] = ticket.userId
+      ? await db.select().from(users).where(eq(users.id, ticket.userId))
+      : [undefined];
     const assignee = ticket.assignedTo
       ? (await db.select().from(users).where(eq(users.id, ticket.assignedTo)))[0]
       : null;
@@ -1859,18 +1862,18 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(supportMessages.ticketId, ticket.id), eq(supportMessages.isInternal, false)))
       .orderBy(desc(supportMessages.createdAt))
       .limit(1);
-    const { password: _pw, ...safeUser } = user ?? ({} as User);
+    const safeUser = user ? (({ password: _pw, ...rest }) => rest)(user) : null;
     const assigneeOut = assignee ? (({ password: _pw2, ...rest }) => rest)(assignee) : null;
     return {
       ...ticket,
-      user: safeUser as Omit<User, "password">,
+      user: safeUser,
       assignee: assigneeOut,
       messageCount: Number(msgCount?.c ?? 0),
       lastMessage: lastMsgs[0]?.content ?? null,
     };
   }
 
-  async createSupportTicket(data: InsertSupportTicket & { userId: string; subject: string }): Promise<SupportTicket> {
+  async createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket> {
     const ticketNumber = `TKT-${Date.now().toString(36).toUpperCase()}`;
     const [ticket] = await db
       .insert(supportTickets)
@@ -1896,6 +1899,16 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(supportTickets)
       .where(eq(supportTickets.userId, userId))
+      .orderBy(desc(supportTickets.lastActivityAt));
+    return Promise.all(rows.map(t => this.enrichTicket(t)));
+  }
+
+  async getSupportTicketsByIds(ids: string[]): Promise<SupportTicketWithUser[]> {
+    if (!ids.length) return [];
+    const rows = await db
+      .select()
+      .from(supportTickets)
+      .where(inArray(supportTickets.id, ids))
       .orderBy(desc(supportTickets.lastActivityAt));
     return Promise.all(rows.map(t => this.enrichTicket(t)));
   }

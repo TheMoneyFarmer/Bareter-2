@@ -349,23 +349,35 @@ function TicketThread({
 function NewTicketForm({
   onBack,
   onSuccess,
+  isGuest,
 }: {
   onBack: () => void;
   onSuccess: () => void;
+  isGuest: boolean;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("other");
   const [message, setMessage] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+
+  const canSubmit = subject.trim() && message.trim() &&
+    (!isGuest || (guestName.trim() && guestEmail.trim()));
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/support/tickets", {
-        subject,
-        category,
-        message,
-      });
+      const body: Record<string, string> = { subject, category, message };
+      if (isGuest) {
+        body.requesterName = guestName.trim();
+        body.requesterEmail = guestEmail.trim().toLowerCase();
+      }
+      const res = await apiRequest("POST", "/api/support/tickets", body);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Failed to create ticket");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -376,8 +388,8 @@ function NewTicketForm({
       });
       onSuccess();
     },
-    onError: () => {
-      toast({ title: "Failed to create ticket", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: err.message ?? "Failed to create ticket", variant: "destructive" });
     },
   });
 
@@ -396,6 +408,34 @@ function NewTicketForm({
         <span className="text-sm font-semibold">New Support Ticket</span>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {isGuest && (
+          <div className="bg-muted/40 rounded-lg p-3 space-y-2">
+            <p className="text-[11px] text-muted-foreground font-medium">Your contact details</p>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Your name *</label>
+              <Input
+                data-testid="input-guest-name"
+                placeholder="Full name"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                className="text-xs h-8"
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Email address *</label>
+              <Input
+                data-testid="input-guest-email"
+                type="email"
+                placeholder="you@example.com"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                className="text-xs h-8"
+                maxLength={200}
+              />
+            </div>
+          </div>
+        )}
         <div>
           <label className="text-xs font-medium mb-1 block">Category</label>
           <Select value={category} onValueChange={setCategory}>
@@ -440,7 +480,7 @@ function NewTicketForm({
         <Button
           data-testid="btn-submit-ticket"
           className="w-full h-8 text-sm gap-1.5"
-          disabled={!subject.trim() || !message.trim() || createMutation.isPending}
+          disabled={!canSubmit || createMutation.isPending}
           onClick={() => createMutation.mutate()}
         >
           {createMutation.isPending ? (
@@ -466,7 +506,7 @@ export default function AiSupportChat() {
 
   const { data: tickets = [] } = useQuery<SupportTicketWithUser[]>({
     queryKey: ["/api/support/tickets"],
-    enabled: !!user && isOpen,
+    enabled: isOpen,
   });
 
   const openCount = tickets.filter(
@@ -507,46 +547,11 @@ export default function AiSupportChat() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            {!user ? (
-              <div className="flex flex-col items-center justify-center h-full p-6 gap-4 text-center">
-                <Headphones className="h-10 w-10 text-muted-foreground/40" />
-                <div>
-                  <p className="text-sm font-medium mb-1">Sign in to contact support</p>
-                  <p className="text-xs text-muted-foreground">
-                    Get help from our team or AI assistant.
-                  </p>
-                </div>
-                {waitlistMode.enabled ? (
-                  <Button
-                    data-testid="btn-support-join-waitlist"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      setIsOpen(false);
-                      openWaitlist();
-                    }}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Join the waitlist
-                  </Button>
-                ) : (
-                  <Link href="/login">
-                    <Button
-                      data-testid="btn-support-sign-in"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setIsOpen(false)}
-                    >
-                      <LogIn className="h-4 w-4 mr-2" />
-                      Sign in to get help
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            ) : view === "new" ? (
+            {view === "new" ? (
               <NewTicketForm
                 onBack={handleBack}
                 onSuccess={() => setView("list")}
+                isGuest={!user}
               />
             ) : view === "thread" && selectedTicket ? (
               <TicketThread ticket={selectedTicket} onBack={handleBack} />

@@ -146,6 +146,7 @@ async function destroyUserSessions(userId: string, exceptSid?: string): Promise<
 declare module "express-session" {
   interface SessionData {
     userId: string;
+    guestTicketIds: string[];
   }
 }
 
@@ -5546,30 +5547,59 @@ export async function registerRoutes(
   // ========== Support Ticket Routes ==========
 
   // Create a new ticket (user)
-  app.post("/api/support/tickets", requireAuth, async (req, res) => {
+  // Helper: check if current session can access a support ticket (auth user owns it OR guest session has it)
+  function canAccessTicket(ticket: { id: string; userId: string | null }, req: Request): boolean {
+    if (req.session.userId && ticket.userId === req.session.userId) return true;
+    if (!req.session.userId && Array.isArray(req.session.guestTicketIds) && req.session.guestTicketIds.includes(ticket.id)) return true;
+    return false;
+  }
+
+  app.post("/api/support/tickets", async (req, res) => {
     try {
-      const { subject, category, message } = req.body;
+      const { subject, category, message, requesterName, requesterEmail } = req.body;
       if (!subject || !message) {
         return res.status(400).json({ message: "Subject and message are required" });
       }
-      const userId = req.session.userId!;
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const userId = req.session.userId ?? null;
+      let user = userId ? await storage.getUser(userId) : null;
+
+      // Guests must supply name + email
+      if (!userId) {
+        if (!requesterName || !requesterEmail) {
+          return res.status(400).json({ message: "Name and email are required for guest tickets" });
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(requesterEmail)) {
+          return res.status(400).json({ message: "Valid email is required" });
+        }
+      }
+
+      const contactEmail = user?.email ?? requesterEmail;
+      const contactName = user?.fullName ?? requesterName;
 
       const ticket = await storage.createSupportTicket({
         userId,
-        subject: subject.trim().slice(0, 200),
+        requesterName: !userId ? String(requesterName).trim().slice(0, 100) : null,
+        requesterEmail: !userId ? String(requesterEmail).trim().toLowerCase() : null,
+        subject: String(subject).trim().slice(0, 200),
         category: category || "other",
         priority: "normal",
         status: "open",
       });
+
+      // Track guest ticket in session
+      if (!userId) {
+        if (!Array.isArray(req.session.guestTicketIds)) req.session.guestTicketIds = [];
+        req.session.guestTicketIds.push(ticket.id);
+      }
 
       // First message from user
       await storage.createSupportMessage({
         ticketId: ticket.id,
         senderId: userId,
         senderType: "user",
-        content: message.trim(),
+        content: String(message).trim(),
         isInternal: false,
       });
 
@@ -5579,7 +5609,7 @@ export async function registerRoutes(
         const aiResult = await getSupportResponse(
           `New support ticket: ${subject}\n\n${message}`,
           [],
-          userId,
+          userId ?? undefined,
         );
         await storage.createSupportMessage({
           ticketId: ticket.id,
@@ -5594,17 +5624,19 @@ export async function registerRoutes(
       }
 
       // Send confirmation email
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
-      try {
-        const { sendSupportTicketConfirmationEmail } = await import("./emailService");
-        await sendSupportTicketConfirmationEmail(user.email, {
-          recipientName: user.fullName,
-          ticketNumber: ticket.ticketNumber,
-          subject: ticket.subject,
-          baseUrl,
-        });
-      } catch (emailErr) {
-        console.error("Support ticket confirmation email failed:", emailErr);
+      if (contactEmail) {
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        try {
+          const { sendSupportTicketConfirmationEmail } = await import("./emailService");
+          await sendSupportTicketConfirmationEmail(contactEmail, {
+            recipientName: contactName,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            baseUrl,
+          });
+        } catch (emailErr) {
+          console.error("Support ticket confirmation email failed:", emailErr);
+        }
       }
 
       res.status(201).json(ticket);
@@ -5614,22 +5646,29 @@ export async function registerRoutes(
     }
   });
 
-  // Get user's own tickets
-  app.get("/api/support/tickets", requireAuth, async (req, res) => {
+  // Get user's own tickets (auth) or guest's session tickets
+  app.get("/api/support/tickets", async (req, res) => {
     try {
-      const tickets = await storage.getSupportTicketsByUser(req.session.userId!);
-      res.json(tickets);
+      if (req.session.userId) {
+        const tickets = await storage.getSupportTicketsByUser(req.session.userId);
+        return res.json(tickets);
+      }
+      // Guest: return tickets tracked in session
+      const guestIds = Array.isArray(req.session.guestTicketIds) ? req.session.guestTicketIds : [];
+      if (!guestIds.length) return res.json([]);
+      const tickets = await storage.getSupportTicketsByIds(guestIds);
+      return res.json(tickets);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch tickets" });
     }
   });
 
-  // Get a specific ticket (user must own it)
-  app.get("/api/support/tickets/:id", requireAuth, async (req, res) => {
+  // Get a specific ticket
+  app.get("/api/support/tickets/:id", async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-      if (ticket.userId !== req.session.userId) {
+      if (!canAccessTicket(ticket, req)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       res.json(ticket);
@@ -5638,12 +5677,12 @@ export async function registerRoutes(
     }
   });
 
-  // Get messages for a ticket (user must own it)
-  app.get("/api/support/tickets/:id/messages", requireAuth, async (req, res) => {
+  // Get messages for a ticket
+  app.get("/api/support/tickets/:id/messages", async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-      if (ticket.userId !== req.session.userId) {
+      if (!canAccessTicket(ticket, req)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const messages = await storage.getSupportMessages(ticket.id, false);
@@ -5653,36 +5692,34 @@ export async function registerRoutes(
     }
   });
 
-  // Reply to a ticket (user)
-  app.post("/api/support/tickets/:id/messages", requireAuth, async (req, res) => {
+  // Reply to a ticket (auth user or guest with session)
+  app.post("/api/support/tickets/:id/messages", async (req, res) => {
     try {
       const { content } = req.body;
       if (!content) return res.status(400).json({ message: "Content is required" });
 
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-      if (ticket.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+      if (!canAccessTicket(ticket, req)) return res.status(403).json({ message: "Forbidden" });
       if (ticket.status === "closed") {
         return res.status(400).json({ message: "Ticket is closed" });
       }
 
-      const userId = req.session.userId!;
+      const senderId = req.session.userId ?? null;
       const msg = await storage.createSupportMessage({
         ticketId: ticket.id,
-        senderId: userId,
+        senderId,
         senderType: "user",
-        content: content.trim(),
+        content: String(content).trim(),
         isInternal: false,
       });
 
-      // Re-open if it was waiting
+      // Re-open if waiting
       if (ticket.status === "waiting_user") {
         await storage.updateSupportTicket(ticket.id, { status: "in_progress" });
       }
 
-      // AI continues conversation if ticket is still AI-handled
+      // AI continues if ticket is still AI-handled
       if (ticket.aiHandled && ticket.status !== "in_progress") {
         try {
           const prevMessages = await storage.getSupportMessages(ticket.id, false);
@@ -5691,7 +5728,7 @@ export async function registerRoutes(
             content: m.content,
           }));
           const { getSupportResponse } = await import("./agents/supportAgent");
-          const aiResult = await getSupportResponse(content.trim(), history, userId);
+          const aiResult = await getSupportResponse(String(content).trim(), history, senderId ?? undefined);
           await storage.createSupportMessage({
             ticketId: ticket.id,
             senderId: null,
@@ -5711,14 +5748,12 @@ export async function registerRoutes(
     }
   });
 
-  // Escalate a ticket (user requests human)
-  app.post("/api/support/tickets/:id/escalate", requireAuth, async (req, res) => {
+  // Escalate a ticket (auth user or guest)
+  app.post("/api/support/tickets/:id/escalate", async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-      if (ticket.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+      if (!canAccessTicket(ticket, req)) return res.status(403).json({ message: "Forbidden" });
 
       await storage.updateSupportTicket(ticket.id, {
         status: "open",
@@ -5735,19 +5770,26 @@ export async function registerRoutes(
         isInternal: false,
       });
 
-      // Email admin
+      // Email admin with conversation transcript
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       const founderEmail = process.env.FOUNDER_EMAIL;
       if (founderEmail) {
         try {
-          const user = await storage.getUser(req.session.userId!);
+          const userName = ticket.user?.fullName ?? ticket.requesterName ?? "Unknown";
+          const userEmail = ticket.user?.email ?? ticket.requesterEmail ?? "Unknown";
+          const transcriptMsgs = await storage.getSupportMessages(ticket.id, false);
+          const transcript = transcriptMsgs.slice(-10).map(m => ({
+            senderType: m.senderType,
+            content: m.content,
+          }));
           const { sendSupportEscalationEmail } = await import("./emailService");
           await sendSupportEscalationEmail(founderEmail, {
             ticketNumber: ticket.ticketNumber,
             subject: ticket.subject,
-            userName: user?.fullName ?? "Unknown",
-            userEmail: user?.email ?? "Unknown",
+            userName,
+            userEmail,
             baseUrl,
+            transcript,
           });
         } catch (emailErr) {
           console.error("Escalation email failed:", emailErr);
@@ -5761,14 +5803,12 @@ export async function registerRoutes(
     }
   });
 
-  // Close a ticket (user)
-  app.post("/api/support/tickets/:id/close", requireAuth, async (req, res) => {
+  // Close a ticket (auth user or guest)
+  app.post("/api/support/tickets/:id/close", async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-      if (ticket.userId !== req.session.userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+      if (!canAccessTicket(ticket, req)) return res.status(403).json({ message: "Forbidden" });
       await storage.updateSupportTicket(ticket.id, { status: "closed", closedAt: new Date() });
       res.json({ success: true });
     } catch (error) {
@@ -5827,32 +5867,52 @@ export async function registerRoutes(
   app.patch("/api/admin/support/tickets/:id", requireAdmin, async (req, res) => {
     try {
       const { status, priority, assignedTo, internalNote } = req.body;
-      const update: Record<string, unknown> = {};
-      if (status) update.status = status;
-      if (priority) update.priority = priority;
-      if (assignedTo !== undefined) update.assignedTo = assignedTo;
-      if (internalNote !== undefined) update.internalNote = internalNote;
-      if (status === "resolved") update.resolvedAt = new Date();
-      if (status === "closed") { update.resolvedAt = new Date(); update.closedAt = new Date(); }
 
-      const ticket = await storage.updateSupportTicket(req.params.id, update as any);
+      const validStatuses = ["open", "in_progress", "waiting_user", "resolved", "closed"];
+      const validPriorities = ["low", "normal", "high", "urgent"];
+      type TicketUpdateFields = {
+        status?: string; priority?: string; assignedTo?: string | null;
+        internalNote?: string; resolvedAt?: Date; closedAt?: Date;
+      };
+      const typedUpdate: TicketUpdateFields = {};
+      if (status && validStatuses.includes(status)) typedUpdate.status = status;
+      if (priority && validPriorities.includes(priority)) typedUpdate.priority = priority;
+      if (assignedTo !== undefined) typedUpdate.assignedTo = assignedTo || null;
+      if (internalNote !== undefined) typedUpdate.internalNote = internalNote;
+      if (status === "resolved") typedUpdate.resolvedAt = new Date();
+      if (status === "closed") { typedUpdate.resolvedAt = new Date(); typedUpdate.closedAt = new Date(); }
+
+      const ticket = await storage.updateSupportTicket(param(req.params.id), typedUpdate as Partial<import("@shared/schema").SupportTicket>);
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
       // Email user when closed/resolved
       if (status === "resolved" || status === "closed") {
         const full = await storage.getSupportTicket(ticket.id);
         if (full) {
-          const baseUrl = `${req.protocol}://${req.get("host")}`;
-          try {
-            const { sendTicketClosedEmail } = await import("./emailService");
-            await sendTicketClosedEmail(full.user.email, {
-              recipientName: full.user.fullName,
-              ticketNumber: full.ticketNumber,
-              subject: full.subject,
-              baseUrl,
-            });
-          } catch (emailErr) {
-            console.error("Ticket closed email failed:", emailErr);
+          const toEmail = full.user?.email ?? full.requesterEmail;
+          const recipientName = full.user?.fullName ?? full.requesterName;
+          if (toEmail) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            try {
+              const transcriptMsgs = await storage.getSupportMessages(full.id, false);
+              const transcript = transcriptMsgs.map(m => ({
+                senderType: m.senderType,
+                senderName: m.senderType === "user"
+                  ? (full.user?.fullName ?? full.requesterName ?? "You")
+                  : m.senderType === "ai" ? "BarterBot" : (m.sender?.fullName ?? "Support Agent"),
+                content: m.content,
+              }));
+              const { sendTicketClosedEmail } = await import("./emailService");
+              await sendTicketClosedEmail(toEmail, {
+                recipientName,
+                ticketNumber: full.ticketNumber,
+                subject: full.subject,
+                baseUrl,
+                transcript,
+              });
+            } catch (emailErr) {
+              console.error("Ticket closed email failed:", emailErr);
+            }
           }
         }
       }
@@ -5888,10 +5948,12 @@ export async function registerRoutes(
 
         // Email user
         const baseUrl = `${req.protocol}://${req.get("host")}`;
-        try {
+        const replyToEmail = ticket.user?.email ?? ticket.requesterEmail;
+        const replyToName = ticket.user?.fullName ?? ticket.requesterName;
+        if (replyToEmail) try {
           const { sendSupportReplyEmail } = await import("./emailService");
-          await sendSupportReplyEmail(ticket.user.email, {
-            recipientName: ticket.user.fullName,
+          await sendSupportReplyEmail(replyToEmail, {
+            recipientName: replyToName,
             ticketNumber: ticket.ticketNumber,
             subject: ticket.subject,
             replyContent: content.trim(),

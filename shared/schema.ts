@@ -1771,7 +1771,9 @@ export const SUPPORT_TICKET_CATEGORIES = ["account", "listing", "deal", "verific
 export const supportTickets = pgTable("support_tickets", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   ticketNumber: text("ticket_number").notNull().unique(),
-  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  requesterName: text("requester_name"),
+  requesterEmail: text("requester_email"),
   subject: text("subject").notNull(),
   category: text("category").notNull().default("other"),
   priority: text("priority").notNull().default("normal"),
@@ -1821,7 +1823,7 @@ export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
 export type SupportMessage = typeof supportMessages.$inferSelect;
 
 export type SupportTicketWithUser = SupportTicket & {
-  user: Omit<User, "password">;
+  user?: Omit<User, "password"> | null;
   assignee?: Omit<User, "password"> | null;
   messageCount?: number;
   lastMessage?: string | null;

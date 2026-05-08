@@ -643,10 +643,30 @@ export async function sendSupportReplyEmail(
 
 export async function sendSupportEscalationEmail(
   toEmail: string,
-  opts: { adminName?: string; ticketNumber: string; subject: string; userName: string; userEmail: string; baseUrl: string },
+  opts: { adminName?: string; ticketNumber: string; subject: string; userName: string; userEmail: string; baseUrl: string; transcript?: Array<{ senderType: string; content: string }> },
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = opts.adminName ? `Hi ${opts.adminName},` : "Hi Admin,";
+
+  const transcriptHtml = opts.transcript && opts.transcript.length > 0
+    ? `<div style="margin: 16px 0;">
+        <p style="margin: 0 0 8px; color: #374151; font-size: 13px; font-weight: 600;">Conversation Summary</p>
+        ${opts.transcript.map(m => {
+          const label = m.senderType === "user" ? opts.userName : m.senderType === "ai" ? "BarterBot" : "Admin";
+          const bg = m.senderType === "user" ? "#f9fafb" : "#f0fdf4";
+          const safeContent = m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br/>");
+          return `<div style="background:${bg};border-radius:6px;padding:10px;margin-bottom:6px;"><p style="margin:0 0 2px;font-size:11px;color:#6b7280;font-weight:600;">${label}</p><p style="margin:0;font-size:13px;color:#374151;">${safeContent}</p></div>`;
+        }).join("")}
+      </div>`
+    : "";
+
+  const transcriptText = opts.transcript && opts.transcript.length > 0
+    ? `\n\nConversation:\n${opts.transcript.map(m => {
+        const label = m.senderType === "user" ? opts.userName : m.senderType === "ai" ? "BarterBot" : "Admin";
+        return `[${label}]: ${m.content}`;
+      }).join("\n\n")}`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
@@ -661,21 +681,39 @@ export async function sendSupportEscalationEmail(
       <p style="margin: 0 0 4px; color: #78350f; font-size: 14px; font-weight: 700;">${opts.subject}</p>
       <p style="margin: 0; color: #92400e; font-size: 13px;">From: ${opts.userName} (${opts.userEmail})</p>
     </div>
+    ${transcriptHtml}
     <a href="${opts.baseUrl}/admin" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Review in Admin Panel</a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Admin Notification</p>
   </div>
 </body></html>`;
-  const text = `${greeting}\n\nTicket ${opts.ticketNumber} has been escalated.\nSubject: ${opts.subject}\nUser: ${opts.userName} (${opts.userEmail})\n\nReview: ${opts.baseUrl}/admin\n\n— ${APP_NAME}`;
+  const text = `${greeting}\n\nTicket ${opts.ticketNumber} has been escalated.\nSubject: ${opts.subject}\nUser: ${opts.userName} (${opts.userEmail})${transcriptText}\n\nReview: ${opts.baseUrl}/admin\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[ESCALATED] ${opts.ticketNumber}: ${opts.subject}`, html, text });
 }
 
 export async function sendTicketClosedEmail(
   toEmail: string,
-  opts: { recipientName?: string | null; ticketNumber: string; subject: string; baseUrl: string },
+  opts: { recipientName?: string | null; ticketNumber: string; subject: string; baseUrl: string; transcript?: Array<{ senderType: string; senderName: string; content: string }> },
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+
+  const transcriptHtml = opts.transcript && opts.transcript.length > 0
+    ? `<div style="margin: 16px 0;">
+        <p style="margin: 0 0 8px; color: #374151; font-size: 13px; font-weight: 600;">Conversation Transcript</p>
+        ${opts.transcript.map(m => {
+          const isUser = m.senderType === "user";
+          const bg = isUser ? "#f9fafb" : "#f0fdf4";
+          const safeContent = m.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br/>");
+          return `<div style="background:${bg};border-radius:6px;padding:10px;margin-bottom:6px;"><p style="margin:0 0 2px;font-size:11px;color:#6b7280;font-weight:600;">${m.senderName}</p><p style="margin:0;font-size:13px;color:#374151;">${safeContent}</p></div>`;
+        }).join("")}
+      </div>`
+    : "";
+
+  const transcriptText = opts.transcript && opts.transcript.length > 0
+    ? `\n\nConversation Transcript:\n${opts.transcript.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n")}`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
@@ -689,13 +727,14 @@ export async function sendTicketClosedEmail(
       <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">${opts.ticketNumber}</p>
       <p style="margin: 0; color: #374151; font-size: 14px;">${opts.subject}</p>
     </div>
+    ${transcriptHtml}
     <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">If you have any further questions, feel free to open a new ticket. We're always here to help.</p>
     <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Open New Ticket</a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
   </div>
 </body></html>`;
-  const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.\n\nIf you need more help, open a new ticket at ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
+  const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.${transcriptText}\n\nIf you need more help, open a new ticket at ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Ticket Resolved`, html, text });
 }
 
