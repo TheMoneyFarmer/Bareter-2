@@ -3003,7 +3003,11 @@ export async function registerRoutes(
 
   app.get("/api/admin/agents/toggles", requireAdmin, async (_req, res) => {
     try {
-      const KNOWN_AGENTS = ["manager", "finance", "marketing", "sales", "legal", "dashboard", "intelligence"];
+      const KNOWN_AGENTS = [
+        "manager", "finance", "marketing", "sales", "legal", "dashboard",
+        "intelligence", "admin", "matching", "moderation", "support",
+        "valuation", "engagement", "board", "memory",
+      ];
       const dbToggles = await storage.getAllAgentToggles();
       const toggleMap = new Map(dbToggles.map(t => [t.agentName, t.enabled]));
       const result = KNOWN_AGENTS.map(name => ({
@@ -3023,7 +3027,11 @@ export async function registerRoutes(
       if (typeof enabled !== "boolean") {
         return res.status(400).json({ message: "enabled (boolean) is required" });
       }
-      const KNOWN_AGENTS_SET = new Set(["manager", "finance", "marketing", "sales", "legal", "dashboard", "intelligence"]);
+      const KNOWN_AGENTS_SET = new Set([
+        "manager", "finance", "marketing", "sales", "legal", "dashboard",
+        "intelligence", "admin", "matching", "moderation", "support",
+        "valuation", "engagement", "board", "memory",
+      ]);
       const agentName = req.params.name;
       if (!KNOWN_AGENTS_SET.has(agentName)) {
         return res.status(400).json({ message: `Unknown agent: ${agentName}` });

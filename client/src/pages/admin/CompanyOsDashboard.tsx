@@ -1471,21 +1471,44 @@ export default function CompanyOsDashboard() {
                   No agents configured. Agents appear here after their first scheduled run.
                 </p>
               )}
-              {(agentTogglesQuery.data ?? []).map((a) => (
-                <div key={a.agentName} className="flex items-center justify-between py-1" data-testid={`row-agent-toggle-${a.agentName}`}>
-                  <span className="text-xs font-medium truncate">{a.agentName}</span>
-                  <Button
-                    variant={a.enabled ? "default" : "outline"}
-                    size="sm"
-                    className="h-7 gap-1 text-xs"
-                    disabled={toggleAgentMutation.isPending && toggleAgentMutation.variables?.agentName === a.agentName}
-                    onClick={() => toggleAgentMutation.mutate({ agentName: a.agentName, enabled: !a.enabled })}
-                    data-testid={`button-toggle-agent-${a.agentName}`}
-                  >
-                    {a.enabled ? <><Check className="h-3 w-3" /> On</> : <><AlertTriangle className="h-3 w-3" /> Off</>}
-                  </Button>
-                </div>
-              ))}
+              {(agentTogglesQuery.data ?? []).map((a) => {
+                const AGENT_META: Record<string, { label: string; desc: string }> = {
+                  manager:      { label: "Manager Agent",      desc: "WhatsApp command centre & orchestration" },
+                  finance:      { label: "Finance Agent",       desc: "Cost tracking & financial insights" },
+                  marketing:    { label: "Marketing Agent",     desc: "Campaign briefs & broadcast drafting" },
+                  sales:        { label: "Sales Agent",         desc: "Lead tracking & sales intelligence" },
+                  legal:        { label: "Legal Agent",         desc: "Contract & compliance guidance" },
+                  dashboard:    { label: "Dashboard Agent",     desc: "Platform analytics & KPI summaries" },
+                  intelligence: { label: "Intelligence Agent",  desc: "Market & competitor insights" },
+                  admin:        { label: "Admin Agent",         desc: "Admin panel AI insights" },
+                  matching:     { label: "Matching Agent",      desc: "AI-powered barter matching" },
+                  moderation:   { label: "Moderation Agent",    desc: "Content moderation & flagging" },
+                  support:      { label: "Support Agent",       desc: "In-app AI customer support chat" },
+                  valuation:    { label: "Valuation Agent",     desc: "Listing value estimation" },
+                  engagement:   { label: "Engagement Agent",    desc: "User engagement recommendations" },
+                  board:        { label: "Board Report Agent",  desc: "Weekly board report generation" },
+                  memory:       { label: "Memory Agent",        desc: "Persistent context & memory store" },
+                };
+                const meta = AGENT_META[a.agentName] ?? { label: a.agentName, desc: "" };
+                return (
+                  <div key={a.agentName} className="flex items-center justify-between py-1.5 border-b last:border-0" data-testid={`row-agent-toggle-${a.agentName}`}>
+                    <div className="min-w-0 flex-1 mr-3">
+                      <p className="text-xs font-medium truncate">{meta.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{meta.desc}</p>
+                    </div>
+                    <Button
+                      variant={a.enabled ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 gap-1 text-xs shrink-0"
+                      disabled={toggleAgentMutation.isPending && toggleAgentMutation.variables?.agentName === a.agentName}
+                      onClick={() => toggleAgentMutation.mutate({ agentName: a.agentName, enabled: !a.enabled })}
+                      data-testid={`button-toggle-agent-${a.agentName}`}
+                    >
+                      {a.enabled ? <><Check className="h-3 w-3" /> On</> : <><AlertTriangle className="h-3 w-3" /> Off</>}
+                    </Button>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
 

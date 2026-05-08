@@ -49,31 +49,37 @@ export class BudgetExceededError extends Error {
 // get a reasonable cap without a code change.
 // ---------------------------------------------------------------------------
 export const AGENT_LIMITS_AED: Record<string, number> = {
+  // Company OS agents
   manager: 60,
-  // Finance: short + suffixed forms.
   finance: 30,
   financeAgent: 30,
-  // Marketing
   marketing: 80,
   marketingAgent: 80,
-  // Sales
   sales: 80,
   salesAgent: 80,
-  // Legal
   legal: 60,
   legalAgent: 60,
-  // Dashboard
   dashboard: 30,
   dashboardAgent: 30,
-  // Memory
   memory: 10,
   memoryAgent: 10,
-  // Standalone agents
   intelligenceAgent: 40,
+  intelligence: 40,
   board: 40,
   boardAgent: 40,
+  // Platform agents
   admin: 40,
+  adminAgent: 40,
   matching: 40,
+  matchingAgent: 40,
+  moderation: 40,
+  moderationAgent: 40,
+  support: 40,
+  supportAgent: 40,
+  valuation: 40,
+  valuationAgent: 40,
+  engagement: 40,
+  engagementAgent: 40,
 };
 const DEFAULT_AGENT_LIMIT_AED = 40;
 
