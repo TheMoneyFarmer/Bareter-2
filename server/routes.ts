@@ -5543,5 +5543,371 @@ export async function registerRoutes(
     },
   );
 
+  // ========== Support Ticket Routes ==========
+
+  // Create a new ticket (user)
+  app.post("/api/support/tickets", requireAuth, async (req, res) => {
+    try {
+      const { subject, category, message } = req.body;
+      if (!subject || !message) {
+        return res.status(400).json({ message: "Subject and message are required" });
+      }
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const ticket = await storage.createSupportTicket({
+        userId,
+        subject: subject.trim().slice(0, 200),
+        category: category || "other",
+        priority: "normal",
+        status: "open",
+      });
+
+      // First message from user
+      await storage.createSupportMessage({
+        ticketId: ticket.id,
+        senderId: userId,
+        senderType: "user",
+        content: message.trim(),
+        isInternal: false,
+      });
+
+      // AI auto-response
+      try {
+        const { getSupportResponse } = await import("./agents/supportAgent");
+        const aiResult = await getSupportResponse(
+          `New support ticket: ${subject}\n\n${message}`,
+          [],
+          userId,
+        );
+        await storage.createSupportMessage({
+          ticketId: ticket.id,
+          senderId: null,
+          senderType: "ai",
+          content: aiResult.response,
+          isInternal: false,
+        });
+        await storage.updateSupportTicket(ticket.id, { aiHandled: true });
+      } catch (aiErr) {
+        console.error("AI support auto-reply failed:", aiErr);
+      }
+
+      // Send confirmation email
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      try {
+        const { sendSupportTicketConfirmationEmail } = await import("./emailService");
+        await sendSupportTicketConfirmationEmail(user.email, {
+          recipientName: user.fullName,
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+          baseUrl,
+        });
+      } catch (emailErr) {
+        console.error("Support ticket confirmation email failed:", emailErr);
+      }
+
+      res.status(201).json(ticket);
+    } catch (error) {
+      console.error("Create support ticket error:", error);
+      res.status(500).json({ message: "Failed to create support ticket" });
+    }
+  });
+
+  // Get user's own tickets
+  app.get("/api/support/tickets", requireAuth, async (req, res) => {
+    try {
+      const tickets = await storage.getSupportTicketsByUser(req.session.userId!);
+      res.json(tickets);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch tickets" });
+    }
+  });
+
+  // Get a specific ticket (user must own it)
+  app.get("/api/support/tickets/:id", requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      res.json(ticket);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ticket" });
+    }
+  });
+
+  // Get messages for a ticket (user must own it)
+  app.get("/api/support/tickets/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const messages = await storage.getSupportMessages(ticket.id, false);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // Reply to a ticket (user)
+  app.post("/api/support/tickets/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content) return res.status(400).json({ message: "Content is required" });
+
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (ticket.status === "closed") {
+        return res.status(400).json({ message: "Ticket is closed" });
+      }
+
+      const userId = req.session.userId!;
+      const msg = await storage.createSupportMessage({
+        ticketId: ticket.id,
+        senderId: userId,
+        senderType: "user",
+        content: content.trim(),
+        isInternal: false,
+      });
+
+      // Re-open if it was waiting
+      if (ticket.status === "waiting_user") {
+        await storage.updateSupportTicket(ticket.id, { status: "in_progress" });
+      }
+
+      // AI continues conversation if ticket is still AI-handled
+      if (ticket.aiHandled && ticket.status !== "in_progress") {
+        try {
+          const prevMessages = await storage.getSupportMessages(ticket.id, false);
+          const history = prevMessages.slice(-8).map((m) => ({
+            role: (m.senderType === "user" ? "user" : "assistant") as "user" | "assistant",
+            content: m.content,
+          }));
+          const { getSupportResponse } = await import("./agents/supportAgent");
+          const aiResult = await getSupportResponse(content.trim(), history, userId);
+          await storage.createSupportMessage({
+            ticketId: ticket.id,
+            senderId: null,
+            senderType: "ai",
+            content: aiResult.response,
+            isInternal: false,
+          });
+        } catch (aiErr) {
+          console.error("AI follow-up failed:", aiErr);
+        }
+      }
+
+      res.status(201).json(msg);
+    } catch (error) {
+      console.error("Reply to ticket error:", error);
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // Escalate a ticket (user requests human)
+  app.post("/api/support/tickets/:id/escalate", requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.updateSupportTicket(ticket.id, {
+        status: "open",
+        priority: "high",
+        aiHandled: false,
+        escalatedAt: new Date(),
+      });
+
+      await storage.createSupportMessage({
+        ticketId: ticket.id,
+        senderId: null,
+        senderType: "ai",
+        content: "Your request has been escalated to our human support team. A member of our team will review your ticket and respond as soon as possible.",
+        isInternal: false,
+      });
+
+      // Email admin
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const founderEmail = process.env.FOUNDER_EMAIL;
+      if (founderEmail) {
+        try {
+          const user = await storage.getUser(req.session.userId!);
+          const { sendSupportEscalationEmail } = await import("./emailService");
+          await sendSupportEscalationEmail(founderEmail, {
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            userName: user?.fullName ?? "Unknown",
+            userEmail: user?.email ?? "Unknown",
+            baseUrl,
+          });
+        } catch (emailErr) {
+          console.error("Escalation email failed:", emailErr);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Escalate ticket error:", error);
+      res.status(500).json({ message: "Failed to escalate ticket" });
+    }
+  });
+
+  // Close a ticket (user)
+  app.post("/api/support/tickets/:id/close", requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      if (ticket.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.updateSupportTicket(ticket.id, { status: "closed", closedAt: new Date() });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to close ticket" });
+    }
+  });
+
+  // ========== Admin Support Ticket Routes ==========
+
+  // Get all tickets (admin)
+  app.get("/api/admin/support/tickets", requireAdmin, async (req, res) => {
+    try {
+      const { status, priority } = req.query;
+      const tickets = await storage.getAllSupportTickets({
+        status: status as string | undefined,
+        priority: priority as string | undefined,
+      });
+      res.json(tickets);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch support tickets" });
+    }
+  });
+
+  // Get support stats (admin)
+  app.get("/api/admin/support/stats", requireAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getSupportStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch support stats" });
+    }
+  });
+
+  // Get a specific ticket (admin)
+  app.get("/api/admin/support/tickets/:id", requireAdmin, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+      res.json(ticket);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch ticket" });
+    }
+  });
+
+  // Get messages for a ticket (admin — includes internal)
+  app.get("/api/admin/support/tickets/:id/messages", requireAdmin, async (req, res) => {
+    try {
+      const messages = await storage.getSupportMessages(req.params.id, true);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // Update ticket (admin — status, priority, assignedTo, internalNote)
+  app.patch("/api/admin/support/tickets/:id", requireAdmin, async (req, res) => {
+    try {
+      const { status, priority, assignedTo, internalNote } = req.body;
+      const update: Record<string, unknown> = {};
+      if (status) update.status = status;
+      if (priority) update.priority = priority;
+      if (assignedTo !== undefined) update.assignedTo = assignedTo;
+      if (internalNote !== undefined) update.internalNote = internalNote;
+      if (status === "resolved") update.resolvedAt = new Date();
+      if (status === "closed") { update.resolvedAt = new Date(); update.closedAt = new Date(); }
+
+      const ticket = await storage.updateSupportTicket(req.params.id, update as any);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+      // Email user when closed/resolved
+      if (status === "resolved" || status === "closed") {
+        const full = await storage.getSupportTicket(ticket.id);
+        if (full) {
+          const baseUrl = `${req.protocol}://${req.get("host")}`;
+          try {
+            const { sendTicketClosedEmail } = await import("./emailService");
+            await sendTicketClosedEmail(full.user.email, {
+              recipientName: full.user.fullName,
+              ticketNumber: full.ticketNumber,
+              subject: full.subject,
+              baseUrl,
+            });
+          } catch (emailErr) {
+            console.error("Ticket closed email failed:", emailErr);
+          }
+        }
+      }
+
+      res.json(ticket);
+    } catch (error) {
+      console.error("Update ticket error:", error);
+      res.status(500).json({ message: "Failed to update ticket" });
+    }
+  });
+
+  // Admin reply to ticket
+  app.post("/api/admin/support/tickets/:id/messages", requireAdmin, async (req, res) => {
+    try {
+      const { content, isInternal } = req.body;
+      if (!content) return res.status(400).json({ message: "Content is required" });
+
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+      const adminId = req.session.userId!;
+      const msg = await storage.createSupportMessage({
+        ticketId: ticket.id,
+        senderId: adminId,
+        senderType: "admin",
+        content: content.trim(),
+        isInternal: isInternal === true,
+      });
+
+      // Update status to waiting_user if public reply
+      if (!isInternal) {
+        await storage.updateSupportTicket(ticket.id, { status: "waiting_user", aiHandled: false });
+
+        // Email user
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        try {
+          const { sendSupportReplyEmail } = await import("./emailService");
+          await sendSupportReplyEmail(ticket.user.email, {
+            recipientName: ticket.user.fullName,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            replyContent: content.trim(),
+            baseUrl,
+          });
+        } catch (emailErr) {
+          console.error("Reply email failed:", emailErr);
+        }
+      }
+
+      res.status(201).json(msg);
+    } catch (error) {
+      console.error("Admin reply error:", error);
+      res.status(500).json({ message: "Failed to send reply" });
+    }
+  });
+
   return httpServer;
 }

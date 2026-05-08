@@ -95,6 +95,14 @@ import {
   broadcastJobs,
   type BroadcastJob,
   agentBudgets,
+  supportTickets,
+  supportMessages,
+  type SupportTicket,
+  type InsertSupportTicket,
+  type SupportMessage,
+  type InsertSupportMessage,
+  type SupportTicketWithUser,
+  type SupportMessageWithSender,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -312,6 +320,17 @@ export interface IStorage {
   ): Promise<LegalPage>;
   getLegalPageVersions(slug: string, language: string): Promise<LegalPageVersion[]>;
   countLegalPages(): Promise<number>;
+
+  // Support Tickets
+  createSupportTicket(data: InsertSupportTicket & { userId: string; subject: string }): Promise<SupportTicket>;
+  getSupportTicket(id: string): Promise<SupportTicketWithUser | undefined>;
+  getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicketWithUser | undefined>;
+  getSupportTicketsByUser(userId: string): Promise<SupportTicketWithUser[]>;
+  getAllSupportTickets(opts?: { status?: string; priority?: string; limit?: number; offset?: number }): Promise<SupportTicketWithUser[]>;
+  updateSupportTicket(id: string, data: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
+  getSupportMessages(ticketId: string, includeInternal?: boolean): Promise<SupportMessageWithSender[]>;
+  createSupportMessage(data: InsertSupportMessage): Promise<SupportMessage>;
+  getSupportStats(): Promise<{ open: number; in_progress: number; waiting_user: number; resolved: number; closed: number; total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1822,6 +1841,137 @@ export class DatabaseStorage implements IStorage {
   async getAllAgentToggles(): Promise<{ agentName: string; enabled: boolean }[]> {
     const rows = await db.select({ agentName: agentBudgets.agentName, enabled: agentBudgets.enabled }).from(agentBudgets);
     return rows.map(r => ({ agentName: r.agentName, enabled: r.enabled !== false }));
+  }
+
+  // ── Support Tickets ─────────────────────────────────────────────
+  private async enrichTicket(ticket: SupportTicket): Promise<SupportTicketWithUser> {
+    const [user] = await db.select().from(users).where(eq(users.id, ticket.userId));
+    const assignee = ticket.assignedTo
+      ? (await db.select().from(users).where(eq(users.id, ticket.assignedTo)))[0]
+      : null;
+    const [msgCount] = await db
+      .select({ c: sql<number>`count(*)` })
+      .from(supportMessages)
+      .where(and(eq(supportMessages.ticketId, ticket.id), eq(supportMessages.isInternal, false)));
+    const lastMsgs = await db
+      .select({ content: supportMessages.content })
+      .from(supportMessages)
+      .where(and(eq(supportMessages.ticketId, ticket.id), eq(supportMessages.isInternal, false)))
+      .orderBy(desc(supportMessages.createdAt))
+      .limit(1);
+    const { password: _pw, ...safeUser } = user ?? ({} as User);
+    const assigneeOut = assignee ? (({ password: _pw2, ...rest }) => rest)(assignee) : null;
+    return {
+      ...ticket,
+      user: safeUser as Omit<User, "password">,
+      assignee: assigneeOut,
+      messageCount: Number(msgCount?.c ?? 0),
+      lastMessage: lastMsgs[0]?.content ?? null,
+    };
+  }
+
+  async createSupportTicket(data: InsertSupportTicket & { userId: string; subject: string }): Promise<SupportTicket> {
+    const ticketNumber = `TKT-${Date.now().toString(36).toUpperCase()}`;
+    const [ticket] = await db
+      .insert(supportTickets)
+      .values({ ...data, ticketNumber })
+      .returning();
+    return ticket;
+  }
+
+  async getSupportTicket(id: string): Promise<SupportTicketWithUser | undefined> {
+    const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, id));
+    if (!ticket) return undefined;
+    return this.enrichTicket(ticket);
+  }
+
+  async getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicketWithUser | undefined> {
+    const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.ticketNumber, ticketNumber));
+    if (!ticket) return undefined;
+    return this.enrichTicket(ticket);
+  }
+
+  async getSupportTicketsByUser(userId: string): Promise<SupportTicketWithUser[]> {
+    const rows = await db
+      .select()
+      .from(supportTickets)
+      .where(eq(supportTickets.userId, userId))
+      .orderBy(desc(supportTickets.lastActivityAt));
+    return Promise.all(rows.map(t => this.enrichTicket(t)));
+  }
+
+  async getAllSupportTickets(opts?: { status?: string; priority?: string; limit?: number; offset?: number }): Promise<SupportTicketWithUser[]> {
+    let query = db.select().from(supportTickets).$dynamic();
+    const conditions = [];
+    if (opts?.status && opts.status !== "all") conditions.push(eq(supportTickets.status, opts.status));
+    if (opts?.priority && opts.priority !== "all") conditions.push(eq(supportTickets.priority, opts.priority));
+    if (conditions.length) query = query.where(and(...conditions));
+    const rows = await query
+      .orderBy(desc(supportTickets.lastActivityAt))
+      .limit(opts?.limit ?? 200)
+      .offset(opts?.offset ?? 0);
+    return Promise.all(rows.map(t => this.enrichTicket(t)));
+  }
+
+  async updateSupportTicket(id: string, data: Partial<SupportTicket>): Promise<SupportTicket | undefined> {
+    const [ticket] = await db
+      .update(supportTickets)
+      .set({ ...data, updatedAt: new Date(), lastActivityAt: new Date() })
+      .where(eq(supportTickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  async getSupportMessages(ticketId: string, includeInternal = false): Promise<SupportMessageWithSender[]> {
+    const rows = await db
+      .select()
+      .from(supportMessages)
+      .where(
+        includeInternal
+          ? eq(supportMessages.ticketId, ticketId)
+          : and(eq(supportMessages.ticketId, ticketId), eq(supportMessages.isInternal, false)),
+      )
+      .orderBy(supportMessages.createdAt);
+
+    return Promise.all(
+      rows.map(async (msg) => {
+        if (!msg.senderId) return { ...msg, sender: null };
+        const [sender] = await db.select().from(users).where(eq(users.id, msg.senderId));
+        if (!sender) return { ...msg, sender: null };
+        const { password: _pw, ...safeSender } = sender;
+        return { ...msg, sender: safeSender as Omit<User, "password"> };
+      }),
+    );
+  }
+
+  async createSupportMessage(data: InsertSupportMessage): Promise<SupportMessage> {
+    const [msg] = await db.insert(supportMessages).values(data).returning();
+    await db
+      .update(supportTickets)
+      .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+      .where(eq(supportTickets.id, data.ticketId));
+    return msg;
+  }
+
+  async getSupportStats(): Promise<{ open: number; in_progress: number; waiting_user: number; resolved: number; closed: number; total: number }> {
+    const rows = await db
+      .select({ status: supportTickets.status, c: sql<number>`count(*)` })
+      .from(supportTickets)
+      .groupBy(supportTickets.status);
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const r of rows) {
+      counts[r.status] = Number(r.c);
+      total += Number(r.c);
+    }
+    return {
+      open: counts["open"] ?? 0,
+      in_progress: counts["in_progress"] ?? 0,
+      waiting_user: counts["waiting_user"] ?? 0,
+      resolved: counts["resolved"] ?? 0,
+      closed: counts["closed"] ?? 0,
+      total,
+    };
   }
 }
 

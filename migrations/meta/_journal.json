@@ -29,6 +29,13 @@
       "when": 1746446400000,
       "tag": "0003_messages_warning",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1746532800000,
+      "tag": "0004_support_tickets",
+      "breakpoints": true
     }
   ]
 }

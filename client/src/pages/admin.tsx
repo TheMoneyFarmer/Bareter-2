@@ -110,6 +110,7 @@ import {
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
 import { AdminPlatformSettings } from "@/components/admin/platform-settings";
+import { AdminSupportSection } from "@/components/admin/support-section";
 import { ScrollText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -127,7 +128,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support";
 
 type WaitlistEntryRow = {
   id: number;
@@ -725,6 +726,7 @@ export function AdminPage() {
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
     { id: "legal" as const, label: "Legal", icon: ScrollText },
     { id: "email" as const, label: "Email", icon: Mail },
+    { id: "support" as const, label: "Support", icon: MessageSquare },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -2685,6 +2687,8 @@ export function AdminPage() {
     </div>
   );
 
+  const renderSupportSection = () => <AdminSupportSection />;
+
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
@@ -2709,6 +2713,8 @@ export function AdminPage() {
         return <AdminLegalSection />;
       case "email":
         return renderEmail();
+      case "support":
+        return renderSupportSection();
       case "analytics":
         return renderAnalytics();
       case "settings":

@@ -582,6 +582,123 @@ export async function sendWaitlistLaunchEmail(
   return sendMail({ to: toEmail, subject: `${APP_NAME} is live — claim your Founder Badge!`, html, text });
 }
 
+export async function sendSupportTicketConfirmationEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; ticketNumber: string; subject: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Support Ticket Created</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} we've received your support request and a ticket has been created.</p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">Ticket Reference</p>
+      <p style="margin: 0; color: #15803d; font-size: 15px; font-weight: 700;">${opts.ticketNumber}</p>
+      <p style="margin: 4px 0 0; color: #374151; font-size: 13px;">${opts.subject}</p>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Our team will review your request and respond as soon as possible. You'll receive an email when we reply.</p>
+    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Ticket</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
+  </div>
+</body></html>`;
+  const text = `${greeting} your support ticket ${opts.ticketNumber} has been created: ${opts.subject}. We'll reply soon.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Support Ticket Created: ${opts.subject}`, html, text });
+}
+
+export async function sendSupportReplyEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; ticketNumber: string; subject: string; replyContent: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeReply = opts.replyContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 4px;">New Reply on Your Support Ticket</h2>
+    <p style="color: #6b7280; font-size: 13px; margin: 0 0 16px;">${opts.ticketNumber} — ${opts.subject}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} our support team has replied to your ticket:</p>
+    <div style="background: #f9fafb; border-left: 4px solid #136c68; border-radius: 0 8px 8px 0; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.6;">${safeReply}</p>
+    </div>
+    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Reply to Ticket</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
+  </div>
+</body></html>`;
+  const text = `${greeting} a support agent replied to ticket ${opts.ticketNumber}:\n\n${opts.replyContent}\n\nView ticket: ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] New Reply: ${opts.subject}`, html, text });
+}
+
+export async function sendSupportEscalationEmail(
+  toEmail: string,
+  opts: { adminName?: string; ticketNumber: string; subject: string; userName: string; userEmail: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.adminName ? `Hi ${opts.adminName},` : "Hi Admin,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Support Ticket Escalated</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} a support ticket has been escalated and requires human attention.</p>
+    <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #92400e; font-size: 13px; font-weight: 600;">${opts.ticketNumber}</p>
+      <p style="margin: 0 0 4px; color: #78350f; font-size: 14px; font-weight: 700;">${opts.subject}</p>
+      <p style="margin: 0; color: #92400e; font-size: 13px;">From: ${opts.userName} (${opts.userEmail})</p>
+    </div>
+    <a href="${opts.baseUrl}/admin" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Review in Admin Panel</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Admin Notification</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nTicket ${opts.ticketNumber} has been escalated.\nSubject: ${opts.subject}\nUser: ${opts.userName} (${opts.userEmail})\n\nReview: ${opts.baseUrl}/admin\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `[ESCALATED] ${opts.ticketNumber}: ${opts.subject}`, html, text });
+}
+
+export async function sendTicketClosedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; ticketNumber: string; subject: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Ticket Resolved</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your support ticket has been resolved and closed.</p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">${opts.ticketNumber}</p>
+      <p style="margin: 0; color: #374151; font-size: 14px;">${opts.subject}</p>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">If you have any further questions, feel free to open a new ticket. We're always here to help.</p>
+    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Open New Ticket</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
+  </div>
+</body></html>`;
+  const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.\n\nIf you need more help, open a new ticket at ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Ticket Resolved`, html, text });
+}
+
 export async function sendWelcomeEmail(toEmail: string, fullName: string): Promise<void> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Welcome email for ${toEmail} (email not configured — skipping)`);

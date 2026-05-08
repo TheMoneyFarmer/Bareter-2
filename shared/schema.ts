@@ -1763,6 +1763,73 @@ export const emailLogs = pgTable("email_logs", {
 
 export type EmailLog = typeof emailLogs.$inferSelect;
 
+// Support Tickets
+export const SUPPORT_TICKET_STATUSES = ["open", "in_progress", "waiting_user", "resolved", "closed"] as const;
+export const SUPPORT_TICKET_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export const SUPPORT_TICKET_CATEGORIES = ["account", "listing", "deal", "verification", "billing", "bug", "other"] as const;
+
+export const supportTickets = pgTable("support_tickets", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  ticketNumber: text("ticket_number").notNull().unique(),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  subject: text("subject").notNull(),
+  category: text("category").notNull().default("other"),
+  priority: text("priority").notNull().default("normal"),
+  status: text("status").notNull().default("open"),
+  assignedTo: varchar("assigned_to", { length: 36 }).references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  closedAt: timestamp("closed_at"),
+  lastActivityAt: timestamp("last_activity_at").defaultNow(),
+  aiHandled: boolean("ai_handled").default(false),
+  escalatedAt: timestamp("escalated_at"),
+  internalNote: text("internal_note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("support_tickets_user_idx").on(table.userId),
+  statusIdx: index("support_tickets_status_idx").on(table.status),
+  createdAtIdx: index("support_tickets_created_at_idx").on(table.createdAt),
+}));
+
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  ticketNumber: true,
+  createdAt: true,
+  updatedAt: true,
+  lastActivityAt: true,
+});
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+export type SupportTicket = typeof supportTickets.$inferSelect;
+
+export const supportMessages = pgTable("support_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id", { length: 36 }).notNull().references(() => supportTickets.id),
+  senderId: varchar("sender_id", { length: 36 }).references(() => users.id),
+  senderType: text("sender_type").notNull().default("user"), // "user" | "admin" | "ai"
+  content: text("content").notNull(),
+  isInternal: boolean("is_internal").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  ticketIdx: index("support_messages_ticket_idx").on(table.ticketId),
+}));
+
+export const insertSupportMessageSchema = createInsertSchema(supportMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
+export type SupportMessage = typeof supportMessages.$inferSelect;
+
+export type SupportTicketWithUser = SupportTicket & {
+  user: Omit<User, "password">;
+  assignee?: Omit<User, "password"> | null;
+  messageCount?: number;
+  lastMessage?: string | null;
+};
+export type SupportMessageWithSender = SupportMessage & {
+  sender?: Omit<User, "password"> | null;
+};
+
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
 
