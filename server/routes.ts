@@ -2758,7 +2758,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/email/broadcast/test", requireAdmin, async (req, res) => {
     try {
-      const { subject, body } = req.body;
+      const { subject, body, to } = req.body;
       if (!subject || !body) {
         return res.status(400).json({ message: "Subject and body are required" });
       }
@@ -2768,6 +2768,16 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Admin user not found" });
       }
       const { sendAdminEmail } = await import("./emailService");
+
+      // Build the list of recipients: always include the logged-in admin,
+      // plus any custom addresses supplied in `to` (comma-sep string or array).
+      const extraEmails: string[] = Array.isArray(to)
+        ? to
+        : typeof to === "string"
+          ? to.split(",").map((e: string) => e.trim()).filter(Boolean)
+          : [];
+      const recipients = [...new Set([admin.email, ...extraEmails])];
+
       const sampleVars: Record<string, string> = {
         name: admin.fullName || "Admin",
         email: admin.email,
@@ -2776,21 +2786,43 @@ export async function registerRoutes(
         accountType: admin.accountType || "individual",
         appName: "Bareter",
       };
-      const ok = await sendAdminEmail(admin.email, {
-        recipientName: admin.fullName,
-        subject: `[TEST] ${subject}`,
-        body,
-        vars: sampleVars,
-      });
-      if (ok) {
-        await logAdminAction(req, "email_broadcast_test", "system", adminUserId, { subject });
-        res.json({ message: `Test email sent to ${admin.email}` });
+
+      const results = await Promise.all(
+        recipients.map((email) =>
+          sendAdminEmail(email, {
+            recipientName: email === admin.email ? (admin.fullName ?? undefined) : undefined,
+            subject: `[TEST] ${subject}`,
+            body,
+            vars: sampleVars,
+          })
+        )
+      );
+      const sentCount = results.filter(Boolean).length;
+      if (sentCount > 0) {
+        await logAdminAction(req, "email_broadcast_test", "system", adminUserId, { subject, recipients });
+        res.json({ message: `Test email sent to ${recipients.join(", ")}` });
       } else {
         res.status(500).json({ message: "Failed to send test email — check email configuration" });
       }
     } catch (error) {
       console.error("Broadcast test email error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/email/ai-draft", requireAdmin, async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+        return res.status(400).json({ message: "prompt is required" });
+      }
+      const { draftBroadcastEmail } = await import("./companyOs/marketingAgent");
+      const draft = await draftBroadcastEmail(prompt.trim());
+      await logAdminAction(req, "email_ai_draft", "system", req.session.userId, { prompt: prompt.slice(0, 200) });
+      res.json(draft);
+    } catch (error) {
+      console.error("AI email draft error:", error);
+      res.status(500).json({ message: "AI draft failed — check OpenAI configuration" });
     }
   });
 

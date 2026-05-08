@@ -219,6 +219,9 @@ export function AdminPage() {
   const [broadcastVerification, setBroadcastVerification] = useState("all");
   const [broadcastJobId, setBroadcastJobId] = useState<string | null>(null);
   const [broadcastPreviewHtml, setBroadcastPreviewHtml] = useState<string | null>(null);
+  const [broadcastTestEmails, setBroadcastTestEmails] = useState("");
+  const [aiDraftPrompt, setAiDraftPrompt] = useState("");
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [broadcastPreviewOpen, setBroadcastPreviewOpen] = useState(false);
   const [templatePreviewHtml, setTemplatePreviewHtml] = useState<string | null>(null);
   const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
@@ -605,7 +608,7 @@ export function AdminPage() {
   });
 
   const broadcastTestMutation = useMutation({
-    mutationFn: async (data: { subject: string; body: string }) => {
+    mutationFn: async (data: { subject: string; body: string; to?: string }) => {
       const res = await apiRequest("POST", "/api/admin/email/broadcast/test", data);
       return res.json();
     },
@@ -614,6 +617,23 @@ export function AdminPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to send test email", variant: "destructive" });
+    },
+  });
+
+  const aiDraftMutation = useMutation({
+    mutationFn: async (prompt: string) => {
+      const res = await apiRequest("POST", "/api/admin/email/ai-draft", { prompt });
+      return res.json() as Promise<{ subject: string; body: string }>;
+    },
+    onSuccess: (data) => {
+      if (data.subject) setBroadcastSubject(data.subject);
+      if (data.body) setBroadcastBody(data.body);
+      setAiDraftOpen(false);
+      setAiDraftPrompt("");
+      toast({ title: "AI draft ready", description: "Subject and body have been filled in — review and edit before sending." });
+    },
+    onError: () => {
+      toast({ title: "AI draft failed", description: "Check that the OpenAI integration is configured.", variant: "destructive" });
     },
   });
 
@@ -1645,23 +1665,36 @@ export function AdminPage() {
             <Input placeholder="Email subject..." value={broadcastSubject} onChange={(e) => setBroadcastSubject(e.target.value)} data-testid="input-broadcast-subject" />
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <Label>Body</Label>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                onClick={async () => {
-                  const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
-                  const result = await previewMutation.mutateAsync({ body: broadcastBody || "Hello {{name}}, welcome to {{appName}}!", recipientName: "Sarah Al-Hassan", vars: sampleVars });
-                  setBroadcastPreviewHtml(result.html);
-                  setBroadcastPreviewOpen(true);
-                }}
-                disabled={previewMutation.isPending}
-                data-testid="button-broadcast-preview"
-              >
-                <Eye className="h-3 w-3" />
-                {previewMutation.isPending ? "Loading…" : "Preview"}
-              </button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-7"
+                  onClick={() => setAiDraftOpen(true)}
+                  data-testid="button-ai-draft-open"
+                >
+                  <Sparkles className="h-3 w-3 text-bareter-teal" />
+                  AI Draft
+                </Button>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  onClick={async () => {
+                    const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
+                    const result = await previewMutation.mutateAsync({ body: broadcastBody || "Hello {{name}}, welcome to {{appName}}!", recipientName: "Sarah Al-Hassan", vars: sampleVars });
+                    setBroadcastPreviewHtml(result.html);
+                    setBroadcastPreviewOpen(true);
+                  }}
+                  disabled={previewMutation.isPending}
+                  data-testid="button-broadcast-preview"
+                >
+                  <Eye className="h-3 w-3" />
+                  {previewMutation.isPending ? "Loading…" : "Preview"}
+                </button>
+              </div>
             </div>
             <Textarea placeholder="Email body... Use {{name}}, {{email}}, {{city}}, {{businessName}}, {{accountType}}, {{appName}} for personalisation." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
             <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
@@ -1678,6 +1711,18 @@ export function AdminPage() {
               ))}
             </div>
           </div>
+
+          <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+            <Label className="text-xs text-muted-foreground">Test recipients (comma-separated — your account is always included)</Label>
+            <Input
+              placeholder="e.g. colleague@example.com, partner@company.ae"
+              value={broadcastTestEmails}
+              onChange={(e) => setBroadcastTestEmails(e.target.value)}
+              className="text-sm"
+              data-testid="input-broadcast-test-emails"
+            />
+          </div>
+
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1701,12 +1746,12 @@ export function AdminPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => broadcastTestMutation.mutate({ subject: broadcastSubject, body: broadcastBody })}
+                onClick={() => broadcastTestMutation.mutate({ subject: broadcastSubject, body: broadcastBody, to: broadcastTestEmails || undefined })}
                 disabled={!broadcastSubject || !broadcastBody || broadcastTestMutation.isPending}
                 className="gap-2"
                 data-testid="button-send-test-broadcast"
               >
-                {broadcastTestMutation.isPending ? "Sending…" : <><Mail className="h-4 w-4" /> Send test to me</>}
+                {broadcastTestMutation.isPending ? "Sending…" : <><Mail className="h-4 w-4" /> Send test email</>}
               </Button>
             </div>
             {broadcastJobId && broadcastJobStatus && (
@@ -1835,6 +1880,66 @@ export function AdminPage() {
               data-testid="iframe-broadcast-preview"
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Draft dialog */}
+      <Dialog open={aiDraftOpen} onOpenChange={setAiDraftOpen}>
+        <DialogContent className="max-w-lg" data-testid="dialog-ai-draft">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-bareter-teal" />
+              AI Email Draft
+            </DialogTitle>
+            <DialogDescription>
+              Describe what this email is about and the Marketing Agent will draft the subject and body for you. You can edit it before sending.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Textarea
+              placeholder="e.g. Welcome new users joining this week and invite them to post their first listing. Mention the cashless barter concept and give them a reason to act now."
+              rows={4}
+              value={aiDraftPrompt}
+              onChange={(e) => setAiDraftPrompt(e.target.value)}
+              data-testid="textarea-ai-draft-prompt"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                "Launch announcement for new users",
+                "Re-engage inactive members",
+                "Promote trending listings this week",
+                "Invite users to complete verification",
+                "Ramadan special — barter more, spend less",
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setAiDraftPrompt(suggestion)}
+                  className="text-xs bg-muted hover:bg-muted/80 border rounded-full px-2.5 py-1 text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid={`chip-ai-suggestion-${suggestion.slice(0, 20).replace(/\s/g, "-")}`}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAiDraftOpen(false); setAiDraftPrompt(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => aiDraftMutation.mutate(aiDraftPrompt)}
+              disabled={!aiDraftPrompt.trim() || aiDraftMutation.isPending}
+              className="gap-2"
+              data-testid="button-ai-draft-generate"
+            >
+              {aiDraftMutation.isPending ? (
+                <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Drafting…</>
+              ) : (
+                <><Sparkles className="h-3.5 w-3.5" /> Generate Draft</>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

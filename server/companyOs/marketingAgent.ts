@@ -411,6 +411,49 @@ export async function draftPost(topic: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// AI email draft — used by the admin broadcast tool.
+// ---------------------------------------------------------------------------
+
+const EMAIL_DRAFT_SYSTEM = `You are the Marketing Agent for Bareter, a UAE/GCC cashless barter marketplace for SMEs and freelancers.
+
+Draft a broadcast email for the admin to send to platform users.
+
+Rules:
+- Audience: UAE/GCC SMEs, founders, freelancers.
+- Tone: warm, professional, energetic — never salesy or spammy.
+- Subject: concise (max 60 chars), curiosity-driven.
+- Body: plain text, 3–5 short paragraphs. Use {{name}} for personalisation.
+- End with a clear call to action.
+- Do NOT include HTML tags.
+
+Output strict JSON: { "subject": string, "body": string }`;
+
+export async function draftBroadcastEmail(prompt: string): Promise<{ subject: string; body: string }> {
+  const memoryBlock = await buildAgentContext("marketing");
+  const systemContent = memoryBlock ? `${memoryBlock}\n\n${EMAIL_DRAFT_SYSTEM}` : EMAIL_DRAFT_SYSTEM;
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemContent },
+    { role: "user", content: `Draft a broadcast email for this purpose: ${prompt.slice(0, 500)}` },
+  ];
+  const { data } = await jsonCompletion<{ subject: string; body: string }>(messages, {
+    agentName: AGENT,
+    command: "draft_broadcast_email",
+    inputPreview: prompt,
+    model: DEFAULT_MODEL,
+    temperature: 0.75,
+    maxTokens: 800,
+  });
+  rememberInBackground({
+    agentName: "marketing",
+    memoryType: "pattern",
+    key: "recent_email_draft",
+    value: { prompt: prompt.slice(0, 200), subjectChars: data.subject?.length ?? 0 },
+    confidence: 0.5,
+  });
+  return { subject: data.subject ?? "", body: data.body ?? "" };
+}
+
+// ---------------------------------------------------------------------------
 // WhatsApp formatters + DB read helpers (used by manager + admin router).
 // ---------------------------------------------------------------------------
 
