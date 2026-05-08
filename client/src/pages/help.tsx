@@ -243,26 +243,41 @@ export function HelpPage() {
 
       {sanityArticles.length > 0 && (
         <div className="mb-12">
-          <h2 className="text-xl font-semibold mb-4">Articles</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sanityArticles
-              .filter(
-                (a) =>
-                  !searchQuery ||
-                  a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  a.body.toLowerCase().includes(searchQuery.toLowerCase()),
-              )
-              .map((article) => (
-                <Card key={article.slug} data-testid={`card-help-sanity-${article.slug}`}>
-                  <CardHeader>
-                    <CardTitle className="text-base">{article.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-4">{article.body}</p>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
+          <h2 className="text-xl font-semibold mb-4">Help Articles</h2>
+          <Card data-testid="card-help-sanity-articles">
+            <CardContent className="p-0">
+              <Accordion type="multiple" className="w-full">
+                {sanityArticles
+                  .filter(
+                    (a) =>
+                      !searchQuery ||
+                      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      a.body.toLowerCase().includes(searchQuery.toLowerCase()),
+                  )
+                  .map((article) => (
+                    <AccordionItem
+                      key={article.slug}
+                      value={article.slug}
+                      className="border-b last:border-b-0 px-4"
+                      data-testid={`item-help-sanity-${article.slug}`}
+                    >
+                      <AccordionTrigger
+                        className="text-sm text-left py-4 hover:no-underline font-medium"
+                        data-testid={`button-help-sanity-${article.slug}`}
+                      >
+                        {article.title}
+                      </AccordionTrigger>
+                      <AccordionContent
+                        className="text-sm text-muted-foreground pb-4 whitespace-pre-line"
+                        data-testid={`text-help-sanity-${article.slug}`}
+                      >
+                        {article.body}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+              </Accordion>
+            </CardContent>
+          </Card>
         </div>
       )}
 
