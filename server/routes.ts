@@ -6105,6 +6105,30 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/sanity-members", requireAdmin, async (_req, res) => {
+    try {
+      const projectId = process.env.SANITY_PROJECT_ID ?? "ho605hmx";
+      const token = process.env.SANITY_API_TOKEN;
+      if (!token) {
+        return res.status(503).json({ message: "SANITY_API_TOKEN is not configured" });
+      }
+      const response = await fetch(
+        `https://api.sanity.io/v2021-06-07/projects/${projectId}/members`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("[sanity-members] API error:", response.status, text);
+        return res.status(502).json({ message: `Sanity API returned ${response.status}` });
+      }
+      const members = await response.json();
+      res.json({ projectId, members });
+    } catch (error) {
+      console.error("[sanity-members] Error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Escalate a ticket (auth user or guest)
   app.post("/api/support/tickets/:id/escalate", async (req, res) => {
     try {

@@ -106,6 +106,8 @@ import {
   ToggleRight,
   Megaphone,
   Plus,
+  ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -2026,6 +2028,7 @@ export function AdminPage() {
           <TabsTrigger value="audit" data-testid="tab-settings-audit">Audit Log</TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-settings-security">Security</TabsTrigger>
           <TabsTrigger value="integrations" data-testid="tab-settings-integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="cms-members" data-testid="tab-settings-cms-members">CMS Members</TabsTrigger>
         </TabsList>
 
         <TabsContent value="platform" className="space-y-6">
@@ -2221,6 +2224,10 @@ export function AdminPage() {
 
         <TabsContent value="integrations" className="space-y-4">
           <AdminIntegrationsSection />
+        </TabsContent>
+
+        <TabsContent value="cms-members" className="space-y-4">
+          <CmsMembersSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -4185,6 +4192,157 @@ function WaitlistAdminSection() {
         </Card>
       )}
     </div>
+  );
+}
+
+interface SanityMember {
+  id: string;
+  displayName?: string;
+  email?: string;
+  role: string;
+  isCurrentUser?: boolean;
+  createdAt?: string;
+}
+
+function CmsMembersSection() {
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<{ projectId: string; members: SanityMember[] }>({
+    queryKey: ["/api/admin/sanity-members"],
+    queryFn: () => fetch("/api/admin/sanity-members", { credentials: "include" }).then((r) => {
+      if (!r.ok) return r.json().then((e: { message?: string }) => { throw new Error(e.message ?? `Error ${r.status}`); });
+      return r.json();
+    }),
+    staleTime: 60_000,
+  });
+
+  const members = data?.members;
+  const SANITY_MANAGE_URL = `https://sanity.io/manage/project/${data?.projectId ?? "ho605hmx"}/members`;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              CMS Members
+            </CardTitle>
+            <CardDescription>
+              Current members with access to the Sanity Studio content editor
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-refresh-cms-members"
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <a
+              href={SANITY_MANAGE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="link-sanity-manage"
+            >
+              <Button variant="outline" size="sm" className="gap-2">
+                <ExternalLink className="h-4 w-4" />
+                Manage in Sanity
+              </Button>
+            </a>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-full" />
+                <div className="space-y-1 flex-1">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="p-8 text-center">
+            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-destructive font-medium">Failed to load CMS members</p>
+            <p className="text-xs text-muted-foreground mt-1">{(error as Error)?.message}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              The SANITY_API_TOKEN may need the <code>project:read</code> scope. Visit{" "}
+              <a href={SANITY_MANAGE_URL} target="_blank" rel="noopener noreferrer" className="underline text-bareter-teal">
+                sanity.io/manage
+              </a>{" "}
+              to manage members directly.
+            </p>
+          </div>
+        ) : !members || members.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            No members found for this Sanity project.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Joined</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => (
+                <TableRow key={member.id} data-testid={`row-cms-member-${member.id}`}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs bg-muted">
+                          {(member.displayName ?? member.email ?? "?").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium" data-testid={`text-cms-member-name-${member.id}`}>
+                          {member.displayName ?? "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground" data-testid={`text-cms-member-email-${member.id}`}>
+                          {member.email ?? member.id}
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={member.role === "administrator" ? "default" : "secondary"} data-testid={`badge-cms-member-role-${member.id}`}>
+                      {member.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        <div className="p-4 border-t bg-muted/30 text-xs text-muted-foreground flex items-center gap-1">
+          <span>To invite or remove members, use</span>
+          <a
+            href={SANITY_MANAGE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-bareter-teal hover:underline inline-flex items-center gap-0.5"
+            data-testid="link-sanity-manage-footer"
+          >
+            sanity.io/manage <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
