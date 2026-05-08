@@ -1962,15 +1962,17 @@ export async function registerRoutes(
 
       const data = createMessageSchema.parse(req.body);
 
-      // Detect off-platform communication attempts
-      const offPlatformKeywords = /whatsapp|telegram|phone|transfer|outside|signal|wechat|direct\s*pay/i;
-      const isOffPlatform = offPlatformKeywords.test(data.content);
+      // Detect off-platform communication attempts (expanded keyword set)
+      const OFF_PLATFORM_RE = /whatsapp|telegram|signal|wechat|viber|\+\d{5,}|text me\b|dm me\b|contact me (outside|off|directly)|my number is|outside the app|off.?platform|move (this|the convo|the conversation) (to|off)/i;
+      const isOffPlatform = OFF_PLATFORM_RE.test(data.content);
+      const warning = isOffPlatform ? "off_platform" : null;
 
       const message = await storage.createMessage({
         dealId: param(req.params.id),
         senderId: req.session.userId!,
         content: data.content,
         isOffPlatform,
+        warning,
       });
 
       // Notify the other party

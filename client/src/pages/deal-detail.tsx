@@ -319,10 +319,11 @@ export function DealDetailPage() {
                 ) : messages && messages.length > 0 ? (
                   messages.map((msg) => {
                     const isMe = msg.senderId === user.id;
+                    const hasWarning = msg.isOffPlatform || !!msg.warning;
                     return (
                       <div
                         key={msg.id}
-                        className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                        className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                       >
                         <div className={`flex gap-2 max-w-[80%] ${isMe ? "flex-row-reverse" : ""}`}>
                           <Avatar className="h-8 w-8 flex-shrink-0">
@@ -348,6 +349,15 @@ export function DealDetailPage() {
                             </p>
                           </div>
                         </div>
+                        {hasWarning && (
+                          <div
+                            className="flex items-start gap-1.5 mt-1 max-w-[80%] rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+                            data-testid={`warning-off-platform-${msg.id}`}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                            <span>For your safety, keep all negotiations on Bareter. Deals made off-platform are not covered by our dispute protection.</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })

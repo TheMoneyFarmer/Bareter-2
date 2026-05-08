@@ -465,6 +465,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   isRead: boolean("is_read").default(false),
   isOffPlatform: boolean("is_off_platform").default(false),
+  warning: text("warning"), // "off_platform" | "cash_price" | null — set by server-side regex
   createdAt: timestamp("created_at").defaultNow(),
 });
 
