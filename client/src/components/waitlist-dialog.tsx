@@ -310,9 +310,9 @@ export function WaitlistDialog() {
 
               <p className="text-[11px] text-muted-foreground text-center pt-1">
                 Already have an account?{" "}
-                <Link href="/login" onClick={close} className="text-primary underline" data-testid="link-waitlist-login">
+                <a href="/login" onClick={close} className="text-primary underline" data-testid="link-waitlist-login">
                   Sign in
-                </Link>
+                </a>
               </p>
             </form>
           </>
