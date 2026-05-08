@@ -266,6 +266,7 @@ export function HelpPage() {
         </div>
       )}
 
+      {sanityArticles.length === 0 && (
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
         {categories
           .filter((cat) =>
@@ -343,6 +344,7 @@ export function HelpPage() {
           );
         })}
       </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-8">
         <Card>
