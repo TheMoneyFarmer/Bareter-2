@@ -2025,6 +2025,7 @@ export function AdminPage() {
       <Tabs value={settingsTab} onValueChange={setSettingsTab}>
         <TabsList>
           <TabsTrigger value="platform" data-testid="tab-settings-platform">Platform</TabsTrigger>
+          <TabsTrigger value="admins" data-testid="tab-settings-admins">Admins</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-settings-audit">Audit Log</TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-settings-security">Security</TabsTrigger>
           <TabsTrigger value="integrations" data-testid="tab-settings-integrations">Integrations</TabsTrigger>
@@ -2077,6 +2078,15 @@ export function AdminPage() {
               </a>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="admins" className="space-y-4">
+          <AdminsManagementTab
+            users={users ?? []}
+            currentUserId={user?.id ?? ""}
+            promoteMutation={promoteMutation}
+            demoteMutation={demoteMutation}
+          />
         </TabsContent>
 
         <TabsContent value="audit" className="space-y-4">
@@ -4346,3 +4356,217 @@ function CmsMembersSection() {
   );
 }
 
+function AdminsManagementTab({
+  users,
+  currentUserId,
+  promoteMutation,
+  demoteMutation,
+}: {
+  users: User[];
+  currentUserId: string;
+  promoteMutation: ReturnType<typeof useMutation<void, Error, string>>;
+  demoteMutation: ReturnType<typeof useMutation<void, Error, string>>;
+}) {
+  const [search, setSearch] = useState("");
+  const [addSearch, setAddSearch] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; user: User | null; action: "promote" | "demote" }>({
+    open: false, user: null, action: "promote",
+  });
+
+  const admins = users.filter((u) => u.isAdmin || u.role === "admin" || u.role === "super_admin");
+  const nonAdmins = users.filter((u) => !u.isAdmin && u.role !== "admin" && u.role !== "super_admin");
+
+  const filteredAdmins = admins.filter((u) =>
+    !search ||
+    (u.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (u.fullName ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredNonAdmins = nonAdmins.filter((u) =>
+    addSearch.length >= 2 && (
+      (u.email ?? "").toLowerCase().includes(addSearch.toLowerCase()) ||
+      (u.fullName ?? "").toLowerCase().includes(addSearch.toLowerCase())
+    )
+  ).slice(0, 8);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-bareter-teal" />
+            Admin Accounts
+          </CardTitle>
+          <CardDescription>
+            Manage who has access to the admin panel. Admins can manage users, listings, deals, and platform settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Input
+            placeholder="Search current admins..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+            data-testid="input-admin-search"
+          />
+          {filteredAdmins.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">No admins found</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAdmins.map((u) => {
+                  const isSelf = u.id === currentUserId;
+                  return (
+                    <TableRow key={u.id} data-testid={`row-admin-${u.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={u.profileImage ?? undefined} />
+                            <AvatarFallback>{(u.fullName ?? u.email ?? "?")[0].toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium text-sm">{u.fullName ?? "—"}</div>
+                            {u.founderBadge && (
+                              <div className="flex items-center gap-1 text-xs text-amber-600">
+                                <Crown className="h-3 w-3" /> Founder
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={u.role === "super_admin" ? "destructive" : "default"} data-testid={`badge-admin-role-${u.id}`}>
+                          {u.role === "super_admin" ? "Super Admin" : "Admin"}
+                        </Badge>
+                        {isSelf && <Badge variant="outline" className="ml-1">You</Badge>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                          disabled={isSelf || demoteMutation.isPending}
+                          onClick={() => setConfirmDialog({ open: true, user: u, action: "demote" })}
+                          data-testid={`button-remove-admin-${u.id}`}
+                        >
+                          <UserX className="h-3.5 w-3.5 mr-1" />
+                          Remove Access
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-bareter-teal" />
+            Add Admin
+          </CardTitle>
+          <CardDescription>Search for an existing user by name or email and grant them admin access.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            placeholder="Type a name or email to search users..."
+            value={addSearch}
+            onChange={(e) => setAddSearch(e.target.value)}
+            className="max-w-sm"
+            data-testid="input-add-admin-search"
+          />
+          {addSearch.length >= 2 && filteredNonAdmins.length === 0 && (
+            <p className="text-sm text-muted-foreground">No matching non-admin users found.</p>
+          )}
+          {filteredNonAdmins.length > 0 && (
+            <div className="border rounded-md divide-y">
+              {filteredNonAdmins.map((u) => (
+                <div key={u.id} className="flex items-center justify-between px-4 py-2.5" data-testid={`row-add-admin-${u.id}`}>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-7 w-7">
+                      <AvatarImage src={u.profileImage ?? undefined} />
+                      <AvatarFallback>{(u.fullName ?? u.email ?? "?")[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="text-sm font-medium">{u.fullName ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{u.email}</div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setConfirmDialog({ open: true, user: u, action: "promote" })}
+                    disabled={promoteMutation.isPending}
+                    data-testid={`button-grant-admin-${u.id}`}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                    Grant Admin
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => !open && setConfirmDialog({ open: false, user: null, action: "promote" })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmDialog.action === "promote" ? "Grant Admin Access" : "Remove Admin Access"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmDialog.action === "promote" ? (
+                <>
+                  This will give <strong>{confirmDialog.user?.fullName ?? confirmDialog.user?.email}</strong> full
+                  access to the admin panel — including user management, listings, deals, and platform settings.
+                </>
+              ) : (
+                <>
+                  This will remove admin access for <strong>{confirmDialog.user?.fullName ?? confirmDialog.user?.email}</strong>.
+                  They will no longer be able to access the admin panel.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDialog({ open: false, user: null, action: "promote" })}>
+              Cancel
+            </Button>
+            <Button
+              variant={confirmDialog.action === "promote" ? "default" : "destructive"}
+              disabled={promoteMutation.isPending || demoteMutation.isPending}
+              data-testid="button-confirm-admin-change"
+              onClick={() => {
+                if (!confirmDialog.user) return;
+                if (confirmDialog.action === "promote") {
+                  promoteMutation.mutate(confirmDialog.user.id);
+                } else {
+                  demoteMutation.mutate(confirmDialog.user.id);
+                }
+                setConfirmDialog({ open: false, user: null, action: "promote" });
+                setAddSearch("");
+              }}
+            >
+              {confirmDialog.action === "promote" ? "Grant Access" : "Remove Access"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
