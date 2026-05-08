@@ -162,12 +162,20 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // Defense-in-depth: even if a stray row has `isAdmin = true`, the request
-// is rejected unless the user's email is in `ADMIN_EMAIL_ALLOWLIST`
-// (comma-separated, case-insensitive). When the allowlist is unset the
-// middleware falls back to the legacy isAdmin-only behavior so dev
-// environments without the env var keep working.
-const adminEmailAllowlist = (): Set<string> | null => {
-  const raw = process.env.ADMIN_EMAIL_ALLOWLIST;
+// is rejected unless the user's email is in the admin allowlist.
+// The allowlist is stored in `app_settings` (key: `admin_email_allowlist`)
+// so it can be updated at runtime without a redeploy. Falls back to the
+// `ADMIN_EMAIL_ALLOWLIST` environment variable when no DB row exists.
+async function getAdminEmailAllowlist(): Promise<Set<string> | null> {
+  let raw: string | null = null;
+  try {
+    raw = await storage.getAppSetting("admin_email_allowlist");
+  } catch {
+    // DB unavailable — fall back to env var
+  }
+  if (!raw || !raw.trim()) {
+    raw = process.env.ADMIN_EMAIL_ALLOWLIST ?? null;
+  }
   if (!raw || !raw.trim()) return null;
   return new Set(
     raw
@@ -175,16 +183,28 @@ const adminEmailAllowlist = (): Set<string> | null => {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
   );
-};
+}
+
+// Mutate the DB-stored allowlist. Called by promote/demote endpoints.
+async function updateAdminAllowlist(email: string, action: "add" | "remove", updatedBy?: string): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const current = await getAdminEmailAllowlist();
+  const set: Set<string> = current ? new Set(current) : new Set<string>();
+  if (action === "add") {
+    set.add(normalizedEmail);
+  } else {
+    set.delete(normalizedEmail);
+  }
+  await storage.setAppSetting("admin_email_allowlist", [...set].join(","), updatedBy);
+}
 
 // Strip `isAdmin` from any client-facing user payload whose email is not
-// in `ADMIN_EMAIL_ALLOWLIST`. This way a stale row in the DB cannot
-// expose the admin nav on the client even if `requireAdmin` already
-// blocks the underlying API calls.
-function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: boolean | null }>(
+// on the allowlist. This way a stale row in the DB cannot expose the admin
+// nav on the client even if `requireAdmin` already blocks the API calls.
+async function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: boolean | null }>(
   payload: T,
-): T {
-  const allow = adminEmailAllowlist();
+): Promise<T> {
+  const allow = await getAdminEmailAllowlist();
   if (allow && payload.isAdmin && !allow.has((payload.email ?? "").trim().toLowerCase())) {
     return { ...payload, isAdmin: false };
   }
@@ -199,7 +219,7 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
   if (!user?.isAdmin) {
     return res.status(403).json({ message: "Forbidden" });
   }
-  const allow = adminEmailAllowlist();
+  const allow = await getAdminEmailAllowlist();
   if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) {
     return res.status(403).json({ message: "Forbidden" });
   }
@@ -369,7 +389,7 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        res.json(sanitizeAdminFlag(userWithoutPassword));
+        sanitizeAdminFlag(userWithoutPassword).then((safe) => res.json(safe));
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -412,7 +432,7 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        res.json(sanitizeAdminFlag(userWithoutPassword));
+        sanitizeAdminFlag(userWithoutPassword).then((safe) => res.json(safe));
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -731,7 +751,7 @@ export async function registerRoutes(
     }
 
     const { password, ...userWithoutPassword } = user;
-    res.json(sanitizeAdminFlag(userWithoutPassword));
+    res.json(await sanitizeAdminFlag(userWithoutPassword));
   });
 
   // Serve uploaded files
@@ -924,7 +944,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       const { password, ...userWithoutPassword } = updatedUser;
-      res.json(sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -970,7 +990,7 @@ export async function registerRoutes(
       }
 
       const { password, ...userWithoutPassword } = updatedUser;
-      res.json(sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       console.error("Update settings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -2192,7 +2212,7 @@ export async function registerRoutes(
       }
 
       const { password, ...userWithoutPassword } = user;
-      res.json(sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(userWithoutPassword));
     } catch (error) {
       console.error("Update account type error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -2841,6 +2861,46 @@ export async function registerRoutes(
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Admin change role error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/promote", requireAdmin, async (req, res) => {
+    try {
+      const targetId = param(req.params.id);
+      if (targetId === req.session.userId) {
+        return res.status(400).json({ message: "You are already an admin" });
+      }
+      const user = await storage.updateUser(targetId, { isAdmin: true, role: "admin" });
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.email) {
+        await updateAdminAllowlist(user.email, "add", req.session.userId);
+      }
+      await logAdminAction(req, "admin_promote", "user", user.id, { email: user.email });
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin promote error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/demote", requireAdmin, async (req, res) => {
+    try {
+      const targetId = param(req.params.id);
+      if (targetId === req.session.userId) {
+        return res.status(400).json({ message: "You cannot demote yourself" });
+      }
+      const user = await storage.updateUser(targetId, { isAdmin: false, role: "user" });
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.email) {
+        await updateAdminAllowlist(user.email, "remove", req.session.userId);
+      }
+      await logAdminAction(req, "admin_demote", "user", user.id, { email: user.email });
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Admin demote error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

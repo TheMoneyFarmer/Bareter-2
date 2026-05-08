@@ -225,6 +225,9 @@ export function AdminPage() {
   const [reportsExportTo, setReportsExportTo] = useState("");
   const [editingTemplateKey, setEditingTemplateKey] = useState<string | null>(null);
   const [editingTemplateValue, setEditingTemplateValue] = useState("");
+  const [adminRoleDialog, setAdminRoleDialog] = useState<{ open: boolean; user: User | null; action: "promote" | "demote" }>({
+    open: false, user: null, action: "promote",
+  });
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -279,6 +282,34 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
       toast({ title: "Success", description: "User verification updated" });
+    },
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("POST", `/api/admin/users/${userId}/promote`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setAdminRoleDialog({ open: false, user: null, action: "promote" });
+      toast({ title: "Success", description: "User promoted to admin" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to promote user", variant: "destructive" });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      await apiRequest("POST", `/api/admin/users/${userId}/demote`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setAdminRoleDialog({ open: false, user: null, action: "demote" });
+      toast({ title: "Success", description: "Admin access removed" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to demote user", variant: "destructive" });
     },
   });
 
@@ -956,9 +987,17 @@ export function AdminPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
-                      <Badge variant={u.role === "admin" || u.role === "super_admin" ? "destructive" : "secondary"}>
-                        {u.role === "super_admin" ? "Super Admin" : u.role === "admin" ? "Admin" : "User"}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant={u.role === "admin" || u.role === "super_admin" ? "destructive" : "secondary"}>
+                          {u.role === "super_admin" ? "Super Admin" : u.role === "admin" ? "Admin" : "User"}
+                        </Badge>
+                        {u.isAdmin && (
+                          <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300 dark:border-amber-700">
+                            <Crown className="h-3 w-3" />
+                            Panel
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -1014,9 +1053,17 @@ export function AdminPage() {
                               <><UserCheck className="h-4 w-4 mr-2" />Verify User</>
                             )}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); changeRoleMutation.mutate({ userId: u.id, role: u.role === "admin" ? "user" : "admin" }); }} data-testid={`button-toggle-admin-${u.id}`}>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const isCurrentlyAdmin = u.isAdmin || u.role === "admin" || u.role === "super_admin";
+                              setAdminRoleDialog({ open: true, user: u, action: isCurrentlyAdmin ? "demote" : "promote" });
+                            }}
+                            disabled={u.id === user?.id}
+                            data-testid={`button-toggle-admin-${u.id}`}
+                          >
                             <Crown className="h-4 w-4 mr-2" />
-                            {u.role === "admin" || u.role === "super_admin" ? "Remove Admin" : "Make Admin"}
+                            {(u.isAdmin || u.role === "admin" || u.role === "super_admin") ? "Remove Admin Access" : "Grant Admin Access"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem disabled className="text-xs text-muted-foreground font-medium opacity-100 cursor-default">
@@ -2911,6 +2958,55 @@ export function AdminPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Grant / Remove Admin Access Dialog */}
+      <Dialog
+        open={adminRoleDialog.open}
+        onOpenChange={(open) => !open && setAdminRoleDialog({ open: false, user: null, action: "promote" })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="h-5 w-5 text-amber-500" />
+              {adminRoleDialog.action === "promote" ? "Grant Admin Access" : "Remove Admin Access"}
+            </DialogTitle>
+            <DialogDescription>
+              {adminRoleDialog.action === "promote" ? (
+                <>
+                  This will give <strong>{adminRoleDialog.user?.fullName}</strong> ({adminRoleDialog.user?.email}) full access to the admin panel. They will be able to manage users, listings, and platform settings.
+                </>
+              ) : (
+                <>
+                  This will revoke <strong>{adminRoleDialog.user?.fullName}</strong>'s ({adminRoleDialog.user?.email}) admin panel access. They will no longer be able to perform admin actions.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAdminRoleDialog({ open: false, user: null, action: "promote" })}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={adminRoleDialog.action === "promote" ? "default" : "destructive"}
+              onClick={() => {
+                if (!adminRoleDialog.user) return;
+                if (adminRoleDialog.action === "promote") {
+                  promoteMutation.mutate(adminRoleDialog.user.id);
+                } else {
+                  demoteMutation.mutate(adminRoleDialog.user.id);
+                }
+              }}
+              disabled={promoteMutation.isPending || demoteMutation.isPending}
+              data-testid={`button-confirm-admin-role`}
+            >
+              {adminRoleDialog.action === "promote" ? "Grant Access" : "Remove Access"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
