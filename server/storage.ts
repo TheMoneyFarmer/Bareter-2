@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray, isNotNull } from "drizzle-orm";
 import {
   users,
   listings,
@@ -113,6 +113,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
   getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
+  getUsersWithPendingVerification(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
@@ -357,6 +358,18 @@ export class DatabaseStorage implements IStorage {
   async getUserByDiditSessionId(sessionId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.diditSessionId, sessionId));
     return user;
+  }
+
+  async getUsersWithPendingVerification(): Promise<User[]> {
+    return db.select().from(users).where(
+      and(
+        isNotNull(users.diditSessionId),
+        or(
+          inArray(users.kycStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+          inArray(users.kybStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+        ),
+      ),
+    );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {

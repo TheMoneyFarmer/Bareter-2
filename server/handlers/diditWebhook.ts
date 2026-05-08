@@ -7,9 +7,10 @@ export interface DiditWebhookPayload {
   user_data?: unknown;
   verification?: unknown;
   vendor_data?: unknown;
+  decision?: string;
 }
 
-export type DiditUserProjection = Pick<User, "id" | "accountType">;
+export type DiditUserProjection = Pick<User, "id" | "accountType" | "email" | "fullName">;
 
 export type DiditUserUpdate = Partial<
   Pick<
@@ -17,6 +18,7 @@ export type DiditUserUpdate = Partial<
     | "kycStatus"
     | "kybStatus"
     | "isVerified"
+    | "verificationStatus"
     | "diditVerifiedAt"
     | "diditVerificationData"
     | "updatedAt"
@@ -37,6 +39,9 @@ export interface DiditWebhookStorage {
 export interface DiditWebhookDeps {
   storage: DiditWebhookStorage;
   verifyWebhookSignature: (payload: string, signature: string) => boolean;
+  sendApprovedEmail?: (toEmail: string, opts: { fullName?: string | null; accountType?: string }) => Promise<boolean>;
+  sendDeclinedEmail?: (toEmail: string, opts: { fullName?: string | null; accountType?: string; reason?: string }) => Promise<boolean>;
+  sendUnderReviewEmail?: (toEmail: string, opts: { fullName?: string | null; accountType?: string }) => Promise<boolean>;
 }
 
 export type DiditWebhookRequest = Request & { rawBody?: Buffer };
@@ -62,7 +67,7 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
       }
 
       const data = JSON.parse(payload) as DiditWebhookPayload;
-      console.log("Didit webhook received:", data);
+      console.log("Didit webhook received:", JSON.stringify({ session_id: data.session_id, status: data.status }));
 
       const sessionId = data.session_id;
       const status = data.status;
@@ -74,7 +79,7 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
       const user = await deps.storage.getUserByDiditSessionId(sessionId);
 
       if (!user) {
-        console.log("User not found for session:", sessionId);
+        console.log("User not found for Didit session:", sessionId);
         return res.json({ received: true });
       }
 
@@ -90,30 +95,56 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
 
       if (status === "APPROVED") {
         updateData.isVerified = true;
+        updateData.verificationStatus = "verified";
         updateData.diditVerifiedAt = new Date();
         updateData.diditVerificationData =
-          (data.user_data ?? data.verification ?? {}) as Record<
-            string,
-            unknown
-          >;
+          (data.user_data ?? data.verification ?? {}) as Record<string, unknown>;
 
         await deps.storage.createNotification({
           userId: user.id,
           type: "system",
-          title: "Verification Complete",
-          message:
-            "Your identity has been verified. You can now start bartering!",
+          title: "Verification Approved!",
+          message: "Your identity has been verified. You can now create listings and start bartering!",
         });
-      } else if (status === "DECLINED") {
+
+        if (deps.sendApprovedEmail && user.email) {
+          deps.sendApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch((err) =>
+            console.error("[EMAIL] Verification approved email failed:", err),
+          );
+        }
+      } else if (status === "DECLINED" || status === "REJECTED") {
         updateData.isVerified = false;
+        updateData.verificationStatus = "rejected";
 
         await deps.storage.createNotification({
           userId: user.id,
           type: "system",
-          title: "Verification Failed",
-          message:
-            "Your identity verification was declined. Please try again or contact support.",
+          title: "Verification Not Approved",
+          message: "Your verification was declined. Please try again or contact support.",
         });
+
+        if (deps.sendDeclinedEmail && user.email) {
+          deps.sendDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch((err) =>
+            console.error("[EMAIL] Verification declined email failed:", err),
+          );
+        }
+      } else if (status === "IN_REVIEW" || status === "PENDING_REVIEW") {
+        updateData.verificationStatus = "submitted";
+
+        await deps.storage.createNotification({
+          userId: user.id,
+          type: "system",
+          title: "Documents Under Review",
+          message: "We received your verification documents and are reviewing them. This usually takes just a few minutes.",
+        });
+
+        if (deps.sendUnderReviewEmail && user.email) {
+          deps.sendUnderReviewEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch((err) =>
+            console.error("[EMAIL] Verification under review email failed:", err),
+          );
+        }
+      } else if (status === "EXPIRED" || status === "ABANDONED") {
+        updateData.verificationStatus = "pending";
       }
 
       await deps.storage.updateUser(user.id, updateData);

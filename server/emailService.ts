@@ -779,3 +779,119 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
     text,
   });
 }
+
+// ─── Verification Outcome Emails ─────────────────────────────────────────────
+
+export async function sendVerificationApprovedEmail(
+  toEmail: string,
+  opts: { fullName?: string | null; accountType?: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Verification approved email to ${toEmail} skipped (email not configured)`);
+    return false;
+  }
+  const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
+  const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; font-size: 28px;">✓</div>
+    </div>
+    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Verification Approved!</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Congratulations — your <strong>${verType}</strong> verification has been <strong>approved</strong>.
+      Your account is now fully verified and you can start creating listings, accepting barter deals, and trading on ${APP_NAME}.
+    </p>
+    <a href="https://bareter.com/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Start Bartering
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nCongratulations! Your ${verType} verification has been approved. You can now start bartering on ${APP_NAME}.\n\nVisit https://bareter.com/browse to get started.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `✓ Verification Approved — Welcome to ${APP_NAME}!`, html, text });
+}
+
+export async function sendVerificationDeclinedEmail(
+  toEmail: string,
+  opts: { fullName?: string | null; accountType?: string; reason?: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Verification declined email to ${toEmail} skipped (email not configured)`);
+    return false;
+  }
+  const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
+  const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
+  const reasonHtml = opts.reason
+    ? `<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin: 16px 0;"><p style="margin: 0 0 4px; color: #991b1b; font-size: 13px; font-weight: 600;">Reason</p><p style="margin: 0; color: #7f1d1d; font-size: 13px;">${opts.reason}</p></div>`
+    : "";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #991b1b; margin-bottom: 8px;">Verification Not Approved</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Unfortunately, your <strong>${verType}</strong> verification was not approved. This can happen if documents were unclear, expired, or did not match our requirements.
+    </p>
+    ${reasonHtml}
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      You can try again by visiting your profile and restarting the verification process. If you believe this is an error, please contact our support team.
+    </p>
+    <a href="https://bareter.com/profile" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Try Again
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour ${verType} verification was not approved. You can try again at https://bareter.com/profile\n\n${opts.reason ? `Reason: ${opts.reason}\n\n` : ""}Contact support if you believe this is an error.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Verification Update — Action Required`, html, text });
+}
+
+export async function sendVerificationUnderReviewEmail(
+  toEmail: string,
+  opts: { fullName?: string | null; accountType?: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Verification under review email to ${toEmail} skipped (email not configured)`);
+    return false;
+  }
+  const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
+  const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Documents Received — Under Review</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      We have received your <strong>${verType}</strong> verification documents. Our team is currently reviewing them — this usually takes just a few minutes.
+      We will email you as soon as a decision has been made.
+    </p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      You can check your current verification status at any time by visiting your settings.
+    </p>
+    <a href="https://bareter.com/settings" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      Check Status
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nWe received your ${verType} documents and are reviewing them. This usually takes just a few minutes. We'll email you when a decision is made.\n\nCheck your status at https://bareter.com/settings\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Verification Documents Received — Under Review`, html, text });
+}

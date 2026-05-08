@@ -40,6 +40,39 @@ import {
 } from "lucide-react";
 import { z } from "zod";
 
+function VerificationRefreshButton({ onRefresh }: { onRefresh: () => void }) {
+  const { toast } = useToast();
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/verification/refresh");
+      return res.json() as Promise<{ synced: boolean; message: string; status?: string; isVerified?: boolean }>;
+    },
+    onSuccess: (data) => {
+      if (data.synced) {
+        toast({ title: "Status Updated", description: data.message });
+        onRefresh();
+      } else {
+        toast({ title: "No Change", description: data.message, variant: "default" });
+      }
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not check verification status. Please try again.", variant: "destructive" });
+    },
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      data-testid="button-refresh-verification"
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+    >
+      <RefreshCw className={`h-3 w-3 mr-1.5 ${mutation.isPending ? "animate-spin" : ""}`} />
+      {mutation.isPending ? "Checking..." : "Refresh Status"}
+    </Button>
+  );
+}
+
 const accountSettingsSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
@@ -1153,21 +1186,44 @@ export function SettingsPage() {
 
                 <div className="flex items-center justify-between p-4 rounded-lg border">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${user.isVerified ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
+                    <div className={`p-2 rounded-full ${
+                      user.isVerified
+                        ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400"
+                        : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW" || user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
+                          ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400"
+                          : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
+                            ? "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                    }`}>
                       <Shield className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Identity Verification</p>
                       <p className="text-sm text-muted-foreground">
-                        {user.isVerified ? "Your identity is verified" : "Complete KYC/KYB verification to barter"}
+                        {user.isVerified
+                          ? "Your identity is verified — you can create listings and barter"
+                          : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW")
+                            ? "Documents received — under review (usually a few minutes)"
+                            : (user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
+                              ? "Verification in progress — please complete the steps"
+                              : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
+                                ? "Verification was not approved — please try again"
+                                : "Complete KYC/KYB verification to barter"}
                       </p>
                     </div>
                   </div>
-                  {!user.isVerified && (
-                    <Button variant="outline" size="sm" asChild data-testid="button-verify-identity">
-                      <a href="/profile">Verify Now</a>
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {(user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW" ||
+                      user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" ||
+                      user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW") && (
+                      <VerificationRefreshButton onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] })} />
+                    )}
+                    {!user.isVerified && (
+                      <Button variant="outline" size="sm" asChild data-testid="button-verify-identity">
+                        <a href="/profile">Verify Now</a>
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

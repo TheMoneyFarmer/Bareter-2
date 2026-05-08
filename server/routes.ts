@@ -2253,11 +2253,87 @@ export async function registerRoutes(
     "./diditClient"
   );
   const { makeDiditWebhookHandler } = await import("./handlers/diditWebhook");
+  const {
+    sendVerificationApprovedEmail,
+    sendVerificationDeclinedEmail,
+    sendVerificationUnderReviewEmail,
+  } = await import("./emailService");
   const diditWebhookHandler = makeDiditWebhookHandler({
     storage,
     verifyWebhookSignature: verifyDiditSignature,
+    sendApprovedEmail: sendVerificationApprovedEmail,
+    sendDeclinedEmail: sendVerificationDeclinedEmail,
+    sendUnderReviewEmail: sendVerificationUnderReviewEmail,
   });
   app.post("/api/webhooks/didit", diditWebhookHandler);
+
+  // Manual verification status refresh — polls Didit API for the current user's
+  // session and syncs the status. Solves cases where the webhook never fired.
+  app.post("/api/verification/refresh", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (!user.diditSessionId) {
+        return res.json({ synced: false, message: "No active verification session found. Please start verification first." });
+      }
+
+      const { getSessionStatus, getVerificationStatus, isUserVerified } = await import("./diditClient");
+      const latestStatus = await getSessionStatus(user.diditSessionId);
+
+      if (!latestStatus) {
+        return res.json({ synced: false, message: "Could not reach verification service. Please try again shortly." });
+      }
+
+      const isBusinessAccount = user.accountType === "business";
+      const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
+
+      // Only update if status actually changed
+      if (latestStatus === currentStatus) {
+        const statusInfo = getVerificationStatus(user.accountType || "individual", user.kycStatus || "NOT_STARTED", user.kybStatus || "NOT_STARTED");
+        return res.json({ synced: false, message: "Status is already up to date.", ...statusInfo, kycStatus: user.kycStatus, kybStatus: user.kybStatus, isVerified: user.isVerified });
+      }
+
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
+      if (isBusinessAccount) {
+        updateData.kybStatus = latestStatus;
+      } else {
+        updateData.kycStatus = latestStatus;
+      }
+
+      if (latestStatus === "APPROVED") {
+        updateData.isVerified = true;
+        updateData.verificationStatus = "verified";
+        updateData.diditVerifiedAt = new Date();
+        await storage.createNotification({
+          userId: user.id, type: "system",
+          title: "Verification Approved!",
+          message: "Your identity has been verified. You can now create listings and start bartering!",
+        });
+        sendVerificationApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+      } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+        updateData.isVerified = false;
+        updateData.verificationStatus = "rejected";
+        sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+      } else if (latestStatus === "IN_REVIEW" || latestStatus === "PENDING_REVIEW") {
+        updateData.verificationStatus = "submitted";
+        sendVerificationUnderReviewEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+      }
+
+      await storage.updateUser(user.id, updateData as Partial<typeof user>);
+      const updatedUser = await storage.getUser(user.id);
+      const newKycStatus = updatedUser?.kycStatus || "NOT_STARTED";
+      const newKybStatus = updatedUser?.kybStatus || "NOT_STARTED";
+      const statusInfo = getVerificationStatus(user.accountType || "individual", newKycStatus, newKybStatus);
+      const verified = isUserVerified(user.accountType || "individual", newKycStatus, newKybStatus, updatedUser?.isVerified);
+
+      console.log(`[DIDIT] Manual refresh: userId=${user.id} ${currentStatus} → ${latestStatus}`);
+      return res.json({ synced: true, message: `Status updated to ${latestStatus}`, ...statusInfo, kycStatus: newKycStatus, kybStatus: newKybStatus, isVerified: verified });
+    } catch (error) {
+      console.error("Verification refresh error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   // Sanity CMS webhook — flushes the in-memory content cache immediately on publish.
   // Sanity signs each request with HMAC-SHA256; the header format is:

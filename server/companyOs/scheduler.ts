@@ -19,7 +19,8 @@ import {
 } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
-import { sendDisputeRiskEmail } from "../emailService";
+import { sendDisputeRiskEmail, sendVerificationApprovedEmail, sendVerificationDeclinedEmail, sendVerificationUnderReviewEmail } from "../emailService";
+import { getSessionStatus } from "../diditClient";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { runIntelligenceSweep } from "./intelligenceAgent";
@@ -32,6 +33,7 @@ import { withRetry } from "./retry";
 import { storage } from "../storage";
 
 const AGENT_JOB_MAP: Record<string, string> = {
+  diditStatusPoll: "scheduler",
   dailyBriefing: "manager",
   hourlyFinanceSnapshot: "finance",
   budgetWarning: "finance",
@@ -218,6 +220,67 @@ async function weeklyDisputeRiskJob(): Promise<void> {
   }
 }
 
+async function diditStatusPollJob(): Promise<void> {
+  try {
+    if (!process.env.DIDIT_API_KEY) {
+      console.log("[diditPoll] DIDIT_API_KEY not set — skipping");
+      return;
+    }
+    const pendingUsers = await storage.getUsersWithPendingVerification();
+    if (pendingUsers.length === 0) {
+      console.log("[diditPoll] No pending verification sessions");
+      return;
+    }
+    console.log(`[diditPoll] Checking ${pendingUsers.length} pending session(s)`);
+    let updated = 0;
+    for (const user of pendingUsers) {
+      if (!user.diditSessionId) continue;
+      try {
+        const latestStatus = await getSessionStatus(user.diditSessionId);
+        if (!latestStatus) continue;
+        const isBusinessAccount = user.accountType === "business";
+        const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
+        if (latestStatus === currentStatus) continue;
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+        if (isBusinessAccount) {
+          updateData.kybStatus = latestStatus;
+        } else {
+          updateData.kycStatus = latestStatus;
+        }
+
+        if (latestStatus === "APPROVED") {
+          updateData.isVerified = true;
+          updateData.verificationStatus = "verified";
+          updateData.diditVerifiedAt = new Date();
+          await storage.createNotification({
+            userId: user.id, type: "system",
+            title: "Verification Approved!",
+            message: "Your identity has been verified. You can now create listings and start bartering!",
+          });
+          sendVerificationApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+          updateData.isVerified = false;
+          updateData.verificationStatus = "rejected";
+          sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        } else if (latestStatus === "IN_REVIEW" || latestStatus === "PENDING_REVIEW") {
+          updateData.verificationStatus = "submitted";
+          sendVerificationUnderReviewEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        }
+
+        await storage.updateUser(user.id, updateData as Partial<typeof user>);
+        console.log(`[diditPoll] userId=${user.id} ${currentStatus} → ${latestStatus}`);
+        updated++;
+      } catch (err) {
+        console.error(`[diditPoll] Error checking session for userId=${user.id}:`, err);
+      }
+    }
+    console.log(`[diditPoll] Done: ${updated}/${pendingUsers.length} updated`);
+  } catch (err) {
+    console.error("[diditPoll] Job failed:", err);
+  }
+}
+
 async function dailyDashboardSnapshotJob(): Promise<void> {
   try {
     const r = await captureDailySnapshot();
@@ -377,6 +440,11 @@ export function startScheduler(): void {
   // + META_AD_ACCOUNT_ID; the manual `campaign update` command stays as
   // a fallback for everything else. Skips silently if no Meta creds are
   // wired so dev environments don't see noisy errors.
+  // Every 5 minutes — Didit verification status polling fallback.
+  // Catches cases where the Didit webhook never fired (network issues,
+  // misconfigured URL, etc.). Idempotent — only updates rows where the
+  // Didit API status differs from what's stored.
+  schedule("diditStatusPoll", "*/5 * * * *", diditStatusPollJob);
   schedule("dailyMetaCampaignSync", "30 3 * * *", dailyMetaCampaignSyncJob);
   // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
