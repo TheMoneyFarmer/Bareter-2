@@ -5682,7 +5682,9 @@ export async function registerRoutes(
   });
 
   // Secure cross-session guest ticket resume: requires BOTH email AND ticketNumber.
-  // Since ticketNumber is sent only to the inbox, providing it proves email ownership.
+  // Since ticketNumber is cryptographically random and sent only to the inbox, providing
+  // both proves email ownership. On success, ALL tickets for that email are loaded into
+  // the session so guests see their full history.
   app.post("/api/support/tickets/resume", async (req, res) => {
     try {
       const { email, ticketNumber } = req.body;
@@ -5693,15 +5695,18 @@ export async function registerRoutes(
       const normalNumber = String(ticketNumber).trim().toUpperCase();
       const ticket = await storage.getSupportTicketByNumber(normalNumber);
       if (!ticket || ticket.requesterEmail !== normalEmail) {
-        // Return same 404 whether not found or email mismatch — prevent enumeration
+        // Constant-time 404 — prevents email/ticket enumeration
         return res.status(404).json({ message: "Ticket not found or email does not match" });
       }
-      // Grant session access
+      // Verified: load ALL guest tickets for this email into session
+      const allTickets = await storage.getSupportTicketsByEmail(normalEmail);
       if (!Array.isArray(req.session.guestTicketIds)) req.session.guestTicketIds = [];
-      if (!req.session.guestTicketIds.includes(ticket.id)) {
-        req.session.guestTicketIds.push(ticket.id);
+      for (const t of allTickets) {
+        if (!req.session.guestTicketIds.includes(t.id)) {
+          req.session.guestTicketIds.push(t.id);
+        }
       }
-      res.json({ ticketId: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject });
+      res.json({ ticketCount: allTickets.length, ticketNumber: ticket.ticketNumber });
     } catch (error) {
       console.error("Ticket resume error:", error);
       res.status(500).json({ message: "Failed to resume ticket" });

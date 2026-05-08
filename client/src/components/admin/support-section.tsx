@@ -533,6 +533,7 @@ export function AdminSupportSection() {
                   <TableHead className="text-xs">User</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                   <TableHead className="text-xs">Priority</TableHead>
+                  <TableHead className="text-xs">Handler</TableHead>
                   <TableHead className="text-xs">Category</TableHead>
                   <TableHead className="text-xs">Messages</TableHead>
                   <TableHead className="text-xs">Last Activity</TableHead>
@@ -583,6 +584,17 @@ export function AdminSupportSection() {
                       >
                         {ticket.priority}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {ticket.aiHandled ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
+                          <Bot className="h-3 w-3" />AI
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                          <User className="h-3 w-3" />Human
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs capitalize text-muted-foreground">
                       {ticket.category}

@@ -1875,7 +1875,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket> {
-    const ticketNumber = `TKT-${Date.now().toString(36).toUpperCase()}`;
+    const { randomBytes } = await import("crypto");
+    const ticketNumber = `TKT-${randomBytes(6).toString("hex").toUpperCase()}`;
     const [ticket] = await db
       .insert(supportTickets)
       .values({ ...data, ticketNumber })

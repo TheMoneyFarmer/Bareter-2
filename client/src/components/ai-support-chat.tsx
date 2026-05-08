@@ -28,7 +28,8 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import type { SupportTicketWithUser, SupportMessageWithSender } from "@shared/schema";
 
-type View = "list" | "thread" | "new" | "lookup";
+type View = "list" | "thread" | "new" | "lookup" | "identity";
+type GuestIdentity = { name: string; email: string };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   open: { label: "Open", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -161,13 +162,15 @@ function TicketList({
 function GuestLookupForm({
   onBack,
   onFound,
+  prefillEmail,
 }: {
   onBack: () => void;
   onFound: () => void;
+  prefillEmail?: string;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(prefillEmail ?? "");
   const [ticketNumber, setTicketNumber] = useState("");
 
   const resumeMutation = useMutation({
@@ -480,22 +483,95 @@ function TicketThread({
   );
 }
 
+function GuestIdentityForm({
+  onIdentified,
+}: {
+  onIdentified: (identity: GuestIdentity) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const canContinue = name.trim().length > 0 && email.trim().includes("@");
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 pt-5 pb-2 flex-shrink-0">
+        <div className="flex items-center gap-2 mb-1">
+          <Bot className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold">Welcome to Support</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Before we get started, please tell us who you are so we can keep track of your tickets.
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div>
+          <label className="text-xs font-medium mb-1 block">Your name *</label>
+          <Input
+            data-testid="input-identity-name"
+            placeholder="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="text-xs h-8"
+            maxLength={100}
+            autoFocus
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Email address *</label>
+          <Input
+            data-testid="input-identity-email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="text-xs h-8"
+            maxLength={200}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canContinue)
+                onIdentified({ name: name.trim(), email: email.trim().toLowerCase() });
+            }}
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          We'll send your ticket confirmation and updates to this email.
+        </p>
+      </div>
+      <div className="p-3 border-t flex-shrink-0 space-y-2">
+        <Button
+          data-testid="btn-identity-continue"
+          className="w-full h-8 text-sm"
+          disabled={!canContinue}
+          onClick={() =>
+            onIdentified({ name: name.trim(), email: email.trim().toLowerCase() })
+          }
+        >
+          Continue
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function NewTicketForm({
   onBack,
   onSuccess,
   isGuest,
+  prefillName,
+  prefillEmail,
 }: {
   onBack: () => void;
   onSuccess: () => void;
   isGuest: boolean;
+  prefillName?: string;
+  prefillEmail?: string;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("other");
   const [message, setMessage] = useState("");
-  const [guestName, setGuestName] = useState("");
-  const [guestEmail, setGuestEmail] = useState("");
+  const [guestName, setGuestName] = useState(prefillName ?? "");
+  const [guestEmail, setGuestEmail] = useState(prefillEmail ?? "");
 
   const canSubmit = subject.trim() && message.trim() &&
     (!isGuest || (guestName.trim() && guestEmail.trim()));
@@ -545,29 +621,35 @@ function NewTicketForm({
         {isGuest && (
           <div className="bg-muted/40 rounded-lg p-3 space-y-2">
             <p className="text-[11px] text-muted-foreground font-medium">Your contact details</p>
-            <div>
-              <label className="text-xs font-medium mb-1 block">Your name *</label>
-              <Input
-                data-testid="input-guest-name"
-                placeholder="Full name"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                className="text-xs h-8"
-                maxLength={100}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1 block">Email address *</label>
-              <Input
-                data-testid="input-guest-email"
-                type="email"
-                placeholder="you@example.com"
-                value={guestEmail}
-                onChange={(e) => setGuestEmail(e.target.value)}
-                className="text-xs h-8"
-                maxLength={200}
-              />
-            </div>
+            {prefillName ? (
+              <p className="text-xs font-medium">{guestName} · {guestEmail}</p>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Your name *</label>
+                  <Input
+                    data-testid="input-guest-name"
+                    placeholder="Full name"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="text-xs h-8"
+                    maxLength={100}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Email address *</label>
+                  <Input
+                    data-testid="input-guest-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    className="text-xs h-8"
+                    maxLength={200}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
         <div>
@@ -636,10 +718,12 @@ export default function AiSupportChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<View>("list");
   const [selectedTicket, setSelectedTicket] = useState<SupportTicketWithUser | null>(null);
+  const [guestIdentity, setGuestIdentity] = useState<GuestIdentity | null>(null);
 
   const { data: tickets = [] } = useQuery<SupportTicketWithUser[]>({
     queryKey: ["/api/support/tickets"],
-    enabled: isOpen,
+    // For guests: only fetch after identity is provided (so session guestTicketIds are populated)
+    enabled: isOpen && (!user ? guestIdentity !== null : true),
   });
 
   const openCount = tickets.filter(
@@ -680,14 +764,28 @@ export default function AiSupportChat() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            {view === "new" ? (
+            {!user && !guestIdentity ? (
+              // Guests must identify themselves before accessing tickets
+              <GuestIdentityForm
+                onIdentified={(identity) => {
+                  setGuestIdentity(identity);
+                  setView("list");
+                }}
+              />
+            ) : view === "new" ? (
               <NewTicketForm
                 onBack={handleBack}
                 onSuccess={() => setView("list")}
                 isGuest={!user}
+                prefillName={guestIdentity?.name}
+                prefillEmail={guestIdentity?.email}
               />
             ) : view === "lookup" ? (
-              <GuestLookupForm onBack={handleBack} onFound={handleBack} />
+              <GuestLookupForm
+                onBack={handleBack}
+                onFound={handleBack}
+                prefillEmail={guestIdentity?.email}
+              />
             ) : view === "thread" && selectedTicket ? (
               <TicketThread ticket={selectedTicket} onBack={handleBack} />
             ) : (
