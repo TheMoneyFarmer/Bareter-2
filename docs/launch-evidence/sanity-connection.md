@@ -64,3 +64,33 @@ If Sanity is unreachable, server falls back to `app_settings` values silently. N
 **To redeploy after schema changes:**
 1. Run from `sanity/` directory: `SANITY_AUTH_TOKEN=<personal-token> npx sanity deploy`
 2. Or: `npx sanity login && npx sanity deploy` (interactive OAuth)
+
+## Deploy Output (captured)
+
+```
+✓ Checking project info
+Creating https://bareter.sanity.studio
+✓ Creating studio hostname
+✓ Clean output folder (20ms)
+✓ Build Sanity Studio (28854ms)
+✓ Extracted manifest (7996ms)
+✓ Deployed 1/1 schemas
+✓ Verifying local content
+✓ Deploying to sanity.studio
+Success! Studio deployed to https://bareter.sanity.studio/
+```
+
+## Content Edit Propagation
+
+Content published in Sanity Studio fires the webhook at `https://bareter.com/api/webhooks/sanity`,
+which calls `clearSanityCache()` immediately. The next request to `/api/public/settings` or
+`/api/public/help-articles` fetches fresh content from Sanity (no 60s wait).
+Verified locally: webhook returns `{"received":true}` within ~50ms of a valid publish event.
+
+## Schema Types Confirmed in Deployed Studio
+
+All 4 types compiled and deployed successfully:
+- `heroSection` — Hero Section (headline, tagline, CTA button text/URL)
+- `howItWorksStep` — How It Works Step (order, title, description, icon)
+- `faqEntry` — FAQ Category (category name, questions array with q/a pairs)
+- `helpArticle` — Help Article (title, slug, rich-text body)
