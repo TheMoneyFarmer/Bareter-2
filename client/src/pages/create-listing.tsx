@@ -13,6 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
+import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry, ExchangeItem } from "@shared/schema";
@@ -103,6 +104,11 @@ export function CreateListingPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      trackEvent("listing_created", {
+        listing_id: data.id,
+        listing_category: (data.categories || [])[0],
+        listing_value: data.retailValue ? parseFloat(data.retailValue) : undefined,
+      });
       toast({
         title: "Listing created!",
         description: "Your listing is now live and visible to other users.",

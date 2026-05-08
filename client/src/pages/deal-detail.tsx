@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { trackEvent } from "@/lib/posthog";
 import { Link, useParams, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -130,9 +131,12 @@ export function DealDetailPage() {
       const res = await apiRequest("PATCH", `/api/deals/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/deals", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      if (data?.state === "completed") {
+        trackEvent("deal_completed", { deal_id: id });
+      }
       toast({
         title: "Deal updated",
         description: "The deal status has been updated.",

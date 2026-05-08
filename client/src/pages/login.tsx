@@ -13,6 +13,7 @@ import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useWaitlist } from "@/lib/waitlist";
 import { loginSchema } from "@shared/schema";
+import { trackEvent } from "@/lib/posthog";
 import { Handshake, Loader2, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 
@@ -51,6 +52,7 @@ export function LoginPage() {
     setIsLoading(true);
     try {
       await login(data.email, data.password);
+      trackEvent("login");
       toast({
         title: t("auth.welcomeBack") + "!",
         description: t("auth.signInToContinue"),

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { trackEvent } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -87,6 +88,18 @@ export function ListingDetailPage() {
     enabled: !!user,
   });
 
+  const viewedRef = useRef(false);
+  useEffect(() => {
+    if (listing && !viewedRef.current) {
+      viewedRef.current = true;
+      trackEvent("listing_viewed", {
+        listing_id: listing.id,
+        listing_category: (listing.categories as string[] | undefined)?.[0],
+        listing_value: listing.retailValue ? parseFloat(String(listing.retailValue)) : undefined,
+      });
+    }
+  }, [listing]);
+
   useEffect(() => {
     if (proposeOpen && listing?.categories) {
       const items = getDeliverablesForCategories(listing.categories as string[]);
@@ -117,6 +130,7 @@ export function ListingDetailPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      trackEvent("barter_proposed", { deal_id: data.id });
       toast({
         title: "Barter proposed!",
         description: "Your barter proposal has been sent. You can chat to negotiate.",

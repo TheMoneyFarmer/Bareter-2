@@ -6238,5 +6238,66 @@ export async function registerRoutes(
     });
   });
 
+  // ── robots.txt ──────────────────────────────────────────────────────────────
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send(
+      "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: https://bareter.com/sitemap.xml\n"
+    );
+  });
+
+  // ── sitemap.xml (10-min in-memory cache) ────────────────────────────────────
+  let sitemapCache: { xml: string; builtAt: number } | null = null;
+  const SITEMAP_TTL_MS = 10 * 60 * 1000;
+
+  app.get("/sitemap.xml", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (sitemapCache && now - sitemapCache.builtAt < SITEMAP_TTL_MS) {
+        res.type("application/xml").set("Cache-Control", "public, max-age=600").send(sitemapCache.xml);
+        return;
+      }
+
+      const rows = await db
+        .select({ id: listings.id, updatedAt: listings.updatedAt })
+        .from(listings)
+        .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)));
+
+      const base = "https://bareter.com";
+      const staticPaths = [
+        { loc: "/", priority: "1.0", changefreq: "daily" },
+        { loc: "/browse", priority: "0.9", changefreq: "hourly" },
+        { loc: "/about", priority: "0.5", changefreq: "monthly" },
+        { loc: "/faq", priority: "0.5", changefreq: "monthly" },
+        { loc: "/help", priority: "0.5", changefreq: "monthly" },
+        { loc: "/register", priority: "0.8", changefreq: "monthly" },
+        { loc: "/map", priority: "0.7", changefreq: "daily" },
+      ];
+
+      const escapeXml = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      const urlTags = [
+        ...staticPaths.map(
+          ({ loc, priority, changefreq }) =>
+            `  <url>\n    <loc>${escapeXml(base + loc)}</loc>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`
+        ),
+        ...rows.map((row) => {
+          const lastmod = row.updatedAt
+            ? new Date(row.updatedAt).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0];
+          return `  <url>\n    <loc>${escapeXml(`${base}/listings/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`;
+        }),
+      ].join("\n");
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlTags}\n</urlset>`;
+      sitemapCache = { xml, builtAt: now };
+
+      res.type("application/xml").set("Cache-Control", "public, max-age=600").send(xml);
+    } catch (err) {
+      console.error("sitemap error:", err);
+      res.status(500).send("<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'/>");
+    }
+  });
+
   return httpServer;
 }

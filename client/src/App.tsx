@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
+import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -53,6 +54,9 @@ import NotFound from "@/pages/not-found";
 import { MaintenancePage } from "@/pages/maintenance";
 import { ErrorBoundary } from "@/components/error-boundary";
 
+// Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
+initPostHog();
+
 function RouteTransition({ children }: { children: React.ReactNode }) {
   const [loc] = useLocation();
   // Track whether the most recent navigation was a browser back/forward
@@ -83,6 +87,10 @@ function RouteTransition({ children }: { children: React.ReactNode }) {
     }
     if (window.location.hash) return;
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [loc]);
+
+  useEffect(() => {
+    capturePageview(loc);
   }, [loc]);
 
   return (

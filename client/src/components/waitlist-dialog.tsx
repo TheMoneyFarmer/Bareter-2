@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { trackEvent } from "@/lib/posthog";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -90,6 +91,7 @@ export function WaitlistDialog() {
       return (await res.json()) as SubmitResponse;
     },
     onSuccess: (data) => {
+      trackEvent("waitlist_signup");
       setSuccess(data);
       setStep("success");
       if (data.totalCount !== undefined) {

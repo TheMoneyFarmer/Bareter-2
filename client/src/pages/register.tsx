@@ -34,6 +34,7 @@ import {
   Users,
 } from "lucide-react";
 import { z } from "zod";
+import { trackEvent } from "@/lib/posthog";
 
 const extendedRegisterSchema = registerSchema.extend({
   confirmPassword: z.string(),
@@ -230,6 +231,10 @@ export function RegisterPage() {
         signupType: signupType || undefined,
         socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
         inviteCode: inviteCode.trim() || undefined,
+      });
+      trackEvent("register", {
+        account_type: signupType || undefined,
+        country: formValues.country,
       });
       toast({
         title: t("auth.accountCreated"),
