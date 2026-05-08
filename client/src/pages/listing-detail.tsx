@@ -48,7 +48,12 @@ import {
   Send,
   AlertTriangle,
   Flag,
+  Zap,
+  Award,
+  Play,
+  Info,
 } from "lucide-react";
+import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import type { ExchangeItem } from "@shared/schema";
@@ -71,6 +76,7 @@ export function ListingDetailPage() {
   const [counterValue, setCounterValue] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
+  const [inquirySent, setInquirySent] = useState(false);
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
     queryKey: ["/api/listings", id],
@@ -185,6 +191,39 @@ export function ListingDetailPage() {
       offerItemName: commentOfferName,
       offerItemValue: commentOfferValue,
     });
+  };
+
+  const quickInquiryMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/inquiries", {
+        toUserId: listing?.userId,
+        listingId: listing?.id,
+        message: "Is this still available?",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setInquirySent(true);
+      toast({ title: "Inquiry sent!", description: "The seller has been notified." });
+    },
+    onError: () => {
+      toast({ title: "Could not send", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const conditionConfig: Record<string, { label: string; color: string }> = {
+    new: { label: "New", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    like_new: { label: "Like New", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+    excellent: { label: "Excellent", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    good: { label: "Good", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
+    fair: { label: "Fair", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+    refurbished: { label: "Refurbished", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+  };
+
+  const tierConfig: Record<string, { icon: string; color: string; bg: string; border: string }> = {
+    bronze: { icon: "🥉", color: "text-orange-700 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/20", border: "border-orange-200 dark:border-orange-800" },
+    silver: { icon: "🥈", color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-900/20", border: "border-slate-200 dark:border-slate-700" },
+    gold: { icon: "🥇", color: "text-yellow-700 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-950/20", border: "border-yellow-200 dark:border-yellow-800" },
   };
 
   const handleProposeTrade = () => {
@@ -313,6 +352,24 @@ export function ListingDetailPage() {
             </div>
           )}
 
+          {/* Video embed */}
+          {(listing as any).videoUrl && (
+            <div className="rounded-bareter-card overflow-hidden border border-bareter-border dark:border-border" data-testid="listing-video">
+              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-bareter-border dark:border-border">
+                <Play className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Video</span>
+              </div>
+              <div className="aspect-video">
+                <video
+                  src={(listing as any).videoUrl}
+                  controls
+                  className="w-full h-full object-cover"
+                  preload="metadata"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-2xl md:text-3xl font-bold text-bareter-navy dark:text-foreground">{listing.title}</h1>
@@ -368,6 +425,15 @@ export function ListingDetailPage() {
                 <Calendar className="h-4 w-4" />
                 Listed {createdDate}
               </div>
+              {(listing as any).condition && conditionConfig[(listing as any).condition] && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${conditionConfig[(listing as any).condition].color}`}
+                  data-testid="badge-condition"
+                >
+                  <Info className="h-3 w-3" />
+                  {conditionConfig[(listing as any).condition].label}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-3 mb-6 flex-wrap">
@@ -411,6 +477,50 @@ export function ListingDetailPage() {
                       {tag}
                     </Badge>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Service tiers (Bronze / Silver / Gold) */}
+            {(listing as any).serviceTiers && ((listing as any).serviceTiers as ServiceTier[]).length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  <Award className="h-4 w-4" />
+                  Service Packages
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-3" data-testid="service-tiers">
+                  {((listing as any).serviceTiers as ServiceTier[]).map((tier, idx) => {
+                    const key = tier.name.toLowerCase();
+                    const cfg = tierConfig[key] || tierConfig.bronze;
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-lg border p-4 ${cfg.bg} ${cfg.border}`}
+                        data-testid={`tier-${key}`}
+                      >
+                        <div className={`text-sm font-bold mb-1 flex items-center gap-1 ${cfg.color}`}>
+                          <span>{cfg.icon}</span>
+                          {tier.name}
+                        </div>
+                        <div className="text-lg font-bold mb-2">
+                          AED {tier.value.toLocaleString()}
+                        </div>
+                        {tier.description && (
+                          <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{tier.description}</p>
+                        )}
+                        {tier.deliverables.length > 0 && (
+                          <ul className="space-y-1">
+                            {tier.deliverables.map((d, di) => (
+                              <li key={di} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0 mt-0.5" />
+                                {d}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -672,6 +782,22 @@ export function ListingDetailPage() {
                     Message Seller
                   </Button>
                 </Link>
+                <Button
+                  variant="outline"
+                  className="w-full h-11 gap-2"
+                  onClick={() => quickInquiryMutation.mutate()}
+                  disabled={inquirySent || quickInquiryMutation.isPending}
+                  data-testid="button-quick-inquiry"
+                >
+                  {quickInquiryMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : inquirySent ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  {inquirySent ? "Inquiry sent!" : "Is this still available?"}
+                </Button>
               </CardContent>
             </Card>
           )}

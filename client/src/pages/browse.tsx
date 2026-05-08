@@ -5,7 +5,7 @@ import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -63,6 +63,10 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  TrendingUp,
+  Flame,
+  BookmarkCheck,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -182,6 +186,75 @@ export function BrowsePage() {
     queryKey: ["/api/recommendations/users"],
     enabled: !!user,
   });
+
+  const { data: recommendedListings } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/recommendations/listings"],
+    enabled: !!user,
+  });
+
+  const userCity = (user as any)?.city || activeLocation.city || "";
+  const { data: nearbyListings } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/nearby", userCity],
+    queryFn: async () => {
+      if (!userCity) return [];
+      const res = await fetch(`/api/listings/nearby?city=${encodeURIComponent(userCity)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!userCity,
+  });
+
+  const { data: savedSearches } = useQuery<Array<{ id: number; name: string | null; filters: unknown }>>({
+    queryKey: ["/api/saved-searches"],
+    enabled: !!user,
+  });
+
+  const saveSearchMutation = useMutation({
+    mutationFn: async () => {
+      const filters = {
+        q: search,
+        categories: selectedCategories,
+        location: selectedLocation,
+        condition: selectedCondition,
+        minValue: valueRange[0] > 0 ? valueRange[0] : undefined,
+        maxValue: valueRange[1] < VALUE_MAX ? valueRange[1] : undefined,
+        verifiedOnly,
+        type: selectedType !== "all" ? selectedType : undefined,
+      };
+      const name = search ? `"${search}"` : selectedCategories.length > 0 ? selectedCategories.join(", ") : "My search";
+      const res = await apiRequest("POST", "/api/saved-searches", { name, filters });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-searches"] });
+      toast({ title: "Search saved!", description: "Saved search added." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save search", variant: "destructive" });
+    },
+  });
+
+  const deleteSavedSearchMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/saved-searches/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-searches"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete saved search", variant: "destructive" });
+    },
+  });
+
+  const applySearch = (filters: any) => {
+    if (filters.q) setSearch(filters.q);
+    if (filters.categories) setSelectedCategories(filters.categories);
+    if (filters.location) setSelectedLocation(filters.location);
+    if (filters.condition) setSelectedCondition(filters.condition);
+    if (filters.type) setSelectedType(filters.type);
+    if (filters.minValue) setValueRange((prev: [number, number]) => [filters.minValue, prev[1]]);
+    if (filters.maxValue) setValueRange((prev: [number, number]) => [prev[0], filters.maxValue]);
+  };
 
   const { data: categoryStats } = useQuery<Array<{ category: string; count: number }>>({
     queryKey: ["/api/explore/stats"],
@@ -543,11 +616,22 @@ export function BrowsePage() {
             <div className="flex items-center gap-2 mb-4">
               <Package className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-categories-title">Browse by Category</h2>
+              <Link href="/map" className="ms-auto inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium" data-testid="link-map-view">
+                <MapPin className="h-3.5 w-3.5" />
+                Map view
+              </Link>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {CATEGORIES.map((cat) => {
                 const count = categoryStats?.find(s => (s.category as any) === cat)?.count || 0;
                 const CatIcon = categoryIconMap[cat] || Package;
+                const trendBadge = count >= 10
+                  ? { label: "Hot", icon: Flame, cls: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" }
+                  : count >= 5
+                  ? { label: "Active", icon: TrendingUp, cls: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" }
+                  : count >= 2
+                  ? { label: "Growing", icon: TrendingUp, cls: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" }
+                  : null;
                 return (
                   <Card
                     key={cat}
@@ -556,10 +640,16 @@ export function BrowsePage() {
                     data-testid={`card-category-${cat.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     <CardContent className="p-3 text-center">
-                      <div className="flex justify-center mb-1">
+                      <div className="flex justify-center mb-1 relative">
                         <CatIcon className="h-6 w-6 text-primary" />
+                        {trendBadge && (
+                          <span className={`absolute -top-1 -right-3 inline-flex items-center gap-0.5 px-1 py-0 rounded-full text-[9px] font-semibold ${trendBadge.cls}`} data-testid={`trend-badge-${cat}`}>
+                            <trendBadge.icon className="h-2.5 w-2.5" />
+                            {trendBadge.label}
+                          </span>
+                        )}
                       </div>
-                      <h4 className="text-xs font-medium line-clamp-1">{cat}</h4>
+                      <h4 className="text-xs font-medium line-clamp-1 mt-1">{cat}</h4>
                       <span className="text-[10px] text-muted-foreground">{Number(count)} listings</span>
                     </CardContent>
                   </Card>
@@ -567,6 +657,37 @@ export function BrowsePage() {
               })}
             </div>
           </section>
+
+          {user && recommendedListings && recommendedListings.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-5 w-5 text-bareter-gold" />
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-recommended-barters-title">Recommended Barters</h2>
+                <span className="text-xs text-muted-foreground ml-1">Based on your profile</span>
+              </div>
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-recommended">
+                {recommendedListings.slice(0, 6).map((listing) => (
+                  <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
+                ))}
+              </StaggeredReveal>
+            </section>
+          )}
+
+          {nearbyListings && nearbyListings.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <MapPin className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-nearby-title">
+                  Near You{userCity ? ` — ${userCity}` : ""}
+                </h2>
+              </div>
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-nearby">
+                {nearbyListings.slice(0, 6).map((listing) => (
+                  <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
+                ))}
+              </StaggeredReveal>
+            </section>
+          )}
 
           {user && recommendedUsers && recommendedUsers.length > 0 && (
             <section>
@@ -638,6 +759,38 @@ export function BrowsePage() {
         </div>
       ) : (
         <div>
+          {/* Saved searches management panel */}
+          {user && savedSearches && savedSearches.length > 0 && (
+            <div className="mb-5 p-3 rounded-lg border bg-card" data-testid="saved-searches-panel">
+              <div className="flex items-center gap-2 mb-2">
+                <BookmarkCheck className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Saved Searches</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-auto">{savedSearches.length}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {savedSearches.map((ss) => (
+                  <div key={ss.id} className="flex items-center gap-1 bg-muted/60 rounded-full pl-3 pr-1 py-1" data-testid={`saved-search-${ss.id}`}>
+                    <button
+                      className="text-xs font-medium hover:text-primary transition-colors"
+                      onClick={() => { applySearch(ss.filters); }}
+                      data-testid={`apply-saved-search-${ss.id}`}
+                    >
+                      {ss.name || "Saved search"}
+                    </button>
+                    <button
+                      className="h-5 w-5 rounded-full flex items-center justify-center hover:bg-destructive/10 hover:text-destructive transition-colors ml-1"
+                      onClick={() => deleteSavedSearchMutation.mutate(ss.id)}
+                      disabled={deleteSavedSearchMutation.isPending}
+                      data-testid={`delete-saved-search-${ss.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -684,9 +837,27 @@ export function BrowsePage() {
                 <p className="text-muted-foreground">
                   {isLoading ? "Loading..." : <><span className="font-medium text-foreground">{sortedListings.length}</span> listings found</>}
                 </p>
-                <Link href="/create-listing">
-                  <Button className="gap-2" data-testid="button-create-listing"><Sparkles className="h-4 w-4" />Create Listing</Button>
-                </Link>
+                <div className="flex items-center gap-2">
+                  {user && hasActiveFilters && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      onClick={() => saveSearchMutation.mutate()}
+                      disabled={saveSearchMutation.isPending}
+                      data-testid="button-save-search"
+                    >
+                      <Star className="h-3.5 w-3.5" />
+                      Save Search
+                      {savedSearches && savedSearches.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 ms-0.5">{savedSearches.length}</Badge>
+                      )}
+                    </Button>
+                  )}
+                  <Link href="/create-listing">
+                    <Button className="gap-2" data-testid="button-create-listing"><Sparkles className="h-4 w-4" />Create Listing</Button>
+                  </Link>
+                </div>
               </div>
 
               {isLoading ? (

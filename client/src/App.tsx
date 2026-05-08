@@ -44,6 +44,7 @@ import { CreatePostPage } from "@/pages/create-post";
 import { InboxPage } from "@/pages/inbox";
 import { ForgotPasswordPage } from "@/pages/forgot-password";
 import { ResetPasswordPage } from "@/pages/reset-password";
+import { MapViewPage } from "@/pages/map-view";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
@@ -126,6 +127,7 @@ function Router() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/map" component={MapViewPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -66,6 +66,7 @@ export interface SupportUserContext {
   activeListings?: Array<{ id: string; title: string; category: string }>;
   faqContent?: string;
   helpContent?: string;
+  notionKbContent?: string;
 }
 
 const BASE_SYSTEM_PROMPT = `You are BarterBot, the friendly customer support assistant for Bareter — a UAE barter marketplace for businesses.
@@ -138,6 +139,10 @@ function buildSystemPrompt(userContext?: SupportUserContext): string {
         contextParts.push(`Help centre content:\n${userContext.helpContent}`);
       }
     }
+  }
+
+  if (userContext?.notionKbContent) {
+    contextParts.push(`Notion knowledge base articles:\n${userContext.notionKbContent}`);
   }
 
   if (contextParts.length) {

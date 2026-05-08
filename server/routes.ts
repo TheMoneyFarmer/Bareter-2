@@ -4902,6 +4902,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/recommendations/listings", requireAuth, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 6, 12);
+      const recommended = await storage.getRecommendedListings(req.session.userId!, limit);
+      const wishlistedIds = await storage.getUserLikedListingIds(req.session.userId!);
+      res.json(recommended.map(l => ({ ...l, isWishlisted: wishlistedIds.has(l.id) })));
+    } catch (error) {
+      console.error("Get recommended listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/nearby", async (req, res) => {
+    try {
+      const city = req.query.city as string;
+      if (!city) return res.json([]);
+      const limit = Math.min(Number(req.query.limit) || 6, 12);
+      const excludeUserId = req.session.userId;
+      const nearby = await storage.getListingsByCity(city, excludeUserId, limit);
+      const wishlistedIds = excludeUserId ? await storage.getUserLikedListingIds(excludeUserId) : new Set<string>();
+      res.json(nearby.map(l => ({ ...l, isWishlisted: wishlistedIds.has(l.id) })));
+    } catch (error) {
+      console.error("Get nearby listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/explore/stats", async (req, res) => {
     try {
       const result = await db
@@ -5616,6 +5643,14 @@ export async function registerRoutes(
             storage.getAppSetting("cms_help"),
           ]);
           aiContext = { faqContent: faqSetting ?? undefined, helpContent: helpSetting ?? undefined };
+          // Pull Notion KB articles if configured
+          try {
+            const { fetchNotionKBArticles } = await import("./integrations/notion");
+            const kbArticles = await fetchNotionKBArticles(5);
+            if (kbArticles.length) {
+              aiContext.notionKbContent = kbArticles.map(a => `**${a.title}**\n${a.content}`).join("\n\n").slice(0, 3000);
+            }
+          } catch { /* Notion context is non-fatal */ }
           if (userId) {
             const [deals, listings] = await Promise.all([
               storage.getDealsByUser(userId),
@@ -5832,6 +5867,14 @@ export async function registerRoutes(
               storage.getAppSetting("cms_help"),
             ]);
             userContext = { faqContent: faqSetting ?? undefined, helpContent: helpSetting ?? undefined };
+            // Pull Notion KB articles if configured
+            try {
+              const { fetchNotionKBArticles } = await import("./integrations/notion");
+              const kbArticles = await fetchNotionKBArticles(5);
+              if (kbArticles.length) {
+                userContext.notionKbContent = kbArticles.map(a => `**${a.title}**\n${a.content}`).join("\n\n").slice(0, 3000);
+              }
+            } catch { /* non-fatal */ }
             if (senderId) {
               const [deals, listings] = await Promise.all([
                 storage.getDealsByUser(senderId),
@@ -5858,6 +5901,73 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Reply to ticket error:", error);
       res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // ========== Admin Integration Credential Routes ==========
+  const INTEGRATION_SERVICES: Record<string, string[]> = {
+    notion: ["notion_token", "notion_database_id"],
+    slack: ["slack_webhook_url"],
+    google: ["google_client_id", "google_client_secret", "google_access_token", "google_refresh_token", "google_drive_folder_id"],
+  };
+
+  app.get("/api/admin/integrations", requireAdmin, async (req, res) => {
+    try {
+      const { getIntegrationCredential } = await import("./integrations/credentials");
+      const statuses = await Promise.all(
+        Object.entries(INTEGRATION_SERVICES).map(async ([service, fields]) => {
+          const results = await Promise.all(fields.map(f => getIntegrationCredential(f)));
+          const configured = results.some(v => !!v);
+          const configuredAtRow = await storage.getAppSetting(`integration_cred_${fields[0]}`);
+          return {
+            service,
+            configured,
+            configuredAt: configuredAtRow ? new Date().toISOString() : null,
+            fields: fields.map(f => ({ key: f, label: f, placeholder: "", sensitive: f.includes("token") || f.includes("secret") || f.includes("webhook") || f.includes("access") })),
+          };
+        })
+      );
+      res.json(statuses);
+    } catch (error) {
+      console.error("Get integrations error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/integrations/:service", requireAdmin, async (req, res) => {
+    try {
+      const service = req.params.service as string;
+      if (!INTEGRATION_SERVICES[service]) return res.status(400).json({ message: "Unknown service" });
+      const fields = req.body.fields as Record<string, string>;
+      if (!fields || typeof fields !== "object") return res.status(400).json({ message: "fields required" });
+      const { setIntegrationCredential } = await import("./integrations/credentials");
+      for (const [key, value] of Object.entries(fields)) {
+        if (value && typeof value === "string" && value.trim()) {
+          if (!INTEGRATION_SERVICES[service].includes(key)) continue;
+          await setIntegrationCredential(key, value.trim(), req.session.userId);
+        }
+      }
+      await logAdminAction(req, "integration_configured", "platform", service, { service });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Set integration error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/integrations/:service", requireAdmin, async (req, res) => {
+    try {
+      const service = req.params.service as string;
+      if (!INTEGRATION_SERVICES[service]) return res.status(400).json({ message: "Unknown service" });
+      const fields = INTEGRATION_SERVICES[service];
+      for (const field of fields) {
+        await storage.setAppSetting(`integration_cred_${field}`, "", req.session.userId);
+      }
+      await logAdminAction(req, "integration_disconnected", "platform", service, { service });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete integration error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -5908,6 +6018,14 @@ export async function registerRoutes(
           console.error("Escalation email failed:", emailErr);
         }
       }
+
+      // Post to Slack if configured
+      try {
+        const userName = ticket.user?.fullName ?? ticket.requesterName ?? "Unknown";
+        const userEmail = ticket.user?.email ?? ticket.requesterEmail ?? "Unknown";
+        const { postSlackSupportEscalation } = await import("./integrations/slack");
+        await postSlackSupportEscalation({ ticketNumber: ticket.ticketNumber, subject: ticket.subject, userName, userEmail });
+      } catch { /* non-fatal */ }
 
       res.json({ success: true });
     } catch (error) {

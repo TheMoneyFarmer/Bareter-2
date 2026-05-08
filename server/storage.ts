@@ -241,6 +241,8 @@ export interface IStorage {
 
   // Recommendations
   getRecommendedUsers(userId: string): Promise<User[]>;
+  getRecommendedListings(userId: string, limit?: number): Promise<ListingWithUser[]>;
+  getListingsByCity(city: string, excludeUserId?: string, limit?: number): Promise<ListingWithUser[]>;
 
   // Trending/Featured
   getFeaturedListings(): Promise<ListingWithUser[]>;
@@ -1087,6 +1089,71 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Recommendations
+  async getRecommendedListings(userId: string, limit = 6): Promise<ListingWithUser[]> {
+    const currentUser = await this.getUser(userId);
+    if (!currentUser) return [];
+
+    const myNeeds = (currentUser.whatINeed as any[] || []).map((item: any) => (item.name ?? "").toLowerCase()).filter(Boolean);
+    const myCategories = (currentUser.whatIOffer as any[] || []).map((item: any) => (item.category ?? item.name ?? "").toLowerCase()).filter(Boolean);
+
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(and(
+        eq(listings.isActive, true),
+        sql`${listings.userId} != ${userId}`,
+        eq(listings.moderationStatus, "approved"),
+      ))
+      .orderBy(desc(listings.createdAt))
+      .limit(100);
+
+    const mapped = result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+
+    const scored = mapped.map((listing) => {
+      const listingCategories = ((listing.categories as string[]) || []).map(c => c.toLowerCase());
+      const listingTitle = listing.title.toLowerCase();
+      let score = 0;
+
+      for (const need of myNeeds) {
+        if (listingTitle.includes(need)) score += 3;
+        if (listingCategories.some(c => c.includes(need) || need.includes(c))) score += 2;
+      }
+      for (const cat of myCategories) {
+        if (listingCategories.some(c => c.includes(cat) || cat.includes(c))) score += 1;
+      }
+      if (listing.isFeatured) score += 1;
+      return { listing, score };
+    });
+
+    return scored
+      .filter(s => s.score > 0 || myNeeds.length === 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(s => s.listing);
+  }
+
+  async getListingsByCity(city: string, excludeUserId?: string, limit = 6): Promise<ListingWithUser[]> {
+    const conditions = [
+      eq(listings.isActive, true),
+      eq(listings.moderationStatus, "approved"),
+      sql`LOWER(${listings.city}) = LOWER(${city})`,
+    ];
+    if (excludeUserId) {
+      conditions.push(sql`${listings.userId} != ${excludeUserId}`);
+    }
+
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(listings.createdAt))
+      .limit(limit);
+
+    return result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+  }
+
   async getRecommendedUsers(userId: string): Promise<User[]> {
     const currentUser = await this.getUser(userId);
     if (!currentUser) return [];

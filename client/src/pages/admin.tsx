@@ -111,6 +111,7 @@ import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
 import { AdminPlatformSettings } from "@/components/admin/platform-settings";
 import { AdminSupportSection } from "@/components/admin/support-section";
+import { AdminIntegrationsSection } from "@/components/admin/integrations-section";
 import { ScrollText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -2024,6 +2025,7 @@ export function AdminPage() {
           <TabsTrigger value="platform" data-testid="tab-settings-platform">Platform</TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-settings-audit">Audit Log</TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-settings-security">Security</TabsTrigger>
+          <TabsTrigger value="integrations" data-testid="tab-settings-integrations">Integrations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="platform" className="space-y-6">
@@ -2215,6 +2217,10 @@ export function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-4">
+          <AdminIntegrationsSection />
         </TabsContent>
       </Tabs>
     </div>

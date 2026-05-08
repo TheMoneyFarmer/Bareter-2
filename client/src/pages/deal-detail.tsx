@@ -23,7 +23,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { RatingModal } from "@/components/RatingModal";
-import type { DealWithUsers, MessageWithSender } from "@shared/schema";
+import type { DealWithUsers, MessageWithSender, DealMilestone } from "@shared/schema";
 import {
   ArrowLeft,
   Send,
@@ -38,6 +38,9 @@ import {
   Loader2,
   AlertTriangle,
   Star,
+  Plus,
+  Flag,
+  CircleDot,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -61,6 +64,8 @@ export function DealDetailPage() {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [showAddMilestone, setShowAddMilestone] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: deal, isLoading } = useQuery<DealWithUsers>({
     queryKey: ["/api/deals", id],
@@ -69,6 +74,44 @@ export function DealDetailPage() {
   const { data: messages, isLoading: messagesLoading } = useQuery<MessageWithSender[]>({
     queryKey: ["/api/deals", id, "messages"],
     refetchInterval: 5000,
+  });
+
+  const { data: milestones } = useQuery<DealMilestone[]>({
+    queryKey: ["/api/deals", id, "milestones"],
+    enabled: !!id,
+  });
+
+  const createMilestoneMutation = useMutation({
+    mutationFn: async (title: string) => {
+      const res = await apiRequest("POST", `/api/deals/${id}/milestones`, {
+        title,
+        sortOrder: (milestones?.length || 0),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", id, "milestones"] });
+      setNewMilestoneTitle("");
+      setShowAddMilestone(false);
+      toast({ title: "Milestone added" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add milestone", variant: "destructive" });
+    },
+  });
+
+  const completeMilestoneMutation = useMutation({
+    mutationFn: async (milestoneId: string) => {
+      const res = await apiRequest("PATCH", `/api/deals/${id}/milestones/${milestoneId}/complete`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals", id, "milestones"] });
+      toast({ title: "Milestone completed!" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to complete milestone", variant: "destructive" });
+    },
   });
 
   const sendMessageMutation = useMutation({
@@ -297,6 +340,147 @@ export function DealDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Milestones section */}
+          {(milestones && milestones.length > 0 || deal.state === "in_progress" || deal.state === "accepted") && (
+            <Card data-testid="milestones-card">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Flag className="h-5 w-5 text-primary" />
+                    Deal Milestones
+                  </CardTitle>
+                  {deal.state !== "completed" && deal.state !== "cancelled" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() => setShowAddMilestone(!showAddMilestone)}
+                      data-testid="button-add-milestone"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Milestone
+                    </Button>
+                  )}
+                </div>
+
+                {milestones && milestones.length > 0 && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>{milestones.filter(m => m.isCompleted).length} of {milestones.length} completed</span>
+                      <span className="font-medium text-foreground">
+                        {Math.round((milestones.filter(m => m.isCompleted).length / milestones.length) * 100)}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={(milestones.filter(m => m.isCompleted).length / milestones.length) * 100}
+                      className="h-2"
+                      data-testid="milestones-progress"
+                    />
+                  </div>
+                )}
+              </CardHeader>
+
+              <CardContent className="pt-0 space-y-2">
+                {/* Add milestone form */}
+                {showAddMilestone && (
+                  <div className="flex gap-2 mb-3 p-3 rounded-lg bg-muted/50 border" data-testid="add-milestone-form">
+                    <Input
+                      placeholder="e.g. Deliver design files..."
+                      value={newMilestoneTitle}
+                      onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newMilestoneTitle.trim()) {
+                          createMilestoneMutation.mutate(newMilestoneTitle.trim());
+                        }
+                        if (e.key === "Escape") setShowAddMilestone(false);
+                      }}
+                      className="text-sm h-8"
+                      autoFocus
+                      data-testid="input-milestone-title"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={() => {
+                        if (newMilestoneTitle.trim()) {
+                          createMilestoneMutation.mutate(newMilestoneTitle.trim());
+                        }
+                      }}
+                      disabled={!newMilestoneTitle.trim() || createMilestoneMutation.isPending}
+                      data-testid="button-save-milestone"
+                    >
+                      {createMilestoneMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Milestone list */}
+                {milestones && milestones.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {[...milestones].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map((m, idx) => (
+                      <div
+                        key={m.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors ${
+                          m.isCompleted
+                            ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800"
+                            : "bg-background hover:bg-muted/40"
+                        }`}
+                        data-testid={`milestone-row-${m.id}`}
+                      >
+                        <div className="flex-shrink-0">
+                          {m.isCompleted ? (
+                            <CheckCircle className="h-5 w-5 text-emerald-500" />
+                          ) : (
+                            <CircleDot className="h-5 w-5 text-muted-foreground/40" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${m.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                            {m.title}
+                          </p>
+                          {m.isCompleted && m.completedAt && (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                              Completed {new Date(m.completedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        {!m.isCompleted && deal.state !== "completed" && deal.state !== "cancelled" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs px-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex-shrink-0"
+                            onClick={() => completeMilestoneMutation.mutate(m.id)}
+                            disabled={completeMilestoneMutation.isPending}
+                            data-testid={`button-complete-milestone-${m.id}`}
+                          >
+                            {completeMilestoneMutation.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Done
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : !showAddMilestone ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Flag className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">No milestones yet</p>
+                    <p className="text-xs mt-1">Break this deal into trackable steps</p>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="flex flex-col h-[500px]">
             <CardHeader className="border-b flex-shrink-0">
