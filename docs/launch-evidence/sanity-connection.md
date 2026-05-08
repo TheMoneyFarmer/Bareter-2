@@ -35,3 +35,20 @@ If Sanity is unreachable, server falls back to `app_settings` values silently. N
 ## Next Steps
 - Task #212: Deploy schema to Sanity Studio (`npx sanity deploy` from `sanity/` dir)
 - Task #213: Configure SANITY_WEBHOOK_SECRET for instant cache invalidation
+
+## Webhook Configuration (Task #213)
+
+**Registered webhook:** `https://bareter.com/api/webhooks/sanity`
+**Trigger:** On publish
+**Secret:** Stored as `SANITY_WEBHOOK_SECRET` in Replit secrets
+
+**Local verification (2026-05-08):**
+- Valid HMAC-SHA256 signature → `{"received":true}` + cache cleared
+- Stale timestamp (>5 min) → `401 {"message":"Request timestamp out of range"}`
+- Bad signature → `401 {"message":"Invalid signature"}`
+
+**Rotation procedure:** If `SANITY_WEBHOOK_SECRET` is ever compromised:
+1. Delete the webhook in sanity.io/manage/project/ho605hmx/api → Webhooks
+2. Re-create it to get a new signing secret
+3. Update `SANITY_WEBHOOK_SECRET` in Replit secrets
+4. Restart the application workflow
