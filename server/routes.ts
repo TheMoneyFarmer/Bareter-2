@@ -6266,11 +6266,13 @@ export async function registerRoutes(
       const staticPaths = [
         { loc: "/", priority: "1.0", changefreq: "daily" },
         { loc: "/browse", priority: "0.9", changefreq: "hourly" },
-        { loc: "/about", priority: "0.5", changefreq: "monthly" },
+        { loc: "/map", priority: "0.8", changefreq: "daily" },
+        { loc: "/register", priority: "0.8", changefreq: "monthly" },
+        { loc: "/login", priority: "0.7", changefreq: "monthly" },
+        { loc: "/how-it-works", priority: "0.6", changefreq: "monthly" },
+        { loc: "/waitlist", priority: "0.6", changefreq: "weekly" },
         { loc: "/faq", priority: "0.5", changefreq: "monthly" },
         { loc: "/help", priority: "0.5", changefreq: "monthly" },
-        { loc: "/register", priority: "0.8", changefreq: "monthly" },
-        { loc: "/map", priority: "0.7", changefreq: "daily" },
       ];
 
       const escapeXml = (s: string) =>

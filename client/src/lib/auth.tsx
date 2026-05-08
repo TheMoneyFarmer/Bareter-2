@@ -1,7 +1,8 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, useEffect, ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "./queryClient";
 import type { User, SocialProfile } from "@shared/schema";
+import { identifyUser, resetIdentity } from "./posthog";
 
 interface RegisterData {
   email: string;
@@ -63,6 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
+
+  // Sync PostHog identity whenever the auth state changes.
+  // identifyUser/resetIdentity are no-ops when VITE_POSTHOG_KEY is absent.
+  useEffect(() => {
+    if (user?.id) {
+      identifyUser(user.id);
+    } else if (user === null) {
+      resetIdentity();
+    }
+  }, [user]);
 
   const login = async (email: string, password: string) => {
     await loginMutation.mutateAsync({ email, password });
