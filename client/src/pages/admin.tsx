@@ -2464,6 +2464,7 @@ export function AdminPage() {
     action: string;
     reason: string;
     confidence: string | null;
+    rawResponse: { categories?: string[] } | null;
     createdAt: string | null;
   }
 
@@ -2571,13 +2572,16 @@ export function AdminPage() {
                 <TableRow>
                   <TableHead>Type</TableHead>
                   <TableHead>Action</TableHead>
+                  <TableHead>Categories</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Confidence</TableHead>
                   <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredModLogs.map((log) => (
+                {filteredModLogs.map((log) => {
+                  const cats: string[] = log.rawResponse?.categories ?? [];
+                  return (
                   <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
                     <TableCell>
                       <Badge variant="outline">{log.targetType}</Badge>
@@ -2589,13 +2593,36 @@ export function AdminPage() {
                         {log.action}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {cats.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : cats.map((cat) => (
+                          <Badge
+                            key={cat}
+                            variant="outline"
+                            className={
+                              cat === "off_platform"
+                                ? "border-amber-500/60 text-amber-600 text-xs"
+                                : cat === "cash_price"
+                                ? "border-red-400/60 text-red-600 text-xs"
+                                : "text-xs"
+                            }
+                            data-testid={`badge-category-${log.id}-${cat}`}
+                          >
+                            {cat}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
                     <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
