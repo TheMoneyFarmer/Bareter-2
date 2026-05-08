@@ -5,6 +5,8 @@ export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const CSRF_EXEMPT_PATHS = new Set<string>([
   "/api/webhooks/didit",
+  // Sanity CMS publish webhook. Verified via HMAC-SHA256 inside the handler.
+  "/api/webhooks/sanity",
   // Company OS webhook. Verifies the sender via Twilio HMAC inside the
   // handler, so a blanket origin-CSRF guard would only cause a 403
   // retry loop.

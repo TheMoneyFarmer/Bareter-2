@@ -71,3 +71,6 @@ sign-off record — every required row must be ticked before announcing.
   - `SANITY_DATASET` — dataset name, typically `production`.
   - `SANITY_API_TOKEN` — read token generated in sanity.io → API → Tokens.
   - All three vars are optional; the app falls back to `app_settings` if any are absent.
+  - **Instant cache invalidation via webhook**: `POST /api/webhooks/sanity` receives Sanity publish events and immediately flushes the 60-second in-memory content cache so changes appear without delay.
+    - `SANITY_WEBHOOK_SECRET` — the signing secret created in Sanity Studio → API → Webhooks. The endpoint rejects requests with a missing or invalid HMAC-SHA256 signature.
+    - To configure: in Sanity Studio go to API → Webhooks → Add webhook. Set the URL to `https://<your-domain>/api/webhooks/sanity`, trigger on "Publish", enable HTTPS POST, copy the generated secret into `SANITY_WEBHOOK_SECRET`.

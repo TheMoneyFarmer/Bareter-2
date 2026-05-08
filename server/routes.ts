@@ -2259,6 +2259,76 @@ export async function registerRoutes(
   });
   app.post("/api/webhooks/didit", diditWebhookHandler);
 
+  // Sanity CMS webhook — flushes the in-memory content cache immediately on publish.
+  // Sanity signs each request with HMAC-SHA256; the header format is:
+  //   sanity-webhook-signature: t=<unix_ms>,v1=<hex_digest>
+  // The signed payload is the string "<timestamp>.<raw_body>".
+  // Set SANITY_WEBHOOK_SECRET to the secret configured in Sanity Studio → API → Webhooks.
+  app.post("/api/webhooks/sanity", async (req, res) => {
+    try {
+      const secret = process.env.SANITY_WEBHOOK_SECRET;
+      if (!secret) {
+        console.warn("[sanity-webhook] SANITY_WEBHOOK_SECRET not set — rejecting request");
+        return res.status(503).json({ message: "Webhook not configured" });
+      }
+
+      const signatureHeader = (req.headers["sanity-webhook-signature"] as string) ?? "";
+      const rawBody = (req as { rawBody?: Buffer }).rawBody;
+
+      if (!rawBody) {
+        return res.status(400).json({ message: "Missing webhook payload" });
+      }
+
+      // Parse t=<timestamp>,v1=<digest>
+      const parts = Object.fromEntries(
+        signatureHeader.split(",").map((p) => p.split("=") as [string, string]),
+      );
+      const timestamp = parts["t"];
+      const receivedDigest = parts["v1"];
+
+      if (!timestamp || !receivedDigest) {
+        return res.status(401).json({ message: "Invalid signature header" });
+      }
+
+      // Reject requests older than 5 minutes to prevent replay attacks.
+      const tsMs = Number(timestamp);
+      if (Number.isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) {
+        console.warn("[sanity-webhook] Timestamp out of acceptable range — rejecting");
+        return res.status(401).json({ message: "Request timestamp out of range" });
+      }
+
+      const { createHmac, timingSafeEqual } = await import("crypto");
+      const message = `${timestamp}.${rawBody.toString()}`;
+      const expectedDigest = createHmac("sha256", secret).update(message).digest("hex");
+
+      let signaturesMatch = false;
+      try {
+        signaturesMatch = timingSafeEqual(
+          Buffer.from(receivedDigest, "hex"),
+          Buffer.from(expectedDigest, "hex"),
+        );
+      } catch {
+        signaturesMatch = false;
+      }
+
+      if (!signaturesMatch) {
+        console.warn("[sanity-webhook] Signature mismatch — rejecting");
+        return res.status(401).json({ message: "Invalid signature" });
+      }
+
+      // Valid publish event — clear all Sanity cache keys so the next request
+      // fetches fresh content from the Sanity API.
+      const { clearSanityCache } = await import("./lib/sanity");
+      clearSanityCache();
+      console.log("[sanity-webhook] Cache cleared after publish event");
+
+      return res.json({ received: true });
+    } catch (err) {
+      console.error("[sanity-webhook] Error:", err);
+      return res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
   // Company OS — WhatsApp control plane.
   // Mount the router *after* the session middleware so requireAdmin can
   // read req.session, and use a dynamic import so the file boots cleanly

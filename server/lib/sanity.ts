@@ -107,3 +107,11 @@ export async function getSanityHelpArticles(): Promise<SanityHelpArticle[] | nul
 export function isSanityConfigured(): boolean {
   return isConfigured;
 }
+
+export function clearSanityCache(keys?: string[]): void {
+  if (keys && keys.length > 0) {
+    for (const k of keys) cache.delete(k);
+  } else {
+    cache.clear();
+  }
+}
