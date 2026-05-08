@@ -74,7 +74,14 @@ sign-off record — every required row must be ticked before announcing.
   - Initial seed content created: 1 heroSection, 3 howItWorksSteps, 2 faqEntries, 2 helpArticles.
   - To edit content: log into **https://bareter.sanity.studio** (Studio is live).
   - **Studio is deployed** at bareter.sanity.studio — all 4 schema types active (heroSection, howItWorksStep, faqEntry, helpArticle).
+  - **Inviting content editors**: editors get their own free Sanity accounts — no founder credentials required. See `docs/SANITY_EDITOR_ACCESS.md` for the full invitation process (Members → Invite, assign "Editor" role). Revoking access works the same way from the Members page.
   - To redeploy after schema changes: run `SANITY_AUTH_TOKEN=<personal-token> npx sanity deploy` from the `sanity/` directory.
+  - **Deploying the Studio** (one-time setup, run from the `sanity/` directory):
+    1. `npx sanity login` — authenticate with your Sanity account (OAuth, opens browser).
+    2. `npx sanity deploy` — builds and publishes the Studio to `bareter.sanity.studio`.
+    3. The `studioHost` is pre-configured as `bareter` in `sanity/sanity.cli.ts`.
+    4. Schema types included: `heroSection`, `howItWorksStep`, `faqEntry`, `helpArticle`.
+    5. The `sanity` and `@sanity/vision` packages are installed in root `node_modules` — the CLI is available via `npx sanity` from the `sanity/` subdirectory.
   - **Instant cache invalidation via webhook**: `POST /api/webhooks/sanity` receives Sanity publish events and immediately flushes the 60-second in-memory content cache so changes appear without delay.
     - `SANITY_WEBHOOK_SECRET` — configured in Replit secrets. HMAC-SHA256 verified, replay-attack protected (5-minute window).
     - Webhook registered at: `https://bareter.com/api/webhooks/sanity` (Sanity project ho605hmx → API → Webhooks)
