@@ -6551,13 +6551,23 @@ export async function registerRoutes(
       const staticPaths = [
         { loc: "/", priority: "1.0", changefreq: "daily" },
         { loc: "/browse", priority: "0.9", changefreq: "hourly" },
+        { loc: "/browse-public", priority: "0.8", changefreq: "hourly" },
         { loc: "/map", priority: "0.8", changefreq: "daily" },
+        { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
+        { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
         { loc: "/register", priority: "0.8", changefreq: "monthly" },
         { loc: "/login", priority: "0.7", changefreq: "monthly" },
-        { loc: "/how-it-works", priority: "0.6", changefreq: "monthly" },
-        { loc: "/waitlist", priority: "0.6", changefreq: "weekly" },
-        { loc: "/faq", priority: "0.5", changefreq: "monthly" },
-        { loc: "/help", priority: "0.5", changefreq: "monthly" },
+        { loc: "/faq", priority: "0.6", changefreq: "monthly" },
+        { loc: "/help", priority: "0.6", changefreq: "monthly" },
+        { loc: "/terms", priority: "0.4", changefreq: "monthly" },
+        { loc: "/privacy", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/barter-rules", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/dispute-resolution", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/vat", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/cookies", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/acceptable-use", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/community-standards", priority: "0.4", changefreq: "monthly" },
+        { loc: "/legal/customer-agreement", priority: "0.4", changefreq: "monthly" },
       ];
 
       const escapeXml = (s: string) =>
