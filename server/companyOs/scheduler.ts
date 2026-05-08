@@ -237,7 +237,7 @@ async function diditStatusPollJob(): Promise<void> {
       if (!user.diditSessionId) continue;
       try {
         const latestStatus = await getSessionStatus(user.diditSessionId);
-        if (!latestStatus) continue;
+        if (!latestStatus) continue; // network error — try next cycle
         const isBusinessAccount = user.accountType === "business";
         const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
         if (latestStatus === currentStatus) continue;
@@ -247,6 +247,21 @@ async function diditStatusPollJob(): Promise<void> {
           updateData.kybStatus = latestStatus;
         } else {
           updateData.kycStatus = latestStatus;
+        }
+
+        // Session expired on Didit's side — clear the stale ID so user can restart
+        if (latestStatus === "EXPIRED") {
+          updateData.diditSessionId = null;
+          updateData.verificationStatus = "pending";
+          await storage.createNotification({
+            userId: user.id, type: "system",
+            title: "Verification Session Expired",
+            message: "Your verification session expired before it could be reviewed. Please go to your profile and start a new verification.",
+          });
+          await storage.updateUser(user.id, updateData as Partial<typeof user>);
+          console.log(`[diditPoll] userId=${user.id} session expired — cleared`);
+          updated++;
+          continue;
         }
 
         if (latestStatus === "APPROVED") {

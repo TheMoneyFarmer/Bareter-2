@@ -2301,6 +2301,19 @@ export async function registerRoutes(
         updateData.kycStatus = latestStatus;
       }
 
+      // Session expired — clear stale ID so user can restart
+      if (latestStatus === "EXPIRED") {
+        updateData.diditSessionId = null;
+        updateData.verificationStatus = "pending";
+        await storage.updateUser(user.id, updateData as Partial<typeof user>);
+        await storage.createNotification({
+          userId: user.id, type: "system",
+          title: "Verification Session Expired",
+          message: "Your verification session expired. Please start a new verification from your profile.",
+        });
+        return res.json({ synced: true, message: "Your previous verification session expired. Please start a new verification.", status: "EXPIRED", kycStatus: isBusinessAccount ? user.kycStatus : "EXPIRED", kybStatus: isBusinessAccount ? "EXPIRED" : user.kybStatus, isVerified: false });
+      }
+
       if (latestStatus === "APPROVED") {
         updateData.isVerified = true;
         updateData.verificationStatus = "verified";

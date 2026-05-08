@@ -108,6 +108,12 @@ export async function getSessionStatus(sessionId: string): Promise<string | null
       },
     });
 
+    if (response.status === 404) {
+      // Session no longer exists on Didit's side — it expired or was purged.
+      // Callers should treat this as EXPIRED and prompt the user to restart.
+      console.warn("Didit session not found (404) — session likely expired:", sessionId);
+      return "EXPIRED";
+    }
     if (!response.ok) {
       console.error("Didit session status check failed:", response.status);
       return null;

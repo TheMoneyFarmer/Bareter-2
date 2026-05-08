@@ -1189,11 +1189,13 @@ export function SettingsPage() {
                     <div className={`p-2 rounded-full ${
                       user.isVerified
                         ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400"
-                        : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW" || user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
-                          ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400"
-                          : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
-                            ? "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400"
-                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                        : (user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED")
+                          ? "bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400"
+                          : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW" || user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
+                            ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400"
+                            : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
+                              ? "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400"
+                              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
                     }`}>
                       <Shield className="h-4 w-4" />
                     </div>
@@ -1202,13 +1204,15 @@ export function SettingsPage() {
                       <p className="text-sm text-muted-foreground">
                         {user.isVerified
                           ? "Your identity is verified — you can create listings and barter"
-                          : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW")
-                            ? "Documents received — under review (usually a few minutes)"
-                            : (user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
-                              ? "Verification in progress — please complete the steps"
-                              : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
-                                ? "Verification was not approved — please try again"
-                                : "Complete KYC/KYB verification to barter"}
+                          : (user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED")
+                            ? "Verification session expired — please start a new one"
+                            : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW")
+                              ? "Documents received — under review (usually a few minutes)"
+                              : (user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
+                                ? "Verification in progress — please complete the steps"
+                                : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
+                                  ? "Verification was not approved — please try again"
+                                  : "Complete KYC/KYB verification to barter"}
                       </p>
                     </div>
                   </div>
@@ -1220,7 +1224,9 @@ export function SettingsPage() {
                     )}
                     {!user.isVerified && (
                       <Button variant="outline" size="sm" asChild data-testid="button-verify-identity">
-                        <a href="/profile">Verify Now</a>
+                        <a href="/profile">
+                          {(user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED") ? "Start New Verification" : "Verify Now"}
+                        </a>
                       </Button>
                     )}
                   </div>
