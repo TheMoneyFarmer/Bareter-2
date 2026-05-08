@@ -74,5 +74,6 @@ sign-off record — every required row must be ticked before announcing.
   - Initial seed content created: 1 heroSection, 3 howItWorksSteps, 2 faqEntries, 2 helpArticles.
   - To edit content: log into sanity.io/manage/project/ho605hmx and use Sanity Studio.
   - **Instant cache invalidation via webhook**: `POST /api/webhooks/sanity` receives Sanity publish events and immediately flushes the 60-second in-memory content cache so changes appear without delay.
-    - `SANITY_WEBHOOK_SECRET` — the signing secret created in Sanity Studio → API → Webhooks. The endpoint rejects requests with a missing or invalid HMAC-SHA256 signature.
-    - To configure: in Sanity Studio go to API → Webhooks → Add webhook. Set the URL to `https://<your-domain>/api/webhooks/sanity`, trigger on "Publish", enable HTTPS POST, copy the generated secret into `SANITY_WEBHOOK_SECRET`.
+    - `SANITY_WEBHOOK_SECRET` — configured in Replit secrets. HMAC-SHA256 verified, replay-attack protected (5-minute window).
+    - Webhook registered at: `https://bareter.com/api/webhooks/sanity` (Sanity project ho605hmx → API → Webhooks)
+    - Trigger: On publish. Verified working: valid signature returns `{"received":true}`, invalid/stale signature returns 401.
