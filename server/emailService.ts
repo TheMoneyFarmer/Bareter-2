@@ -603,7 +603,7 @@ export async function sendSupportTicketConfirmationEmail(
       <p style="margin: 4px 0 0; color: #374151; font-size: 13px;">${opts.subject}</p>
     </div>
     <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Our team will review your request and respond as soon as possible. You'll receive an email when we reply.</p>
-    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Ticket</a>
+    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Support &amp; Help</a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
   </div>
@@ -632,12 +632,12 @@ export async function sendSupportReplyEmail(
     <div style="background: #f9fafb; border-left: 4px solid #136c68; border-radius: 0 8px 8px 0; padding: 14px; margin: 16px 0;">
       <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.6;">${safeReply}</p>
     </div>
-    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Reply to Ticket</a>
+    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Support &amp; Help</a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
   </div>
 </body></html>`;
-  const text = `${greeting} a support agent replied to ticket ${opts.ticketNumber}:\n\n${opts.replyContent}\n\nView ticket: ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
+  const text = `${greeting} a support agent replied to ticket ${opts.ticketNumber}:\n\n${opts.replyContent}\n\nVisit help & support: ${opts.baseUrl}/help\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] New Reply: ${opts.subject}`, html, text });
 }
 
@@ -729,12 +729,12 @@ export async function sendTicketClosedEmail(
     </div>
     ${transcriptHtml}
     <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">If you have any further questions, feel free to open a new ticket. We're always here to help.</p>
-    <a href="${opts.baseUrl}/support" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Open New Ticket</a>
+    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Visit Help Centre</a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
   </div>
 </body></html>`;
-  const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.${transcriptText}\n\nIf you need more help, open a new ticket at ${opts.baseUrl}/support\n\n— ${APP_NAME}`;
+  const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.${transcriptText}\n\nIf you need more help, visit ${opts.baseUrl}/help\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Ticket Resolved`, html, text });
 }
 

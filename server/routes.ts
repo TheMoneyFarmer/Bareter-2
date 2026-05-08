@@ -5606,13 +5606,16 @@ export async function registerRoutes(
         isInternal: false,
       });
 
-      // AI auto-response — build context (FAQ always; user deals/listings when authenticated)
+      // AI auto-response — build context (FAQ + help always; user deals/listings when authenticated)
       try {
         const { getSupportResponse } = await import("./agents/supportAgent");
         let aiContext: import("./agents/supportAgent").SupportUserContext | undefined;
         try {
-          const faqSetting = await storage.getAppSetting("cms_faq");
-          aiContext = { faqContent: faqSetting ?? undefined };
+          const [faqSetting, helpSetting] = await Promise.all([
+            storage.getAppSetting("cms_faq"),
+            storage.getAppSetting("cms_help"),
+          ]);
+          aiContext = { faqContent: faqSetting ?? undefined, helpContent: helpSetting ?? undefined };
           if (userId) {
             const [deals, listings] = await Promise.all([
               storage.getDealsByUser(userId),
@@ -5821,11 +5824,14 @@ export async function registerRoutes(
             content: m.content,
           }));
           const { getSupportResponse } = await import("./agents/supportAgent");
-          // Always include FAQ for grounding; add user deals/listings when authenticated
+          // Always include FAQ + help content for grounding; add user deals/listings when authenticated
           let userContext: Parameters<typeof getSupportResponse>[3] | undefined;
           try {
-            const faqSetting = await storage.getAppSetting("cms_faq");
-            userContext = { faqContent: faqSetting ?? undefined };
+            const [faqSetting, helpSetting] = await Promise.all([
+              storage.getAppSetting("cms_faq"),
+              storage.getAppSetting("cms_help"),
+            ]);
+            userContext = { faqContent: faqSetting ?? undefined, helpContent: helpSetting ?? undefined };
             if (senderId) {
               const [deals, listings] = await Promise.all([
                 storage.getDealsByUser(senderId),

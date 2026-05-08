@@ -65,6 +65,7 @@ export interface SupportUserContext {
   recentDeals?: Array<{ id: string; status: string; createdAt: string }>;
   activeListings?: Array<{ id: string; title: string; category: string }>;
   faqContent?: string;
+  helpContent?: string;
 }
 
 const BASE_SYSTEM_PROMPT = `You are BarterBot, the friendly customer support assistant for Bareter — a UAE barter marketplace for businesses.
@@ -112,7 +113,29 @@ function buildSystemPrompt(userContext?: SupportUserContext): string {
       }
     } catch {
       if (typeof userContext.faqContent === "string" && userContext.faqContent.length < 3000) {
-        contextParts.push(`Platform help content:\n${userContext.faqContent}`);
+        contextParts.push(`Platform FAQ content:\n${userContext.faqContent}`);
+      }
+    }
+  }
+
+  if (userContext?.helpContent) {
+    try {
+      const helpItems = JSON.parse(userContext.helpContent);
+      if (Array.isArray(helpItems) && helpItems.length) {
+        const helpText = helpItems
+          .slice(0, 10)
+          .map((h: { title?: string; content?: string; question?: string; answer?: string }) => {
+            const heading = h.title ?? h.question ?? "";
+            const body = h.content ?? h.answer ?? "";
+            return heading ? `${heading}: ${body}` : body;
+          })
+          .filter(Boolean)
+          .join("\n");
+        if (helpText) contextParts.push(`Help centre articles:\n${helpText}`);
+      }
+    } catch {
+      if (typeof userContext.helpContent === "string" && userContext.helpContent.length < 3000) {
+        contextParts.push(`Help centre content:\n${userContext.helpContent}`);
       }
     }
   }
