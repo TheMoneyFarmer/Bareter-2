@@ -1975,6 +1975,23 @@ export async function registerRoutes(
         warning,
       });
 
+      // Log off-platform warnings to moderation_logs for admin review
+      if (warning) {
+        try {
+          const { moderationLogs: modLogsTable } = await import("@shared/schema");
+          await db.insert(modLogsTable).values({
+            targetType: "message",
+            targetId: message.id,
+            action: "flagged",
+            reason: `Chat message flagged for off-platform contact attempt`,
+            confidence: "0.95",
+            rawResponse: { action: "flagged", reason: "off-platform contact attempt detected by regex", confidence: 0.95, categories: [warning] },
+          });
+        } catch (err) {
+          console.error("Failed to log message moderation:", err);
+        }
+      }
+
       // Notify the other party
       const recipientId = deal.seekerId === req.session.userId ? deal.providerId : deal.seekerId;
       await storage.createNotification({

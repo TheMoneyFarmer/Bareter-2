@@ -22,6 +22,13 @@
       "when": 1746360000000,
       "tag": "0002_broadcast_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1746446400000,
+      "tag": "0003_messages_warning",
+      "breakpoints": true
     }
   ]
 }
