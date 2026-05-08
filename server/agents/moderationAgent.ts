@@ -4,6 +4,7 @@ import { moderationLogs, listings, posts, notifications } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { storage } from "../storage";
 import { z } from "zod";
+import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 
 export interface ModerationResult {
   action: "approved" | "flagged" | "rejected";
@@ -145,6 +146,16 @@ export async function moderateAndLog(
               : `Your listing has been flagged for review: ${result.reason}`,
           });
         }
+        // Notify Slack for flagged/rejected listings (non-blocking).
+        isSlackConfigured().then(configured => {
+          if (configured) {
+            postSlackAlert(
+              `Listing ${result.action === "rejected" ? "Rejected" : "Flagged"} — ${targetId.slice(0, 8)}`,
+              `*Reason:* ${result.reason}\n*Confidence:* ${(result.confidence * 100).toFixed(0)}%`,
+              result.action === "rejected" ? "warning" : "info",
+            ).catch((err: unknown) => console.error("[moderation] Slack alert failed:", err));
+          }
+        }).catch(() => {});
       } else if (result.action === "approved") {
         await db.update(listings).set({ isActive: true }).where(eq(listings.id, targetId));
       }
@@ -168,6 +179,16 @@ export async function moderateAndLog(
               : `Your post has been flagged for review: ${result.reason}`,
           });
         }
+        // Notify Slack for flagged/rejected posts (non-blocking).
+        isSlackConfigured().then(configured => {
+          if (configured) {
+            postSlackAlert(
+              `Post ${result.action === "rejected" ? "Rejected" : "Flagged"} — ${targetId.slice(0, 8)}`,
+              `*Reason:* ${result.reason}\n*Confidence:* ${(result.confidence * 100).toFixed(0)}%`,
+              result.action === "rejected" ? "warning" : "info",
+            ).catch((err: unknown) => console.error("[moderation] Slack post alert failed:", err));
+          }
+        }).catch(() => {});
       } else if (result.action === "approved") {
         await db.update(posts).set({ isActive: true }).where(eq(posts.id, targetId));
       }

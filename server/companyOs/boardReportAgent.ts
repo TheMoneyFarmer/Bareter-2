@@ -36,6 +36,8 @@ import {
   logLlmCall,
 } from "./costTracker";
 import { uploadPrivateBuffer, getSignedDownloadUrl } from "./objectStorageHelpers";
+import { isDriveConfigured, uploadFileToDrive } from "../integrations/googleDrive";
+import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 
 export const AGENT = "boardReportAgent";
 export const BOARD_REPORT_SIGNED_URL_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
@@ -839,6 +841,35 @@ export async function generateMonthlyReport(month?: string): Promise<GenerateRes
   } catch (err) {
     console.error("[companyOs.boardReport] upload failed:", err);
     pdfSize = 0;
+  }
+
+  // Mirror PDF to Google Drive if configured (non-blocking).
+  if (await isDriveConfigured()) {
+    try {
+      const driveResult = await uploadFileToDrive(
+        `Bareter-Board-Report-${target}.pdf`,
+        pdf,
+        "application/pdf",
+      );
+      if (driveResult) {
+        console.log(`[companyOs.boardReport] uploaded to Drive: ${driveResult.webViewLink}`);
+      }
+    } catch (err) {
+      console.error("[companyOs.boardReport] Drive upload failed (non-fatal):", err);
+    }
+  }
+
+  // Notify Slack if configured (non-blocking).
+  if (await isSlackConfigured()) {
+    try {
+      await postSlackAlert(
+        `Board Report Ready — ${target}`,
+        `Monthly board report for *${target}* has been generated.${signedUrl ? ` Download: ${signedUrl}` : ""}`,
+        "info",
+      );
+    } catch (err) {
+      console.error("[companyOs.boardReport] Slack alert failed (non-fatal):", err);
+    }
   }
 
   // Idempotent upsert by reportMonth.

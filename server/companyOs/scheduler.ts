@@ -31,6 +31,7 @@ import {
 } from "./boardReportAgent";
 import { withRetry } from "./retry";
 import { storage } from "../storage";
+import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 
 const AGENT_JOB_MAP: Record<string, string> = {
   diditStatusPoll: "scheduler",
@@ -90,6 +91,14 @@ async function dailyBriefingJob(): Promise<void> {
   }
   const body = await composeDailyBriefing();
   await notifyFounder(body);
+  // Mirror to Slack if configured.
+  if (await isSlackConfigured()) {
+    try {
+      await postSlackAlert("Daily Briefing", body, "info");
+    } catch (err) {
+      console.error("[companyOs.scheduler] Slack daily briefing failed (non-fatal):", err);
+    }
+  }
 }
 
 async function hourlyFinanceJob(): Promise<void> {
@@ -133,7 +142,16 @@ async function weeklyMarketingBriefJob(): Promise<void> {
       console.error("[companyOs.scheduler] recent posts append failed:", err);
     }
     lines.push("", "Log results with `campaign update <name> ctr=X spend=Y conversions=Z`.");
-    await notifyFounder(lines.join("\n"));
+    const briefBody = lines.join("\n");
+    await notifyFounder(briefBody);
+    // Mirror to Slack.
+    if (await isSlackConfigured()) {
+      try {
+        await postSlackAlert("Weekly Marketing Brief", briefBody, "info");
+      } catch (err) {
+        console.error("[companyOs.scheduler] Slack marketing brief failed (non-fatal):", err);
+      }
+    }
   } catch (err) {
     console.error("[companyOs.scheduler] weeklyMarketingBrief failed:", err);
   }
@@ -165,6 +183,18 @@ async function weeklyDisputeRiskJob(): Promise<void> {
     for (const c of callouts) lines.push(`• ${c}`);
     const whatsappBody = lines.join("\n");
     await notifyFounder(whatsappBody);
+    // Mirror to Slack.
+    if (await isSlackConfigured()) {
+      try {
+        await postSlackAlert(
+          "Weekly Dispute Risk Report",
+          whatsappBody,
+          snapshot.totalReports > 5 ? "warning" : "info",
+        );
+      } catch (err) {
+        console.error("[companyOs.scheduler] Slack dispute risk failed (non-fatal):", err);
+      }
+    }
 
     // Email the founder the same rollup with the PDF attached. The
     // WhatsApp ping above is the primary channel — email is the
@@ -370,6 +400,19 @@ async function intelligenceSweepJob(): Promise<void> {
     console.log(
       `[companyOs.scheduler] intelligenceSweep: detectors=${r.detectorsRun} new=${r.newAlerts.length} notified=${r.notified} snoozed=${r.skippedSnoozed} errors=${r.errors.length}`,
     );
+    // Post new alerts to Slack (non-blocking).
+    if (r.newAlerts.length > 0 && await isSlackConfigured()) {
+      try {
+        const alertLines = r.newAlerts.slice(0, 5).map(a => `• ${(a as { title?: string }).title ?? "Alert"}`).join("\n");
+        await postSlackAlert(
+          `Intelligence: ${r.newAlerts.length} new alert${r.newAlerts.length !== 1 ? "s" : ""}`,
+          alertLines,
+          "warning",
+        );
+      } catch (err) {
+        console.error("[companyOs.scheduler] Slack intelligence alert failed (non-fatal):", err);
+      }
+    }
   } catch (err) {
     console.error("[companyOs.scheduler] intelligenceSweep failed:", err);
   }
@@ -403,7 +446,16 @@ async function monthlyBoardReportJob(): Promise<void> {
     if (r.truncated) lines.push("(some sections were truncated to stay under 5 MB)");
     lines.push("");
     lines.push(r.report.summaryText.slice(0, 1200));
-    await notifyFounder(lines.join("\n"));
+    const boardBody = lines.join("\n");
+    await notifyFounder(boardBody);
+    // Mirror to Slack.
+    if (await isSlackConfigured()) {
+      try {
+        await postSlackAlert(`Board Report Ready — ${month}`, boardBody, "info");
+      } catch (err) {
+        console.error("[companyOs.scheduler] Slack board report failed (non-fatal):", err);
+      }
+    }
   } catch (err) {
     console.error("[companyOs.scheduler] monthlyBoardReport failed:", err);
   }
@@ -414,9 +466,16 @@ async function budgetWarningJob(): Promise<void> {
   const v = await getBudgetVerdict();
   if (v.safe) return; // Only nag when over 95%.
   const pct = (v.pctUsed * 100).toFixed(1);
-  await notifyFounder(
-    `⚠️ Company OS AI budget at ${pct}% (AED ${v.spentAed.toFixed(2)} of ${v.budgetAed.toFixed(2)}). Free-form questions are now refused until next month. Use \`costs\` for details.`,
-  );
+  const budgetMsg = `⚠️ Company OS AI budget at ${pct}% (AED ${v.spentAed.toFixed(2)} of ${v.budgetAed.toFixed(2)}). Free-form questions are now refused until next month. Use \`costs\` for details.`;
+  await notifyFounder(budgetMsg);
+  // Also alert Slack on budget warnings.
+  if (await isSlackConfigured()) {
+    try {
+      await postSlackAlert("AI Budget Warning", budgetMsg, "critical");
+    } catch (err) {
+      console.error("[companyOs.scheduler] Slack budget warning failed (non-fatal):", err);
+    }
+  }
 }
 
 /**

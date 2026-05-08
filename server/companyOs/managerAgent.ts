@@ -95,6 +95,7 @@ const HELP_TEXT = [
   "",
   "*Reports*",
   "• `board report [YYYY-MM]` — board PDF",
+  "• `emails` / `inbox` — recent Bareter emails (Gmail)",
   "• `memory` / `forget <agent> <key>`",
   "",
   "Or ask me anything in plain English (subject to monthly AED budget).",
@@ -549,6 +550,27 @@ export async function handleManagerMessage(
       tokensUsed: 0,
     });
     return out;
+  }
+
+  // Gmail inbox surface — reads recent Bareter-related emails. LLM-free.
+  if (normalized === "emails" || normalized === "inbox" || normalized === "check emails" || normalized === "check inbox") {
+    const { isGmailConfigured, fetchRecentGmailReplies } = await import("../integrations/gmail");
+    if (!(await isGmailConfigured())) {
+      return "Gmail is not connected. Add Google credentials in Admin → Company OS → Integrations.";
+    }
+    const messages = await fetchRecentGmailReplies("in:inbox subject:Bareter", 10);
+    if (!messages.length) {
+      return "No recent Bareter-related emails found in your inbox.";
+    }
+    const lines = [`📧 *Recent inbox (${messages.length})*`, ""];
+    for (const m of messages) {
+      lines.push(`*${m.subject || "(no subject)"}*`);
+      lines.push(`From: ${m.from}`);
+      lines.push(m.snippet.slice(0, 120));
+      lines.push("");
+    }
+    await logLlmCall({ agentName: "manager", command: "gmail_inbox", inputPreview: text, tokensUsed: 0 });
+    return lines.join("\n");
   }
 
   // Board Report Agent surface — generates / fetches the monthly board PDF.

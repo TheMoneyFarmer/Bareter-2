@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -26,6 +28,10 @@ import {
   Megaphone,
   Bot,
   ClipboardList,
+  Link2,
+  Link2Off,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   AreaChart,
@@ -451,6 +457,166 @@ function ChartCard(props: {
   );
 }
 
+interface IntegrationField { key: string; label: string; placeholder: string; sensitive: boolean }
+interface IntegrationStatus { service: string; configured: boolean; configuredAt: string | null; fields: IntegrationField[] }
+
+const SERVICE_META: Record<string, { label: string; desc: string; usedBy: string }> = {
+  notion: {
+    label: "Notion",
+    desc: "Knowledge base for Support Agent; push summaries from agents",
+    usedBy: "Support Agent, Manager Agent",
+  },
+  slack: {
+    label: "Slack",
+    desc: "Receive moderation alerts, daily briefings, board reports, budget warnings",
+    usedBy: "All scheduled agents",
+  },
+  google: {
+    label: "Google (Drive + Gmail)",
+    desc: "Upload board report PDFs to Drive; read founder inbox via Gmail",
+    usedBy: "Board Report Agent, Manager Agent (`emails` command)",
+  },
+};
+
+function IntegrationsCard({
+  integrations,
+  isLoading,
+  onSave,
+  onDisconnect,
+  isSaving,
+  isDisconnecting,
+}: {
+  integrations: IntegrationStatus[];
+  isLoading: boolean;
+  onSave: (service: string, fields: Record<string, string>) => void;
+  onDisconnect: (service: string) => void;
+  isSaving: boolean;
+  isDisconnecting: boolean;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+
+  function setField(service: string, key: string, value: string) {
+    setDrafts((prev) => ({
+      ...prev,
+      [service]: { ...(prev[service] ?? {}), [key]: value },
+    }));
+  }
+
+  function handleSave(service: string) {
+    onSave(service, drafts[service] ?? {});
+  }
+
+  return (
+    <Card data-testid="card-integrations">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+          <Link2 className="h-4 w-4" /> Third-party integrations
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {isLoading && <Skeleton className="h-24 w-full" data-testid="skeleton-integrations" />}
+
+        {/* DB-backed integrations (Notion, Slack, Google) */}
+        {integrations.map((integration) => {
+          const meta = SERVICE_META[integration.service] ?? { label: integration.service, desc: "", usedBy: "" };
+          const isOpen = expanded === integration.service;
+          return (
+            <div key={integration.service} className="rounded-md border border-border" data-testid={`card-integration-${integration.service}`}>
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">{meta.label}</span>
+                    {integration.configured ? (
+                      <Badge variant="secondary" className="h-4 px-1.5 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950" data-testid={`badge-integration-connected-${integration.service}`}>
+                        <Check className="mr-0.5 h-2.5 w-2.5" /> Connected
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="h-4 px-1.5 text-[10px] text-muted-foreground" data-testid={`badge-integration-disconnected-${integration.service}`}>
+                        <Link2Off className="mr-0.5 h-2.5 w-2.5" /> Not connected
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="truncate text-[10px] text-muted-foreground">{meta.usedBy}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {integration.configured && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-[10px] text-destructive hover:text-destructive"
+                      disabled={isDisconnecting}
+                      onClick={() => onDisconnect(integration.service)}
+                      data-testid={`button-disconnect-integration-${integration.service}`}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={() => setExpanded(isOpen ? null : integration.service)}
+                    data-testid={`button-expand-integration-${integration.service}`}
+                  >
+                    {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
+              {isOpen && (
+                <div className="border-t border-border px-3 pb-3 pt-2 space-y-2">
+                  <p className="text-[10px] text-muted-foreground">{meta.desc}</p>
+                  {integration.fields.map((f) => (
+                    <div key={f.key} className="space-y-1">
+                      <Label className="text-[10px]">{f.key}</Label>
+                      <Input
+                        type={f.sensitive ? "password" : "text"}
+                        placeholder={f.sensitive ? "••••••••" : f.key}
+                        value={(drafts[integration.service] ?? {})[f.key] ?? ""}
+                        onChange={(e) => setField(integration.service, f.key, e.target.value)}
+                        className="h-7 text-xs font-mono"
+                        data-testid={`input-integration-${integration.service}-${f.key}`}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs mt-1"
+                    disabled={isSaving}
+                    onClick={() => handleSave(integration.service)}
+                    data-testid={`button-save-integration-${integration.service}`}
+                  >
+                    {isSaving ? "Saving…" : "Save credentials"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Social publishing — env-var based, configured via Replit Secrets */}
+        <div className="rounded-md border border-border border-dashed px-3 py-2" data-testid="card-integration-social">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-semibold">Social Publishing</span>
+            <Badge variant="outline" className="h-4 px-1.5 text-[10px] text-muted-foreground">
+              Via Replit Secrets
+            </Badge>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Buffer, LinkedIn, or Meta (Instagram/Facebook). Used by the Marketing Agent to auto-post campaigns.
+            Configure by adding one of these to Replit Secrets:
+          </p>
+          <ul className="mt-1 text-[10px] text-muted-foreground space-y-0.5 font-mono list-disc list-inside">
+            <li>Buffer: <span className="text-foreground">BUFFER_ACCESS_TOKEN</span> + <span className="text-foreground">BUFFER_PROFILE_IDS</span></li>
+            <li>LinkedIn: <span className="text-foreground">LINKEDIN_ACCESS_TOKEN</span> + <span className="text-foreground">LINKEDIN_AUTHOR_URN</span></li>
+            <li>Meta: <span className="text-foreground">META_ACCESS_TOKEN</span> + <span className="text-foreground">META_PAGE_ID</span></li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CompanyOsDashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -821,6 +987,40 @@ export default function CompanyOsDashboard() {
     },
   });
 
+  const integrationsQuery = useQuery<IntegrationStatus[]>({
+    queryKey: ["/api/admin/integrations"],
+    enabled: !!user?.isAdmin,
+    refetchOnWindowFocus: false,
+  });
+
+  const saveIntegrationMutation = useMutation<{ success: boolean }, Error, { service: string; fields: Record<string, string> }>({
+    mutationFn: async ({ service, fields }) => {
+      const res = await apiRequest("POST", `/api/admin/integrations/${encodeURIComponent(service)}`, { fields });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/integrations"] });
+      toast({ title: "Integration saved", description: "Credentials stored securely." });
+    },
+    onError: (err) => {
+      toast({ variant: "destructive", title: "Save failed", description: err.message });
+    },
+  });
+
+  const disconnectIntegrationMutation = useMutation<{ success: boolean }, Error, { service: string }>({
+    mutationFn: async ({ service }) => {
+      const res = await apiRequest("DELETE", `/api/admin/integrations/${encodeURIComponent(service)}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/integrations"] });
+      toast({ title: "Integration disconnected" });
+    },
+    onError: (err) => {
+      toast({ variant: "destructive", title: "Disconnect failed", description: err.message });
+    },
+  });
+
   const live = liveQuery.data;
   const isLoading = liveQuery.isLoading;
   const isFetching =
@@ -830,6 +1030,7 @@ export default function CompanyOsDashboard() {
     budgetsQuery.isFetching ||
     boardReportsQuery.isFetching ||
     failuresQuery.isFetching ||
+    integrationsQuery.isFetching ||
     pendingPublishQuery.isFetching;
   const recentFailures = failuresQuery.data?.groups ?? [];
   const pendingPublishDrafts = pendingPublishQuery.data?.drafts ?? [];
@@ -1589,6 +1790,17 @@ export default function CompanyOsDashboard() {
             ))}
           </CardContent>
         </Card>
+
+        {/* Third-party integration credentials — Notion, Slack, Google Drive/Gmail.
+            Social publishing (Buffer/LinkedIn/Meta) uses Replit Secrets instead. */}
+        <IntegrationsCard
+          integrations={integrationsQuery.data ?? []}
+          isLoading={integrationsQuery.isLoading}
+          onSave={(service, fields) => saveIntegrationMutation.mutate({ service, fields })}
+          onDisconnect={(service) => disconnectIntegrationMutation.mutate({ service })}
+          isSaving={saveIntegrationMutation.isPending}
+          isDisconnecting={disconnectIntegrationMutation.isPending}
+        />
 
         {/* Pending publish-post drafts (Task #112). Always renders so a
             "no drafts" empty state is visible — same trust principle as
