@@ -147,6 +147,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     guestTicketIds: string[];
+    guestEmail: string;
   }
 }
 
@@ -5547,10 +5548,11 @@ export async function registerRoutes(
   // ========== Support Ticket Routes ==========
 
   // Create a new ticket (user)
-  // Helper: check if current session can access a support ticket (auth user owns it OR guest session has it)
-  function canAccessTicket(ticket: { id: string; userId: string | null }, req: Request): boolean {
+  // Helper: check if current session can access a support ticket (auth user owns it OR guest session has it OR guest email matches)
+  function canAccessTicket(ticket: { id: string; userId: string | null; requesterEmail?: string | null }, req: Request): boolean {
     if (req.session.userId && ticket.userId === req.session.userId) return true;
-    if (!req.session.userId && Array.isArray(req.session.guestTicketIds) && req.session.guestTicketIds.includes(ticket.id)) return true;
+    if (Array.isArray(req.session.guestTicketIds) && req.session.guestTicketIds.includes(ticket.id)) return true;
+    if (req.session.guestEmail && ticket.requesterEmail && req.session.guestEmail === ticket.requesterEmail) return true;
     return false;
   }
 
@@ -5588,10 +5590,11 @@ export async function registerRoutes(
         status: "open",
       });
 
-      // Track guest ticket in session
+      // Track guest ticket in session (by ID and email for cross-session lookup)
       if (!userId) {
         if (!Array.isArray(req.session.guestTicketIds)) req.session.guestTicketIds = [];
         req.session.guestTicketIds.push(ticket.id);
+        req.session.guestEmail = String(requesterEmail).trim().toLowerCase();
       }
 
       // First message from user
@@ -5653,11 +5656,28 @@ export async function registerRoutes(
         const tickets = await storage.getSupportTicketsByUser(req.session.userId);
         return res.json(tickets);
       }
-      // Guest: return tickets tracked in session
+      // Guest cross-session lookup: accept ?email= param and store in session for future calls
+      const queryEmail = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : null;
+      if (queryEmail) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(queryEmail)) {
+          req.session.guestEmail = queryEmail;
+        }
+      }
+      const sessionEmail = req.session.guestEmail ?? null;
       const guestIds = Array.isArray(req.session.guestTicketIds) ? req.session.guestTicketIds : [];
-      if (!guestIds.length) return res.json([]);
-      const tickets = await storage.getSupportTicketsByIds(guestIds);
-      return res.json(tickets);
+      // Merge by-ID and by-email results, deduplicated
+      const [byId, byEmail] = await Promise.all([
+        guestIds.length ? storage.getSupportTicketsByIds(guestIds) : Promise.resolve([]),
+        sessionEmail ? storage.getSupportTicketsByEmail(sessionEmail) : Promise.resolve([]),
+      ]);
+      const seen = new Set<string>();
+      const merged = [...byId, ...byEmail].filter(t => {
+        if (seen.has(t.id)) return false;
+        seen.add(t.id);
+        return true;
+      }).sort((a, b) => new Date(b.lastActivityAt ?? b.createdAt).getTime() - new Date(a.lastActivityAt ?? a.createdAt).getTime());
+      return res.json(merged);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch tickets" });
     }
@@ -5706,17 +5726,60 @@ export async function registerRoutes(
       }
 
       const senderId = req.session.userId ?? null;
+      const trimmedContent = String(content).trim();
       const msg = await storage.createSupportMessage({
         ticketId: ticket.id,
         senderId,
         senderType: "user",
-        content: String(content).trim(),
+        content: trimmedContent,
         isInternal: false,
       });
 
       // Re-open if waiting
       if (ticket.status === "waiting_user") {
         await storage.updateSupportTicket(ticket.id, { status: "in_progress" });
+      }
+
+      // Phrase-based escalation: detect intent to speak with a human
+      const ESCALATION_PHRASES = [
+        /speak\s+to\s+(a\s+)?(human|person|agent|someone|staff|rep)/i,
+        /talk\s+to\s+(a\s+)?(human|person|agent|someone|real)/i,
+        /connect\s+me\s+(with|to)\s+(a\s+)?(human|person|agent)/i,
+        /real\s+(human|person|agent|support)/i,
+        /human\s+(support|agent|help)/i,
+        /escalate/i,
+        /not\s+helpful|not\s+helping|doesn'?t\s+help/i,
+      ];
+      const wantsHuman = ESCALATION_PHRASES.some(re => re.test(trimmedContent));
+      if (wantsHuman && ticket.aiHandled && ticket.status !== "closed") {
+        await storage.updateSupportTicket(ticket.id, {
+          status: "open",
+          priority: "high",
+          aiHandled: false,
+          escalatedAt: new Date(),
+        });
+        await storage.createSupportMessage({
+          ticketId: ticket.id,
+          senderId: null,
+          senderType: "ai",
+          content: "I've escalated your request to our human support team. Someone will review your ticket and get back to you as soon as possible.",
+          isInternal: false,
+        });
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const founderEmail = process.env.FOUNDER_EMAIL;
+        if (founderEmail) {
+          try {
+            const userName = ticket.user?.fullName ?? ticket.requesterName ?? "Unknown";
+            const userEmail = ticket.user?.email ?? ticket.requesterEmail ?? "Unknown";
+            const transcriptMsgs = await storage.getSupportMessages(ticket.id, false);
+            const transcript = transcriptMsgs.slice(-10).map(m => ({ senderType: m.senderType, content: m.content }));
+            const { sendSupportEscalationEmail } = await import("./emailService");
+            await sendSupportEscalationEmail(founderEmail, { ticketNumber: ticket.ticketNumber, subject: ticket.subject, userName, userEmail, baseUrl, transcript });
+          } catch (emailErr) {
+            console.error("Phrase-escalation email failed:", emailErr);
+          }
+        }
+        return res.status(201).json(msg);
       }
 
       // AI continues if ticket is still AI-handled
@@ -5728,7 +5791,22 @@ export async function registerRoutes(
             content: m.content,
           }));
           const { getSupportResponse } = await import("./agents/supportAgent");
-          const aiResult = await getSupportResponse(String(content).trim(), history, senderId ?? undefined);
+          let userContext: Parameters<typeof getSupportResponse>[3] | undefined;
+          if (senderId) {
+            try {
+              const [deals, listings, faqSetting] = await Promise.all([
+                storage.getDealsByUser(senderId),
+                storage.getListingsByUser(senderId),
+                storage.getAppSetting("cms_faq"),
+              ]);
+              userContext = {
+                recentDeals: deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) })),
+                activeListings: listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category })),
+                faqContent: faqSetting ?? undefined,
+              };
+            } catch { /* ignore context errors */ }
+          }
+          const aiResult = await getSupportResponse(trimmedContent, history, senderId ?? undefined, userContext);
           await storage.createSupportMessage({
             ticketId: ticket.id,
             senderId: null,
@@ -5803,13 +5881,41 @@ export async function registerRoutes(
     }
   });
 
-  // Close a ticket (auth user or guest)
+  // Close a ticket (auth user or guest) — sends transcript summary email to requester
   app.post("/api/support/tickets/:id/close", async (req, res) => {
     try {
       const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
       if (!canAccessTicket(ticket, req)) return res.status(403).json({ message: "Forbidden" });
       await storage.updateSupportTicket(ticket.id, { status: "closed", closedAt: new Date() });
+
+      // Send closure email with transcript
+      const toEmail = ticket.user?.email ?? ticket.requesterEmail;
+      const recipientName = ticket.user?.fullName ?? ticket.requesterName;
+      if (toEmail) {
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        try {
+          const transcriptMsgs = await storage.getSupportMessages(ticket.id, false);
+          const transcript = transcriptMsgs.map(m => ({
+            senderType: m.senderType,
+            senderName: m.senderType === "user"
+              ? (ticket.user?.fullName ?? ticket.requesterName ?? "You")
+              : m.senderType === "ai" ? "BarterBot" : (m.sender?.fullName ?? "Support Agent"),
+            content: m.content,
+          }));
+          const { sendTicketClosedEmail } = await import("./emailService");
+          await sendTicketClosedEmail(toEmail, {
+            recipientName,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            baseUrl,
+            transcript,
+          });
+        } catch (emailErr) {
+          console.error("User close email failed:", emailErr);
+        }
+      }
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Failed to close ticket" });

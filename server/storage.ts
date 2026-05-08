@@ -327,6 +327,7 @@ export interface IStorage {
   getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicketWithUser | undefined>;
   getSupportTicketsByUser(userId: string): Promise<SupportTicketWithUser[]>;
   getSupportTicketsByIds(ids: string[]): Promise<SupportTicketWithUser[]>;
+  getSupportTicketsByEmail(email: string): Promise<SupportTicketWithUser[]>;
   getAllSupportTickets(opts?: { status?: string; priority?: string; limit?: number; offset?: number }): Promise<SupportTicketWithUser[]>;
   updateSupportTicket(id: string, data: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
   getSupportMessages(ticketId: string, includeInternal?: boolean): Promise<SupportMessageWithSender[]>;
@@ -1909,6 +1910,17 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(supportTickets)
       .where(inArray(supportTickets.id, ids))
+      .orderBy(desc(supportTickets.lastActivityAt));
+    return Promise.all(rows.map(t => this.enrichTicket(t)));
+  }
+
+  async getSupportTicketsByEmail(email: string): Promise<SupportTicketWithUser[]> {
+    if (!email) return [];
+    const normalised = email.trim().toLowerCase();
+    const rows = await db
+      .select()
+      .from(supportTickets)
+      .where(eq(supportTickets.requesterEmail, normalised))
       .orderBy(desc(supportTickets.lastActivityAt));
     return Promise.all(rows.map(t => this.enrichTicket(t)));
   }

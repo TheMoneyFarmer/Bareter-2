@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,21 +16,19 @@ import {
   Bot,
   User,
   Loader2,
-  Sparkles,
-  LogIn,
   Headphones,
   ChevronLeft,
   Plus,
   AlertTriangle,
   CheckCircle2,
+  Search,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
-import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
 import type { SupportTicketWithUser, SupportMessageWithSender } from "@shared/schema";
 
-type View = "list" | "thread" | "new";
+type View = "list" | "thread" | "new" | "lookup";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   open: { label: "Open", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -63,10 +60,14 @@ function TicketList({
   tickets,
   onSelect,
   onNewTicket,
+  onLookup,
+  isGuest,
 }: {
   tickets: SupportTicketWithUser[];
   onSelect: (t: SupportTicketWithUser) => void;
   onNewTicket: () => void;
+  onLookup?: () => void;
+  isGuest?: boolean;
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -97,33 +98,154 @@ function TicketList({
             >
               Open a Ticket
             </Button>
+            {isGuest && onLookup && (
+              <Button
+                data-testid="btn-support-lookup-tickets"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={onLookup}
+              >
+                <Search className="h-3 w-3 mr-1" />
+                Find existing tickets by email
+              </Button>
+            )}
           </div>
         ) : (
-          <ul className="divide-y">
-            {tickets.map((ticket) => (
-              <li
-                key={ticket.id}
-                data-testid={`ticket-row-${ticket.id}`}
-                className="p-3 hover:bg-muted/40 cursor-pointer transition-colors"
-                onClick={() => onSelect(ticket)}
-              >
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <span className="text-xs font-medium line-clamp-1 flex-1">{ticket.subject}</span>
-                  <TicketStatusBadge status={ticket.status} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground font-mono">{ticket.ticketNumber}</span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {ticket.messageCount ?? 0} msg{(ticket.messageCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                {ticket.lastMessage && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{ticket.lastMessage}</p>
-                )}
-              </li>
-            ))}
-          </ul>
+          <div>
+            <ul className="divide-y">
+              {tickets.map((ticket) => (
+                <li
+                  key={ticket.id}
+                  data-testid={`ticket-row-${ticket.id}`}
+                  className="p-3 hover:bg-muted/40 cursor-pointer transition-colors"
+                  onClick={() => onSelect(ticket)}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-xs font-medium line-clamp-1 flex-1">{ticket.subject}</span>
+                    <TicketStatusBadge status={ticket.status} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-muted-foreground font-mono">{ticket.ticketNumber}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {ticket.messageCount ?? 0} msg{(ticket.messageCount ?? 0) !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {ticket.lastMessage && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{ticket.lastMessage}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {isGuest && onLookup && (
+              <div className="p-3 border-t">
+                <Button
+                  data-testid="btn-support-lookup-more"
+                  size="sm"
+                  variant="ghost"
+                  className="w-full h-7 text-xs text-muted-foreground"
+                  onClick={onLookup}
+                >
+                  <Search className="h-3 w-3 mr-1" />
+                  Find more tickets by email
+                </Button>
+              </div>
+            )}
+          </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function GuestLookupForm({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [searched, setSearched] = useState(false);
+
+  const lookupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/support/tickets?email=${encodeURIComponent(email.trim().toLowerCase())}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Lookup failed");
+      return res.json() as Promise<SupportTicketWithUser[]>;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["/api/support/tickets"], data);
+      setSearched(true);
+      if (data.length === 0) {
+        toast({ title: "No tickets found for that email address." });
+      } else {
+        toast({ title: `Found ${data.length} ticket${data.length !== 1 ? "s" : ""}.` });
+        onBack();
+      }
+    },
+    onError: () => {
+      toast({ title: "Lookup failed. Please try again.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 p-3 border-b flex-shrink-0">
+        <Button
+          data-testid="btn-lookup-back"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onBack}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-semibold">Find My Tickets</span>
+      </div>
+      <div className="flex-1 p-4 space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Enter the email address you used when you submitted your ticket and we'll pull up your history.
+        </p>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Email address</label>
+          <Input
+            data-testid="input-lookup-email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="text-xs h-8"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && email.trim()) lookupMutation.mutate();
+            }}
+          />
+        </div>
+        {searched && !lookupMutation.isPending && (
+          <p className="text-xs text-muted-foreground text-center">
+            No tickets found for that email.
+          </p>
+        )}
+      </div>
+      <div className="p-3 border-t flex-shrink-0">
+        <Button
+          data-testid="btn-lookup-submit"
+          className="w-full h-8 text-sm"
+          disabled={!email.trim() || lookupMutation.isPending}
+          onClick={() => lookupMutation.mutate()}
+        >
+          {lookupMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Search className="h-4 w-4 mr-2" />
+              Find Tickets
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
@@ -499,7 +621,6 @@ function NewTicketForm({
 
 export default function AiSupportChat() {
   const { user } = useAuth();
-  const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<View>("list");
   const [selectedTicket, setSelectedTicket] = useState<SupportTicketWithUser | null>(null);
@@ -553,6 +674,8 @@ export default function AiSupportChat() {
                 onSuccess={() => setView("list")}
                 isGuest={!user}
               />
+            ) : view === "lookup" ? (
+              <GuestLookupForm onBack={handleBack} />
             ) : view === "thread" && selectedTicket ? (
               <TicketThread ticket={selectedTicket} onBack={handleBack} />
             ) : (
@@ -560,6 +683,8 @@ export default function AiSupportChat() {
                 tickets={tickets}
                 onSelect={handleSelectTicket}
                 onNewTicket={() => setView("new")}
+                onLookup={!user ? () => setView("lookup") : undefined}
+                isGuest={!user}
               />
             )}
           </div>

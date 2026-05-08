@@ -177,9 +177,14 @@ function TicketDetailDialog({
           <p className="text-xs text-muted-foreground mt-0.5">
             From:{" "}
             <span className="font-medium">
-              {ticket.user?.fullName}
+              {ticket.user?.fullName ?? ticket.requesterName ?? "Guest"}
             </span>{" "}
-            &lt;{ticket.user?.email}&gt;
+            {(ticket.user?.email ?? ticket.requesterEmail) && (
+              <>&lt;{ticket.user?.email ?? ticket.requesterEmail}&gt;</>
+            )}
+            {!ticket.userId && (
+              <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">guest</span>
+            )}
           </p>
         </DialogHeader>
 
@@ -554,9 +559,14 @@ export function AdminSupportSection() {
                     </TableCell>
                     <TableCell className="text-xs">
                       <div>
-                        <p className="font-medium">{ticket.user?.fullName}</p>
+                        <p className="font-medium">
+                          {ticket.user?.fullName ?? ticket.requesterName ?? "Guest"}
+                          {!ticket.userId && (
+                            <span className="ml-1 inline-flex items-center px-1 py-0 rounded text-[10px] font-medium bg-gray-100 text-gray-500">guest</span>
+                          )}
+                        </p>
                         <p className="text-muted-foreground text-[11px]">
-                          {ticket.user?.email}
+                          {ticket.user?.email ?? ticket.requesterEmail ?? "—"}
                         </p>
                       </div>
                     </TableCell>
