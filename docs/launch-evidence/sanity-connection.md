@@ -52,3 +52,15 @@ If Sanity is unreachable, server falls back to `app_settings` values silently. N
 2. Re-create it to get a new signing secret
 3. Update `SANITY_WEBHOOK_SECRET` in Replit secrets
 4. Restart the application workflow
+
+## Studio Deployment (Task #214)
+
+**Deployed at:** https://bareter.sanity.studio/
+**Deployed:** 2026-05-08
+**Studio hostname:** bareter (configured in sanity/sanity.cli.ts)
+**Build:** Successful (sanity v3, ~30s build time)
+**Schemas deployed:** 4 types (heroSection, howItWorksStep, faqEntry, helpArticle)
+
+**To redeploy after schema changes:**
+1. Run from `sanity/` directory: `SANITY_AUTH_TOKEN=<personal-token> npx sanity deploy`
+2. Or: `npx sanity login && npx sanity deploy` (interactive OAuth)
