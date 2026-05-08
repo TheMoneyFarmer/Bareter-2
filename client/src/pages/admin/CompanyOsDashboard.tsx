@@ -617,6 +617,100 @@ function IntegrationsCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// WhatsApp test console — lets the founder test any command without
+// needing a real WhatsApp message. Calls POST /api/company-os/test-message.
+// ---------------------------------------------------------------------------
+function WhatsAppConsole() {
+  const [input, setInput] = useState("");
+  const [history, setHistory] = useState<{ text: string; reply: string }[]>([]);
+  const { toast } = useToast();
+
+  const testMutation = useMutation<{ ok: boolean; reply: string }, Error, string>({
+    mutationFn: async (text) => {
+      const res = await apiRequest("POST", "/api/company-os/test-message", { text });
+      return res.json();
+    },
+    onSuccess: (data, text) => {
+      setHistory((h) => [{ text, reply: data.reply }, ...h].slice(0, 20));
+      setInput("");
+    },
+    onError: (err) => {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    },
+  });
+
+  const send = () => {
+    const t = input.trim();
+    if (!t) return;
+    testMutation.mutate(t);
+  };
+
+  const QUICK_COMMANDS = ["help", "status", "revenue", "costs", "agents", "dashboard", "marketing", "leads", "alerts", "dispute risk", "vat check"];
+
+  return (
+    <Card data-testid="card-whatsapp-console">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+          <Bot className="h-4 w-4" />
+          WhatsApp command console
+          <span className="text-xs font-normal text-muted-foreground">Test any command without sending a WhatsApp message</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK_COMMANDS.map((cmd) => (
+            <button
+              key={cmd}
+              type="button"
+              onClick={() => { setInput(cmd); }}
+              className="rounded border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              data-testid={`btn-console-quick-${cmd.replace(/\s+/g, "-")}`}
+            >
+              {cmd}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder='Type a command or question, e.g. "revenue week"'
+            className="font-mono text-sm"
+            data-testid="input-console-message"
+          />
+          <Button
+            onClick={send}
+            disabled={!input.trim() || testMutation.isPending}
+            size="sm"
+            data-testid="btn-console-send"
+          >
+            {testMutation.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : "Send"}
+          </Button>
+        </div>
+        {history.length > 0 && (
+          <div className="space-y-2 max-h-96 overflow-y-auto rounded-md border border-border bg-muted/30 p-3">
+            {history.map((item, i) => (
+              <div key={i} className="space-y-1">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">You</span>
+                  <span className="font-mono text-xs text-foreground">{item.text}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 rounded bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium text-teal-600 dark:text-teal-400">Agent</span>
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-muted-foreground leading-relaxed">{item.reply}</pre>
+                </div>
+                {i < history.length - 1 && <div className="border-t border-border/50 pt-2" />}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CompanyOsDashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -1790,6 +1884,9 @@ export default function CompanyOsDashboard() {
             ))}
           </CardContent>
         </Card>
+
+        {/* WhatsApp command console — test any command without real WhatsApp */}
+        <WhatsAppConsole />
 
         {/* Third-party integration credentials — Notion, Slack, Google Drive/Gmail.
             Social publishing (Buffer/LinkedIn/Meta) uses Replit Secrets instead. */}

@@ -224,6 +224,24 @@ export function createCompanyOsRouter(opts: { requireAdmin: RequestHandler }): R
   });
 
   // ---------------------------------------------------------------------------
+  // POST /api/company-os/test-message — run any text through handleManagerMessage
+  // and return the reply as JSON without sending via WhatsApp.  Admin-gated.
+  // ---------------------------------------------------------------------------
+  router.post("/test-message", opts.requireAdmin, async (req, res) => {
+    try {
+      const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+      if (!text) {
+        return res.status(400).json({ ok: false, message: "text is required" });
+      }
+      const reply = await handleManagerMessage(text);
+      res.json({ ok: true, reply });
+    } catch (err) {
+      console.error("[companyOs] /test-message failed:", err);
+      res.status(500).json({ ok: false, message: "Internal error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Marketing Agent endpoints (admin-only). Surfaces briefs + campaigns to
   // the existing Admin Dashboard so the founder can see Monday-cron output
   // and trigger ad-hoc briefs without waiting for the next Monday.
