@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { eq, and, ne, sql } from "drizzle-orm";
+import { eq, and, ne, notInArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { users } from "@shared/schema";
 
@@ -97,7 +97,17 @@ export async function bootstrapAdmin(): Promise<void> {
       );
     }
 
-    // Defensively demote every other admin so the panel is single-tenant.
+    // Defensively demote any admin user whose email is NOT in the allowlist.
+    // ADMIN_EMAIL_ALLOWLIST is comma-separated; the bootstrap email is always
+    // included so it is never accidentally demoted either.
+    const allowlistRaw = process.env.ADMIN_EMAIL_ALLOWLIST ?? "";
+    const allowedEmails = [
+      email,
+      ...allowlistRaw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
+    ];
+    // Deduplicate
+    const protectedEmails = [...new Set(allowedEmails)];
+
     const demoted = await db
       .update(users)
       .set({
@@ -107,7 +117,7 @@ export async function bootstrapAdmin(): Promise<void> {
       })
       .where(
         and(
-          ne(users.email, email),
+          notInArray(users.email, protectedEmails),
           // Match anyone currently flagged as admin in either dimension.
           sql`(${users.isAdmin} = true OR ${users.role} IN ('admin', 'super_admin'))`,
         ),
@@ -117,7 +127,22 @@ export async function bootstrapAdmin(): Promise<void> {
     if (demoted.length > 0) {
       const list = demoted.map((u) => u.email).join(", ");
       console.log(
-        `[bootstrapAdmin] Demoted ${demoted.length} previously-admin user(s) so only ${email} retains admin: ${list}`,
+        `[bootstrapAdmin] Demoted ${demoted.length} previously-admin user(s) not in allowlist: ${list}`,
+      );
+    }
+
+    // Ensure every email in the allowlist (other than the bootstrap account
+    // which was already handled above) has isAdmin=true and at least "admin" role.
+    const secondaryAdmins = protectedEmails.filter((e) => e !== email);
+    if (secondaryAdmins.length > 0) {
+      for (const adminEmail of secondaryAdmins) {
+        await db
+          .update(users)
+          .set({ isAdmin: true, role: "super_admin", updatedAt: new Date() })
+          .where(eq(users.email, adminEmail));
+      }
+      console.log(
+        `[bootstrapAdmin] Ensured admin privileges for allowlist members: ${secondaryAdmins.join(", ")}`,
       );
     }
   } catch (err) {
