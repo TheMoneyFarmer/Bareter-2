@@ -300,7 +300,7 @@ export async function registerRoutes(
     try {
       const all = await storage.getAllAppSettings();
       const publicKeys = [
-        "hero_headline", "hero_tagline", "hero_cta", "how_it_works_steps", "faq_entries",
+        "hero_headline", "hero_tagline", "hero_cta", "hero_cta_url", "how_it_works_steps", "faq_entries",
         "contact_email", "support_email", "support_phone",
         "announcement_banner_enabled", "announcement_banner_text", "announcement_banner_link",
         "active_emirates", "maintenance_mode", "maintenance_message", "registration_enabled", "invite_only_mode",
@@ -325,6 +325,7 @@ export async function registerRoutes(
         if (sanityHero?.headline) result["hero_headline"] = sanityHero.headline;
         if (sanityHero?.tagline) result["hero_tagline"] = sanityHero.tagline;
         if (sanityHero?.ctaText) result["hero_cta"] = sanityHero.ctaText;
+        if (sanityHero?.ctaUrl) result["hero_cta_url"] = sanityHero.ctaUrl;
 
         if (sanitySteps && sanitySteps.length > 0) {
           result["how_it_works_steps"] = JSON.stringify(sanitySteps);
@@ -336,9 +337,30 @@ export async function registerRoutes(
         // Sanity unavailable — app_settings values already set above
       }
 
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json(result);
     } catch {
       res.status(500).json({ message: "Failed to load settings" });
+    }
+  });
+
+  // ── Public help articles (Sanity CMS with empty-array fallback) ─────
+  app.get("/api/public/help-articles", async (_req, res) => {
+    try {
+      let articles: { slug: string; title: string; body: string }[] = [];
+      try {
+        const { getSanityHelpArticles } = await import("./lib/sanity");
+        const sanityArticles = await getSanityHelpArticles();
+        if (sanityArticles && sanityArticles.length > 0) {
+          articles = sanityArticles;
+        }
+      } catch {
+        // Sanity unavailable — return empty list so client uses hardcoded fallback
+      }
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      res.json(articles);
+    } catch {
+      res.status(500).json({ message: "Failed to load help articles" });
     }
   });
 

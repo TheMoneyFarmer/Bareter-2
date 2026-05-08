@@ -195,10 +195,16 @@ const categories: {
   },
 ];
 
+type SanityHelpArticle = { slug: string; title: string; body: string };
+
 export function HelpPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const { data: settings } = useQuery<PublicSettings>({
     queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+  const { data: sanityArticles = [] } = useQuery<SanityHelpArticle[]>({
+    queryKey: ["/api/public/help-articles"],
     staleTime: 60_000,
   });
   const supportEmail = settings?.support_email || "support@bareter.com";
@@ -235,8 +241,43 @@ export function HelpPage() {
         </div>
       </div>
 
+      {sanityArticles.length > 0 && (
+        <div className="mb-12">
+          <h2 className="text-xl font-semibold mb-4">Articles</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sanityArticles
+              .filter(
+                (a) =>
+                  !searchQuery ||
+                  a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  a.body.toLowerCase().includes(searchQuery.toLowerCase()),
+              )
+              .map((article) => (
+                <Card key={article.slug} data-testid={`card-help-sanity-${article.slug}`}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{article.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground line-clamp-4">{article.body}</p>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-        {categories.map((category) => {
+        {categories
+          .filter((cat) =>
+            !searchQuery ||
+            cat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            cat.articles.some(
+              (a) =>
+                a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                a.body.toLowerCase().includes(searchQuery.toLowerCase()),
+            ),
+          )
+          .map((category) => {
           const slug = category.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
           const firstValue = `${slug}-0`;
           const openValues = openByCategory[slug] ?? [];

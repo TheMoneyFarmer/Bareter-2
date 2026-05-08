@@ -91,6 +91,7 @@ export function LandingPage() {
   const heroHeadline = cmsSettings?.hero_headline || DEFAULT_HEADLINE;
   const heroTagline = cmsSettings?.hero_tagline || DEFAULT_TAGLINE;
   const heroCta = cmsSettings?.hero_cta || null;
+  const heroCtaUrl = cmsSettings?.hero_cta_url || null;
   let howItWorksSteps = DEFAULT_STEPS;
   try {
     if (cmsSettings?.how_it_works_steps) {
@@ -406,6 +407,8 @@ export function LandingPage() {
                 e.preventDefault();
                 if (waitlistMode.enabled) {
                   openWaitlist();
+                } else if (heroCtaUrl) {
+                  navigate(`${heroCtaUrl}${heroCtaUrl.includes("?") ? "&" : "?"}email=${encodeURIComponent(waitlistEmail)}`);
                 } else {
                   navigate(`/register?email=${encodeURIComponent(waitlistEmail)}`);
                 }
