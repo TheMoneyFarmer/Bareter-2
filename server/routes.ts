@@ -389,7 +389,9 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword).then((safe) => res.json(safe));
+        sanitizeAdminFlag(userWithoutPassword)
+          .then((safe) => res.json(safe))
+          .catch(() => res.json(userWithoutPassword));
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -432,7 +434,9 @@ export async function registerRoutes(
           return res.status(500).json({ message: "Session error" });
         }
         const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword).then((safe) => res.json(safe));
+        sanitizeAdminFlag(userWithoutPassword)
+          .then((safe) => res.json(safe))
+          .catch(() => res.json(userWithoutPassword));
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2855,6 +2859,10 @@ export async function registerRoutes(
       const user = await storage.updateUser(param(req.params.id), { role, isAdmin });
       if (!user) {
         return res.status(404).json({ message: "User not found" });
+      }
+      // Keep the DB-stored allowlist in sync so requireAdmin stays consistent
+      if (user.email) {
+        await updateAdminAllowlist(user.email, isAdmin ? "add" : "remove", req.session.userId);
       }
       await logAdminAction(req, "user_role_changed", "user", user.id, { role, email: user.email });
       const { password, ...userWithoutPassword } = user;
