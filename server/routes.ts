@@ -147,7 +147,6 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     guestTicketIds: string[];
-    guestEmail: string;
   }
 }
 
@@ -5548,11 +5547,12 @@ export async function registerRoutes(
   // ========== Support Ticket Routes ==========
 
   // Create a new ticket (user)
-  // Helper: check if current session can access a support ticket (auth user owns it OR guest session has it OR guest email matches)
-  function canAccessTicket(ticket: { id: string; userId: string | null; requesterEmail?: string | null }, req: Request): boolean {
+  // Helper: check if current session can access a support ticket.
+  // Auth users must own the ticket; guests must have the ticket ID tracked in their session
+  // (placed there either at creation time or after a verified resume via /resume endpoint).
+  function canAccessTicket(ticket: { id: string; userId: string | null }, req: Request): boolean {
     if (req.session.userId && ticket.userId === req.session.userId) return true;
     if (Array.isArray(req.session.guestTicketIds) && req.session.guestTicketIds.includes(ticket.id)) return true;
-    if (req.session.guestEmail && ticket.requesterEmail && req.session.guestEmail === ticket.requesterEmail) return true;
     return false;
   }
 
@@ -5606,13 +5606,28 @@ export async function registerRoutes(
         isInternal: false,
       });
 
-      // AI auto-response
+      // AI auto-response — build context (FAQ always; user deals/listings when authenticated)
       try {
         const { getSupportResponse } = await import("./agents/supportAgent");
+        let aiContext: import("./agents/supportAgent").SupportUserContext | undefined;
+        try {
+          const faqSetting = await storage.getAppSetting("cms_faq");
+          aiContext = { faqContent: faqSetting ?? undefined };
+          if (userId) {
+            const [deals, listings] = await Promise.all([
+              storage.getDealsByUser(userId),
+              storage.getListingsByUser(userId),
+            ]);
+            aiContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
+            aiContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+          }
+        } catch { /* context errors are non-fatal */ }
+
         const aiResult = await getSupportResponse(
           `New support ticket: ${subject}\n\n${message}`,
           [],
           userId ?? undefined,
+          aiContext,
         );
         await storage.createSupportMessage({
           ticketId: ticket.id,
@@ -5649,37 +5664,47 @@ export async function registerRoutes(
     }
   });
 
-  // Get user's own tickets (auth) or guest's session tickets
+  // Get user's own tickets (auth) or guest's session-tracked tickets
   app.get("/api/support/tickets", async (req, res) => {
     try {
       if (req.session.userId) {
         const tickets = await storage.getSupportTicketsByUser(req.session.userId);
         return res.json(tickets);
       }
-      // Guest cross-session lookup: accept ?email= param and store in session for future calls
-      const queryEmail = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : null;
-      if (queryEmail) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (emailRegex.test(queryEmail)) {
-          req.session.guestEmail = queryEmail;
-        }
-      }
-      const sessionEmail = req.session.guestEmail ?? null;
+      // Guests: only return tickets tracked in this session (placed there at creation or after verified resume)
       const guestIds = Array.isArray(req.session.guestTicketIds) ? req.session.guestTicketIds : [];
-      // Merge by-ID and by-email results, deduplicated
-      const [byId, byEmail] = await Promise.all([
-        guestIds.length ? storage.getSupportTicketsByIds(guestIds) : Promise.resolve([]),
-        sessionEmail ? storage.getSupportTicketsByEmail(sessionEmail) : Promise.resolve([]),
-      ]);
-      const seen = new Set<string>();
-      const merged = [...byId, ...byEmail].filter(t => {
-        if (seen.has(t.id)) return false;
-        seen.add(t.id);
-        return true;
-      }).sort((a, b) => new Date(b.lastActivityAt ?? b.createdAt).getTime() - new Date(a.lastActivityAt ?? a.createdAt).getTime());
-      return res.json(merged);
+      if (!guestIds.length) return res.json([]);
+      const tickets = await storage.getSupportTicketsByIds(guestIds);
+      return res.json(tickets);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch tickets" });
+    }
+  });
+
+  // Secure cross-session guest ticket resume: requires BOTH email AND ticketNumber.
+  // Since ticketNumber is sent only to the inbox, providing it proves email ownership.
+  app.post("/api/support/tickets/resume", async (req, res) => {
+    try {
+      const { email, ticketNumber } = req.body;
+      if (!email || !ticketNumber) {
+        return res.status(400).json({ message: "Email and ticket number are required" });
+      }
+      const normalEmail = String(email).trim().toLowerCase();
+      const normalNumber = String(ticketNumber).trim().toUpperCase();
+      const ticket = await storage.getSupportTicketByNumber(normalNumber);
+      if (!ticket || ticket.requesterEmail !== normalEmail) {
+        // Return same 404 whether not found or email mismatch — prevent enumeration
+        return res.status(404).json({ message: "Ticket not found or email does not match" });
+      }
+      // Grant session access
+      if (!Array.isArray(req.session.guestTicketIds)) req.session.guestTicketIds = [];
+      if (!req.session.guestTicketIds.includes(ticket.id)) {
+        req.session.guestTicketIds.push(ticket.id);
+      }
+      res.json({ ticketId: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject });
+    } catch (error) {
+      console.error("Ticket resume error:", error);
+      res.status(500).json({ message: "Failed to resume ticket" });
     }
   });
 
@@ -5791,21 +5816,20 @@ export async function registerRoutes(
             content: m.content,
           }));
           const { getSupportResponse } = await import("./agents/supportAgent");
+          // Always include FAQ for grounding; add user deals/listings when authenticated
           let userContext: Parameters<typeof getSupportResponse>[3] | undefined;
-          if (senderId) {
-            try {
-              const [deals, listings, faqSetting] = await Promise.all([
+          try {
+            const faqSetting = await storage.getAppSetting("cms_faq");
+            userContext = { faqContent: faqSetting ?? undefined };
+            if (senderId) {
+              const [deals, listings] = await Promise.all([
                 storage.getDealsByUser(senderId),
                 storage.getListingsByUser(senderId),
-                storage.getAppSetting("cms_faq"),
               ]);
-              userContext = {
-                recentDeals: deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) })),
-                activeListings: listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category })),
-                faqContent: faqSetting ?? undefined,
-              };
-            } catch { /* ignore context errors */ }
-          }
+              userContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
+              userContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+            }
+          } catch { /* ignore context errors */ }
           const aiResult = await getSupportResponse(trimmedContent, history, senderId ?? undefined, userContext);
           await storage.createSupportMessage({
             ticketId: ticket.id,
@@ -6075,6 +6099,14 @@ export async function registerRoutes(
       console.error("Admin reply error:", error);
       res.status(500).json({ message: "Failed to send reply" });
     }
+  });
+
+  // Required API contract alias: /reply mirrors /messages for admin
+  app.post("/api/admin/support/tickets/:id/reply", requireAdmin, async (req, res) => {
+    req.url = req.url.replace("/reply", "/messages");
+    app._router.handle(req, res, () => {
+      res.status(404).json({ message: "Not found" });
+    });
   });
 
   return httpServer;

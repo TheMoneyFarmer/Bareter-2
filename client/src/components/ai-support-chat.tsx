@@ -160,35 +160,39 @@ function TicketList({
 
 function GuestLookupForm({
   onBack,
+  onFound,
 }: {
   onBack: () => void;
+  onFound: () => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
-  const [searched, setSearched] = useState(false);
+  const [ticketNumber, setTicketNumber] = useState("");
 
-  const lookupMutation = useMutation({
+  const resumeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(
-        `/api/support/tickets?email=${encodeURIComponent(email.trim().toLowerCase())}`,
-        { credentials: "include" },
-      );
-      if (!res.ok) throw new Error("Lookup failed");
-      return res.json() as Promise<SupportTicketWithUser[]>;
-    },
-    onSuccess: (data) => {
-      qc.setQueryData(["/api/support/tickets"], data);
-      setSearched(true);
-      if (data.length === 0) {
-        toast({ title: "No tickets found for that email address." });
-      } else {
-        toast({ title: `Found ${data.length} ticket${data.length !== 1 ? "s" : ""}.` });
-        onBack();
+      const res = await apiRequest("POST", "/api/support/tickets/resume", {
+        email: email.trim().toLowerCase(),
+        ticketNumber: ticketNumber.trim().toUpperCase(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Not found");
       }
+      return res.json() as Promise<{ ticketId: string; ticketNumber: string; subject: string }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/support/tickets"] });
+      toast({ title: "Ticket found! Returning to your tickets." });
+      onFound();
     },
     onError: () => {
-      toast({ title: "Lookup failed. Please try again.", variant: "destructive" });
+      toast({
+        title: "Ticket not found",
+        description: "Check the email and ticket number from your confirmation email.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -204,11 +208,11 @@ function GuestLookupForm({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="text-sm font-semibold">Find My Tickets</span>
+        <span className="text-sm font-semibold">Find My Ticket</span>
       </div>
       <div className="flex-1 p-4 space-y-4">
         <p className="text-xs text-muted-foreground">
-          Enter the email address you used when you submitted your ticket and we'll pull up your history.
+          Enter the email and ticket number from your confirmation email to access your ticket history.
         </p>
         <div>
           <label className="text-xs font-medium mb-1 block">Email address</label>
@@ -219,30 +223,38 @@ function GuestLookupForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="text-xs h-8"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Ticket number</label>
+          <Input
+            data-testid="input-lookup-ticket-number"
+            placeholder="TKT-XXXXXXX"
+            value={ticketNumber}
+            onChange={(e) => setTicketNumber(e.target.value.toUpperCase())}
+            className="text-xs h-8 font-mono"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && email.trim()) lookupMutation.mutate();
+              if (e.key === "Enter" && email.trim() && ticketNumber.trim()) resumeMutation.mutate();
             }}
           />
         </div>
-        {searched && !lookupMutation.isPending && (
-          <p className="text-xs text-muted-foreground text-center">
-            No tickets found for that email.
-          </p>
-        )}
+        <p className="text-[11px] text-muted-foreground">
+          Your ticket number is in the confirmation email we sent when you opened your ticket (e.g. TKT-1A2B3C4D).
+        </p>
       </div>
       <div className="p-3 border-t flex-shrink-0">
         <Button
           data-testid="btn-lookup-submit"
           className="w-full h-8 text-sm"
-          disabled={!email.trim() || lookupMutation.isPending}
-          onClick={() => lookupMutation.mutate()}
+          disabled={!email.trim() || !ticketNumber.trim() || resumeMutation.isPending}
+          onClick={() => resumeMutation.mutate()}
         >
-          {lookupMutation.isPending ? (
+          {resumeMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <>
               <Search className="h-4 w-4 mr-2" />
-              Find Tickets
+              Find Ticket
             </>
           )}
         </Button>
@@ -675,7 +687,7 @@ export default function AiSupportChat() {
                 isGuest={!user}
               />
             ) : view === "lookup" ? (
-              <GuestLookupForm onBack={handleBack} />
+              <GuestLookupForm onBack={handleBack} onFound={handleBack} />
             ) : view === "thread" && selectedTicket ? (
               <TicketThread ticket={selectedTicket} onBack={handleBack} />
             ) : (
