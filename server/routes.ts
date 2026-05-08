@@ -312,6 +312,30 @@ export async function registerRoutes(
         const v = all[key];
         result[key] = (v != null && v !== "") ? v : null;
       }
+
+      // Try to overlay CMS content from Sanity (graceful fallback to app_settings)
+      try {
+        const { getSanityHero, getSanityHowItWorksSteps, getSanityFaqEntries } = await import("./lib/sanity");
+        const [sanityHero, sanitySteps, sanityFaq] = await Promise.all([
+          getSanityHero(),
+          getSanityHowItWorksSteps(),
+          getSanityFaqEntries(),
+        ]);
+
+        if (sanityHero?.headline) result["hero_headline"] = sanityHero.headline;
+        if (sanityHero?.tagline) result["hero_tagline"] = sanityHero.tagline;
+        if (sanityHero?.ctaText) result["hero_cta"] = sanityHero.ctaText;
+
+        if (sanitySteps && sanitySteps.length > 0) {
+          result["how_it_works_steps"] = JSON.stringify(sanitySteps);
+        }
+        if (sanityFaq && sanityFaq.length > 0) {
+          result["faq_entries"] = JSON.stringify(sanityFaq);
+        }
+      } catch {
+        // Sanity unavailable — app_settings values already set above
+      }
+
       res.json(result);
     } catch {
       res.status(500).json({ message: "Failed to load settings" });

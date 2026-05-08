@@ -454,6 +454,39 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
 
   return (
     <div className="space-y-4">
+      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Rocket className="h-4 w-4 text-blue-600" />
+            Sanity Studio CMS
+          </CardTitle>
+          <CardDescription>
+            Manage landing page content — hero text, how-it-works steps, FAQs, and help articles — in Sanity Studio.
+            Content from Sanity automatically overrides the legacy fields below when the integration is configured.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <a
+            href="https://bareter.sanity.studio"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="link-open-sanity-studio"
+          >
+            <Button variant="default" className="gap-2">
+              <Globe className="h-4 w-4" />
+              Open Sanity Studio ↗
+            </Button>
+          </a>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center gap-2 pt-2">
+        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-amber-600">Legacy editors</span> — use Sanity for new edits. These fields act as a fallback when Sanity is not configured.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Hero Section</CardTitle>

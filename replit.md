@@ -66,3 +66,8 @@ sign-off record — every required row must be ticked before announcing.
 - **File Handling**: Multer.
 - **Document Generation**: jsPDF for multi-language barter contracts with e-signature.
 - **Third-Party UI Libraries**: Radix UI, react-icons, embla-carousel, react-day-picker, recharts.
+- **CMS**: Sanity Studio (`https://bareter.sanity.studio`) for landing page content (hero, how-it-works, FAQ, help articles).
+  - `SANITY_PROJECT_ID` — Sanity project ID (found in sanity.io project settings).
+  - `SANITY_DATASET` — dataset name, typically `production`.
+  - `SANITY_API_TOKEN` — read token generated in sanity.io → API → Tokens.
+  - All three vars are optional; the app falls back to `app_settings` if any are absent.
