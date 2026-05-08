@@ -6238,10 +6238,16 @@ export async function registerRoutes(
     });
   });
 
+  // Canonical base URL: use APP_BASE_URL env var in production,
+  // fall back to the request origin so dev previews produce correct URLs.
+  const getBaseUrl = (req: Request) =>
+    (process.env.APP_BASE_URL ?? `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+
   // ── robots.txt ──────────────────────────────────────────────────────────────
-  app.get("/robots.txt", (_req, res) => {
+  app.get("/robots.txt", (req, res) => {
+    const base = getBaseUrl(req);
     res.type("text/plain").send(
-      "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: https://bareter.com/sitemap.xml\n"
+      `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`
     );
   });
 
@@ -6249,7 +6255,7 @@ export async function registerRoutes(
   let sitemapCache: { xml: string; builtAt: number } | null = null;
   const SITEMAP_TTL_MS = 10 * 60 * 1000;
 
-  app.get("/sitemap.xml", async (_req, res) => {
+  app.get("/sitemap.xml", async (req, res) => {
     try {
       const now = Date.now();
       if (sitemapCache && now - sitemapCache.builtAt < SITEMAP_TTL_MS) {
@@ -6262,7 +6268,7 @@ export async function registerRoutes(
         .from(listings)
         .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)));
 
-      const base = "https://bareter.com";
+      const base = getBaseUrl(req);
       const staticPaths = [
         { loc: "/", priority: "1.0", changefreq: "daily" },
         { loc: "/browse", priority: "0.9", changefreq: "hourly" },
