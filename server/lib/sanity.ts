@@ -54,6 +54,7 @@ export interface SanityHowItWorksStep {
   n: number;
   title: string;
   desc: string;
+  iconName?: string;
   emoji?: string;
 }
 
@@ -77,7 +78,7 @@ export async function getSanityHero(): Promise<SanityHeroSection | null> {
 
 export async function getSanityHowItWorksSteps(): Promise<SanityHowItWorksStep[] | null> {
   return fetchFromSanity<SanityHowItWorksStep[]>(
-    `*[_type == "howItWorksStep"] | order(order asc) { "n": order, title, "desc": body, emoji }`,
+    `*[_type == "howItWorksStep"] | order(order asc) { "n": order, title, "desc": body, iconName, "emoji": iconName }`,
     "howItWorksSteps",
   );
 }

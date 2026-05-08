@@ -350,6 +350,7 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
   const [headline, setHeadline] = useState(settings.hero_headline || "");
   const [tagline, setTagline] = useState(settings.hero_tagline || "");
   const [ctaText, setCtaText] = useState(settings.hero_cta || "");
+  const [ctaUrl, setCtaUrl] = useState(settings.hero_cta_url || "");
   const [steps, setSteps] = useState<HowItWorksStep[]>(() => {
     try {
       return settings.how_it_works_steps ? JSON.parse(settings.how_it_works_steps) : [];
@@ -365,6 +366,7 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
     setHeadline(settings.hero_headline || "");
     setTagline(settings.hero_tagline || "");
     setCtaText(settings.hero_cta || "");
+    setCtaUrl(settings.hero_cta_url || "");
     try { setSteps(settings.how_it_works_steps ? JSON.parse(settings.how_it_works_steps) : []); } catch { setSteps([]); }
     try { setFaqEntries(settings.faq_entries ? JSON.parse(settings.faq_entries) : []); } catch { setFaqEntries([]); }
   }, [settings]);
@@ -374,6 +376,7 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
       hero_headline: headline,
       hero_tagline: tagline,
       hero_cta: ctaText,
+      hero_cta_url: ctaUrl,
       how_it_works_steps: steps.length > 0 ? JSON.stringify(steps) : "",
       faq_entries: faqEntries.length > 0 ? JSON.stringify(faqEntries) : "",
     };
@@ -526,6 +529,18 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
               data-testid="input-hero-cta"
             />
             <p className="text-xs text-muted-foreground mt-1">Leave blank to use the default button label</p>
+          </div>
+          <div>
+            <Label htmlFor="hero-cta-url">CTA Button URL</Label>
+            <Input
+              id="hero-cta-url"
+              value={ctaUrl}
+              onChange={(e) => setCtaUrl(e.target.value)}
+              placeholder="/register"
+              className="mt-1.5"
+              data-testid="input-hero-cta-url"
+            />
+            <p className="text-xs text-muted-foreground mt-1">URL the CTA button navigates to. Leave blank for default (/register)</p>
           </div>
         </CardContent>
       </Card>

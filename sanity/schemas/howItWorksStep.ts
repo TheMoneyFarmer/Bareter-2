@@ -24,10 +24,10 @@ export default {
       description: "One- or two-sentence description of this step.",
     },
     {
-      name: "emoji",
-      title: "Emoji / Icon",
+      name: "iconName",
+      title: "Icon Name",
       type: "string",
-      description: "Single emoji displayed with the step (e.g. 📋, 🤝, 🎉).",
+      description: "Icon identifier for this step — can be a Lucide icon name (e.g. 'ListChecks') or a single emoji (e.g. 📋).",
     },
   ],
   orderings: [

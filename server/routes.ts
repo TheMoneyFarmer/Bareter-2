@@ -348,6 +348,8 @@ export async function registerRoutes(
   app.get("/api/public/help-articles", async (_req, res) => {
     try {
       let articles: { slug: string; title: string; body: string }[] = [];
+
+      // Sanity is the primary source
       try {
         const { getSanityHelpArticles } = await import("./lib/sanity");
         const sanityArticles = await getSanityHelpArticles();
@@ -355,8 +357,24 @@ export async function registerRoutes(
           articles = sanityArticles;
         }
       } catch {
-        // Sanity unavailable — return empty list so client uses hardcoded fallback
+        // Sanity unavailable — fall through to app_settings fallback
       }
+
+      // app_settings fallback: JSON array stored under key "help_articles"
+      if (articles.length === 0) {
+        try {
+          const raw = await storage.getAppSetting("help_articles");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              articles = parsed;
+            }
+          }
+        } catch {
+          // app_settings fallback unavailable — client falls back to hardcoded content
+        }
+      }
+
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json(articles);
     } catch {
