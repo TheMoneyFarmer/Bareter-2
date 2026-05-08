@@ -18,17 +18,21 @@ export function initPostHog(): void {
   initialized = true;
 }
 
-function hashId(id: string): string {
-  try {
-    return btoa(id).replace(/=/g, "").slice(0, 16);
-  } catch {
-    return id.slice(0, 8);
-  }
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function identifyUser(userId: string): void {
+export async function identifyUser(userId: string): Promise<void> {
   if (!POSTHOG_KEY || !initialized) return;
-  posthog.identify(hashId(userId));
+  try {
+    const hashed = await sha256Hex(userId);
+    posthog.identify(hashed);
+  } catch {
+    // If hashing fails, do not send any identifier
+  }
 }
 
 export function resetIdentity(): void {

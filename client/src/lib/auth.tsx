@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // identifyUser/resetIdentity are no-ops when VITE_POSTHOG_KEY is absent.
   useEffect(() => {
     if (user?.id) {
-      identifyUser(user.id);
+      void identifyUser(user.id);
     } else if (user === null) {
       resetIdentity();
     }
