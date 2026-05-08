@@ -72,7 +72,13 @@ sign-off record — every required row must be ticked before announcing.
   - `SANITY_API_TOKEN` — Viewer token with read-only access, set in Replit secrets.
   - All three vars are configured; the app falls back to `app_settings` if any are absent.
   - Initial seed content created: 1 heroSection, 3 howItWorksSteps, 2 faqEntries, 2 helpArticles.
-  - To edit content: log into sanity.io/manage/project/ho605hmx and use Sanity Studio.
+  - To edit content via the visual editor: log into **bareter.sanity.studio** (deployed Studio).
+  - **Deploying the Studio** (one-time setup, run from the `sanity/` directory):
+    1. `npx sanity login` — authenticate with your Sanity account (OAuth, opens browser).
+    2. `npx sanity deploy` — builds and publishes the Studio to `bareter.sanity.studio`.
+    3. The `studioHost` is pre-configured as `bareter` in `sanity/sanity.cli.ts`.
+    4. Schema types included: `heroSection`, `howItWorksStep`, `faqEntry`, `helpArticle`.
+    5. The `sanity` and `@sanity/vision` packages are installed in root `node_modules` — the CLI is available via `npx sanity` from the `sanity/` subdirectory.
   - **Instant cache invalidation via webhook**: `POST /api/webhooks/sanity` receives Sanity publish events and immediately flushes the 60-second in-memory content cache so changes appear without delay.
     - `SANITY_WEBHOOK_SECRET` — configured in Replit secrets. HMAC-SHA256 verified, replay-attack protected (5-minute window).
     - Webhook registered at: `https://bareter.com/api/webhooks/sanity` (Sanity project ho605hmx → API → Webhooks)
