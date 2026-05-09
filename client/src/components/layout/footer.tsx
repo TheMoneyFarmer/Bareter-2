@@ -190,23 +190,23 @@ export function Footer() {
             </h4>
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70">
-                <MapPin className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
-                <span>Dubai, United Arab Emirates</span>
+                <MapPin className="h-4 w-4 shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
+                <span dir="ltr">Dubai, United Arab Emirates</span>
               </div>
               <a
                 href={`mailto:${contactEmail}`}
                 className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors"
               >
-                <Mail className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
-                <span>{contactEmail}</span>
+                <Mail className="h-4 w-4 shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
+                <span dir="ltr">{contactEmail}</span>
               </a>
               <a
                 href={`tel:${supportPhone.replace(/\s/g, "")}`}
                 className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors"
                 data-testid="footer-link-phone"
               >
-                <Phone className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
-                <span>{supportPhone}</span>
+                <Phone className="h-4 w-4 shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
+                <span dir="ltr">{supportPhone}</span>
               </a>
             </div>
           </div>
