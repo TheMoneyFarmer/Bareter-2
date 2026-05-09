@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSeo } from "@/hooks/use-seo";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { trackEvent } from "@/lib/posthog";
@@ -95,6 +96,14 @@ export function ListingDetailPage() {
   const { data: myListings } = useQuery<Listing[]>({
     queryKey: ["/api/listings/user", user?.id],
     enabled: !!user,
+  });
+
+  useSeo({
+    title: listing ? `${listing.title} — Bareter` : "Listing — Bareter",
+    description: listing?.description
+      ? listing.description.slice(0, 160)
+      : "View this barter listing on Bareter — UAE's cashless B2B marketplace.",
+    canonical: `${window.location.origin}/listings/${id}`,
   });
 
   const viewedRef = useRef(false);

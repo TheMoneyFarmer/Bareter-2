@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useSeo } from "@/hooks/use-seo";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +9,7 @@ export default function NotFound() {
   const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    const prev = document.title;
-    document.title = "Page not found · Bareter";
-    return () => {
-      document.title = prev;
-    };
-  }, []);
+  useSeo({ title: "Page not found · Bareter" });
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();

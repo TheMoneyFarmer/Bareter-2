@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSeo } from "@/hooks/use-seo";
 import { Link, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,6 +118,13 @@ export function UserProfilePage() {
   const { data: portfolioItems } = useQuery<PortfolioItem[]>({
     queryKey: ["/api/portfolio", id],
     enabled: !!id,
+  });
+
+  const profileName = profileData?.businessName || profileData?.fullName || "Business";
+  useSeo({
+    title: `${profileName} — Bareter`,
+    description: `View ${profileName}'s barter listings and profile on Bareter — UAE's cashless B2B marketplace.`,
+    canonical: `${window.location.origin}/profile/${id}`,
   });
 
   const endorseMutation = useMutation({

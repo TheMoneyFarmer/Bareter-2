@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useSeo } from "@/hooks/use-seo";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,7 @@ export function PricingPage() {
   const waitlistReady = waitlistMode.enabled && !countLoading && counter?.count !== undefined;
   const animatedCount = useCountUp(waitlistReady ? counter.count : null, 1500, isVisible);
 
-  useEffect(() => {
-    const prev = document.title;
-    document.title = "Pricing — Free during launch · Bareter";
-    return () => {
-      document.title = prev;
-    };
-  }, []);
+  useSeo({ title: "Pricing — Free during launch · Bareter" });
 
   const onPrimaryClick = () => {
     if (user) {
