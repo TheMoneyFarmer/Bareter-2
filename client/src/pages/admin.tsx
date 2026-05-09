@@ -166,6 +166,13 @@ type AnalyticsData = {
   dealsPerWeek: { week: string; count: number }[];
 };
 
+type FunnelData = {
+  waitlistCount: number;
+  registeredCount: number;
+  listedCount: number;
+  dealtCount: number;
+};
+
 const COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
 
 export function AdminPage() {
@@ -263,6 +270,11 @@ export function AdminPage() {
 
   const { data: topListings } = useQuery<{ id: string; title: string; viewCount: number; proposalCount: number }[]>({
     queryKey: ["/api/admin/analytics/top-listings"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const { data: funnelData } = useQuery<FunnelData>({
+    queryKey: ["/api/admin/analytics/funnel"],
     enabled: !!user?.isAdmin,
   });
 
@@ -1965,12 +1977,80 @@ export function AdminPage() {
     </div>
   );
 
-  const renderAnalytics = () => (
+  const renderAnalytics = () => {
+    const funnelSteps = [
+      { label: "Waitlist Signups", value: funnelData?.waitlistCount ?? 0, color: "bg-blue-500" },
+      { label: "Registered Users", value: funnelData?.registeredCount ?? 0, color: "bg-teal-500" },
+      { label: "Created a Listing", value: funnelData?.listedCount ?? 0, color: "bg-amber-500" },
+      { label: "Completed a Deal", value: funnelData?.dealtCount ?? 0, color: "bg-green-500" },
+    ];
+    const topValue = funnelSteps[0].value || 1;
+
+    return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-1">Analytics</h2>
         <p className="text-muted-foreground">Platform performance and insights</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Conversion Funnel</CardTitle>
+          <CardDescription>Waitlist → Registration → First listing → First deal</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {funnelSteps.map((step, i) => {
+              const prev = funnelSteps[i - 1]?.value;
+              const convRate = prev && prev > 0 ? ((step.value / prev) * 100).toFixed(1) : null;
+              const barPct = topValue > 0 ? (step.value / topValue) * 100 : 0;
+              return (
+                <div key={step.label} data-testid={`funnel-step-${i}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground w-4">{i + 1}</span>
+                      <span className="text-sm font-medium">{step.label}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {convRate !== null && (
+                        <span className="text-xs text-muted-foreground">
+                          {convRate}% from prev
+                        </span>
+                      )}
+                      <span className="text-sm font-bold tabular-nums w-14 text-right">
+                        {step.value.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${step.color}`}
+                      style={{ width: `${barPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t">
+            {funnelSteps.map((step, i) => {
+              const overallRate = funnelSteps[0].value > 0
+                ? ((step.value / funnelSteps[0].value) * 100).toFixed(1)
+                : "—";
+              return (
+                <div key={step.label} className="text-center" data-testid={`funnel-kpi-${i}`}>
+                  <p className="text-2xl font-bold">{step.value.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">{step.label}</p>
+                  {i > 0 && (
+                    <p className="text-xs font-medium text-primary mt-0.5">{overallRate}% overall</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
@@ -2116,6 +2196,7 @@ export function AdminPage() {
       </div>
     </div>
   );
+  };
 
   const auditAdmins = Array.from(new Set(auditLogs.map(l => ({ id: l.adminId, email: l.adminEmail })).filter(a => a.email).map(a => JSON.stringify(a)))).map(s => JSON.parse(s) as { id: string; email: string });
   const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();

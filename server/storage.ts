@@ -256,6 +256,7 @@ export interface IStorage {
   getWaitlistEntryByReferralCode(code: string): Promise<WaitlistEntry | undefined>;
   listWaitlistEntries(opts?: { limit?: number; offset?: number; country?: string; search?: string }): Promise<WaitlistEntry[]>;
   getWaitlistCount(): Promise<number>;
+  getConversionFunnel(): Promise<{ waitlistCount: number; registeredCount: number; listedCount: number; dealtCount: number }>;
   getWaitlistStatsByCountry(): Promise<{ country: string | null; count: number }[]>;
   getWaitlistSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
   markWaitlistConfirmed(email: string): Promise<void>;
@@ -1451,6 +1452,25 @@ export class DatabaseStorage implements IStorage {
   async getWaitlistCount(): Promise<number> {
     const [row] = await db.select({ c: sql<number>`count(*)` }).from(waitlistEntries);
     return Number(row?.c ?? 0);
+  }
+
+  async getConversionFunnel(): Promise<{ waitlistCount: number; registeredCount: number; listedCount: number; dealtCount: number }> {
+    const [wlRow] = await db.select({ c: sql<number>`count(*)` }).from(waitlistEntries);
+    const [usersRow] = await db.select({ c: sql<number>`count(*)` }).from(users);
+    const [listedRow] = await db.select({ c: sql<number>`count(distinct user_id)` }).from(listings);
+    const [dealtRow] = await db.execute(
+      sql`SELECT count(distinct uid) AS c FROM (
+        SELECT seeker_id AS uid FROM deals WHERE state = 'completed'
+        UNION
+        SELECT provider_id AS uid FROM deals WHERE state = 'completed'
+      ) sub`
+    );
+    return {
+      waitlistCount: Number((wlRow as any)?.c ?? 0),
+      registeredCount: Number((usersRow as any)?.c ?? 0),
+      listedCount: Number((listedRow as any)?.c ?? 0),
+      dealtCount: Number((dealtRow as any)?.c ?? 0),
+    };
   }
 
   async getAppSetting(key: string): Promise<string | null> {

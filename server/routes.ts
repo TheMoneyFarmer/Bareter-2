@@ -2814,6 +2814,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/analytics/funnel", requireAdmin, async (_req, res) => {
+    try {
+      const funnel = await storage.getConversionFunnel();
+      res.json(funnel);
+    } catch (error) {
+      console.error("Funnel analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/admin/analytics/top-listings", requireAdmin, async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 10, 50);
