@@ -1,6 +1,6 @@
 # Production Database — Test Restore Evidence
 
-**Status:** _UNFILLED — must be completed by the founder before public launch._
+**Status:** _PARTIALLY FILLED — founder must complete TODO fields before sign-off._
 
 This file is the audit artifact for Task #151 (production DB backup &
 restore plan). It is committed to the repo *empty* on purpose so reviewers
@@ -16,20 +16,20 @@ The procedure to fill this in lives in
 
 | Field                    | Value                |
 | ------------------------ | -------------------- |
-| Date checked (YYYY-MM-DD)| `____________`       |
-| Replit plan              | `____________`       |
-| Recovery window (days)   | `____________`       |
-| Operator (name + email)  | `____________`       |
-| Backup operator (name)   | `____________`       |
+| Date checked (YYYY-MM-DD)| `TODO: date you confirmed the plan on Replit Account → Billing`         |
+| Replit plan              | `TODO: e.g. "Core" (7-day window) or "Pro" (28-day window)`             |
+| Recovery window (days)   | `TODO: 7 (Core) or 28 (Pro) — read from Deployments → Database panel`  |
+| Operator (name + email)  | `TODO: primary operator full name and email`                            |
+| Backup operator (name)   | `TODO: second person who can trigger a restore (full name)`             |
 
 ## 2. Test point-in-time restore
 
 | Field                            | Value          |
 | -------------------------------- | -------------- |
-| Restore performed (UTC timestamp)| `____________` |
-| Target restore point (UTC)       | `____________` |
-| Replit success confirmation seen | `[ ] yes`      |
-| Screenshot file (relative path)  | `screenshots/pitr-test-YYYYMMDD.png` |
+| Restore performed (UTC timestamp)| `TODO: e.g. 2026-05-10T10:00Z — when you triggered the PITR` |
+| Target restore point (UTC)       | `TODO: e.g. 2026-05-09T08:00Z — the point you restored back to` |
+| Replit success confirmation seen | `[ ] yes`                                                        |
+| Screenshot file (relative path)  | `screenshots/pitr-test-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ## 3. Post-restore verification SQL
 
@@ -55,20 +55,20 @@ Operator confirms the values reflect the chosen restore point: `[ ] yes`.
 
 | Field                              | Value          |
 | ---------------------------------- | -------------- |
-| Forward PITR performed (UTC)       | `____________` |
-| Sanity SQL re-run and matches now  | `[ ] yes`      |
+| Forward PITR performed (UTC)       | `TODO: e.g. 2026-05-10T10:30Z — when you restored back to current` |
+| Sanity SQL re-run and matches now  | `[ ] yes`                                                           |
 
 ## 5. Weekly spot-check reminder created
 
 | Field                              | Value                |
 | ---------------------------------- | -------------------- |
 | Reminder title                     | `Bareter: weekly DB-backup spot-check` |
-| Calendar host (Google / iCal / …)  | `____________`       |
-| Cadence                            | weekly               |
-| Time of day & timezone             | `____________`       |
-| Owner (name)                       | `____________`       |
-| Created on (YYYY-MM-DD)            | `____________`       |
-| Screenshot of created event        | `screenshots/calendar-reminder-YYYYMMDD.png` |
+| Calendar host (Google / iCal / …)  | `TODO: e.g. Google Calendar / Apple Calendar / Outlook` |
+| Cadence                            | weekly                                                  |
+| Time of day & timezone             | `TODO: e.g. 09:00 GST (UTC+4) every Monday`             |
+| Owner (name)                       | `TODO: your full name`                                  |
+| Created on (YYYY-MM-DD)            | `TODO: date you created the recurring event`            |
+| Screenshot of created event        | `screenshots/calendar-reminder-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ---
 
@@ -81,5 +81,5 @@ confirms that:
   production database.
 - The recurring weekly spot-check reminder exists in their calendar.
 
-Operator signature (name): `____________`
-Date: `____________`
+Operator signature (name): `TODO: your full name`
+Date: `TODO: YYYY-MM-DD`

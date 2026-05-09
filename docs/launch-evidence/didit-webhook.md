@@ -1,6 +1,6 @@
 # Didit webhook — evidence
 
-**Status:** _UNFILLED — must be completed by the founder before public launch._
+**Status:** _PARTIALLY FILLED — founder must complete TODO fields before sign-off._
 
 Audit artifact for Task #156 (point Didit webhook at the production
 domain). Procedure lives in
@@ -21,8 +21,8 @@ the custom domain.
 
 | Field                        | Value                       |
 | ---------------------------- | --------------------------- |
-| Date configured (YYYY-MM-DD) | `____________`              |
-| Operator (name + email)      | `____________`              |
+| Date configured (YYYY-MM-DD) | `TODO: date you updated both Didit workflow webhook URLs` |
+| Operator (name + email)      | `TODO: your full name and email`                          |
 
 Screenshot of Didit dashboard showing the URL on each workflow:
 `screenshots/didit-webhook-kyc-YYYYMMDD.png`,
@@ -32,8 +32,8 @@ Screenshot of Didit dashboard showing the URL on each workflow:
 
 | Test                                         | Test user email | Session id | Webhook received in logs? | Final DB state                           | Result            |
 | -------------------------------------------- | --------------- | ---------- | ------------------------- | ---------------------------------------- | ----------------- |
-| KYC: individual account, completed Didit flow | `____`          | `____`     | `[ ] yes`                 | `kyc_status=APPROVED`, `is_verified=true`, `didit_verified_at` set, "Verification Complete" notification created | `[Pass] / [Fail]` |
-| KYB: business account, completed Didit flow   | `____`          | `____`     | `[ ] yes`                 | `kyb_status=APPROVED`, `is_verified=true`, `didit_verified_at` set, "Verification Complete" notification created | `[Pass] / [Fail]` |
+| KYC: individual account, completed Didit flow | `TODO: test user email` | `TODO: Didit session_id from URL or Didit dashboard` | `[ ] yes` | `kycStatus='APPROVED'`, `isVerified=true`, `verificationStatus='verified'`, `diditVerifiedAt` populated, notification "Verification Approved!" created for user | `[Pass] / [Fail]` |
+| KYB: business account, completed Didit flow   | `TODO: test business email` | `TODO: Didit session_id from URL or Didit dashboard` | `[ ] yes` | `kybStatus='APPROVED'`, `isVerified=true`, `verificationStatus='verified'`, `diditVerifiedAt` populated, notification "Verification Approved!" created for user | `[Pass] / [Fail]` |
 
 Screenshots:
 - `screenshots/didit-webhook-kyc-approved-YYYYMMDD.png` — admin dashboard
@@ -47,12 +47,12 @@ Both rows must say **Pass** before the launch announcement.
 | Field                              | Value                |
 | ---------------------------------- | -------------------- |
 | Reminder title                     | `Bareter: monthly Didit webhook spot-check` |
-| Calendar host (Google / iCal / …)  | `____________`       |
-| Cadence                            | monthly              |
-| Time of day & timezone             | `____________`       |
-| Owner (name)                       | `____________`       |
-| Created on (YYYY-MM-DD)            | `____________`       |
-| Screenshot of created event        | `screenshots/didit-webhook-reminder-YYYYMMDD.png` |
+| Calendar host (Google / iCal / …)  | `TODO: e.g. Google Calendar / Apple Calendar / Outlook` |
+| Cadence                            | monthly                                                 |
+| Time of day & timezone             | `TODO: e.g. 09:00 GST (UTC+4)`                          |
+| Owner (name)                       | `TODO: your full name`                                  |
+| Created on (YYYY-MM-DD)            | `TODO: date you created the recurring event`            |
+| Screenshot of created event        | `screenshots/didit-webhook-reminder-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ## 4. Incidents (append-only)
 
@@ -70,5 +70,5 @@ matches `DIDIT_WEBHOOK_SECRET` on the production deployment, and that
 end-to-end test verifications for a KYC user and a KYB business
 correctly flip to `APPROVED` in the production database.
 
-Operator signature (name): `____________`
-Date: `____________`
+Operator signature (name): `TODO: your full name`
+Date: `TODO: YYYY-MM-DD`

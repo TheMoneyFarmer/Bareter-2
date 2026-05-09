@@ -1,6 +1,6 @@
 # Email deliverability — evidence
 
-**Status:** _UNFILLED — must be completed by the founder before public launch._
+**Status:** _PARTIALLY FILLED — founder must complete TODO fields before sign-off._
 
 Audit artifact for Task #152 (verify Resend sending domain). Procedure
 lives in [`../LAUNCH_EMAIL_DELIVERABILITY.md`](../LAUNCH_EMAIL_DELIVERABILITY.md).
@@ -14,19 +14,19 @@ lives in [`../LAUNCH_EMAIL_DELIVERABILITY.md`](../LAUNCH_EMAIL_DELIVERABILITY.md
 | Sending domain             | `bareter.com`        |
 | Primary `RESEND_FROM_EMAIL`| `hello@bareter.com`  |
 | Bounce / no-reply alias    | `noreply@bareter.com`|
-| Date verified (YYYY-MM-DD) | `____________`       |
-| Operator (name + email)    | `____________`       |
+| Date verified (YYYY-MM-DD) | `TODO: date Resend shows all DNS records green`    |
+| Operator (name + email)    | `TODO: your full name and email`                   |
 
 ## 2. DNS records added (paste actual values from registrar)
 
 | Type  | Host                       | Value (truncated ok)             | Status |
 | ----- | -------------------------- | -------------------------------- | ------ |
-| TXT   | `bareter.com`              | `v=spf1 include:____ ~all`       | `[ ]`  |
-| CNAME | `resend._domainkey`        | `____________.dkim.amazonses.com`| `[ ]`  |
-| CNAME | `resend2._domainkey`       | `____________.dkim.amazonses.com`| `[ ]`  |
-| CNAME | `resend3._domainkey`       | `____________.dkim.amazonses.com`| `[ ]`  |
-| MX    | `send.bareter.com`         | `feedback-smtp.____.amazonses.com` | `[ ]` |
-| TXT   | `_dmarc.bareter.com`       | `v=DMARC1; p=quarantine; rua=...`| `[ ]`  |
+| TXT   | `bareter.com`              | `v=spf1 include:amazonses.com ~all` — `TODO: paste exact value Resend shows` | `[ ]`  |
+| CNAME | `resend._domainkey`        | `TODO: DKIM CNAME value from Resend dashboard (format: <id>.dkim.amazonses.com)` | `[ ]`  |
+| CNAME | `resend2._domainkey`       | `TODO: DKIM CNAME value from Resend dashboard`                                   | `[ ]`  |
+| CNAME | `resend3._domainkey`       | `TODO: DKIM CNAME value from Resend dashboard (if a third record is shown)`      | `[ ]`  |
+| MX    | `send.bareter.com`         | `TODO: MX value from Resend dashboard (format: feedback-smtp.<region>.amazonses.com)` | `[ ]` |
+| TXT   | `_dmarc.bareter.com`       | `v=DMARC1; p=quarantine; rua=mailto:dmarc@bareter.com; pct=100; adkim=s; aspf=s` | `[ ]`  |
 
 Resend dashboard screenshot showing all green:
 `screenshots/resend-domain-green-YYYYMMDD.png`
@@ -35,9 +35,9 @@ Resend dashboard screenshot showing all green:
 
 | Provider | Test address | Sent at (UTC) | Resend message id | Inbox / Spam | Screenshot |
 | -------- | ------------ | ------------- | ------------------ | ------------ | ---------- |
-| Gmail    | `____`       | `____`        | `____`             | `Inbox / Spam` | `screenshots/email-gmail-YYYYMMDD.png` |
-| Outlook  | `____`       | `____`        | `____`             | `Inbox / Spam` | `screenshots/email-outlook-YYYYMMDD.png` |
-| iCloud   | `____`       | `____`        | `____`             | `Inbox / Spam` | `screenshots/email-icloud-YYYYMMDD.png` |
+| Gmail    | `TODO: gmail test address`   | `TODO: HH:MM UTC` | `TODO: re_xxxx Resend message id` | `Inbox / Spam` | `screenshots/email-gmail-YYYYMMDD.png` |
+| Outlook  | `TODO: outlook test address` | `TODO: HH:MM UTC` | `TODO: re_xxxx Resend message id` | `Inbox / Spam` | `screenshots/email-outlook-YYYYMMDD.png` |
+| iCloud   | `TODO: icloud test address`  | `TODO: HH:MM UTC` | `TODO: re_xxxx Resend message id` | `Inbox / Spam` | `screenshots/email-icloud-YYYYMMDD.png` |
 
 All three must say **Inbox** before the launch can proceed.
 
@@ -46,12 +46,12 @@ All three must say **Inbox** before the launch can proceed.
 | Field                              | Value                |
 | ---------------------------------- | -------------------- |
 | Reminder title                     | `Bareter: monthly Resend domain spot-check` |
-| Calendar host (Google / iCal / …)  | `____________`       |
-| Cadence                            | monthly              |
-| Time of day & timezone             | `____________`       |
-| Owner (name)                       | `____________`       |
-| Created on (YYYY-MM-DD)            | `____________`       |
-| Screenshot of created event        | `screenshots/email-reminder-YYYYMMDD.png` |
+| Calendar host (Google / iCal / …)  | `TODO: e.g. Google Calendar / Apple Calendar / Outlook` |
+| Cadence                            | monthly                                                 |
+| Time of day & timezone             | `TODO: e.g. 09:00 GST (UTC+4)`                          |
+| Owner (name)                       | `TODO: your full name`                                  |
+| Created on (YYYY-MM-DD)            | `TODO: date you created the recurring event`            |
+| Screenshot of created event        | `screenshots/email-reminder-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ## 5. Incidents (append-only)
 
@@ -66,5 +66,5 @@ By filling in the fields above and committing this file, the operator
 confirms that the Bareter sending domain is verified end-to-end and that
 the recurring spot-check reminder exists.
 
-Operator signature (name): `____________`
-Date: `____________`
+Operator signature (name): `TODO: your full name`
+Date: `TODO: YYYY-MM-DD`
