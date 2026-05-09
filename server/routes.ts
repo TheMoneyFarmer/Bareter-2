@@ -84,7 +84,7 @@ import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
-import { eq, and, desc, gte, count, lt, sql as sqlOperator, or } from "drizzle-orm";
+import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -6774,80 +6774,274 @@ export async function registerRoutes(
     );
   });
 
-  // ── sitemap.xml (10-min in-memory cache) ────────────────────────────────────
-  let sitemapCache: { xml: string; builtAt: number } | null = null;
+  // ── sitemap helpers ──────────────────────────────────────────────────────────
   const SITEMAP_TTL_MS = 10 * 60 * 1000;
+  // When total URL count exceeds this threshold, serve a sitemapindex instead
+  // of a single flat <urlset>. Configurable via SITEMAP_SPLIT_THRESHOLD env var.
+  const SITEMAP_SPLIT_THRESHOLD = parseInt(process.env.SITEMAP_SPLIT_THRESHOLD ?? "5000", 10);
+  // Hard per-file limit (Google max is 50,000). Paginate child sitemaps beyond this.
+  const SITEMAP_PAGE_LIMIT = 50_000;
 
+  const escapeXml = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const urlTag = (loc: string, opts: { lastmod?: string; changefreq?: string; priority?: string }) =>
+    `  <url>\n    <loc>${escapeXml(loc)}</loc>${opts.lastmod ? `\n    <lastmod>${opts.lastmod}</lastmod>` : ""}${opts.changefreq ? `\n    <changefreq>${opts.changefreq}</changefreq>` : ""}${opts.priority ? `\n    <priority>${opts.priority}</priority>` : ""}\n  </url>`;
+
+  const wrapUrlset = (tags: string[]) =>
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${tags.join("\n")}\n</urlset>`;
+
+  const wrapSitemapIndex = (entries: Array<{ loc: string; lastmod?: string }>) => {
+    const items = entries.map(({ loc, lastmod }) =>
+      `  <sitemap>\n    <loc>${escapeXml(loc)}</loc>${lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : ""}\n  </sitemap>`
+    ).join("\n");
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${items}\n</sitemapindex>`;
+  };
+
+  const staticPaths = [
+    { loc: "/", priority: "1.0", changefreq: "daily" },
+    { loc: "/browse", priority: "0.9", changefreq: "hourly" },
+    { loc: "/browse-public", priority: "0.8", changefreq: "hourly" },
+    { loc: "/feed", priority: "0.8", changefreq: "hourly" },
+    { loc: "/map", priority: "0.8", changefreq: "daily" },
+    { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
+    { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
+    { loc: "/create-listing", priority: "0.7", changefreq: "monthly" },
+    { loc: "/register", priority: "0.8", changefreq: "monthly" },
+    { loc: "/login", priority: "0.7", changefreq: "monthly" },
+    { loc: "/faq", priority: "0.6", changefreq: "monthly" },
+    { loc: "/help", priority: "0.6", changefreq: "monthly" },
+    { loc: "/terms", priority: "0.4", changefreq: "monthly" },
+    { loc: "/privacy", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/barter-rules", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/dispute-resolution", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/vat", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/cookies", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/acceptable-use", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/community-standards", priority: "0.4", changefreq: "monthly" },
+    { loc: "/legal/customer-agreement", priority: "0.4", changefreq: "monthly" },
+  ];
+
+  // Per-child cache map keyed by sitemap name (e.g. "pages", "categories", "listings-1")
+  const sitemapChildCaches = new Map<string, { xml: string; builtAt: number }>();
+  let sitemapIndexCache: { xml: string; builtAt: number } | null = null;
+
+  const getCachedChild = (key: string) => {
+    const entry = sitemapChildCaches.get(key);
+    if (entry && Date.now() - entry.builtAt < SITEMAP_TTL_MS) return entry.xml;
+    return null;
+  };
+  const setCachedChild = (key: string, xml: string) =>
+    sitemapChildCaches.set(key, { xml, builtAt: Date.now() });
+
+  const sendXml = (res: Response, xml: string) =>
+    res.type("application/xml").set("Cache-Control", "public, max-age=600").send(xml);
+
+  // ── /sitemap.xml ─────────────────────────────────────────────────────────────
+  // Returns a single <urlset> when small, a <sitemapindex> when large.
   app.get("/sitemap.xml", async (req, res) => {
     try {
+      const base = getBaseUrl(req);
       const now = Date.now();
-      if (sitemapCache && now - sitemapCache.builtAt < SITEMAP_TTL_MS) {
-        res.type("application/xml").set("Cache-Control", "public, max-age=600").send(sitemapCache.xml);
-        return;
+
+      // Serve from cache immediately — no DB work on cache hits
+      if (sitemapIndexCache && now - sitemapIndexCache.builtAt < SITEMAP_TTL_MS) {
+        return void sendXml(res, sitemapIndexCache.xml);
       }
 
-      const rows = await db
-        .select({ id: listings.id, updatedAt: listings.updatedAt })
-        .from(listings)
-        .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)));
+      // Cache miss — rebuild from DB
+      const [listingRows, userRows] = await Promise.all([
+        db.select({ id: listings.id, updatedAt: listings.updatedAt })
+          .from(listings)
+          .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)))
+          .orderBy(asc(listings.id)),
+        db.select({ id: users.id, updatedAt: users.updatedAt })
+          .from(users)
+          .where(and(eq(users.isBanned, false), eq(users.isVerified, true)))
+          .orderBy(asc(users.id)),
+      ]);
 
-      const base = getBaseUrl(req);
-      const staticPaths = [
-        { loc: "/", priority: "1.0", changefreq: "daily" },
-        { loc: "/browse", priority: "0.9", changefreq: "hourly" },
-        { loc: "/browse-public", priority: "0.8", changefreq: "hourly" },
-        { loc: "/feed", priority: "0.8", changefreq: "hourly" },
-        { loc: "/map", priority: "0.8", changefreq: "daily" },
-        { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
-        { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
-        { loc: "/create-listing", priority: "0.7", changefreq: "monthly" },
-        { loc: "/register", priority: "0.8", changefreq: "monthly" },
-        { loc: "/login", priority: "0.7", changefreq: "monthly" },
-        { loc: "/faq", priority: "0.6", changefreq: "monthly" },
-        { loc: "/help", priority: "0.6", changefreq: "monthly" },
-        { loc: "/terms", priority: "0.4", changefreq: "monthly" },
-        { loc: "/privacy", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/barter-rules", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/dispute-resolution", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/vat", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/cookies", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/acceptable-use", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/community-standards", priority: "0.4", changefreq: "monthly" },
-        { loc: "/legal/customer-agreement", priority: "0.4", changefreq: "monthly" },
+      const catTags = [
+        ...allCategorySlugs().map(({ slug }) =>
+          urlTag(`${base}/c/${slug}`, { changefreq: "daily", priority: "0.8" })
+        ),
+        ...allSubcategorySlugs().map(({ categorySlug, subcategorySlug }) =>
+          urlTag(`${base}/c/${categorySlug}/${subcategorySlug}`, { changefreq: "daily", priority: "0.7" })
+        ),
+      ];
+      const pageTags = staticPaths.map(({ loc, priority, changefreq }) =>
+        urlTag(base + loc, { changefreq, priority })
+      );
+      const listingTags = listingRows.map((row) => {
+        const lastmod = row.updatedAt
+          ? new Date(row.updatedAt).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0];
+        return urlTag(`${base}/listings/${row.id}`, { lastmod, changefreq: "weekly", priority: "0.7" });
+      });
+      const userTags = userRows.map((row) => {
+        const lastmod = row.updatedAt
+          ? new Date(row.updatedAt).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0];
+        return urlTag(`${base}/users/${row.id}`, { lastmod, changefreq: "weekly", priority: "0.6" });
+      });
+
+      const totalUrls = pageTags.length + catTags.length + listingTags.length + userTags.length;
+
+      if (totalUrls <= SITEMAP_SPLIT_THRESHOLD) {
+        // ── Single flat sitemap (small site) ──
+        const xml = wrapUrlset([...pageTags, ...catTags, ...listingTags, ...userTags]);
+        sitemapIndexCache = { xml, builtAt: now };
+        return void sendXml(res, xml);
+      }
+
+      // ── Sitemapindex mode (large site) ──
+
+      // Pre-build and cache each child sitemap now so child routes are warm
+      setCachedChild("pages", wrapUrlset(pageTags));
+      setCachedChild("categories", wrapUrlset(catTags));
+
+      const buildPagedChildCaches = (key: string, tags: string[]) => {
+        const pageCount = Math.max(1, Math.ceil(tags.length / SITEMAP_PAGE_LIMIT));
+        for (let p = 1; p <= pageCount; p++) {
+          const slice = tags.slice((p - 1) * SITEMAP_PAGE_LIMIT, p * SITEMAP_PAGE_LIMIT);
+          setCachedChild(p === 1 ? key : `${key}-${p}`, wrapUrlset(slice));
+        }
+        return Math.max(1, Math.ceil(tags.length / SITEMAP_PAGE_LIMIT));
+      };
+
+      const listingPages = buildPagedChildCaches("listings", listingTags);
+      const userPages = buildPagedChildCaches("users", userTags);
+
+      const today = new Date().toISOString().split("T")[0];
+      const indexEntries: Array<{ loc: string; lastmod: string }> = [
+        { loc: `${base}/sitemap-pages.xml`, lastmod: today },
+        { loc: `${base}/sitemap-categories.xml`, lastmod: today },
+        ...Array.from({ length: listingPages }, (_, i) => ({
+          loc: i === 0 ? `${base}/sitemap-listings.xml` : `${base}/sitemap-listings-${i + 1}.xml`,
+          lastmod: today,
+        })),
+        ...Array.from({ length: userPages }, (_, i) => ({
+          loc: i === 0 ? `${base}/sitemap-users.xml` : `${base}/sitemap-users-${i + 1}.xml`,
+          lastmod: today,
+        })),
       ];
 
-      const escapeXml = (s: string) =>
-        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-      const urlTags = [
-        ...staticPaths.map(
-          ({ loc, priority, changefreq }) =>
-            `  <url>\n    <loc>${escapeXml(base + loc)}</loc>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`
-        ),
-        ...allCategorySlugs().map(
-          ({ slug }) =>
-            `  <url>\n    <loc>${escapeXml(`${base}/c/${slug}`)}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>`,
-        ),
-        ...allSubcategorySlugs().map(
-          ({ categorySlug, subcategorySlug }) =>
-            `  <url>\n    <loc>${escapeXml(`${base}/c/${categorySlug}/${subcategorySlug}`)}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>`,
-        ),
-        ...rows.map((row) => {
-          const lastmod = row.updatedAt
-            ? new Date(row.updatedAt).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0];
-          return `  <url>\n    <loc>${escapeXml(`${base}/listings/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`;
-        }),
-      ].join("\n");
-
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlTags}\n</urlset>`;
-      sitemapCache = { xml, builtAt: now };
-
-      res.type("application/xml").set("Cache-Control", "public, max-age=600").send(xml);
+      const xml = wrapSitemapIndex(indexEntries);
+      sitemapIndexCache = { xml, builtAt: now };
+      return void sendXml(res, xml);
     } catch (err) {
       console.error("sitemap error:", err);
       res.status(500).send("<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'/>");
     }
+  });
+
+  // ── Child sitemap routes ──────────────────────────────────────────────────────
+  // These are only meaningful in sitemapindex mode but are always routable so
+  // crawlers can fetch them directly even before the index is first requested.
+
+  const serveChildOrRebuild = async (
+    req: Request,
+    res: Response,
+    cacheKey: string,
+    build: () => Promise<string>,
+  ) => {
+    try {
+      const cached = getCachedChild(cacheKey);
+      if (cached) return void sendXml(res, cached);
+      const xml = await build();
+      setCachedChild(cacheKey, xml);
+      sendXml(res, xml);
+    } catch (err) {
+      console.error(`sitemap child error (${cacheKey}):`, err);
+      res.status(500).send("<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'/>");
+    }
+  };
+
+  app.get("/sitemap-pages.xml", (req, res) => {
+    const base = getBaseUrl(req);
+    serveChildOrRebuild(req, res, "pages", async () =>
+      wrapUrlset(staticPaths.map(({ loc, priority, changefreq }) =>
+        urlTag(base + loc, { changefreq, priority })
+      ))
+    );
+  });
+
+  app.get("/sitemap-categories.xml", (req, res) => {
+    const base = getBaseUrl(req);
+    serveChildOrRebuild(req, res, "categories", async () =>
+      wrapUrlset([
+        ...allCategorySlugs().map(({ slug }) =>
+          urlTag(`${base}/c/${slug}`, { changefreq: "daily", priority: "0.8" })
+        ),
+        ...allSubcategorySlugs().map(({ categorySlug, subcategorySlug }) =>
+          urlTag(`${base}/c/${categorySlug}/${subcategorySlug}`, { changefreq: "daily", priority: "0.7" })
+        ),
+      ])
+    );
+  });
+
+  // Listings child sitemaps — page 1 uses /sitemap-listings.xml, extra pages use /sitemap-listings-N.xml
+  const buildListingsSitemapPage = async (base: string, page: number): Promise<string> => {
+    const offset = (page - 1) * SITEMAP_PAGE_LIMIT;
+    const rows = await db
+      .select({ id: listings.id, updatedAt: listings.updatedAt })
+      .from(listings)
+      .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)))
+      .orderBy(asc(listings.id))
+      .limit(SITEMAP_PAGE_LIMIT)
+      .offset(offset);
+    const tags = rows.map((row) => {
+      const lastmod = row.updatedAt
+        ? new Date(row.updatedAt).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+      return urlTag(`${base}/listings/${row.id}`, { lastmod, changefreq: "weekly", priority: "0.7" });
+    });
+    return wrapUrlset(tags);
+  };
+
+  app.get("/sitemap-listings.xml", (req, res) => {
+    const base = getBaseUrl(req);
+    serveChildOrRebuild(req, res, "listings", () => buildListingsSitemapPage(base, 1));
+  });
+
+  app.get("/sitemap-listings-:page.xml", (req, res) => {
+    const page = parseInt(req.params.page, 10);
+    if (isNaN(page) || page < 2) return void res.status(404).send("Not found");
+    const base = getBaseUrl(req);
+    const key = `listings-${page}`;
+    serveChildOrRebuild(req, res, key, () => buildListingsSitemapPage(base, page));
+  });
+
+  // Users child sitemaps — verified, non-banned users with public profile pages
+  const buildUsersSitemapPage = async (base: string, page: number): Promise<string> => {
+    const offset = (page - 1) * SITEMAP_PAGE_LIMIT;
+    const rows = await db
+      .select({ id: users.id, updatedAt: users.updatedAt })
+      .from(users)
+      .where(and(eq(users.isBanned, false), eq(users.isVerified, true)))
+      .orderBy(asc(users.id))
+      .limit(SITEMAP_PAGE_LIMIT)
+      .offset(offset);
+    const tags = rows.map((row) => {
+      const lastmod = row.updatedAt
+        ? new Date(row.updatedAt).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+      return urlTag(`${base}/users/${row.id}`, { lastmod, changefreq: "weekly", priority: "0.6" });
+    });
+    return wrapUrlset(tags);
+  };
+
+  app.get("/sitemap-users.xml", (req, res) => {
+    const base = getBaseUrl(req);
+    serveChildOrRebuild(req, res, "users", () => buildUsersSitemapPage(base, 1));
+  });
+
+  app.get("/sitemap-users-:page.xml", (req, res) => {
+    const page = parseInt(req.params.page, 10);
+    if (isNaN(page) || page < 2) return void res.status(404).send("Not found");
+    const base = getBaseUrl(req);
+    const key = `users-${page}`;
+    serveChildOrRebuild(req, res, key, () => buildUsersSitemapPage(base, page));
   });
 
   // ════════════════════════════════════════════════════════════════════
