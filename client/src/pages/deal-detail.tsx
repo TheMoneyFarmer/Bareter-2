@@ -315,24 +315,29 @@ export function DealDetailPage() {
         <Card className="mb-6">
           <CardContent className="py-6">
             <div className="flex justify-between items-center mb-4">
-              {steps.map((step, index) => (
-                <div key={step} className="flex flex-col items-center flex-1">
-                  <div
-                    className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                      config.step > index
-                        ? "bg-primary text-primary-foreground"
-                        : config.step === index
-                        ? "bg-primary/20 text-primary border-2 border-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {config.step > index ? <CheckCircle className="h-4 w-4" /> : index + 1}
+              {(isRTL ? [...steps].reverse() : steps).map((step, index) => {
+                const originalIndex = isRTL ? steps.length - 1 - index : index;
+                return (
+                  <div key={step} className="flex flex-col items-center flex-1">
+                    <div
+                      className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                        config.step > originalIndex
+                          ? "bg-primary text-primary-foreground"
+                          : config.step === originalIndex
+                          ? "bg-primary/20 text-primary border-2 border-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {config.step > originalIndex ? <CheckCircle className="h-4 w-4" /> : originalIndex + 1}
+                    </div>
+                    <span className="text-xs mt-2 text-center">{step}</span>
                   </div>
-                  <span className="text-xs mt-2 text-center">{step}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <Progress value={(config.step / 5) * 100} className="h-2" />
+            <div className={isRTL ? "scale-x-[-1]" : ""}>
+              <Progress value={(config.step / 5) * 100} className="h-2" />
+            </div>
           </CardContent>
         </Card>
       )}
