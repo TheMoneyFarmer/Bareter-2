@@ -33,25 +33,25 @@ import {
 } from "lucide-react";
 
 const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
-  { emoji: "🚗", label: "Cars", href: "/browse?category=Automotive" },
-  { emoji: "🏢", label: "Real Estate", href: "/browse?category=Real%20Estate" },
-  { emoji: "💼", label: "Services", href: "/browse?category=Services" },
-  { emoji: "📱", label: "Electronics", href: "/browse?category=Technology" },
-  { emoji: "🍽", label: "Hospitality", href: "/browse?category=Hospitality" },
-  { emoji: "⛵", label: "Yachts", href: "/browse?category=Yachts" },
-  { emoji: "🏋", label: "Fitness", href: "/browse?category=Health%20%26%20Wellness" },
-  { emoji: "🏠", label: "Home", href: "/browse?category=Home" },
+  { emoji: "🚗", label: "Cars", href: "/c/automotive" },
+  { emoji: "🏢", label: "Real Estate", href: "/c/real-estate" },
+  { emoji: "💼", label: "Services", href: "/c/services" },
+  { emoji: "📱", label: "Electronics", href: "/c/technology" },
+  { emoji: "🍽", label: "Hospitality", href: "/c/hospitality" },
+  { emoji: "⛵", label: "Yachts", href: "/c/real-estate/villa" },
+  { emoji: "🏋", label: "Fitness", href: "/c/health-and-wellness" },
+  { emoji: "🏠", label: "Home", href: "/c/real-estate" },
 ];
 
 const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
-  { label: "Cars",        emoji: "🚗", image: catCarsImg,        href: "/browse?category=Automotive" },
-  { label: "Real Estate", emoji: "🏢", image: catRealEstateImg,  href: "/browse?category=Real%20Estate" },
-  { label: "Services",    emoji: "💼", image: catServicesImg,    href: "/browse?category=Services" },
-  { label: "Electronics", emoji: "📱", image: catElectronicsImg, href: "/browse?category=Technology" },
-  { label: "Hospitality", emoji: "🍽", image: catHospitalityImg, href: "/browse?category=Hospitality" },
-  { label: "Yachts",      emoji: "⛵", image: catYachtsImg,      href: "/browse?category=Yachts" },
-  { label: "Fitness",     emoji: "🏋", image: catFitnessImg,     href: "/browse?category=Health%20%26%20Wellness" },
-  { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/browse?category=Home" },
+  { label: "Cars",        emoji: "🚗", image: catCarsImg,        href: "/c/automotive" },
+  { label: "Real Estate", emoji: "🏢", image: catRealEstateImg,  href: "/c/real-estate" },
+  { label: "Services",    emoji: "💼", image: catServicesImg,    href: "/c/services" },
+  { label: "Electronics", emoji: "📱", image: catElectronicsImg, href: "/c/technology" },
+  { label: "Hospitality", emoji: "🍽", image: catHospitalityImg, href: "/c/hospitality" },
+  { label: "Yachts",      emoji: "⛵", image: catYachtsImg,      href: "/c/real-estate/villa" },
+  { label: "Fitness",     emoji: "🏋", image: catFitnessImg,     href: "/c/health-and-wellness" },
+  { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/c/real-estate" },
 ];
 
 type PublicSettings = Record<string, string | null>;

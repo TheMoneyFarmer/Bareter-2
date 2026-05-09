@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useRoute } from "wouter";
+import { categoryFromSlug, subcategoryFromSlug } from "@shared/category-slugs";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { TrendingTiles } from "@/components/TrendingTiles";
@@ -82,15 +83,25 @@ export function BrowsePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const searchString = useSearch();
+  const [matchCat, paramsCat] = useRoute("/c/:category");
+  const [matchSub, paramsSub] = useRoute("/c/:category/:subcategory");
+  const routeCategory = matchSub
+    ? categoryFromSlug(paramsSub!.category)
+    : matchCat
+    ? categoryFromSlug(paramsCat!.category)
+    : null;
+  const routeSubcategory = matchSub
+    ? subcategoryFromSlug(paramsSub!.category, paramsSub!.subcategory)
+    : null;
   const initialParams = new URLSearchParams(searchString);
   const initialQ = initialParams.get("q") || "";
-  const initialCategory = initialParams.get("category") || "";
+  const initialCategory = routeCategory || initialParams.get("category") || "";
   const initialLocationParam = initialParams.get("location") || "";
 
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialQ || initialCategory || initialLocationParam ? "search" : "discover"
+    initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover"
   );
-  const [search, setSearch] = useState(initialQ);
+  const [search, setSearch] = useState(initialQ || routeSubcategory || "");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     initialCategory ? [initialCategory] : []
@@ -102,6 +113,37 @@ export function BrowsePage() {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const VALUE_MAX = 5_000_000;
   const [valueRange, setValueRange] = useState<[number, number]>([0, VALUE_MAX]);
+
+  useEffect(() => {
+    if (!routeCategory) return;
+    const prevTitle = document.title;
+    const prevDesc = document.querySelector('meta[name="description"]')?.getAttribute("content") || null;
+    const title = routeSubcategory
+      ? `${routeSubcategory} in ${routeCategory} — Bareter`
+      : `${routeCategory} — Bareter`;
+    const desc = routeSubcategory
+      ? `Browse ${routeSubcategory} listings in ${routeCategory} on Bareter — UAE's cashless B2B barter marketplace.`
+      : `Browse ${routeCategory} barter listings on Bareter — swap goods and services without cash.`;
+    document.title = title;
+    let metaDesc = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    if (!metaDesc) {
+      metaDesc = document.createElement("meta");
+      metaDesc.name = "description";
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.content = desc;
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = `${window.location.origin}${window.location.pathname}`;
+    return () => {
+      document.title = prevTitle;
+      if (prevDesc !== null && metaDesc) metaDesc.content = prevDesc;
+    };
+  }, [routeCategory, routeSubcategory]);
   const [sortBy, setSortBy] = useState<string>("newest");
 
   useEffect(() => {

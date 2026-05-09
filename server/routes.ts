@@ -55,6 +55,7 @@ import {
   insertDisputeSchema,
   DISPUTE_OUTCOMES,
 } from "@shared/schema";
+import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
@@ -6785,19 +6786,34 @@ export async function registerRoutes(
         return;
       }
 
-      const rows = await db
-        .select({ id: listings.id, updatedAt: listings.updatedAt })
-        .from(listings)
-        .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)));
+      const [listingRows, userRows] = await Promise.all([
+        db
+          .select({ id: listings.id, updatedAt: listings.updatedAt })
+          .from(listings)
+          .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true))),
+        db
+          .select({ id: users.id, updatedAt: users.updatedAt })
+          .from(users)
+          .where(
+            or(
+              eq(users.isVerified, true),
+              eq(users.kycStatus, "APPROVED"),
+              eq(users.kybStatus, "APPROVED"),
+            ),
+          ),
+      ]);
+      const rows = listingRows;
 
       const base = getBaseUrl(req);
       const staticPaths = [
         { loc: "/", priority: "1.0", changefreq: "daily" },
         { loc: "/browse", priority: "0.9", changefreq: "hourly" },
         { loc: "/browse-public", priority: "0.8", changefreq: "hourly" },
+        { loc: "/feed", priority: "0.8", changefreq: "hourly" },
         { loc: "/map", priority: "0.8", changefreq: "daily" },
         { loc: "/how-it-works", priority: "0.8", changefreq: "monthly" },
         { loc: "/pricing", priority: "0.8", changefreq: "monthly" },
+        { loc: "/create-listing", priority: "0.7", changefreq: "monthly" },
         { loc: "/register", priority: "0.8", changefreq: "monthly" },
         { loc: "/login", priority: "0.7", changefreq: "monthly" },
         { loc: "/faq", priority: "0.6", changefreq: "monthly" },
@@ -6821,11 +6837,25 @@ export async function registerRoutes(
           ({ loc, priority, changefreq }) =>
             `  <url>\n    <loc>${escapeXml(base + loc)}</loc>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>`
         ),
+        ...allCategorySlugs().map(
+          ({ slug }) =>
+            `  <url>\n    <loc>${escapeXml(`${base}/c/${slug}`)}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>`,
+        ),
+        ...allSubcategorySlugs().map(
+          ({ categorySlug, subcategorySlug }) =>
+            `  <url>\n    <loc>${escapeXml(`${base}/c/${categorySlug}/${subcategorySlug}`)}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>`,
+        ),
         ...rows.map((row) => {
           const lastmod = row.updatedAt
             ? new Date(row.updatedAt).toISOString().split("T")[0]
             : new Date().toISOString().split("T")[0];
           return `  <url>\n    <loc>${escapeXml(`${base}/listings/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`;
+        }),
+        ...userRows.map((row) => {
+          const lastmod = row.updatedAt
+            ? new Date(row.updatedAt).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0];
+          return `  <url>\n    <loc>${escapeXml(`${base}/users/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.5</priority>\n  </url>`;
         }),
       ].join("\n");
 

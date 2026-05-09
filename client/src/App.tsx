@@ -108,6 +108,8 @@ function Router() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/browse" component={BrowsePage} />
+      <Route path="/c/:category/:subcategory" component={BrowsePage} />
+      <Route path="/c/:category" component={BrowsePage} />
       <Route path="/create-listing" component={CreateListingPage} />
       <Route path="/listings/:id" component={ListingDetailPage} />
       <Route path="/deals" component={DealsPage} />
