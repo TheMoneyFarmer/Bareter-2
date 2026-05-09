@@ -2059,6 +2059,11 @@ export function AdminPage() {
               );
             })}
           </div>
+          {funnelSteps.some((step, i) => i > 0 && step.value > (funnelSteps[i - 1]?.value ?? 0)) && (
+            <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+              ⚠ One or more steps exceed the previous step. This is expected when not all registered users originated from the waitlist (aggregate totals, not cohort attribution).
+            </p>
+          )}
         </CardContent>
       </Card>
 
