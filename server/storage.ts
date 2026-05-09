@@ -1457,19 +1457,28 @@ export class DatabaseStorage implements IStorage {
   async getConversionFunnel(): Promise<{ waitlistCount: number; registeredCount: number; listedCount: number; dealtCount: number }> {
     const [wlRow] = await db.select({ c: sql<number>`count(*)` }).from(waitlistEntries);
     const [usersRow] = await db.select({ c: sql<number>`count(*)` }).from(users);
-    const [listedRow] = await db.select({ c: sql<number>`count(distinct user_id)` }).from(listings);
-    const [dealtRow] = await db.execute(
-      sql`SELECT count(distinct uid) AS c FROM (
-        SELECT seeker_id AS uid FROM deals WHERE state = 'completed'
-        UNION
-        SELECT provider_id AS uid FROM deals WHERE state = 'completed'
-      ) sub`
-    );
+    const [listedRow] = await db.select({ c: sql<number>`count(distinct ${listings.userId})` }).from(listings);
+
+    // Count unique users who participated in at least one completed deal (as seeker OR provider)
+    // Fetch both sets and union in JS to avoid db.execute shape ambiguity
+    const seekerRows = await db
+      .selectDistinct({ uid: deals.seekerId })
+      .from(deals)
+      .where(eq(deals.state, "completed"));
+    const providerRows = await db
+      .selectDistinct({ uid: deals.providerId })
+      .from(deals)
+      .where(eq(deals.state, "completed"));
+    const uniqueDealtUsers = new Set([
+      ...seekerRows.map((r) => r.uid),
+      ...providerRows.map((r) => r.uid),
+    ]);
+
     return {
-      waitlistCount: Number((wlRow as any)?.c ?? 0),
-      registeredCount: Number((usersRow as any)?.c ?? 0),
-      listedCount: Number((listedRow as any)?.c ?? 0),
-      dealtCount: Number((dealtRow as any)?.c ?? 0),
+      waitlistCount: Number(wlRow?.c ?? 0),
+      registeredCount: Number(usersRow?.c ?? 0),
+      listedCount: Number(listedRow?.c ?? 0),
+      dealtCount: uniqueDealtUsers.size,
     };
   }
 
