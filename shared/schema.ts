@@ -317,12 +317,35 @@ export const users = pgTable("users", {
   founderBadge: boolean("founder_badge").default(false),
   founderBadgeAt: timestamp("founder_badge_at"),
 
+  // Task #248 — verification session resume + reminder unsubscribe.
+  // `verificationSessionStartedAt` is stamped when a Didit session is created
+  // and cleared on APPROVED/EXPIRED so the daily reminder cron knows the
+  // age of the in-flight session for +24h/+72h/+7d nudges.
+  verificationSessionStartedAt: timestamp("verification_session_started_at"),
+  // Per-channel reminder opt-outs. Defaults to all enabled; the email
+  // unsubscribe link writes here so we honour the preference for every
+  // future cron tick.
+  reminderPreferences: jsonb("reminder_preferences").$type<{
+    verification?: boolean;
+    drafts?: boolean;
+    engagement?: boolean;
+  }>().default({}),
+  // Random per-user token used to authenticate one-click unsubscribe
+  // links from reminder emails — generated lazily the first time we
+  // need one so old users aren't backfilled until they get a reminder.
+  // 24 random bytes is well past any practical collision risk so a
+  // regular index (instead of a unique constraint) is enough for the
+  // unsubscribe lookup — and avoids drizzle-kit asking us to truncate
+  // the existing users table on the first migration.
+  unsubscribeToken: text("unsubscribe_token"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   // Index used by the Didit webhook to look up the user for a given
   // verification session in O(log n) instead of scanning every row.
   diditSessionIdx: index("users_didit_session_id_idx").on(table.diditSessionId),
+  unsubscribeTokenIdx: index("users_unsubscribe_token_idx").on(table.unsubscribeToken),
 }));
 
 // Waitlist entries (pre-launch email collection)
@@ -1845,3 +1868,99 @@ export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
 export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean; bookmarked?: boolean; commentCount?: number };
 export type EndorsementWithUser = Endorsement & { fromUser: Omit<User, "password"> };
 export type QuickInquiryWithUsers = QuickInquiry & { fromUser: Omit<User, "password">; toUser: Omit<User, "password"> };
+
+// ─── Task #248: Save user progress + completion reminders ───────────────
+//
+// Three new tables work together to power the "save your progress" flows:
+//
+//   • listing_drafts        — autosaved listing drafts (one per slot key
+//                             so the create-listing page can keep editing
+//                             without deleting an old draft on every save)
+//   • engagement_events     — append-only log of viewed/saved/message_started
+//                             events on a listing, used to surface a
+//                             "Continue where you left off" strip and to
+//                             trigger the +48h engagement reminder.
+//   • reminder_log          — every reminder we've actually sent. The
+//                             cron uses this to enforce per-stage
+//                             dedupe so a user can never get the same
+//                             nudge twice for the same target.
+
+export const ENGAGEMENT_EVENT_TYPES = [
+  "viewed",
+  "saved",
+  "message_started",
+] as const;
+export type EngagementEventType = (typeof ENGAGEMENT_EVENT_TYPES)[number];
+
+export const REMINDER_KINDS = [
+  "verification_24h",
+  "verification_72h",
+  "verification_7d",
+  "draft_24h",
+  "draft_72h",
+  "engagement_48h",
+] as const;
+export type ReminderKind = (typeof REMINDER_KINDS)[number];
+
+export const listingDrafts = pgTable("listing_drafts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  // Free-form payload — matches the create-listing form shape so we can
+  // round-trip back into the form without bespoke serialisation.
+  data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+  // Cached for the Drafts tab + reminder email so we don't have to peek
+  // into the JSON to render a list.
+  title: text("title"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("listing_drafts_user_idx").on(table.userId),
+}));
+
+export const insertListingDraftSchema = createInsertSchema(listingDrafts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertListingDraft = z.infer<typeof insertListingDraftSchema>;
+export type ListingDraft = typeof listingDrafts.$inferSelect;
+
+export const engagementEvents = pgTable("engagement_events", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
+  eventType: text("event_type").notNull(), // viewed | saved | message_started
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("engagement_events_user_idx").on(table.userId, table.createdAt),
+  listingIdx: index("engagement_events_listing_idx").on(table.listingId),
+}));
+
+export const insertEngagementEventSchema = createInsertSchema(engagementEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEngagementEvent = z.infer<typeof insertEngagementEventSchema>;
+export type EngagementEvent = typeof engagementEvents.$inferSelect;
+
+export const reminderLog = pgTable("reminder_log", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  kind: text("kind").notNull(), // see REMINDER_KINDS
+  // Optional reference to the thing the reminder was about — a draft id,
+  // a listing id, etc. — so we can dedupe per-target where it makes sense
+  // (e.g. don't re-send draft_24h for the same draft).
+  targetId: varchar("target_id", { length: 36 }),
+  sentAt: timestamp("sent_at").defaultNow(),
+}, (table) => ({
+  // NB: kept as a regular index (not unique) — Postgres treats NULL != NULL
+  // so a unique constraint won't dedupe verification reminders that have
+  // no targetId. The `hasRecentReminder` storage helper enforces dedupe
+  // in code instead, including against the in-flight verification session.
+  userKindIdx: index("reminder_log_user_kind_idx").on(table.userId, table.kind),
+  userKindTargetIdx: index("reminder_log_user_kind_target_idx").on(
+    table.userId, table.kind, table.targetId,
+  ),
+}));
+
+export type ReminderLogRow = typeof reminderLog.$inferSelect;

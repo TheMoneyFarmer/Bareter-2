@@ -95,6 +95,16 @@ import {
   broadcastJobs,
   type BroadcastJob,
   agentBudgets,
+  listingDrafts,
+  type ListingDraft,
+  type InsertListingDraft,
+  engagementEvents,
+  type EngagementEvent,
+  type InsertEngagementEvent,
+  type EngagementEventType,
+  reminderLog,
+  type ReminderLogRow,
+  type ReminderKind,
   supportTickets,
   supportMessages,
   type SupportTicket,
@@ -324,6 +334,27 @@ export interface IStorage {
   ): Promise<LegalPage>;
   getLegalPageVersions(slug: string, language: string): Promise<LegalPageVersion[]>;
   countLegalPages(): Promise<number>;
+
+  // ── Task #248 — listing drafts, engagement events, reminders ──
+  upsertListingDraft(userId: string, data: Record<string, unknown>, opts?: { id?: string; title?: string | null }): Promise<ListingDraft>;
+  getListingDraft(id: string): Promise<ListingDraft | undefined>;
+  getListingDraftsByUser(userId: string): Promise<ListingDraft[]>;
+  deleteListingDraft(id: string, userId: string): Promise<boolean>;
+  recordEngagementEvent(event: InsertEngagementEvent): Promise<EngagementEvent>;
+  getRecentEngagementForUser(userId: string, limit?: number): Promise<EngagementEvent[]>;
+  /** Users whose most recent engagement was 48h–7d ago and who haven't proposed a deal since. */
+  getEngagementReminderCandidates(): Promise<{ user: User; lastEvent: EngagementEvent }[]>;
+  /** Users with an in-flight Didit session older than `minHours` whose status is still IN_PROGRESS. */
+  getVerificationReminderCandidates(): Promise<User[]>;
+  getDraftReminderCandidates(): Promise<{ user: User; draft: ListingDraft }[]>;
+  countIncompleteVerifications(): Promise<number>;
+  countOpenDrafts(): Promise<number>;
+  countAbandonedEngagement(): Promise<number>;
+  hasUserDealForListing(userId: string, listingId: string): Promise<boolean>;
+  hasRecentReminder(userId: string, kind: ReminderKind, targetId: string | null, sinceHours: number): Promise<boolean>;
+  recordReminder(userId: string, kind: ReminderKind, targetId?: string | null): Promise<ReminderLogRow>;
+  getOrCreateUnsubscribeToken(userId: string): Promise<string>;
+  getUserByUnsubscribeToken(token: string): Promise<User | undefined>;
 
   // Support Tickets
   createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket>;
@@ -2107,6 +2138,247 @@ export class DatabaseStorage implements IStorage {
       closed: counts["closed"] ?? 0,
       total,
     };
+  }
+
+  // ─── Task #248 ─────────────────────────────────────────────────────
+  async upsertListingDraft(
+    userId: string,
+    data: Record<string, unknown>,
+    opts?: { id?: string; title?: string | null },
+  ): Promise<ListingDraft> {
+    if (opts?.id) {
+      const [existing] = await db
+        .select()
+        .from(listingDrafts)
+        .where(and(eq(listingDrafts.id, opts.id), eq(listingDrafts.userId, userId)));
+      if (existing) {
+        const [row] = await db
+          .update(listingDrafts)
+          .set({
+            data,
+            title: opts.title ?? (data.title as string | undefined) ?? existing.title,
+            updatedAt: new Date(),
+          })
+          .where(eq(listingDrafts.id, opts.id))
+          .returning();
+        return row;
+      }
+    }
+    const [row] = await db
+      .insert(listingDrafts)
+      .values({
+        userId,
+        data,
+        title: opts?.title ?? (data.title as string | undefined) ?? null,
+      })
+      .returning();
+    return row;
+  }
+
+  async getListingDraft(id: string): Promise<ListingDraft | undefined> {
+    const [row] = await db.select().from(listingDrafts).where(eq(listingDrafts.id, id));
+    return row;
+  }
+
+  async getListingDraftsByUser(userId: string): Promise<ListingDraft[]> {
+    return await db
+      .select()
+      .from(listingDrafts)
+      .where(eq(listingDrafts.userId, userId))
+      .orderBy(desc(listingDrafts.updatedAt));
+  }
+
+  async deleteListingDraft(id: string, userId: string): Promise<boolean> {
+    const res = await db
+      .delete(listingDrafts)
+      .where(and(eq(listingDrafts.id, id), eq(listingDrafts.userId, userId)))
+      .returning({ id: listingDrafts.id });
+    return res.length > 0;
+  }
+
+  async recordEngagementEvent(event: InsertEngagementEvent): Promise<EngagementEvent> {
+    const [row] = await db.insert(engagementEvents).values(event).returning();
+    return row;
+  }
+
+  async getRecentEngagementForUser(userId: string, limit = 10): Promise<EngagementEvent[]> {
+    return await db
+      .select()
+      .from(engagementEvents)
+      .where(eq(engagementEvents.userId, userId))
+      .orderBy(desc(engagementEvents.createdAt))
+      .limit(limit);
+  }
+
+  async getEngagementReminderCandidates(): Promise<{ user: User; lastEvent: EngagementEvent }[]> {
+    // Reminder eligibility is intentionally narrower than the analytics
+    // event log: only "saved" or "message_started" events (i.e. real
+    // intent signals) qualify, NOT a passive "viewed". The window is
+    // 48h–7d so we honour the +48h target exactly (with a 7d ceiling
+    // so we don't ping users about week-old browsing forever).
+    const cutoffOld = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const cutoffRecent = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const intentTypes = ["saved", "message_started"];
+    const rows = await db
+      .select({
+        userId: engagementEvents.userId,
+        lastAt: sql<Date>`max(${engagementEvents.createdAt})`,
+      })
+      .from(engagementEvents)
+      .where(inArray(engagementEvents.eventType, intentTypes))
+      .groupBy(engagementEvents.userId);
+    const eligible = rows.filter((r) => {
+      const t = new Date(r.lastAt as unknown as string).getTime();
+      return t >= cutoffOld.getTime() && t <= cutoffRecent.getTime();
+    });
+    if (eligible.length === 0) return [];
+    const userIds = eligible.map((e) => e.userId);
+    const userRows = await db.select().from(users).where(inArray(users.id, userIds));
+    const userMap = new Map(userRows.map((u) => [u.id, u]));
+    const out: { user: User; lastEvent: EngagementEvent }[] = [];
+    for (const r of eligible) {
+      const u = userMap.get(r.userId);
+      if (!u) continue;
+      const [evt] = await db
+        .select()
+        .from(engagementEvents)
+        .where(and(
+          eq(engagementEvents.userId, r.userId),
+          inArray(engagementEvents.eventType, intentTypes),
+        ))
+        .orderBy(desc(engagementEvents.createdAt))
+        .limit(1);
+      if (!evt || !evt.listingId) continue;
+      if (await this.hasUserDealForListing(r.userId, evt.listingId)) continue;
+      out.push({ user: u, lastEvent: evt });
+    }
+    return out;
+  }
+
+  async getVerificationReminderCandidates(): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          isNotNull(users.diditSessionId),
+          isNotNull(users.verificationSessionStartedAt),
+          or(eq(users.kycStatus, "IN_PROGRESS"), eq(users.kybStatus, "IN_PROGRESS")),
+        ),
+      );
+  }
+
+  async getDraftReminderCandidates(): Promise<{ user: User; draft: ListingDraft }[]> {
+    // Drafts created 18h–7d ago whose owner hasn't published a listing
+    // since the draft was created. Cheap approximation: just return all
+    // candidate drafts; the cron applies the per-user dedupe via
+    // hasRecentReminder() before sending.
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const until = new Date(Date.now() - 18 * 60 * 60 * 1000);
+    const draftRows = await db
+      .select()
+      .from(listingDrafts)
+      .where(and(gte(listingDrafts.updatedAt, since), lte(listingDrafts.updatedAt, until)));
+    if (draftRows.length === 0) return [];
+    const uids = Array.from(new Set(draftRows.map((d) => d.userId)));
+    const userRows = await db.select().from(users).where(inArray(users.id, uids));
+    const uMap = new Map(userRows.map((u) => [u.id, u]));
+    return draftRows
+      .map((d) => ({ user: uMap.get(d.userId)!, draft: d }))
+      .filter((x) => x.user);
+  }
+
+  async hasUserDealForListing(userId: string, listingId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: deals.id })
+      .from(deals)
+      .where(and(
+        eq(deals.seekerId, userId),
+        or(eq(deals.providerListingId, listingId), eq(deals.seekerListingId, listingId)),
+      ))
+      .limit(1);
+    return !!row;
+  }
+
+  async countIncompleteVerifications(): Promise<number> {
+    const [row] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(users)
+      .where(or(eq(users.kycStatus, "IN_PROGRESS"), eq(users.kybStatus, "IN_PROGRESS")));
+    return row?.c ?? 0;
+  }
+
+  async countOpenDrafts(): Promise<number> {
+    const [row] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(listingDrafts);
+    return row?.c ?? 0;
+  }
+
+  async countAbandonedEngagement(): Promise<number> {
+    // Distinct users whose latest "saved" / "message_started" event
+    // happened ≥48h ago and who haven't opened a deal on the engaged
+    // listing since. Cheap approximation: count unique users with any
+    // intent event ≥48h old, minus those who became deal seekers.
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const intentTypes = ["saved", "message_started"];
+    const rows = await db
+      .selectDistinct({ userId: engagementEvents.userId })
+      .from(engagementEvents)
+      .where(and(
+        inArray(engagementEvents.eventType, intentTypes),
+        lte(engagementEvents.createdAt, cutoff),
+      ));
+    if (rows.length === 0) return 0;
+    const uids = rows.map((r) => r.userId);
+    const dealRows = await db
+      .selectDistinct({ seekerId: deals.seekerId })
+      .from(deals)
+      .where(inArray(deals.seekerId, uids));
+    const haveDeal = new Set(dealRows.map((d) => d.seekerId));
+    return uids.filter((id) => !haveDeal.has(id)).length;
+  }
+
+  async hasRecentReminder(
+    userId: string,
+    kind: ReminderKind,
+    targetId: string | null,
+    sinceHours: number,
+  ): Promise<boolean> {
+    const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+    const conditions = [
+      eq(reminderLog.userId, userId),
+      eq(reminderLog.kind, kind),
+      gte(reminderLog.sentAt, since),
+    ];
+    if (targetId) conditions.push(eq(reminderLog.targetId, targetId));
+    const rows = await db
+      .select({ id: reminderLog.id })
+      .from(reminderLog)
+      .where(and(...conditions))
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async recordReminder(userId: string, kind: ReminderKind, targetId?: string | null): Promise<ReminderLogRow> {
+    const [row] = await db
+      .insert(reminderLog)
+      .values({ userId, kind, targetId: targetId ?? null })
+      .returning();
+    return row;
+  }
+
+  async getOrCreateUnsubscribeToken(userId: string): Promise<string> {
+    const [u] = await db.select().from(users).where(eq(users.id, userId));
+    if (u?.unsubscribeToken) return u.unsubscribeToken;
+    const token = crypto.randomBytes(24).toString("hex");
+    await db.update(users).set({ unsubscribeToken: token }).where(eq(users.id, userId));
+    return token;
+  }
+
+  async getUserByUnsubscribeToken(token: string): Promise<User | undefined> {
+    const [u] = await db.select().from(users).where(eq(users.unsubscribeToken, token));
+    return u;
   }
 }
 

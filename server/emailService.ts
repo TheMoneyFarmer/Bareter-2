@@ -952,3 +952,193 @@ export async function sendVerificationUnderReviewEmail(
   const text = `${greeting}\n\nWe received your ${verType} documents and are reviewing them. This usually takes just a few minutes. We'll email you when a decision is made.\n\nCheck your status at https://bareter.com/settings\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Verification Documents Received — Under Review`, html, text });
 }
+
+// ─── Task #248 — Save progress + reminder emails ──────────────────────
+//
+// All three reminders share the same envelope: greeting → CTA → soft
+// unsubscribe footer. The unsubscribe link is mandatory because these are
+// behavioural nudges, not transactional mail — they fall under
+// CAN-SPAM/GDPR/UAE PDPL "marketing-style" rules.
+
+function buildAppBaseUrl(): string {
+  const explicit = process.env.APP_BASE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (process.env.REPLIT_DOMAINS) {
+    const host = process.env.REPLIT_DOMAINS.split(",")[0]?.trim();
+    if (host) return `https://${host}`;
+  }
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  return "https://bareter.com";
+}
+
+function escapeReminderHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function reminderShell(opts: {
+  language: "en" | "ar";
+  heading: string;
+  body: string;
+  ctaText: string;
+  ctaUrl: string;
+  unsubscribeUrl: string;
+  unsubscribeLabel: string;
+}): string {
+  const dir = opts.language === "ar" ? "rtl" : "ltr";
+  const align = opts.language === "ar" ? "right" : "left";
+  const heading = escapeReminderHtml(opts.heading);
+  const body = escapeReminderHtml(opts.body);
+  const ctaText = escapeReminderHtml(opts.ctaText);
+  const ctaUrl = escapeReminderHtml(opts.ctaUrl);
+  const unsubscribeUrl = escapeReminderHtml(opts.unsubscribeUrl);
+  const unsubscribeLabel = escapeReminderHtml(opts.unsubscribeLabel);
+  return `<!DOCTYPE html>
+<html dir="${dir}"><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px; text-align: ${align};">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin: 0 0 12px;">${heading}</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">${body}</p>
+    <a href="${ctaUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 8px 0 24px;">${ctaText}</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">
+      <a href="${unsubscribeUrl}" style="color: #9ca3af;">${unsubscribeLabel}</a> · ${APP_NAME}
+    </p>
+  </div>
+</body></html>`;
+}
+
+const REMINDER_COPY = {
+  verification: {
+    en: {
+      h: "Finish verifying your account",
+      b: (n: string) => `${n}, you started verifying your identity but didn't finish. It only takes a couple of minutes — pick up right where you left off.`,
+      cta: "Resume verification",
+      sub: "Finish verifying your Bareter account",
+    },
+    ar: {
+      h: "أكمل توثيق حسابك",
+      b: (n: string) => `${n}، لقد بدأت في توثيق هويتك ولكن لم تكمل العملية. لا تستغرق سوى دقيقتين — تابع من حيث توقفت.`,
+      cta: "متابعة التوثيق",
+      sub: "أكمل توثيق حسابك على Bareter",
+    },
+  },
+  draft: {
+    en: {
+      h: "Your listing is one step away from going live",
+      b: (n: string, t: string) => `${n}, your draft "${t}" is saved but not yet published. Publish it now to start receiving barter offers.`,
+      cta: "Finish your listing",
+      sub: "Your saved Bareter listing is waiting",
+    },
+    ar: {
+      h: "إعلانك على بُعد خطوة واحدة من النشر",
+      b: (n: string, t: string) => `${n}، مسودتك "${t}" محفوظة ولكن لم يتم نشرها بعد. انشرها الآن لتلقي عروض المقايضة.`,
+      cta: "أكمل إعلانك",
+      sub: "مسودة إعلانك على Bareter في انتظارك",
+    },
+  },
+  engagement: {
+    en: {
+      h: "Pick up where you left off",
+      b: (n: string, t: string) => `${n}, you were just looking at "${t}" on Bareter. The lister is still active — send a message before someone else does.`,
+      cta: "Open the listing",
+      sub: "Continue where you left off on Bareter",
+    },
+    ar: {
+      h: "تابع من حيث توقفت",
+      b: (n: string, t: string) => `${n}، كنت تتصفح "${t}" على Bareter. صاحب الإعلان لا يزال نشطًا — أرسل رسالة قبل أن يسبقك أحد.`,
+      cta: "افتح الإعلان",
+      sub: "تابع من حيث توقفت على Bareter",
+    },
+  },
+};
+
+interface ReminderOpts {
+  toEmail: string;
+  fullName: string | null;
+  language: "en" | "ar";
+  unsubscribeToken: string;
+  baseUrl?: string;
+}
+
+export async function sendVerificationReminderEmail(
+  opts: ReminderOpts & { stage: "24h" | "72h" | "7d" },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Verification reminder (${opts.stage}) for ${opts.toEmail} skipped (email not configured)`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.verification[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const ctaUrl = `${base}/profile?resume=verification&utm_source=reminder&utm_medium=email&utm_campaign=verify_${opts.stage}`;
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=verification`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const html = reminderShell({
+    language: opts.language,
+    heading: copy.h,
+    body: copy.b(greeting),
+    ctaText: copy.cta,
+    ctaUrl,
+    unsubscribeUrl: unsubUrl,
+    unsubscribeLabel: unsubLabel,
+  });
+  const text = `${greeting}\n\n${copy.b(greeting)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+}
+
+export async function sendDraftReminderEmail(
+  opts: ReminderOpts & { stage: "24h" | "72h"; draftTitle: string; draftId: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Draft reminder (${opts.stage}) for ${opts.toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.draft[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const ctaUrl = `${base}/create-listing?draft=${opts.draftId}&utm_source=reminder&utm_medium=email&utm_campaign=draft_${opts.stage}`;
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=drafts`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const safeTitle = opts.draftTitle?.slice(0, 80) || (opts.language === "ar" ? "إعلان بدون عنوان" : "Untitled listing");
+  const html = reminderShell({
+    language: opts.language,
+    heading: copy.h,
+    body: copy.b(greeting, safeTitle),
+    ctaText: copy.cta,
+    ctaUrl,
+    unsubscribeUrl: unsubUrl,
+    unsubscribeLabel: unsubLabel,
+  });
+  const text = `${greeting}\n\n${copy.b(greeting, safeTitle)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+}
+
+export async function sendEngagementReminderEmail(
+  opts: ReminderOpts & { listingTitle: string; listingId: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Engagement reminder for ${opts.toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.engagement[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const ctaUrl = `${base}/listings/${opts.listingId}?utm_source=reminder&utm_medium=email&utm_campaign=engagement_48h`;
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=engagement`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const safeTitle = opts.listingTitle?.slice(0, 80) || (opts.language === "ar" ? "إعلان" : "a listing");
+  const html = reminderShell({
+    language: opts.language,
+    heading: copy.h,
+    body: copy.b(greeting, safeTitle),
+    ctaText: copy.cta,
+    ctaUrl,
+    unsubscribeUrl: unsubUrl,
+    unsubscribeLabel: unsubLabel,
+  });
+  const text = `${greeting}\n\n${copy.b(greeting, safeTitle)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+}

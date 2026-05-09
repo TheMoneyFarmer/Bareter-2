@@ -1095,6 +1095,75 @@ function SafetyBanner() {
   );
 }
 
+// ── Task #248: "Continue where you left off" strip ─────────────────
+// Surfaces all three resumable items the API returns (verification +
+// draft + engaged listing). Each is rendered as its own card in a
+// horizontally-scrolling row so mobile users can swipe between them.
+function ContinueWhereLeftOff() {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const { data } = useQuery<{
+    verification: { startedAt: string; accountType: string | null } | null;
+    draft: { id: string; title: string | null; updatedAt: string | null } | null;
+    engagement: { listing: { id: string; title: string }; eventType: string; at: string | null } | null;
+  }>({
+    queryKey: ["/api/continue"],
+    enabled: !!user,
+  });
+  if (!user || !data || (!data.verification && !data.draft && !data.engagement)) return null;
+  return (
+    <div className="mt-3" data-testid="continue-strip">
+      <p className="text-xs font-medium text-primary uppercase tracking-wide mb-2 px-4 sm:px-0">
+        {t("feed.continueTitle")}
+      </p>
+      <div className="flex gap-3 overflow-x-auto pb-2 px-4 sm:px-0 snap-x">
+        {data.verification && (
+          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-verification">
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" data-testid="text-continue-verification-label">
+                  {t("feed.continueVerificationLabel")}
+                </p>
+              </div>
+              <Link href="/profile?tab=verification">
+                <Button size="sm" data-testid="button-continue-verification">{t("feed.continueVerification")}</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+        {data.draft && (
+          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-draft">
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" data-testid="text-continue-draft-title">
+                  {data.draft.title || t("profile.draftsUntitled")}
+                </p>
+              </div>
+              <Link href={`/create-listing?draft=${data.draft.id}`}>
+                <Button size="sm" data-testid="button-continue-draft">{t("feed.continueDraft")}</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+        {data.engagement && (
+          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-engagement">
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" data-testid="text-continue-listing-title">
+                  {data.engagement.listing.title}
+                </p>
+              </div>
+              <Link href={`/listings/${data.engagement.listing.id}`}>
+                <Button size="sm" data-testid="button-continue-listing">{t("feed.continueListing")}</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function FeedPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
@@ -1160,6 +1229,7 @@ export function FeedPage() {
       <div className="flex gap-8">
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
+          <ContinueWhereLeftOff />
           <SafetyBanner />
           <AiMatchCards />
           <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />

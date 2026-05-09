@@ -149,6 +149,11 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [waitlistEnabled, setWaitlistEnabled] = useState(settings.waitlist_enabled !== "false");
   const [disputesEnabled, setDisputesEnabled] = useState(settings.disputes_enabled !== "false");
   const [aiMatchingEnabled, setAiMatchingEnabled] = useState(settings.ai_matching_enabled !== "false");
+  // Task #248 — completion-reminder gates
+  const [remindersEnabled, setRemindersEnabled] = useState(settings.reminders_enabled !== "false");
+  const [remindersVerification, setRemindersVerification] = useState(settings.reminders_verification_enabled !== "false");
+  const [remindersDrafts, setRemindersDrafts] = useState(settings.reminders_drafts_enabled !== "false");
+  const [remindersEngagement, setRemindersEngagement] = useState(settings.reminders_engagement_enabled !== "false");
   const [bannerEnabled, setBannerEnabled] = useState(settings.announcement_banner_enabled === "true");
   const [bannerText, setBannerText] = useState(settings.announcement_banner_text || "");
   const [bannerLink, setBannerLink] = useState(settings.announcement_banner_link || "");
@@ -161,6 +166,10 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
     setWaitlistEnabled(settings.waitlist_enabled !== "false");
     setDisputesEnabled(settings.disputes_enabled !== "false");
     setAiMatchingEnabled(settings.ai_matching_enabled !== "false");
+    setRemindersEnabled(settings.reminders_enabled !== "false");
+    setRemindersVerification(settings.reminders_verification_enabled !== "false");
+    setRemindersDrafts(settings.reminders_drafts_enabled !== "false");
+    setRemindersEngagement(settings.reminders_engagement_enabled !== "false");
     setBannerEnabled(settings.announcement_banner_enabled === "true");
     setBannerText(settings.announcement_banner_text || "");
     setBannerLink(settings.announcement_banner_link || "");
@@ -176,6 +185,10 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
       waitlist_enabled: waitlistEnabled ? "true" : "false",
       disputes_enabled: disputesEnabled ? "true" : "false",
       ai_matching_enabled: aiMatchingEnabled ? "true" : "false",
+      reminders_enabled: remindersEnabled ? "true" : "false",
+      reminders_verification_enabled: remindersVerification ? "true" : "false",
+      reminders_drafts_enabled: remindersDrafts ? "true" : "false",
+      reminders_engagement_enabled: remindersEngagement ? "true" : "false",
       announcement_banner_enabled: bannerEnabled ? "true" : "false",
       announcement_banner_text: bannerText,
       announcement_banner_link: bannerLink,
@@ -291,6 +304,52 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
               data-testid="switch-ai-matching-enabled"
             />
           </div>
+          {/* Task #248 — Completion-reminder controls. Master toggle
+              short-circuits the cron entirely; per-channel toggles let
+              admins quiet just verification / drafts / engagement
+              independently. */}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Completion Reminders (master)</p>
+              <p className="text-sm text-muted-foreground">
+                Send daily nudge emails when users abandon verification, leave drafts unpublished, or stop short of messaging a lister.
+              </p>
+            </div>
+            <Switch
+              checked={remindersEnabled}
+              onCheckedChange={setRemindersEnabled}
+              data-testid="switch-reminders-enabled"
+            />
+          </div>
+          {remindersEnabled && (
+            <div className="ml-6 border-l-2 border-primary/30 pl-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm">Verification reminders (24h / 72h / 7d)</p>
+                <Switch
+                  checked={remindersVerification}
+                  onCheckedChange={setRemindersVerification}
+                  data-testid="switch-reminders-verification"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm">Saved-draft reminders (24h / 72h)</p>
+                <Switch
+                  checked={remindersDrafts}
+                  onCheckedChange={setRemindersDrafts}
+                  data-testid="switch-reminders-drafts"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm">Engagement reminders (48h after saving a listing or starting a message)</p>
+                <Switch
+                  checked={remindersEngagement}
+                  onCheckedChange={setRemindersEngagement}
+                  data-testid="switch-reminders-engagement"
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

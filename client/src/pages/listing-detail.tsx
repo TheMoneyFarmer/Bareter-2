@@ -98,6 +98,8 @@ export function ListingDetailPage() {
   });
 
   const viewedRef = useRef(false);
+  const dwellTimerRef = useRef<number | null>(null);
+  const composerStartedRef = useRef(false);
   useEffect(() => {
     if (listing && !viewedRef.current) {
       viewedRef.current = true;
@@ -106,8 +108,25 @@ export function ListingDetailPage() {
         listing_category: (listing.categories as string[] | undefined)?.[0],
         listing_value: listing.retailValue ? parseFloat(String(listing.retailValue)) : undefined,
       });
+      // Engagement view event — gated by 10s dwell so bounces don't pollute the log.
+      if (user) {
+        const listingId = listing.id;
+        dwellTimerRef.current = window.setTimeout(() => {
+          dwellTimerRef.current = null;
+          apiRequest("POST", "/api/engagement/track", {
+            eventType: "viewed",
+            listingId,
+          }).catch(() => { /* best-effort */ });
+        }, 10_000);
+      }
     }
-  }, [listing]);
+    return () => {
+      if (dwellTimerRef.current !== null) {
+        window.clearTimeout(dwellTimerRef.current);
+        dwellTimerRef.current = null;
+      }
+    };
+  }, [listing, user]);
 
   useEffect(() => {
     if (proposeOpen && listing?.categories) {
@@ -797,6 +816,15 @@ export function ListingDetailPage() {
                       placeholder={t("listingDetail.addMessage")}
                       className="text-sm flex-1"
                       onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+                      onFocus={() => {
+                        if (user && listing && !composerStartedRef.current) {
+                          composerStartedRef.current = true;
+                          apiRequest("POST", "/api/engagement/track", {
+                            eventType: "message_started",
+                            listingId: listing.id,
+                          }).catch(() => { /* best-effort */ });
+                        }
+                      }}
                       data-testid="input-comment-message"
                     />
                     <Button

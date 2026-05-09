@@ -94,6 +94,19 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
         updateData.kycStatus = status;
       }
 
+      // Task #248: any terminal status closes the in-flight session, so
+      // clear the started-at marker — that stops the reminder cron from
+      // pestering users who finished (or were rejected/expired).
+      if (
+        status === "APPROVED" ||
+        status === "DECLINED" ||
+        status === "REJECTED" ||
+        status === "EXPIRED" ||
+        status === "ABANDONED"
+      ) {
+        (updateData as Record<string, unknown>).verificationSessionStartedAt = null;
+      }
+
       if (status === "APPROVED") {
         updateData.isVerified = true;
         updateData.verificationStatus = "verified";

@@ -17,7 +17,9 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile } from "@shared/schema";
+import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile, type ListingDraft } from "@shared/schema";
+import { Link } from "wouter";
+import { FileText, Trash2 } from "lucide-react";
 import {
   User,
   MapPin,
@@ -647,7 +649,12 @@ export function ProfilePage() {
         </div>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs defaultValue={(() => {
+        if (typeof window === "undefined") return "profile";
+        const t = new URLSearchParams(window.location.search).get("tab");
+        const allowed = ["profile", "offers", "needs", "endorsements", "portfolio", "drafts", "verification"];
+        return t && allowed.includes(t) ? t : "profile";
+      })()} className="space-y-6">
         <TabsList className="flex w-full overflow-x-auto">
           <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
             <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
@@ -669,11 +676,22 @@ export function ProfilePage() {
             <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
             <span className="truncate">{t("profile.tabPortfolio")}</span>
           </TabsTrigger>
+          <TabsTrigger value="drafts" className="flex-1 min-w-0" data-testid="tab-drafts">
+            <FileText className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabDrafts")}</span>
+          </TabsTrigger>
           <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
             <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
             <span className="truncate">{t("profile.tabVerify")}</span>
           </TabsTrigger>
         </TabsList>
+
+        {/* Task #248 — Drafts tab: surface autosaved listings so users
+            can pick up where they left off without going back to the
+            create-listing page from a deep link. */}
+        <TabsContent value="drafts">
+          <DraftsPanel />
+        </TabsContent>
 
         <TabsContent value="profile">
           <Card>
@@ -1074,5 +1092,109 @@ export function ProfilePage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ── Task #248: Drafts panel ──────────────────────────────────────────
+// Lists all saved drafts for the current user with a "continue" CTA
+// that round-trips through ?draft=<id>. Deleting is destructive but
+// scoped (storage layer enforces userId match) so the optimistic
+// invalidation here is safe.
+function DraftsPanel() {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: drafts, isLoading } = useQuery<ListingDraft[]>({
+    queryKey: ["/api/listing-drafts"],
+  });
+  const del = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/listing-drafts/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/listing-drafts"] });
+      qc.invalidateQueries({ queryKey: ["/api/continue"] });
+    },
+    onError: () => toast({ title: "Could not delete draft", variant: "destructive" }),
+  });
+  const publish = useMutation({
+    mutationFn: async (draft: ListingDraft) => {
+      const res = await apiRequest("POST", "/api/listings", draft.data);
+      const created = await res.json();
+      await apiRequest("DELETE", `/api/listing-drafts/${draft.id}`).catch(() => {});
+      return created;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/listing-drafts"] });
+      qc.invalidateQueries({ queryKey: ["/api/continue"] });
+      qc.invalidateQueries({ queryKey: ["/api/listings"] });
+      toast({ title: "Listing published" });
+    },
+    onError: (err: Error) => toast({
+      title: "Could not publish draft",
+      description: err?.message || "Open the draft to fix missing fields.",
+      variant: "destructive",
+    }),
+  });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("profile.draftsTitle")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">…</p>
+        ) : !drafts || drafts.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-drafts-empty">
+            {t("profile.draftsEmpty")}
+          </p>
+        ) : (
+          <div className="space-y-3" data-testid="list-drafts">
+            {drafts.map((d) => (
+              <div
+                key={d.id}
+                className="flex items-center justify-between gap-3 border rounded-md p-3 hover-elevate"
+                data-testid={`row-draft-${d.id}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate" data-testid={`text-draft-title-${d.id}`}>
+                    {d.title || t("profile.draftsUntitled")}
+                  </p>
+                  {d.updatedAt && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("profile.draftsUpdated")}: {new Date(d.updatedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => publish.mutate(d)}
+                  disabled={publish.isPending}
+                  data-testid={`button-draft-publish-${d.id}`}
+                >
+                  {t("profile.draftsPublish")}
+                </Button>
+                <Link href={`/create-listing?draft=${d.id}`}>
+                  <Button size="sm" variant="outline" data-testid={`button-draft-continue-${d.id}`}>
+                    {t("profile.draftsContinue")}
+                  </Button>
+                </Link>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => del.mutate(d.id)}
+                  disabled={del.isPending}
+                  aria-label={t("profile.draftsDelete")}
+                  data-testid={`button-draft-delete-${d.id}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

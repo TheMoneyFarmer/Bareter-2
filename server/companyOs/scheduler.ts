@@ -19,7 +19,15 @@ import {
 } from "./marketingAgent";
 import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
-import { sendDisputeRiskEmail, sendVerificationApprovedEmail, sendVerificationDeclinedEmail, sendVerificationUnderReviewEmail } from "../emailService";
+import {
+  sendDisputeRiskEmail,
+  sendVerificationApprovedEmail,
+  sendVerificationDeclinedEmail,
+  sendVerificationUnderReviewEmail,
+  sendVerificationReminderEmail,
+  sendDraftReminderEmail,
+  sendEngagementReminderEmail,
+} from "../emailService";
 import { getSessionStatus } from "../diditClient";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
@@ -45,6 +53,10 @@ const AGENT_JOB_MAP: Record<string, string> = {
   dailyDashboardSnapshot: "dashboard",
   intelligenceSweep: "intelligence",
   monthlyBoardReport: "manager",
+  // Task #248 — daily completion-reminder sweep. Guarded by the
+  // "engagement" agent toggle so admins can pause it from the agent
+  // dashboard without redeploying.
+  dailyProgressReminders: "engagement",
 };
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -279,6 +291,18 @@ async function diditStatusPollJob(): Promise<void> {
           updateData.kycStatus = latestStatus;
         }
 
+        // Task #248: clear the in-flight marker on any terminal status
+        // so the reminder cron doesn't keep nudging completed users.
+        if (
+          latestStatus === "APPROVED" ||
+          latestStatus === "DECLINED" ||
+          latestStatus === "REJECTED" ||
+          latestStatus === "EXPIRED" ||
+          latestStatus === "ABANDONED"
+        ) {
+          updateData.verificationSessionStartedAt = null;
+        }
+
         // Session expired on Didit's side — clear the stale ID so user can restart
         if (latestStatus === "EXPIRED") {
           updateData.diditSessionId = null;
@@ -461,6 +485,137 @@ async function monthlyBoardReportJob(): Promise<void> {
   }
 }
 
+// ─── Task #248: daily completion-reminder sweep ───────────────────────
+//
+// Runs once a day. For each in-flight verification session / saved draft
+// / recent engagement, decides which (if any) reminder email to send and
+// records the send in `reminder_log` so we never double-fire. Per-user
+// opt-outs (set via the unsubscribe link or admin toggles) are honoured
+// at the top of each branch.
+async function dailyProgressRemindersJob(): Promise<void> {
+  // Master toggle first — admins can hard-stop every reminder channel at
+  // once with `reminders_enabled=false` without flipping each per-channel
+  // key individually.
+  const masterEnabled = await storage.getAppSetting("reminders_enabled");
+  if (masterEnabled === "false") {
+    console.log("[reminders] master toggle off — skipping daily run");
+    return;
+  }
+  const [vEnabled, dEnabled, eEnabled] = await Promise.all([
+    storage.getAppSetting("reminders_verification_enabled"),
+    storage.getAppSetting("reminders_drafts_enabled"),
+    storage.getAppSetting("reminders_engagement_enabled"),
+  ]);
+  const verificationOn = vEnabled !== "false";
+  const draftsOn = dEnabled !== "false";
+  const engagementOn = eEnabled !== "false";
+  // Send-once-ever per (user, kind, target). The cadence stage is
+  // encoded in the kind, so we use a very long lookback to make
+  // hasRecentReminder behave as a permanent dedupe.
+  const FOREVER_HOURS = 365 * 24 * 10;
+
+  let sentVerify = 0, sentDraft = 0, sentEngage = 0;
+
+  if (verificationOn) {
+    try {
+      const candidates = await storage.getVerificationReminderCandidates();
+      for (const u of candidates) {
+        if (u.reminderPreferences && u.reminderPreferences.verification === false) continue;
+        const startedAt = u.verificationSessionStartedAt;
+        if (!startedAt) continue;
+        const ageHrs = (Date.now() - new Date(startedAt).getTime()) / (60 * 60 * 1000);
+        let stage: "24h" | "72h" | "7d" | null = null;
+        let kind: "verification_24h" | "verification_72h" | "verification_7d" | null = null;
+        if (ageHrs >= 24 && ageHrs < 72) { stage = "24h"; kind = "verification_24h"; }
+        else if (ageHrs >= 72 && ageHrs < 7 * 24) { stage = "72h"; kind = "verification_72h"; }
+        else if (ageHrs >= 7 * 24 && ageHrs < 14 * 24) { stage = "7d"; kind = "verification_7d"; }
+        if (!stage || !kind) continue;
+        if (await storage.hasRecentReminder(u.id, kind, u.diditSessionId ?? null, FOREVER_HOURS)) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(u.id);
+        const ok = await sendVerificationReminderEmail({
+          toEmail: u.email,
+          fullName: u.fullName ?? null,
+          language: (u.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+          stage,
+        }).catch((err) => { console.error("[reminders] verification send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(u.id, kind, u.diditSessionId ?? null);
+          sentVerify++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] verification branch failed:", err);
+    }
+  }
+
+  if (draftsOn) {
+    try {
+      const candidates = await storage.getDraftReminderCandidates();
+      for (const { user, draft } of candidates) {
+        if (user.reminderPreferences && user.reminderPreferences.drafts === false) continue;
+        const updatedAt = draft.updatedAt;
+        if (!updatedAt) continue;
+        const ageHrs = (Date.now() - new Date(updatedAt).getTime()) / (60 * 60 * 1000);
+        let stage: "24h" | "72h" | null = null;
+        let kind: "draft_24h" | "draft_72h" | null = null;
+        if (ageHrs >= 24 && ageHrs < 72) { stage = "24h"; kind = "draft_24h"; }
+        else if (ageHrs >= 72 && ageHrs < 7 * 24) { stage = "72h"; kind = "draft_72h"; }
+        if (!stage || !kind) continue;
+        if (await storage.hasRecentReminder(user.id, kind, draft.id, FOREVER_HOURS)) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(user.id);
+        const ok = await sendDraftReminderEmail({
+          toEmail: user.email,
+          fullName: user.fullName ?? null,
+          language: (user.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+          stage,
+          draftTitle: draft.title ?? "",
+          draftId: draft.id,
+        }).catch((err) => { console.error("[reminders] draft send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(user.id, kind, draft.id);
+          sentDraft++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] drafts branch failed:", err);
+    }
+  }
+
+  if (engagementOn) {
+    try {
+      const candidates = await storage.getEngagementReminderCandidates();
+      for (const { user, lastEvent } of candidates) {
+        if (user.reminderPreferences && user.reminderPreferences.engagement === false) continue;
+        if (!lastEvent.listingId) continue;
+        if (await storage.hasRecentReminder(user.id, "engagement_48h", lastEvent.listingId, FOREVER_HOURS)) continue;
+        // Hydrate the listing for the email subject — skip silently if it
+        // was deleted / deactivated since the user touched it.
+        const listing = await storage.getListing(lastEvent.listingId).catch(() => null);
+        if (!listing || !listing.isActive) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(user.id);
+        const ok = await sendEngagementReminderEmail({
+          toEmail: user.email,
+          fullName: user.fullName ?? null,
+          language: (user.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+          listingTitle: listing.title,
+          listingId: listing.id,
+        }).catch((err) => { console.error("[reminders] engagement send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(user.id, "engagement_48h", lastEvent.listingId);
+          sentEngage++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] engagement branch failed:", err);
+    }
+  }
+
+  console.log(`[reminders] dailyProgressReminders done: verify=${sentVerify} draft=${sentDraft} engage=${sentEngage}`);
+}
+
 async function budgetWarningJob(): Promise<void> {
   if (!isFounderConfigured()) return;
   const v = await getBudgetVerdict();
@@ -543,6 +698,11 @@ export function startScheduler(): void {
   // signed download link. Idempotent on `reportMonth` so re-runs of
   // the same month overwrite cleanly.
   schedule("monthlyBoardReport", "0 10 1 * *", monthlyBoardReportJob);
+
+  // 11:00 Dubai daily — Task #248 reminder sweep. Daytime so the
+  // unsubscribe link in any mis-fired email is acted on within
+  // business hours. Idempotent via reminder_log.
+  schedule("dailyProgressReminders", "0 11 * * *", dailyProgressRemindersJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

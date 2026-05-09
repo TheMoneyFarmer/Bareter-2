@@ -163,6 +163,9 @@ type AnalyticsData = {
   totalGMV: number;
   monthlyGMV: number;
   pendingVerifications: number;
+  incompleteVerifications?: number;
+  openDrafts?: number;
+  abandonedEngagement?: number;
   categoryStats: Record<string, number>;
   dealsPerWeek: { week: string; count: number }[];
 };
@@ -851,6 +854,49 @@ export function AdminPage() {
               </div>
               <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
                 <Package className="h-5 w-5 text-purple-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Task #248: completion-funnel KPIs surfaced from /api/admin/analytics */}
+        <Card data-testid="stat-incomplete-verifications">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Incomplete Verifications</p>
+                <p className="text-2xl font-bold" data-testid="text-incomplete-verifications">{analytics?.incompleteVerifications || 0}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                <Clock className="h-5 w-5 text-amber-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-open-drafts">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Open Drafts</p>
+                <p className="text-2xl font-bold" data-testid="text-open-drafts">{analytics?.openDrafts || 0}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                <Package className="h-5 w-5 text-blue-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="stat-abandoned-engagement">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Abandoned Engagement</p>
+                <p className="text-2xl font-bold" data-testid="text-abandoned-engagement">{analytics?.abandonedEngagement || 0}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
+                <Clock className="h-5 w-5 text-rose-500" />
               </div>
             </div>
           </CardContent>

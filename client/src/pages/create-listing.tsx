@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -131,6 +131,109 @@ export function CreateListingPage() {
   const onSubmit = (data: CreateListingForm) => {
     createMutation.mutate(data);
   };
+
+  // Autosave: debounce form changes and POST to /api/listing-drafts.
+  const draftIdRef = useRef<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [resumeChoice, setResumeChoice] = useState<null | { id: string; data: Record<string, unknown>; title: string | null }>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const draftId = params.get("draft");
+    type DraftRow = { id: string; data: Record<string, unknown>; title: string | null };
+    apiRequest("GET", `/api/listing-drafts`).then(r => r.json()).then((rows: DraftRow[]) => {
+      if (draftId) {
+        const found = rows?.find((r) => r.id === draftId);
+        if (found?.data) {
+          draftIdRef.current = found.id;
+          try { form.reset(found.data as unknown as CreateListingForm); } catch { /* ignore shape drift */ }
+        }
+        setDraftLoaded(true);
+        return;
+      }
+      const candidate = rows?.[0];
+      if (candidate && candidate.data) {
+        setResumeChoice({ id: candidate.id, data: candidate.data, title: candidate.title ?? null });
+      } else {
+        setDraftLoaded(true);
+      }
+    }).catch(() => setDraftLoaded(true));
+  }, []);
+
+  // Held in a ref so each keystroke cancels the prior pending save.
+  const autosaveTimerRef = useRef<number | null>(null);
+  const saveDraftNow = async (values: Partial<CreateListingForm>) => {
+    const hasContent = (values.title && values.title.length > 0) || (values.description && values.description.length > 0);
+    if (!hasContent) return;
+    setDraftSaving(true);
+    try {
+      const res = await apiRequest("POST", "/api/listing-drafts", {
+        id: draftIdRef.current ?? undefined,
+        title: values.title || null,
+        data: values,
+      });
+      const saved = await res.json();
+      if (saved?.id) draftIdRef.current = saved.id;
+      setDraftSavedAt(new Date());
+    } catch (err) {
+      console.warn("[autosave] draft save failed:", err);
+    } finally {
+      setDraftSaving(false);
+    }
+  };
+  useEffect(() => {
+    if (!user || !draftLoaded) return;
+    const sub = form.watch((values) => {
+      if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = window.setTimeout(() => {
+        autosaveTimerRef.current = null;
+        saveDraftNow(values as Partial<CreateListingForm>);
+      }, 1500);
+    });
+    return () => {
+      sub.unsubscribe();
+      if (autosaveTimerRef.current !== null) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [form, user, draftLoaded]);
+  // Flush pending autosave on field blur so leaving a field guarantees a save.
+  const flushAutosave = () => {
+    if (!user || !draftLoaded) return;
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    saveDraftNow(form.getValues() as Partial<CreateListingForm>);
+  };
+
+  const acceptResume = () => {
+    if (!resumeChoice) return;
+    draftIdRef.current = resumeChoice.id;
+    try { form.reset(resumeChoice.data as unknown as CreateListingForm); } catch { /* ignore shape drift */ }
+    setResumeChoice(null);
+    setDraftLoaded(true);
+  };
+  const declineResume = () => {
+    if (resumeChoice?.id) {
+      apiRequest("DELETE", `/api/listing-drafts/${resumeChoice.id}`).catch(() => {});
+    }
+    setResumeChoice(null);
+    setDraftLoaded(true);
+  };
+
+  // Once the listing is created successfully, drop the draft so it
+  // doesn't keep nagging the user from the Drafts tab.
+  useEffect(() => {
+    if (createMutation.isSuccess && draftIdRef.current) {
+      apiRequest("DELETE", `/api/listing-drafts/${draftIdRef.current}`).catch(() => {});
+      draftIdRef.current = null;
+    }
+  }, [createMutation.isSuccess]);
 
   const toggleCategory = (category: string) => {
     const current = form.getValues("categories");
@@ -290,12 +393,46 @@ export function CreateListingPage() {
 
   return (
     <div className="container px-4 py-8 mx-auto max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">{t("create.title")}</h1>
-        <p className="text-muted-foreground">
-          {t("create.subtitle")}
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">{t("create.title")}</h1>
+          <p className="text-muted-foreground">{t("create.subtitle")}</p>
+        </div>
+        {/* Visible autosave indicator — flips between "Saving…" and the
+            most recent saved-at timestamp so users know their work is safe. */}
+        {(draftSaving || draftSavedAt) && (
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5 shrink-0 pt-2" data-testid="autosave-status">
+            {draftSaving ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>{t("create.autosaveSaving")}</span>
+              </>
+            ) : (
+              <span>
+                {t("create.autosaveSaved")} · {draftSavedAt!.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Continue / Start fresh dialog when a draft already exists. */}
+      {resumeChoice && (
+        <Card className="mb-6 border-primary/40 bg-primary/5" data-testid="resume-draft-dialog">
+          <CardHeader>
+            <CardTitle className="text-lg">{t("create.resumeDraftTitle")}</CardTitle>
+            <CardDescription>{t("create.resumeDraftDesc")}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button onClick={acceptResume} data-testid="button-resume-continue">
+              {t("create.resumeDraftContinue")}
+            </Button>
+            <Button variant="outline" onClick={declineResume} data-testid="button-resume-fresh">
+              {t("create.resumeDraftFresh")}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -386,6 +523,7 @@ export function CreateListingPage() {
                         }
                         data-testid="input-title"
                         {...field}
+                        onBlur={() => { field.onBlur(); flushAutosave(); }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -405,6 +543,7 @@ export function CreateListingPage() {
                         className="min-h-[120px] resize-none"
                         data-testid="textarea-description"
                         {...field}
+                        onBlur={() => { field.onBlur(); flushAutosave(); }}
                       />
                     </FormControl>
                     <FormDescription>

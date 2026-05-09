@@ -43,6 +43,13 @@
       "when": 1746619200000,
       "tag": "0005_support_guest",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778322749630,
+      "tag": "0006_parallel_lila_cheney",
+      "breakpoints": true
     }
   ]
 }

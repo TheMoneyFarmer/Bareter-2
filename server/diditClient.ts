@@ -127,6 +127,27 @@ export async function getSessionStatus(sessionId: string): Promise<string | null
   }
 }
 
+// Task #248: re-fetch the verification page URL for an existing
+// in-flight session, so the client can resume KYC/KYB without minting
+// a fresh session id (which would discard partial progress on Didit's
+// side). Returns null if the session can't be hydrated.
+export async function getSessionUrl(sessionId: string): Promise<string | null> {
+  const apiKey = process.env.DIDIT_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const response = await fetch(`${DIDIT_API_BASE_URL}/v2/session/${sessionId}/`, {
+      method: "GET",
+      headers: { "x-api-key": apiKey },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.url || data.verification_url || null;
+  } catch (error) {
+    console.error("Error fetching Didit session URL:", error);
+    return null;
+  }
+}
+
 export function verifyWebhookSignature(
   payload: string,
   signature: string | undefined

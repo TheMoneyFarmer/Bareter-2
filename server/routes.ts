@@ -306,6 +306,9 @@ export async function registerRoutes(
         "active_emirates", "maintenance_mode", "maintenance_message", "registration_enabled", "invite_only_mode",
         "high_value_threshold",
         "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
+        // Task #248 — public so the unsubscribe page can reflect current
+        // admin gating without a separate fetch.
+        "reminders_enabled",
       ];
       const result: Record<string, string | null> = {};
       for (const key of publicKeys) {
@@ -1456,6 +1459,11 @@ export async function registerRoutes(
       }
       await storage.likeListingItem(listingId, userId);
       const count = await storage.getListingLikeCount(listingId);
+      storage.recordEngagementEvent({
+        userId,
+        eventType: "saved",
+        listingId,
+      }).catch((err) => console.warn("[engagement] saved track failed:", err));
       res.json({ liked: true, likeCount: count });
     } catch (error) {
       console.error("Listing like error:", error);
@@ -2241,25 +2249,68 @@ export async function registerRoutes(
 
       const { accountType } = req.body;
       const userAccountType = accountType || user.accountType || "individual";
-      
-      const workflowId = userAccountType === "business" 
-        ? process.env.DIDIT_KYB_WORKFLOW_ID 
+
+      const workflowId = userAccountType === "business"
+        ? process.env.DIDIT_KYB_WORKFLOW_ID
         : process.env.DIDIT_KYC_WORKFLOW_ID;
 
       if (!workflowId) {
         return res.status(500).json({ message: "Verification workflow not configured" });
       }
 
-      const { createVerificationSession } = await import("./diditClient");
-      
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      const { createVerificationSession, getSessionStatus } = await import("./diditClient");
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPLIT_DOMAINS 
+        : process.env.REPLIT_DOMAINS
           ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
           : "http://localhost:5000";
-      
+
       const callbackUrl = `${baseUrl}/profile`;
-      
+
+      // ── Task #248: resume an in-flight Didit session instead of
+      // restarting from scratch. We resume only when the existing
+      // session is younger than 7 days, was not abandoned/expired on
+      // Didit's side, and matches the requested account type. Anything
+      // else falls through to a fresh session creation.
+      const RESUME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+      const sameAccountType = (user.accountType ?? "individual") === userAccountType;
+      const startedAt = user.verificationSessionStartedAt
+        ? new Date(user.verificationSessionStartedAt).getTime()
+        : 0;
+      const sessionFresh = startedAt > 0 && Date.now() - startedAt < RESUME_WINDOW_MS;
+
+      if (user.diditSessionId && sameAccountType && sessionFresh) {
+        try {
+          const liveStatus = await getSessionStatus(user.diditSessionId);
+          // Only resume if Didit still considers the session in-flight.
+          if (
+            liveStatus &&
+            liveStatus !== "EXPIRED" &&
+            liveStatus !== "ABANDONED" &&
+            liveStatus !== "DECLINED" &&
+            liveStatus !== "REJECTED" &&
+            liveStatus !== "APPROVED"
+          ) {
+            // Re-fetch the URL via createVerificationSession would mint
+            // a new session id, so instead we hand back the existing
+            // verification page URL by hitting Didit's session detail.
+            // Didit's REST surface returns the URL on the session record.
+            const { getSessionUrl } = await import("./diditClient");
+            const resumeUrl = await getSessionUrl(user.diditSessionId).catch(() => null);
+            if (resumeUrl) {
+              return res.json({
+                sessionId: user.diditSessionId,
+                verificationUrl: resumeUrl,
+                resumed: true,
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("[verification] resume probe failed, falling through to new session:", err);
+        }
+      }
+
       const session = await createVerificationSession(
         workflowId,
         user.id,
@@ -2273,7 +2324,8 @@ export async function registerRoutes(
       await storage.updateUser(user.id, {
         accountType: userAccountType,
         diditSessionId: session.session_id,
-        ...(userAccountType === "business" 
+        verificationSessionStartedAt: new Date(),
+        ...(userAccountType === "business"
           ? { kybStatus: "IN_PROGRESS" }
           : { kycStatus: "IN_PROGRESS" }
         ),
@@ -2282,6 +2334,7 @@ export async function registerRoutes(
       res.json({
         sessionId: session.session_id,
         verificationUrl: session.url,
+        resumed: false,
       });
     } catch (error) {
       console.error("Create verification session error:", error);
@@ -2784,6 +2837,19 @@ export async function registerRoutes(
       
       const newListingsToday = await storage.getNewListingsToday();
 
+      let incompleteVerifications = 0;
+      let openDrafts = 0;
+      let abandonedEngagement = 0;
+      try {
+        incompleteVerifications = await storage.countIncompleteVerifications();
+      } catch (e) { console.error("[analytics] incompleteVerifications:", e); }
+      try {
+        openDrafts = await storage.countOpenDrafts();
+      } catch (e) { console.error("[analytics] openDrafts:", e); }
+      try {
+        abandonedEngagement = await storage.countAbandonedEngagement();
+      } catch (e) { console.error("[analytics] abandonedEngagement:", e); }
+
       res.json({
         totalUsers: allUsers.length,
         totalDeals: allDeals.length,
@@ -2795,6 +2861,9 @@ export async function registerRoutes(
         totalGMV,
         monthlyGMV,
         pendingVerifications,
+        incompleteVerifications,
+        openDrafts,
+        abandonedEngagement,
         categoryStats,
         dealsPerWeek,
       });
@@ -4120,6 +4189,9 @@ export async function registerRoutes(
     "contact_email", "support_email", "support_phone",
     "hero_headline", "hero_tagline", "hero_cta", "how_it_works_steps", "faq_entries",
     "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
+    // Task #248 — completion reminder gates (master + per-channel).
+    "reminders_enabled", "reminders_verification_enabled",
+    "reminders_drafts_enabled", "reminders_engagement_enabled",
   ];
 
   app.get("/api/admin/settings/platform", requireAdmin, async (_req, res) => {
@@ -4144,7 +4216,8 @@ export async function registerRoutes(
       if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
         return res.status(400).json({ message: "Invalid request body" });
       }
-      const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled", "waitlist_enabled", "disputes_enabled", "ai_matching_enabled"];
+      const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled", "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
+        "reminders_enabled", "reminders_verification_enabled", "reminders_drafts_enabled", "reminders_engagement_enabled"];
       const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user"];
       const JSON_KEYS = ["how_it_works_steps", "faq_entries", "active_emirates"];
       const STRING_KEYS = ["announcement_banner_text", "announcement_banner_link", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline", "hero_cta", "maintenance_message"];
@@ -6763,6 +6836,157 @@ export async function registerRoutes(
     } catch (err) {
       console.error("sitemap error:", err);
       res.status(500).send("<?xml version='1.0'?><urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'/>");
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // Task #248 — Save user progress + completion reminders
+  // ════════════════════════════════════════════════════════════════════
+
+  // Listing drafts — autosave / hydrate / delete. Drafts are scoped to
+  // the owning user; the auth check guards both reads and writes.
+  app.get("/api/listing-drafts", requireAuth, async (req, res) => {
+    try {
+      const rows = await storage.getListingDraftsByUser(req.session.userId!);
+      res.json(rows);
+    } catch (err) {
+      console.error("[drafts] list failed:", err);
+      res.status(500).json({ message: "Failed to load drafts" });
+    }
+  });
+
+  app.post("/api/listing-drafts", requireAuth, async (req, res) => {
+    try {
+      const body = req.body as { id?: string; data?: Record<string, unknown>; title?: string };
+      if (!body || typeof body !== "object" || typeof body.data !== "object" || body.data === null) {
+        return res.status(400).json({ message: "data is required" });
+      }
+      // Cap payload size — drafts are intentionally lightweight; the
+      // create-listing form is small JSON.
+      const payloadSize = JSON.stringify(body.data).length;
+      if (payloadSize > 200_000) {
+        return res.status(413).json({ message: "Draft too large" });
+      }
+      const draft = await storage.upsertListingDraft(req.session.userId!, body.data, {
+        id: body.id,
+        title: body.title ?? null,
+      });
+      res.json(draft);
+    } catch (err) {
+      console.error("[drafts] save failed:", err);
+      res.status(500).json({ message: "Failed to save draft" });
+    }
+  });
+
+  app.delete("/api/listing-drafts/:id", requireAuth, async (req, res) => {
+    try {
+      const ok = await storage.deleteListingDraft(String(req.params.id), req.session.userId!);
+      if (!ok) return res.status(404).json({ message: "Draft not found" });
+      res.json({ deleted: true });
+    } catch (err) {
+      console.error("[drafts] delete failed:", err);
+      res.status(500).json({ message: "Failed to delete draft" });
+    }
+  });
+
+  // Engagement tracking — fire-and-forget event log. Validates against
+  // the shared ENGAGEMENT_EVENT_TYPES enum so unknown event names can't
+  // pollute analytics.
+  app.post("/api/engagement/track", requireAuth, async (req, res) => {
+    try {
+      const { ENGAGEMENT_EVENT_TYPES } = await import("@shared/schema");
+      const { eventType, listingId } = req.body as { eventType?: string; listingId?: string };
+      if (!eventType || !(ENGAGEMENT_EVENT_TYPES as readonly string[]).includes(eventType)) {
+        return res.status(400).json({ message: "Invalid eventType" });
+      }
+      await storage.recordEngagementEvent({
+        userId: req.session.userId!,
+        listingId: listingId ?? null,
+        eventType,
+      });
+      res.json({ tracked: true });
+    } catch (err) {
+      console.error("[engagement] track failed:", err);
+      res.status(500).json({ message: "Failed to track event" });
+    }
+  });
+
+  // "Continue where you left off" — surfaces all three resumable items:
+  app.get("/api/continue", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const me = await storage.getUser(userId);
+      const [drafts, recent] = await Promise.all([
+        storage.getListingDraftsByUser(userId),
+        storage.getRecentEngagementForUser(userId, 20),
+      ]);
+      const latestDraft = drafts[0] ?? null;
+      // Continue strip surfaces any unfinished engagement: viewed (already
+      // gated client-side at 10s dwell), saved, or message_started.
+      const eligibleTypes = new Set(["viewed", "saved", "message_started"]);
+      let engagement: { listing: { id: string; title: string }; eventType: string; at: Date | null } | null = null;
+      for (const evt of recent) {
+        if (!evt.listingId || !eligibleTypes.has(evt.eventType)) continue;
+        const finished = await storage.hasUserDealForListing(userId, evt.listingId);
+        if (finished) continue;
+        const l = await storage.getListing(evt.listingId).catch(() => null);
+        if (!l || !l.isActive) continue;
+        engagement = { listing: { id: l.id, title: l.title }, eventType: evt.eventType, at: evt.createdAt };
+        break;
+      }
+      const inProgress = me && (me.kycStatus === "IN_PROGRESS" || me.kybStatus === "IN_PROGRESS");
+      const verification = me && inProgress && me.verificationSessionStartedAt
+        ? { startedAt: me.verificationSessionStartedAt, accountType: me.accountType ?? null }
+        : null;
+      res.json({
+        verification,
+        draft: latestDraft ? { id: latestDraft.id, title: latestDraft.title, updatedAt: latestDraft.updatedAt } : null,
+        engagement,
+      });
+    } catch (err) {
+      console.error("[continue] failed:", err);
+      res.status(500).json({ message: "Failed to load continue data" });
+    }
+  });
+
+  // One-click unsubscribe. Renders a tiny inline HTML page so the link
+  // is meaningful when clicked from any mail client (no auth required —
+  // the token itself is the proof of identity).
+  app.get("/api/reminders/unsubscribe", async (req, res) => {
+    try {
+      const token = String(req.query.token || "");
+      const rawKind = String(req.query.kind || "all");
+      if (!token) return res.status(400).send("Missing token");
+      const user = await storage.getUserByUnsubscribeToken(token);
+      if (!user) return res.status(404).send("Invalid unsubscribe link");
+      // Strict allowlist on `kind` — anything outside this set is treated
+      // as "all". This both prevents reflected-XSS via the HTML response
+      // and blocks the caller from poisoning reminderPreferences with an
+      // arbitrary key.
+      const allowed = new Set(["all", "verification", "drafts", "engagement"]);
+      const kind = allowed.has(rawKind) ? rawKind : "all";
+      const prefs: { verification?: boolean; drafts?: boolean; engagement?: boolean } = {
+        ...(user.reminderPreferences ?? {}),
+      };
+      if (kind === "all") {
+        prefs.verification = false; prefs.drafts = false; prefs.engagement = false;
+      } else if (kind === "verification" || kind === "drafts" || kind === "engagement") {
+        prefs[kind] = false;
+      }
+      await storage.updateUser(user.id, { reminderPreferences: prefs });
+      // Defensive HTML escape on the label even though `kind` is now a
+      // closed enum — belt-and-braces against future drift.
+      const label = kind.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(`<!doctype html><html><head><meta charset="utf-8"><title>Unsubscribed</title></head>
+<body style="font-family:Arial,sans-serif;max-width:520px;margin:80px auto;padding:32px;text-align:center;color:#1a1a2e">
+<h1 style="color:#136c68">You're unsubscribed</h1>
+<p style="color:#4b5563">We won't send you any more &quot;${label}&quot; reminders. You'll still receive transactional emails (account, deals, security).</p>
+<p style="color:#9ca3af;font-size:12px">Bareter</p>
+</body></html>`);
+    } catch (err) {
+      console.error("[reminders] unsubscribe failed:", err);
+      res.status(500).send("Something went wrong");
     }
   });
 
