@@ -43,6 +43,7 @@ import {
   Plus,
   Flag,
   CircleDot,
+  Languages,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -61,13 +62,55 @@ export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Per-message translation state. Cache is keyed `${msgId}-${language}` so
+  // switching the UI language clears any stale translated text automatically.
+  const msgTranslationCache = useRef<Map<string, string>>(new Map());
+  const [translatingMsgIds, setTranslatingMsgIds] = useState<Set<string>>(new Set());
+  const [translatedMsgIds, setTranslatedMsgIds] = useState<Set<string>>(new Set());
+  const [msgTranslations, setMsgTranslations] = useState<Record<string, string>>({});
+
+  const handleTranslateMessage = async (msgId: string, content: string) => {
+    const cacheKey = `${msgId}-${language}`;
+    // If already showing translated → revert to original.
+    if (translatedMsgIds.has(msgId)) {
+      setTranslatedMsgIds((prev) => { const s = new Set(prev); s.delete(msgId); return s; });
+      return;
+    }
+    // Return from cache if available.
+    if (msgTranslationCache.current.has(cacheKey)) {
+      setMsgTranslations((prev) => ({ ...prev, [msgId]: msgTranslationCache.current.get(cacheKey)! }));
+      setTranslatedMsgIds((prev) => new Set(prev).add(msgId));
+      return;
+    }
+    setTranslatingMsgIds((prev) => new Set(prev).add(msgId));
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ text: `TITLE: ${content}`, targetLang: language }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      const translated = data.title || content;
+      msgTranslationCache.current.set(cacheKey, translated);
+      setMsgTranslations((prev) => ({ ...prev, [msgId]: translated }));
+      setTranslatedMsgIds((prev) => new Set(prev).add(msgId));
+    } catch {
+      toast({ title: t("translate.error"), variant: "destructive" });
+    } finally {
+      setTranslatingMsgIds((prev) => { const s = new Set(prev); s.delete(msgId); return s; });
+    }
+  };
+
   const { data: deal, isLoading } = useQuery<DealWithUsers>({
     queryKey: ["/api/deals", id],
   });
@@ -539,10 +582,40 @@ export function DealDetailPage() {
                               <span>{isMe ? "You" : msg.sender?.fullName}</span>
                               <FounderBadge show={!!msg.sender?.founderBadge} />
                             </div>
-                            <p className="text-sm">{msg.content}</p>
-                            <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                              {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
+                            <p className="text-sm" data-testid={`text-message-content-${msg.id}`}>
+                              {translatedMsgIds.has(msg.id) && msgTranslations[msg.id]
+                                ? msgTranslations[msg.id]
+                                : msg.content}
                             </p>
+                            <div className={`flex items-center justify-between mt-1 gap-2`}>
+                              <p className={`text-xs ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                                {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleTranslateMessage(msg.id, msg.content)}
+                                disabled={translatingMsgIds.has(msg.id)}
+                                className={`flex items-center gap-0.5 text-[10px] transition-opacity hover:opacity-100 ${
+                                  isMe
+                                    ? "text-primary-foreground/60 hover:text-primary-foreground/90"
+                                    : "text-muted-foreground hover:text-foreground"
+                                } disabled:opacity-40`}
+                                data-testid={`btn-translate-message-${msg.id}`}
+                              >
+                                {translatingMsgIds.has(msg.id) ? (
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                ) : (
+                                  <Languages className="h-2.5 w-2.5" />
+                                )}
+                                <span>
+                                  {translatingMsgIds.has(msg.id)
+                                    ? t("translate.loading")
+                                    : translatedMsgIds.has(msg.id)
+                                    ? t("translate.original")
+                                    : t("translate.button")}
+                                </span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                         {hasWarning && (
