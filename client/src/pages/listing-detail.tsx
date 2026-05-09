@@ -335,17 +335,17 @@ export function ListingDetailPage() {
       <div className="container px-4 py-6 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-4 flex items-center gap-1.5 flex-wrap">
         <Link href="/" className="hover:text-bareter-teal">{t("listingDetail.home")}</Link>
-        <span>›</span>
+        <span aria-hidden="true">{isRTL ? "‹" : "›"}</span>
         <Link href="/browse" className="hover:text-bareter-teal">{t("listingDetail.listings")}</Link>
         {(listing.categories || [])[0] && (
           <>
-            <span>›</span>
+            <span aria-hidden="true">{isRTL ? "‹" : "›"}</span>
             <span className="text-bareter-navy dark:text-foreground">{(listing.categories || [])[0]}</span>
           </>
         )}
         {listing.location && (
           <>
-            <span>›</span>
+            <span aria-hidden="true">{isRTL ? "‹" : "›"}</span>
             <span className="text-bareter-navy dark:text-foreground">{listing.location}</span>
           </>
         )}
