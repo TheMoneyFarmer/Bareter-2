@@ -116,32 +116,59 @@ export function BrowsePage() {
 
   useEffect(() => {
     if (!routeCategory) return;
+    setSelectedCategories([routeCategory]);
+    setActiveTab("search");
+    if (routeSubcategory) {
+      setSearch(routeSubcategory);
+    }
+  }, [routeCategory, routeSubcategory]);
+
+  useEffect(() => {
+    if (!routeCategory) return;
     const prevTitle = document.title;
-    const prevDesc = document.querySelector('meta[name="description"]')?.getAttribute("content") || null;
+    const metaDescEl = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    const prevDesc = metaDescEl?.getAttribute("content") ?? null;
+    const canonicalEl = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    const prevCanonicalHref = canonicalEl?.getAttribute("href") ?? null;
+    const canonicalWasInjected = !canonicalEl;
+
     const title = routeSubcategory
       ? `${routeSubcategory} in ${routeCategory} — Bareter`
       : `${routeCategory} — Bareter`;
     const desc = routeSubcategory
       ? `Browse ${routeSubcategory} listings in ${routeCategory} on Bareter — UAE's cashless B2B barter marketplace.`
       : `Browse ${routeCategory} barter listings on Bareter — swap goods and services without cash.`;
+
     document.title = title;
-    let metaDesc = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    let metaDesc = metaDescEl;
+    let metaDescInjected = false;
     if (!metaDesc) {
       metaDesc = document.createElement("meta");
       metaDesc.name = "description";
       document.head.appendChild(metaDesc);
+      metaDescInjected = true;
     }
     metaDesc.content = desc;
-    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    let canonical = canonicalEl;
     if (!canonical) {
       canonical = document.createElement("link");
       canonical.rel = "canonical";
       document.head.appendChild(canonical);
     }
     canonical.href = `${window.location.origin}${window.location.pathname}`;
+
     return () => {
       document.title = prevTitle;
-      if (prevDesc !== null && metaDesc) metaDesc.content = prevDesc;
+      if (metaDescInjected && metaDesc) {
+        metaDesc.remove();
+      } else if (metaDesc && prevDesc !== null) {
+        metaDesc.content = prevDesc;
+      }
+      if (canonicalWasInjected && canonical) {
+        canonical.remove();
+      } else if (canonical && prevCanonicalHref !== null) {
+        canonical.href = prevCanonicalHref;
+      }
     };
   }, [routeCategory, routeSubcategory]);
   const [sortBy, setSortBy] = useState<string>("newest");

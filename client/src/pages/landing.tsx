@@ -38,9 +38,9 @@ const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
   { emoji: "💼", label: "Services", href: "/c/services" },
   { emoji: "📱", label: "Electronics", href: "/c/technology" },
   { emoji: "🍽", label: "Hospitality", href: "/c/hospitality" },
-  { emoji: "⛵", label: "Yachts", href: "/c/real-estate/villa" },
+  { emoji: "⛵", label: "Yachts", href: "/c/vehicles/yacht-boat" },
   { emoji: "🏋", label: "Fitness", href: "/c/health-and-wellness" },
-  { emoji: "🏠", label: "Home", href: "/c/real-estate" },
+  { emoji: "🏠", label: "Home", href: "/c/real-estate/house" },
 ];
 
 const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
@@ -49,9 +49,9 @@ const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string
   { label: "Services",    emoji: "💼", image: catServicesImg,    href: "/c/services" },
   { label: "Electronics", emoji: "📱", image: catElectronicsImg, href: "/c/technology" },
   { label: "Hospitality", emoji: "🍽", image: catHospitalityImg, href: "/c/hospitality" },
-  { label: "Yachts",      emoji: "⛵", image: catYachtsImg,      href: "/c/real-estate/villa" },
+  { label: "Yachts",      emoji: "⛵", image: catYachtsImg,      href: "/c/vehicles/yacht-boat" },
   { label: "Fitness",     emoji: "🏋", image: catFitnessImg,     href: "/c/health-and-wellness" },
-  { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/c/real-estate" },
+  { label: "Home",        emoji: "🏠", image: catHomeImg,        href: "/c/real-estate/house" },
 ];
 
 type PublicSettings = Record<string, string | null>;
