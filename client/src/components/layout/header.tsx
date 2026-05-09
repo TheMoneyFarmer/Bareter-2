@@ -379,7 +379,7 @@ export function Header() {
                     <Link href="/browse">
                       <DropdownMenuItem className="cursor-pointer" data-testid="menu-browse">
                         <Search className="me-2 h-4 w-4" />
-                        {t("nav.browseMarketplace") || "Browse"}
+                        {t("nav.browseMarketplace")}
                       </DropdownMenuItem>
                     </Link>
                     <Link href="/deals">
@@ -441,13 +441,13 @@ export function Header() {
                       <Link href="/create-listing">
                         <Button variant="bareter" className="w-full justify-start gap-2 h-11">
                           <Plus className="h-4 w-4" />
-                          List a barter
+                          {t("nav.listABarter")}
                         </Button>
                       </Link>
                       <Link href="/feed">
                         <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
                           <Rss className="h-4 w-4" />
-                          {t("nav.feed") || "Feed"}
+                          {t("nav.feed")}
                         </Button>
                       </Link>
                       <div className="h-2" />
@@ -466,13 +466,13 @@ export function Header() {
                       <Link href="/saved">
                         <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
                           <Search className="h-4 w-4" />
-                          Saved
+                          {t("nav.saved")}
                         </Button>
                       </Link>
                       <Link href="/referrals">
                         <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
                           <Plus className="h-4 w-4" />
-                          Referrals
+                          {t("nav.referrals")}
                         </Button>
                       </Link>
                       <Link href="/settings">
@@ -499,7 +499,7 @@ export function Header() {
                           data-testid="mobile-menu-language"
                         >
                           <Languages className="h-4 w-4" />
-                          {language === "en" ? "Arabic" : "English"}
+                          {language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}
                         </Button>
                         <Button
                           variant="bareter-ghost"
@@ -508,7 +508,7 @@ export function Header() {
                           data-testid="mobile-menu-theme"
                         >
                           {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                          {theme === "light" ? "Dark" : "Light"}
+                          {theme === "light" ? t("nav.darkMode") : t("nav.lightMode")}
                         </Button>
                       </div>
                       <Button
@@ -532,7 +532,7 @@ export function Header() {
                   onClick={openWaitlist}
                   data-testid="button-join-waitlist"
                 >
-                  Join the waitlist
+                  {t("nav.joinWaitlist")}
                 </Button>
               </div>
             ) : (
@@ -571,7 +571,7 @@ export function Header() {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search barters..."
+                placeholder={t("nav.searchBarters")}
                 className="flex-1 ms-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
                 data-testid="input-header-search-mobile"
               />

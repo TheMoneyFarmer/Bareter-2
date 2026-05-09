@@ -13,6 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -42,28 +43,31 @@ const exchangeItemSchema = z.object({
   isPriority: z.boolean(),
 });
 
-const createListingSchema = z.object({
-  type: z.enum(["offer", "request"]),
-  title: z.string().min(5, "Title must be at least 5 characters"),
-  description: z.string().min(20, "Description must be at least 20 characters"),
-  categories: z.array(z.string()).min(1, "Select at least one category"),
-  retailValue: z.string().refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
-    message: "Enter a valid value greater than 0",
-  }),
-  location: z.string().min(1, "Select a location"),
-  country: z.string().length(2).optional(),
-  city: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  images: z.array(z.string()).min(3, "Please upload at least 3 images"),
-  wantedCategories: z.array(z.string()).optional(),
-  exchangeItems: z.array(exchangeItemSchema).optional(),
-  openToOffers: z.boolean().optional(),
-});
+function makeCreateListingSchema(t: (key: string) => string) {
+  return z.object({
+    type: z.enum(["offer", "request"]),
+    title: z.string().min(5, t("create.validation.titleMin")),
+    description: z.string().min(20, t("create.validation.descMin")),
+    categories: z.array(z.string()).min(1, t("create.validation.categoryMin")),
+    retailValue: z.string().refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
+      message: t("create.validation.valueInvalid"),
+    }),
+    location: z.string().min(1, t("create.validation.locationRequired")),
+    country: z.string().length(2).optional(),
+    city: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    images: z.array(z.string()).min(3, t("create.validation.imagesMin")),
+    wantedCategories: z.array(z.string()).optional(),
+    exchangeItems: z.array(exchangeItemSchema).optional(),
+    openToOffers: z.boolean().optional(),
+  });
+}
 
-type CreateListingForm = z.infer<typeof createListingSchema>;
+type CreateListingForm = z.infer<ReturnType<typeof makeCreateListingSchema>>;
 
 export function CreateListingPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -75,7 +79,7 @@ export function CreateListingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<CreateListingForm>({
-    resolver: zodResolver(createListingSchema),
+    resolver: zodResolver(makeCreateListingSchema(t)),
     defaultValues: {
       type: "offer",
       title: "",
@@ -110,15 +114,15 @@ export function CreateListingPage() {
         listing_value: data.retailValue ? parseFloat(data.retailValue) : undefined,
       });
       toast({
-        title: "Listing created!",
-        description: "Your listing is now live and visible to other users.",
+        title: t("create.successTitle"),
+        description: t("create.successDesc"),
       });
       navigate(`/listings/${data.id}`);
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to create listing",
-        description: error.message || "Something went wrong. Please try again.",
+        title: t("create.failedTitle"),
+        description: error.message || t("common.somethingWentWrong"),
         variant: "destructive",
       });
     },
@@ -229,8 +233,8 @@ export function CreateListingPage() {
       form.setValue("images", [...currentImages, ...uploadedUrls], { shouldValidate: true });
     } catch (error: any) {
       toast({
-        title: "Upload failed",
-        description: error.message || "Could not upload one or more images. Please try again.",
+        title: t("create.uploadFailed"),
+        description: error.message || t("create.uploadImageError"),
         variant: "destructive",
       });
     } finally {
@@ -279,7 +283,7 @@ export function CreateListingPage() {
   if (!user) {
     return (
       <div className="container px-4 py-12 mx-auto max-w-2xl text-center">
-        <p className="text-muted-foreground">Please sign in to create a listing.</p>
+        <p className="text-muted-foreground">{t("create.signInRequired")}</p>
       </div>
     );
   }
@@ -287,9 +291,9 @@ export function CreateListingPage() {
   return (
     <div className="container px-4 py-8 mx-auto max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Create Listing</h1>
+        <h1 className="text-3xl font-bold mb-2">{t("create.title")}</h1>
         <p className="text-muted-foreground">
-          List something you want to offer or request in a barter
+          {t("create.subtitle")}
         </p>
       </div>
 
@@ -297,9 +301,9 @@ export function CreateListingPage() {
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Listing Type</CardTitle>
+              <CardTitle className="text-lg">{t("create.listingType")}</CardTitle>
               <CardDescription>
-                Are you offering something or looking for something?
+                {t("create.listingTypeDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -326,9 +330,9 @@ export function CreateListingPage() {
                             data-testid="radio-offer"
                           >
                             <Package className="h-10 w-10 mb-3 text-primary" />
-                            <span className="font-semibold">I'm Offering</span>
+                            <span className="font-semibold">{t("create.imOffering")}</span>
                             <span className="text-xs text-muted-foreground text-center mt-1">
-                              Goods or services to barter
+                              {t("create.goodsOrServices")}
                             </span>
                           </label>
                         </div>
@@ -344,9 +348,9 @@ export function CreateListingPage() {
                             data-testid="radio-request"
                           >
                             <ShoppingCart className="h-10 w-10 mb-3 text-primary" />
-                            <span className="font-semibold">I'm Looking For</span>
+                            <span className="font-semibold">{t("create.imLookingFor")}</span>
                             <span className="text-xs text-muted-foreground text-center mt-1">
-                              Something I need
+                              {t("create.somethingINeed")}
                             </span>
                           </label>
                         </div>
@@ -363,7 +367,7 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Details
+                {t("create.details")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -372,13 +376,13 @@ export function CreateListingPage() {
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Title</FormLabel>
+                    <FormLabel>{t("listing.title")}</FormLabel>
                     <FormControl>
                       <Input
                         placeholder={
                           selectedType === "offer"
-                            ? "e.g., 5 Nights Hotel Stay in Dubai Marina"
-                            : "e.g., Looking for Web Development Services"
+                            ? t("create.offerPlaceholder")
+                            : t("create.requestPlaceholder")
                         }
                         data-testid="input-title"
                         {...field}
@@ -394,17 +398,17 @@ export function CreateListingPage() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description</FormLabel>
+                    <FormLabel>{t("listing.description")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe what you're offering or looking for in detail..."
+                        placeholder={t("create.descriptionPlaceholder")}
                         className="min-h-[120px] resize-none"
                         data-testid="textarea-description"
                         {...field}
                       />
                     </FormControl>
                     <FormDescription>
-                      Be specific about what's included, conditions, and any requirements
+                      {t("create.descriptionHint")}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -417,10 +421,10 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Tag className="h-5 w-5" />
-                {selectedType === "offer" ? "What I'm Offering" : "What I Need"} - Categories
+                {selectedType === "offer" ? t("create.whatImOffering") : t("create.whatINeed")} - {t("listing.categories")}
               </CardTitle>
               <CardDescription>
-                Select all categories that apply (at least one required)
+                {t("create.selectAtLeastOne")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -454,17 +458,17 @@ export function CreateListingPage() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Settings2 className="h-5 w-5" />
-                  Category Details
+                  {t("create.categoryDetails")}
                 </CardTitle>
                 <CardDescription>
-                  Provide additional details specific to your selected categories
+                  {t("create.categoryDetailsDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {(selectedCategories.includes("Fashion") || selectedCategories.includes("Modeling")) && (
                   <>
                     <div className="space-y-2">
-                      <FormLabel>Number of Outfits</FormLabel>
+                      <FormLabel>{t("create.numberOfOutfits")}</FormLabel>
                       <Input
                         type="number"
                         value={categoryDetails.numberOfOutfits ?? ""}
@@ -473,11 +477,11 @@ export function CreateListingPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <FormLabel>Shoot Duration</FormLabel>
+                      <FormLabel>{t("create.shootDuration")}</FormLabel>
                       <Input
                         value={categoryDetails.shootDuration ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, shootDuration: e.target.value }))}
-                        placeholder="e.g., 2 hours, Full day"
+                        placeholder={t("create.shootDurationPlaceholder")}
                         data-testid="input-shoot-duration"
                       />
                     </div>
@@ -486,29 +490,29 @@ export function CreateListingPage() {
                 {selectedCategories.includes("Hospitality") && (
                   <>
                     <div className="space-y-2">
-                      <FormLabel>Preferred Dates</FormLabel>
+                      <FormLabel>{t("create.preferredDates")}</FormLabel>
                       <Input
                         value={categoryDetails.dates ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, dates: e.target.value }))}
-                        placeholder="e.g., Dec 15-20, Flexible"
+                        placeholder={t("create.preferredDatesPlaceholder")}
                         data-testid="input-preferred-dates"
                       />
                     </div>
                     <div className="space-y-2">
-                      <FormLabel>Room Type</FormLabel>
+                      <FormLabel>{t("create.roomType")}</FormLabel>
                       <Input
                         value={categoryDetails.roomType ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, roomType: e.target.value }))}
-                        placeholder="e.g., Deluxe Suite, Standard"
+                        placeholder={t("create.roomTypePlaceholder")}
                         data-testid="input-room-type"
                       />
                     </div>
                     <div className="space-y-2">
-                      <FormLabel>Content Deliverables</FormLabel>
+                      <FormLabel>{t("create.contentDeliverables")}</FormLabel>
                       <Input
                         value={categoryDetails.contentDeliverables ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, contentDeliverables: e.target.value }))}
-                        placeholder="e.g., 3 Reels + 5 Stories"
+                        placeholder={t("create.contentDeliverablePlaceholder")}
                         data-testid="input-content-deliverables"
                       />
                     </div>
@@ -517,20 +521,20 @@ export function CreateListingPage() {
                 {selectedCategories.includes("SaaS") && (
                   <>
                     <div className="space-y-2">
-                      <FormLabel>License Duration</FormLabel>
+                      <FormLabel>{t("create.licenseDuration")}</FormLabel>
                       <Input
                         value={categoryDetails.licenseDuration ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, licenseDuration: e.target.value }))}
-                        placeholder="e.g., 12 months, Annual"
+                        placeholder={t("create.licenseDurationPlaceholder")}
                         data-testid="input-license-duration"
                       />
                     </div>
                     <div className="space-y-2">
-                      <FormLabel>Features Included</FormLabel>
+                      <FormLabel>{t("create.featuresIncluded")}</FormLabel>
                       <Input
                         value={categoryDetails.featuresIncluded ?? ""}
                         onChange={(e) => setCategoryDetails((prev) => ({ ...prev, featuresIncluded: e.target.value }))}
-                        placeholder="e.g., Pro plan, All features"
+                        placeholder={t("create.featuresIncludedPlaceholder")}
                         data-testid="input-features-included"
                       />
                     </div>
@@ -544,17 +548,17 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ArrowLeftRight className="h-5 w-5 text-primary" />
-                What I Want in Exchange
+                {t("create.whatIWantInExchange")}
               </CardTitle>
               <CardDescription>
-                Tell potential barter partners what you're looking for in return
+                {t("create.tellPartners")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <FormLabel className="text-base mb-3 block">Preferred Categories</FormLabel>
+                <FormLabel className="text-base mb-3 block">{t("create.preferredCategories")}</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Select categories of goods/services you'd accept in barter
+                  {t("create.selectCategoriesAccept")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {CATEGORIES.map((category) => (
@@ -571,134 +575,121 @@ export function CreateListingPage() {
                 </div>
               </div>
 
-              <div className="border-t pt-6">
-                <FormLabel className="text-base mb-3 block flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Specific Exchange Items
-                </FormLabel>
+              <div>
+                <FormLabel className="text-base mb-1 block">{t("create.specificExchangeItems")}</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Add specific items you'd accept. Mark priority items with a star!
+                  {t("create.addSpecificItems")}
                 </p>
-                
-                <div className="flex gap-2 mb-4">
-                  <Input
-                    value={newExchangeItem}
-                    onChange={(e) => setNewExchangeItem(e.target.value)}
-                    placeholder="e.g., Professional photos, Marketing services..."
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExchangeItem())}
-                    className="flex-1"
-                    data-testid="input-exchange-item"
-                  />
-                  <Button
-                    type="button"
-                    variant={newItemPriority ? "default" : "outline"}
-                    size="icon"
-                    onClick={() => setNewItemPriority(!newItemPriority)}
-                    title={newItemPriority ? "Priority item" : "Mark as priority"}
-                    data-testid="button-toggle-priority"
-                  >
-                    <Star className={`h-4 w-4 ${newItemPriority ? "fill-current" : ""}`} />
-                  </Button>
-                  <Button type="button" onClick={addExchangeItem} data-testid="button-add-exchange">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
 
                 {priorityItems.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs font-medium text-primary mb-2 flex items-center gap-1">
-                      <Star className="h-3 w-3 fill-current" />
-                      Priority Items (What I Really Want)
+                    <p className="text-sm font-medium mb-2 flex items-center gap-1">
+                      <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                      {t("create.priorityItemsLabel")}
                     </p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {priorityItems.map((item) => (
-                        <Badge
-                          key={item.name}
-                          className="gap-1 pr-1 bg-primary/10 text-primary border-primary/30"
-                        >
-                          <Star className="h-3 w-3 fill-current" />
-                          {item.name}
+                        <div key={item.name} className="flex items-center gap-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30">
+                          <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+                          <span className="text-sm flex-1">{item.name}</span>
                           <button
                             type="button"
-                            className="ml-1 p-0.5 rounded hover-elevate"
-                            onClick={(e) => { e.stopPropagation(); toggleItemPriority(item.name); }}
-                            title="Remove priority"
-                            data-testid={`button-toggle-priority-${item.name.replace(/\s+/g, "-")}`}
+                            onClick={() => toggleItemPriority(item.name)}
+                            className="text-yellow-600 hover:text-yellow-800 text-xs"
+                            data-testid={`button-deprioritize-${item.name}`}
                           >
-                            <Star className="h-3 w-3 fill-current text-primary" />
+                            <Star className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
-                            className="p-0.5 rounded hover-elevate"
-                            onClick={(e) => { e.stopPropagation(); removeExchangeItem(item.name); }}
-                            data-testid={`button-remove-item-${item.name.replace(/\s+/g, "-")}`}
+                            onClick={() => removeExchangeItem(item.name)}
+                            className="text-destructive hover:text-destructive/80"
+                            data-testid={`button-remove-priority-${item.name}`}
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
-                        </Badge>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
                 {otherItems.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">
-                      Also Open To
-                    </p>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="mb-4">
+                    <p className="text-sm font-medium mb-2">{t("create.alsoOpenTo")}</p>
+                    <div className="space-y-2">
                       {otherItems.map((item) => (
-                        <Badge key={item.name} variant="secondary" className="gap-1 pr-1">
-                          {item.name}
+                        <div key={item.name} className="flex items-center gap-2 p-2 rounded-lg bg-muted">
+                          <span className="text-sm flex-1">{item.name}</span>
                           <button
                             type="button"
-                            className="ml-1 p-0.5 rounded hover-elevate"
-                            onClick={(e) => { e.stopPropagation(); toggleItemPriority(item.name); }}
-                            title="Mark as priority"
-                            data-testid={`button-make-priority-${item.name.replace(/\s+/g, "-")}`}
+                            onClick={() => toggleItemPriority(item.name)}
+                            className="text-muted-foreground hover:text-yellow-600 text-xs"
+                            data-testid={`button-prioritize-${item.name}`}
                           >
-                            <Star className="h-3 w-3" />
+                            <Star className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
-                            className="p-0.5 rounded hover-elevate"
-                            onClick={(e) => { e.stopPropagation(); removeExchangeItem(item.name); }}
-                            data-testid={`button-remove-${item.name.replace(/\s+/g, "-")}`}
+                            onClick={() => removeExchangeItem(item.name)}
+                            className="text-destructive hover:text-destructive/80"
+                            data-testid={`button-remove-item-${item.name}`}
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
-                        </Badge>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="priority-new"
+                      checked={newItemPriority}
+                      onCheckedChange={(checked) => setNewItemPriority(!!checked)}
+                      data-testid="checkbox-new-item-priority"
+                    />
+                    <label htmlFor="priority-new" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
+                      <Star className="h-3 w-3" /> {t("create.priority")}
+                    </label>
+                  </div>
+                  <Input
+                    placeholder={t("create.exchangeItemPlaceholder")}
+                    value={newExchangeItem}
+                    onChange={(e) => setNewExchangeItem(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExchangeItem())}
+                    className="flex-1"
+                    data-testid="input-exchange-item"
+                  />
+                  <Button type="button" variant="outline" size="icon" onClick={addExchangeItem} data-testid="button-add-exchange-item">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
-              <div className="border-t pt-6">
-                <FormField
-                  control={form.control}
-                  name="openToOffers"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-open-offers"
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="cursor-pointer">
-                          Open to other offers
-                        </FormLabel>
-                        <FormDescription>
-                          Allow members to propose items not listed above
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="openToOffers"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">{t("create.openToOtherOffers")}</FormLabel>
+                      <FormDescription>
+                        {t("create.allowMembers")}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="checkbox-open-to-offers"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
             </CardContent>
           </Card>
 
@@ -706,7 +697,7 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
-                Value & Location
+                {t("create.valueAndLocation")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -715,143 +706,163 @@ export function CreateListingPage() {
                 name="retailValue"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Retail Value (AED)</FormLabel>
+                    <FormLabel>{t("create.retailValueLabel")}</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                          AED
-                        </span>
-                        <Input
-                          type="number"
-                          placeholder="0.00"
-                          className="pl-14"
-                          data-testid="input-value"
-                          {...field}
-                        />
-                      </div>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        data-testid="input-retail-value"
+                        {...field}
+                      />
                     </FormControl>
                     <FormDescription>
-                      The approximate retail/market value of what you're offering or requesting
+                      {t("create.approximateValue")}
                     </FormDescription>
-                    {marketAvgValue && !isNaN(enteredValue) && enteredValue > 0 && (
-                      <p className={`text-xs mt-1 flex items-center gap-1 ${isLowValue ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                        {isLowValue ? "⚠" : "ℹ"} Market average for this category: AED {marketAvgValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        {isLowValue && " — your value seems significantly below the typical range"}
-                      </p>
-                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="country"
-                  render={({ field }) => (
+              {marketAvgValue && (
+                <div className="text-xs text-muted-foreground">
+                  {t("create.marketAverage")}: AED {marketAvgValue.toLocaleString()}
+                  {isLowValue && (
+                    <span className="text-yellow-600 ms-1">
+                      — {t("create.valueBelowRange")}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {titleWatch && descriptionWatch && selectedCategories.length > 0 && (
+                <AiValuationPanel
+                  title={titleWatch}
+                  description={descriptionWatch}
+                  category={selectedCategories[0] || ""}
+                />
+              )}
+
+              <FormField
+                control={form.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("listing.location")}</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-location">
+                          <SelectValue placeholder={t("listing.location")} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {LOCATIONS.map((loc) => (
+                          <SelectItem key={loc} value={loc}>
+                            {loc}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("create.country")}</FormLabel>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("city", ""); }} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-country">
+                          <SelectValue placeholder={t("create.country")} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {COUNTRIES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => {
+                  const countryCode = form.watch("country") || "AE";
+                  const cities = getCitiesForCountry(countryCode);
+                  return (
                     <FormItem>
-                      <FormLabel>Country</FormLabel>
-                      <Select
-                        onValueChange={(v) => {
-                          field.onChange(v);
-                          form.setValue("city", "");
-                          form.setValue("location", "");
-                        }}
-                        value={field.value || "AE"}
-                      >
+                      <FormLabel>{t("create.city")}</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-country">
-                            <SelectValue placeholder="Country" />
+                          <SelectTrigger data-testid="select-city">
+                            <SelectValue placeholder={t("create.selectCity")} />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="max-h-72">
-                          {COUNTRIES.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                        <SelectContent>
+                          {cities.map((city) => (
+                            <SelectItem key={city} value={city}>
+                              {city}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
                     </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="location"
-                  render={({ field }) => {
-                    const countryCode = form.watch("country") || "AE";
-                    const cities = getCitiesForCountry(countryCode);
-                    return (
-                      <FormItem>
-                        <FormLabel>City</FormLabel>
-                        <Select
-                          onValueChange={(v) => { field.onChange(v); form.setValue("city", v); }}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-location">
-                              <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                              <SelectValue placeholder="Select city" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {cities.map((city) => (
-                              <SelectItem key={city} value={city}>{city}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
-                />
-              </div>
+                  );
+                }}
+              />
             </CardContent>
           </Card>
-
-          <AiValuationPanel
-            title={titleWatch || ""}
-            description={descriptionWatch || ""}
-            category={(selectedCategories || [])[0] || ""}
-            declaredValue={retailValueWatch ? parseFloat(String(retailValueWatch)) : undefined}
-          />
 
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Tag className="h-5 w-5" />
-                Tags (Optional)
+                {t("create.tagsOptional")}
               </CardTitle>
               <CardDescription>
-                Add keywords to help others find your listing
+                {t("create.addKeywords")}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-3">
                 <Input
+                  placeholder={t("create.addTagPlaceholder")}
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="Add a tag..."
                   onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
                   data-testid="input-tag"
                 />
-                <Button type="button" onClick={addTag} data-testid="button-add-tag">
+                <Button type="button" variant="outline" size="icon" onClick={addTag} data-testid="button-add-tag">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-                    {tag}
-                    <button
-                      type="button"
-                      className="p-0.5 rounded hover-elevate"
-                      onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
-                      data-testid={`button-remove-tag-${tag.replace(/\s+/g, "-")}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="gap-1">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        className="hover:text-destructive"
+                        data-testid={`button-remove-tag-${tag}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -859,82 +870,86 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ImagePlus className="h-5 w-5" />
-                Images
-                <Badge variant="destructive" className="text-xs">Required</Badge>
+                {t("create.imagesSection")}
+                <Badge variant="destructive" className="text-xs ms-auto">{t("create.imagesRequired")}</Badge>
               </CardTitle>
               <CardDescription>
-                Upload at least 3 photos to showcase your listing. Max 5MB per image.
+                {t("create.imagesDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {images.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                  {images.map((url, index) => (
+                    <div key={url} className="relative group rounded-lg overflow-hidden aspect-square">
+                      <img
+                        src={url}
+                        alt={`${t("create.uploadImageAlt")} ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        data-testid={`img-listing-preview-${index}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        className="absolute top-1 end-1 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        data-testid={`button-remove-image-${index}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <FormField
                 control={form.control}
                 name="images"
                 render={() => (
                   <FormItem>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => handleImageUpload(e.target.files)}
-                      data-testid="input-image-upload"
-                    />
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                      {images.map((url, index) => (
-                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-muted group">
-                          <img
-                            src={url}
-                            alt={`Listing image ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(index)}
-                            className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            style={{ visibility: "visible" }}
-                            data-testid={`button-remove-image-${index}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="aspect-square flex flex-col items-center justify-center gap-2 h-auto border-dashed border-2"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingImages}
-                        data-testid="button-add-image"
-                      >
-                        {uploadingImages ? (
-                          <>
-                            <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
-                            <span className="text-xs text-muted-foreground">Uploading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-8 w-8 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">Add Images</span>
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <FormDescription>
-                        {images.length}/3 minimum images uploaded
-                      </FormDescription>
-                      {images.length < 3 && (
-                        <span className="text-xs text-destructive">
-                          {3 - images.length} more {3 - images.length === 1 ? "image" : "images"} needed
-                        </span>
-                      )}
-                    </div>
+                    <FormControl>
+                      <div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(e.target.files)}
+                          data-testid="input-image-upload"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full h-24 border-dashed gap-2"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingImages}
+                          data-testid="button-upload-images"
+                        >
+                          {uploadingImages ? (
+                            <>
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                              {t("create.uploading")}
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-5 w-5" />
+                              {t("create.addImages")}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {images.length > 0 && images.length < 3 && (
+                <p className="text-sm text-yellow-600 mt-2">
+                  {images.length} {t("create.minImages")} — {3 - images.length}{" "}
+                  {3 - images.length === 1 ? t("create.moreNeeded") : t("create.moreNeededPlural")}
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -943,9 +958,9 @@ export function CreateListingPage() {
               type="button"
               variant="outline"
               onClick={() => navigate("/browse")}
-              data-testid="button-cancel"
+              data-testid="button-cancel-listing"
             >
-              Cancel
+              {t("create.cancelBtn")}
             </Button>
             <Button
               type="submit"
@@ -954,14 +969,11 @@ export function CreateListingPage() {
             >
               {createMutation.isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                  {t("create.creating")}
                 </>
               ) : (
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Listing
-                </>
+                t("create.createBtn")
               )}
             </Button>
           </div>

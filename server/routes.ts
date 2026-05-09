@@ -5505,6 +5505,51 @@ export async function registerRoutes(
 
   // ========== AI Agent Routes ==========
 
+  // Inline translation endpoint — no auth required (public listings may be viewed by guests)
+  app.post("/api/translate", aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
+    try {
+      const schema = z.object({
+        text: z.string().min(1).max(5000),
+        targetLang: z.enum(["ar", "en"]),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      const { text, targetLang } = parsed.data;
+      const langName = targetLang === "ar" ? "Arabic" : "English";
+      const { chatCompletion } = await import("./agents/llm");
+      const result = await chatCompletion(
+        [
+          {
+            role: "system",
+            content: `You are a professional translator. Translate the user text to ${langName}. Rules:\n1. Keep the labels TITLE: and DESCRIPTION: exactly as written in English (do NOT translate them).\n2. Translate only the content that follows each label.\n3. Preserve line breaks and formatting.\n4. Return only the translated text without any preamble or explanation.`,
+          },
+          {
+            role: "user",
+            content: text,
+          },
+        ],
+        {
+          agentName: "translate",
+          maxTokens: 1024,
+          temperature: 0.2,
+          skipAgentBudgetCheck: true,
+        }
+      );
+      const raw = result || "";
+      const titleMatch = raw.match(/TITLE:\s*([\s\S]+?)(?:\nDESCRIPTION:|$)/);
+      const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+)/);
+      res.json({
+        title: titleMatch?.[1]?.trim() ?? null,
+        description: descMatch?.[1]?.trim() ?? null,
+      });
+    } catch (error) {
+      console.error("Translation error:", error);
+      res.status(500).json({ message: "Translation service unavailable" });
+    }
+  });
+
   // Support chat
   app.post("/api/ai/support", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { trackEvent } from "@/lib/posthog";
+import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ import {
   Award,
   Play,
   Info,
+  Languages,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
@@ -63,11 +65,14 @@ import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
 import { timeAgo, formatValue } from "@/lib/utils";
 
+const _listingTranslationCache = new Map<string, { title: string; description: string }>();
+
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { gate } = useWaitlist();
   const { toast } = useToast();
+  const { t, language } = useI18n();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
@@ -78,6 +83,10 @@ export function ListingDetailPage() {
   const [showReport, setShowReport] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
   const [inquirySent, setInquirySent] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState<{ title: string; description: string } | null>(null);
+  const [showTranslated, setShowTranslated] = useState(false);
+  const translationCacheRef = _listingTranslationCache;
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
     queryKey: ["/api/listings", id],
@@ -113,6 +122,41 @@ export function ListingDetailPage() {
     ));
   };
 
+  const handleTranslateListing = async () => {
+    if (!listing) return;
+    if (showTranslated) { setShowTranslated(false); return; }
+    const cacheKey = `${listing.id}-${language}`;
+    if (translationCacheRef.has(cacheKey)) {
+      setTranslation(translationCacheRef.get(cacheKey)!);
+      setShowTranslated(true);
+      return;
+    }
+    setTranslating(true);
+    try {
+      const targetLang = language;
+      const textToTranslate = `TITLE: ${listing.title}\nDESCRIPTION: ${listing.description || ""}`;
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ text: textToTranslate, targetLang }),
+      });
+      if (!res.ok) throw new Error("Translation failed");
+      const data = await res.json();
+      const translated = {
+        title: data.title || listing.title,
+        description: data.description || (listing.description || ""),
+      };
+      translationCacheRef.set(cacheKey, translated);
+      setTranslation(translated);
+      setShowTranslated(true);
+    } catch {
+      toast({ title: t("translate.error"), variant: "destructive" });
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   const proposeTradeMutation = useMutation({
     mutationFn: async (data: {
       providerListingId: string;
@@ -132,15 +176,15 @@ export function ListingDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       trackEvent("barter_proposed", { deal_id: data.id });
       toast({
-        title: "Barter proposed!",
-        description: "Your barter proposal has been sent. You can chat to negotiate.",
+        title: t("listingDetail.barterProposed"),
+        description: t("listingDetail.barterProposedDesc"),
       });
       navigate(`/deals/${data.id}`);
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to propose barter",
-        description: error.message || "Something went wrong. Please try again.",
+        title: t("listingDetail.failedToPropose"),
+        description: error.message || t("common.somethingWentWrong"),
         variant: "destructive",
       });
     },
@@ -174,7 +218,7 @@ export function ListingDetailPage() {
     },
     onError: (error: any, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(["/api/listings", id], context.previous);
-      toast({ title: "Error", description: error.message || "Could not update like", variant: "destructive" });
+      toast({ title: t("common.error"), description: error.message || t("common.couldNotUpdateLike"), variant: "destructive" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
@@ -191,10 +235,10 @@ export function ListingDetailPage() {
       setCommentOfferName("");
       setCommentOfferValue("");
       setCommentMessage("");
-      toast({ title: "Proposal posted", description: "Your barter proposal is now visible on this listing." });
+      toast({ title: t("listingDetail.proposalPosted"), description: t("listingDetail.proposalPostedDesc") });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("common.error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -218,20 +262,20 @@ export function ListingDetailPage() {
     },
     onSuccess: () => {
       setInquirySent(true);
-      toast({ title: "Inquiry sent!", description: "The seller has been notified." });
+      toast({ title: t("listingDetail.inquirySent"), description: t("listingDetail.sellerNotified") });
     },
     onError: () => {
-      toast({ title: "Could not send", description: "Please try again.", variant: "destructive" });
+      toast({ title: t("listingDetail.couldNotSend"), description: t("listingDetail.pleaseRetry"), variant: "destructive" });
     },
   });
 
   const conditionConfig: Record<string, { label: string; color: string }> = {
-    new: { label: "New", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-    like_new: { label: "Like New", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-    excellent: { label: "Excellent", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-    good: { label: "Good", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-    fair: { label: "Fair", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-    refurbished: { label: "Refurbished", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+    new: { label: t("listingDetail.conditionNew"), color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    like_new: { label: t("listingDetail.conditionLikeNew"), color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+    excellent: { label: t("listingDetail.conditionExcellent"), color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    good: { label: t("listingDetail.conditionGood"), color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
+    fair: { label: t("listingDetail.conditionFair"), color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
+    refurbished: { label: t("listingDetail.conditionRefurbished"), color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
   };
 
   const tierConfig: Record<string, { icon: string; color: string; bg: string; border: string }> = {
@@ -272,12 +316,12 @@ export function ListingDetailPage() {
   if (!listing) {
     return (
       <div className="container px-4 py-16 mx-auto max-w-2xl text-center">
-        <h2 className="text-2xl font-bold mb-2">Listing not found</h2>
+        <h2 className="text-2xl font-bold mb-2">{t("listingDetail.listingNotFound")}</h2>
         <p className="text-muted-foreground mb-4">
-          This listing may have been removed or doesn't exist.
+          {t("listingDetail.listingNotFoundDesc")}
         </p>
         <Link href="/browse">
-          <Button>Browse Listings</Button>
+          <Button>{t("listingDetail.browseListings")}</Button>
         </Link>
       </div>
     );
@@ -290,9 +334,9 @@ export function ListingDetailPage() {
     <div className="bg-bareter-off-white dark:bg-background min-h-screen pb-24 lg:pb-8">
       <div className="container px-4 py-6 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-4 flex items-center gap-1.5 flex-wrap">
-        <Link href="/" className="hover:text-bareter-teal">Home</Link>
+        <Link href="/" className="hover:text-bareter-teal">{t("listingDetail.home")}</Link>
         <span>›</span>
-        <Link href="/browse" className="hover:text-bareter-teal">Listings</Link>
+        <Link href="/browse" className="hover:text-bareter-teal">{t("listingDetail.listings")}</Link>
         {(listing.categories || [])[0] && (
           <>
             <span>›</span>
@@ -309,7 +353,7 @@ export function ListingDetailPage() {
 
       <Link href="/browse" className="inline-flex items-center gap-2 text-bareter-muted hover:text-bareter-teal mb-4 text-sm">
         <ArrowLeft className="h-4 w-4" />
-        Back to listings
+        {t("listingDetail.backToListings")}
       </Link>
 
       <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
@@ -342,9 +386,9 @@ export function ListingDetailPage() {
               className="absolute top-4 start-4"
             >
               {listing.type === "offer" ? (
-                <><Package className="h-3 w-3 me-1" /> Offer</>
+                <><Package className="h-3 w-3 me-1" /> {t("listingDetail.offer")}</>
               ) : (
-                <><ShoppingCart className="h-3 w-3 me-1" /> Request</>
+                <><ShoppingCart className="h-3 w-3 me-1" /> {t("listingDetail.request")}</>
               )}
             </Badge>
           </button>
@@ -371,7 +415,7 @@ export function ListingDetailPage() {
             <div className="rounded-bareter-card overflow-hidden border border-bareter-border dark:border-border" data-testid="listing-video">
               <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-bareter-border dark:border-border">
                 <Play className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Video</span>
+                <span className="text-sm font-medium">{t("listingDetail.video")}</span>
               </div>
               <div className="aspect-video">
                 <video
@@ -386,7 +430,25 @@ export function ListingDetailPage() {
 
           <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-2xl md:text-3xl font-bold text-bareter-navy dark:text-foreground">{listing.title}</h1>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-bareter-navy dark:text-foreground" data-testid="text-listing-title">
+                  {showTranslated && translation ? translation.title : listing.title}
+                </h1>
+                <button
+                  type="button"
+                  onClick={handleTranslateListing}
+                  disabled={translating}
+                  className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+                  data-testid="button-translate-listing"
+                >
+                  {translating ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Languages className="h-3 w-3" />
+                  )}
+                  {showTranslated ? t("translate.original") : translating ? t("translate.loading") : t("translate.button")}
+                </button>
+              </div>
               <div className="flex gap-2">
                 {user && (
                   <Button
@@ -433,11 +495,11 @@ export function ListingDetailPage() {
               )}
               <div className="flex items-center gap-1">
                 <Eye className="h-4 w-4" />
-                {listing.viewCount || 0} views
+                {listing.viewCount || 0} {t("listingDetail.views")}
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
-                Listed {createdDate}
+                {t("listingDetail.listed")} {createdDate}
               </div>
               {(listing as any).condition && conditionConfig[(listing as any).condition] && (
                 <span
@@ -457,7 +519,7 @@ export function ListingDetailPage() {
               {(listing as any).valueFlagged && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                   <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  <span className="text-xs text-amber-700 dark:text-amber-300 font-medium">Value may be outside typical market range</span>
+                  <span className="text-xs text-amber-700 dark:text-amber-300 font-medium">{t("listingDetail.valueMayBeOutside")}</span>
                 </div>
               )}
             </div>
@@ -473,9 +535,9 @@ export function ListingDetailPage() {
             <Separator className="my-6" />
 
             <div>
-              <h3 className="font-semibold mb-3">Description</h3>
+              <h3 className="font-semibold mb-3">{t("listingDetail.description")}</h3>
               <p className="text-muted-foreground whitespace-pre-line leading-relaxed">
-                {listing.description}
+                {showTranslated && translation ? translation.description : listing.description}
               </p>
             </div>
 
@@ -483,7 +545,7 @@ export function ListingDetailPage() {
               <div className="mt-6">
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Tag className="h-4 w-4" />
-                  Tags
+                  {t("listingDetail.tags")}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {(listing.tags || []).map((tag) => (
@@ -500,7 +562,7 @@ export function ListingDetailPage() {
               <div className="mt-6">
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Award className="h-4 w-4" />
-                  Service Packages
+                  {t("listingDetail.servicePackages")}
                 </h3>
                 <div className="grid sm:grid-cols-3 gap-3" data-testid="service-tiers">
                   {((listing as any).serviceTiers as ServiceTier[]).map((tier, idx) => {
@@ -546,7 +608,7 @@ export function ListingDetailPage() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <ArrowLeftRight className="h-5 w-5 text-primary" />
-                      What I Want in Exchange
+                      {t("listingDetail.whatIWantInExchange")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -554,7 +616,7 @@ export function ListingDetailPage() {
                       <div>
                         <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5 text-primary">
                           <Star className="h-4 w-4 fill-current" />
-                          Priority Items (What I Really Want)
+                          {t("listingDetail.priorityItems")}
                         </h4>
                         <div className="flex flex-wrap gap-2">
                           {((listing as any).exchangeItems as ExchangeItem[] || [])
@@ -573,7 +635,7 @@ export function ListingDetailPage() {
                       <div>
                         <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5 text-muted-foreground">
                           <Sparkles className="h-4 w-4" />
-                          Also Open To
+                          {t("listingDetail.alsoOpenTo")}
                         </h4>
                         <div className="flex flex-wrap gap-2">
                           {((listing as any).exchangeItems as ExchangeItem[] || [])
@@ -589,7 +651,7 @@ export function ListingDetailPage() {
 
                     {((listing as any).wantedCategories as string[] || []).length > 0 && (
                       <div>
-                        <h4 className="text-sm font-medium mb-2 text-muted-foreground">Preferred Categories</h4>
+                        <h4 className="text-sm font-medium mb-2 text-muted-foreground">{t("listingDetail.preferredCategories")}</h4>
                         <div className="flex flex-wrap gap-2">
                           {((listing as any).wantedCategories as string[] || []).map((category: string) => (
                             <Badge key={category} variant="outline">
@@ -603,7 +665,7 @@ export function ListingDetailPage() {
                     {(listing as any).openToOffers && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t">
                         <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span>Open to other offers not listed above</span>
+                        <span>{t("listingDetail.openToOtherOffers")}</span>
                       </div>
                     )}
                   </CardContent>
@@ -623,18 +685,18 @@ export function ListingDetailPage() {
                 data-testid="button-like-listing"
               >
                 <Heart className={`h-4 w-4 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
-                <span>{listing.likeCount || 0} likes</span>
+                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
               </Button>
             )}
             {!user && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Heart className="h-4 w-4" />
-                <span>{listing.likeCount || 0} likes</span>
+                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
               </div>
             )}
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <MessageSquare className="h-4 w-4" />
-              <span>{listing.commentCount || 0} proposals</span>
+              <span>{listing.commentCount || 0} {t("listingDetail.proposals")}</span>
             </div>
             <ShareMenu
               url={window.location.href}
@@ -648,7 +710,7 @@ export function ListingDetailPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ArrowRightLeft className="h-5 w-5" />
-                Barter Proposals ({listingComments?.length || 0})
+                {t("listingDetail.barterProposals")} ({listingComments?.length || 0})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -686,12 +748,12 @@ export function ListingDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No proposals yet. Be the first to propose a barter!</p>
+                <p className="text-sm text-muted-foreground">{t("listingDetail.noProposals")}</p>
               )}
 
               {!user && (
                 <div className="pt-2 border-t text-center">
-                  <Link href="/login" className="text-sm text-primary hover:underline">Sign in to propose a barter</Link>
+                  <Link href="/login" className="text-sm text-primary hover:underline">{t("listingDetail.signInToPropose")}</Link>
                 </div>
               )}
 
@@ -699,19 +761,19 @@ export function ListingDetailPage() {
                 <div className="pt-2 border-t" data-testid="proposal-verify-prompt">
                   <p className="text-xs text-muted-foreground text-center py-2">
                     <Shield className="h-3.5 w-3.5 inline me-1 text-primary" />
-                    <Link href="/profile" className="text-primary hover:underline">Verify your identity</Link> to propose a barter
+                    <Link href="/profile" className="text-primary hover:underline">{t("listingDetail.verifyIdentity")}</Link> {t("listingDetail.verifyToPropose")}
                   </p>
                 </div>
               )}
 
               {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED") && (
                 <div className="space-y-2 pt-2 border-t">
-                  <p className="text-xs font-medium">Propose what you want to offer in exchange</p>
+                  <p className="text-xs font-medium">{t("listingDetail.proposeWhatYouOffer")}</p>
                   <div className="flex items-center gap-2">
                     <Input
                       value={commentOfferName}
                       onChange={(e) => setCommentOfferName(e.target.value)}
-                      placeholder="What are you offering? (e.g. Photography Package)"
+                      placeholder={t("listingDetail.whatAreYouOffering")}
                       className="text-sm flex-1"
                       data-testid="input-comment-offer-name"
                     />
@@ -732,7 +794,7 @@ export function ListingDetailPage() {
                     <Input
                       value={commentMessage}
                       onChange={(e) => setCommentMessage(e.target.value)}
-                      placeholder="Add a message (optional)"
+                      placeholder={t("listingDetail.addMessage")}
                       className="text-sm flex-1"
                       onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
                       data-testid="input-comment-message"
@@ -749,7 +811,7 @@ export function ListingDetailPage() {
                       ) : (
                         <Send className="h-3.5 w-3.5" />
                       )}
-                      Propose
+                      {t("listingDetail.propose")}
                     </Button>
                   </div>
                 </div>
@@ -780,20 +842,20 @@ export function ListingDetailPage() {
                     data-testid="button-propose-trade-sticky"
                   >
                     <Handshake className="h-5 w-5" />
-                    Propose a Barter
+                    {t("listingDetail.proposeBarter")}
                   </Button>
                 ) : (
                   <Link href="/login">
                     <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
                       <Handshake className="h-5 w-5" />
-                      Sign in to Barter
+                      {t("listingDetail.signInToBarter")}
                     </Button>
                   </Link>
                 )}
                 <Link href={`/users/${listing.userId}`}>
                   <Button variant="bareter-outline" className="w-full h-11 gap-2">
                     <MessageSquare className="h-4 w-4" />
-                    Message Seller
+                    {t("listingDetail.messageSellerBtn")}
                   </Button>
                 </Link>
                 <Button
@@ -810,7 +872,7 @@ export function ListingDetailPage() {
                   ) : (
                     <Zap className="h-4 w-4" />
                   )}
-                  {inquirySent ? "Inquiry sent!" : "Is this still available?"}
+                  {inquirySent ? t("listingDetail.inquirySent") : t("listingDetail.isStillAvailable")}
                 </Button>
               </CardContent>
             </Card>
@@ -818,7 +880,7 @@ export function ListingDetailPage() {
 
           <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
             <CardHeader>
-              <CardTitle className="text-lg text-bareter-navy dark:text-foreground">About the {listing.type === "offer" ? "Seller" : "Buyer"}</CardTitle>
+              <CardTitle className="text-lg text-bareter-navy dark:text-foreground">{listing.type === "offer" ? t("listingDetail.aboutTheSeller") : t("listingDetail.aboutTheBuyer")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3 mb-4">
@@ -851,12 +913,12 @@ export function ListingDetailPage() {
                   <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                   <span className="font-medium">4.8</span>
                 </div>
-                <span className="text-sm text-muted-foreground">(24 reviews)</span>
+                <span className="text-sm text-muted-foreground">(24 {t("listingDetail.reviews")})</span>
               </div>
 
               <Link href={`/users/${listing.userId}`}>
                 <Button variant="outline" className="w-full gap-2" data-testid="button-view-profile">
-                  View Full Profile
+                  {t("listingDetail.viewFullProfile")}
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </Link>
@@ -867,15 +929,15 @@ export function ListingDetailPage() {
             <Dialog open={proposeOpen} onOpenChange={setProposeOpen}>
               <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
                 <DialogHeader>
-                  <DialogTitle>Propose a Barter</DialogTitle>
+                  <DialogTitle>{t("listingDetail.proposeBarter")}</DialogTitle>
                   <DialogDescription>
-                    Tell {listing.user?.fullName} what you can offer in exchange
+                    {t("listingDetail.tellWhatYouCanOffer").replace("{name}", listing.user?.fullName || "")}
                   </DialogDescription>
                 </DialogHeader>
                 <ScrollArea className="flex-1 pe-4">
                   <div className="space-y-4 py-4">
                     <div className="p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">They are offering:</p>
+                      <p className="text-xs text-muted-foreground mb-1">{t("listingDetail.theyAreOffering")}</p>
                       <p className="font-medium">{listing.title}</p>
                       <p className="text-sm text-primary font-bold">
                         AED {parseFloat(listing.retailValue as string).toLocaleString()}
@@ -883,10 +945,10 @@ export function ListingDetailPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="counter-offer">Your Counter-Offer</Label>
+                      <Label htmlFor="counter-offer">{t("listingDetail.yourCounterOffer")}</Label>
                       <Textarea
                         id="counter-offer"
-                        placeholder="Describe what you can offer in return..."
+                        placeholder={t("listingDetail.counterOfferPlaceholder")}
                         value={counterOffer}
                         onChange={(e) => setCounterOffer(e.target.value)}
                         className="min-h-[100px] resize-none"
@@ -895,7 +957,7 @@ export function ListingDetailPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="counter-value">Estimated Value (AED)</Label>
+                      <Label htmlFor="counter-value">{t("listingDetail.estimatedValue")}</Label>
                       <div className="relative">
                         <span className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                           AED
@@ -918,10 +980,10 @@ export function ListingDetailPage() {
                         <div>
                           <Label className="flex items-center gap-2 mb-1">
                             <ClipboardList className="h-4 w-4 text-primary" />
-                            Deliverables Checklist
+                            {t("listingDetail.deliverablesChecklist")}
                           </Label>
                           <p className="text-xs text-muted-foreground mb-3">
-                            Suggested deliverables based on the listing category. Check or uncheck items to customize.
+                            {t("listingDetail.suggestedDeliverables")}
                           </p>
                         </div>
                         <div className="space-y-2.5 rounded-lg border p-3">
@@ -945,7 +1007,7 @@ export function ListingDetailPage() {
                           ))}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {deliverables.filter(d => d.checked).length} of {deliverables.length} items selected
+                          {deliverables.filter(d => d.checked).length} {t("common.of")} {deliverables.length} {t("listingDetail.itemsSelected")}
                         </p>
                       </div>
                     )}
@@ -955,16 +1017,16 @@ export function ListingDetailPage() {
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 mx-6 mb-2">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High-value barter (AED 5,000+)</p>
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{t("listingDetail.highValueBarter")}</p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                        Verify the other party's business badge, use Bareter's contract feature, and keep all communication on-platform.
+                        {t("listingDetail.highValueWarning")}
                       </p>
                     </div>
                   </div>
                 )}
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setProposeOpen(false)}>
-                    Cancel
+                    {t("listingDetail.cancel")}
                   </Button>
                   <Button
                     onClick={handleProposeTrade}
@@ -974,12 +1036,12 @@ export function ListingDetailPage() {
                     {proposeTradeMutation.isPending ? (
                       <>
                         <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                        Sending...
+                        {t("listingDetail.sending")}
                       </>
                     ) : (
                       <>
                         <MessageSquare className="me-2 h-4 w-4" />
-                        Send Proposal
+                        {t("listingDetail.sendProposal")}
                       </>
                     )}
                   </Button>
@@ -991,9 +1053,9 @@ export function ListingDetailPage() {
           {isOwnListing && (
             <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
               <CardContent className="p-4 text-center">
-                <p className="text-sm text-bareter-muted">This is your listing</p>
+                <p className="text-sm text-bareter-muted">{t("listingDetail.thisIsYourListing")}</p>
                 <Button variant="bareter-outline" className="mt-2 w-full" data-testid="button-edit-listing">
-                  Edit Listing
+                  {t("listingDetail.editListing")}
                 </Button>
               </CardContent>
             </Card>
@@ -1020,13 +1082,13 @@ export function ListingDetailPage() {
               data-testid="button-propose-trade-mobile"
             >
               <Handshake className="h-5 w-5" />
-              Propose a Barter · AED {parseFloat(listing.retailValue as string).toLocaleString()}
+              {t("listingDetail.proposeBarter")} · AED {parseFloat(listing.retailValue as string).toLocaleString()}
             </Button>
           ) : (
             <Link href="/login">
               <Button variant="bareter" className="w-full h-14 text-base gap-2">
                 <Handshake className="h-5 w-5" />
-                Sign in to Barter
+                {t("listingDetail.signInToBarter")}
               </Button>
             </Link>
           )}
@@ -1044,7 +1106,7 @@ export function ListingDetailPage() {
               <div className="relative">
                 <img
                   src={listing.images[lightboxIndex]}
-                  alt={`${listing.title} ${lightboxIndex + 1} of ${listing.images.length}`}
+                  alt={`${listing.title} ${lightboxIndex + 1} ${t("common.of")} ${listing.images.length}`}
                   className="w-full max-h-[85vh] object-contain"
                   data-testid="img-lightbox"
                 />

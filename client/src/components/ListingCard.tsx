@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -15,6 +15,8 @@ import { ImageCarousel } from "@/components/ImageCarousel";
 import { ReportModal } from "@/components/report-modal";
 import { useWaitlist } from "@/lib/waitlist";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
+import { useToast } from "@/hooks/use-toast";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -51,11 +53,19 @@ interface ListingCardProps {
   onWishlistToggle?: (listingId: string) => void;
 }
 
+type TranslationCache = Map<string, { title: string; description: string }>;
+const translationCache: TranslationCache = new Map();
+
 export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
   const { gate } = useWaitlist();
   const { user } = useAuth();
+  const { t, language } = useI18n();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const [showReport, setShowReport] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState<{ title: string; description: string } | null>(null);
+  const [showTranslated, setShowTranslated] = useState(false);
 
   const { data: pubSettings } = useQuery<Record<string, string | null>>({
     queryKey: ["/api/public/settings"],
@@ -72,7 +82,6 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
   const isHighValue = !Number.isNaN(valueNum) && valueNum >= highValueThreshold;
   const verified = isUserVerified(listing.user?.kycStatus, listing.user?.kybStatus);
 
-  // Build the "Looking for" line from priority exchange items, falling back to wantedCategories
   const exchangeItems = listing.exchangeItems ?? undefined;
   const wantedCategories = listing.wantedCategories ?? undefined;
   const lookingFor =
@@ -80,6 +89,53 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
     exchangeItems?.[0]?.name ||
     wantedCategories?.[0] ||
     null;
+
+  const handleTranslate = async (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (showTranslated) {
+      setShowTranslated(false);
+      return;
+    }
+
+    const cacheKey = `${listing.id}-${language}`;
+    if (translationCache.has(cacheKey)) {
+      setTranslation(translationCache.get(cacheKey)!);
+      setShowTranslated(true);
+      return;
+    }
+
+    setTranslating(true);
+    try {
+      const targetLang = language;
+      const textToTranslate = `TITLE: ${listing.title}\nDESCRIPTION: ${listing.description || ""}`;
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ text: textToTranslate, targetLang }),
+      });
+      if (!res.ok) throw new Error("Translation failed");
+      const data = await res.json();
+      const translated = {
+        title: data.title || listing.title,
+        description: data.description || (listing.description || ""),
+      };
+      translationCache.set(cacheKey, translated);
+      setTranslation(translated);
+      setShowTranslated(true);
+    } catch {
+      toast({ title: t("translate.error"), variant: "destructive" });
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const displayTitle = showTranslated && translation ? translation.title : listing.title;
+  const displayDescription = showTranslated && translation?.description
+    ? translation.description
+    : listing.description || null;
 
   return (
     <Link
@@ -110,14 +166,14 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               {listing.isFeatured && (
                 <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-gold text-bareter-navy-deep shadow-sm">
                   <Crown className="h-3 w-3" />
-                  Featured
+                  {t("listingCard.featured")}
                 </span>
               )}
 
               {isHighValue && !listing.isFeatured && (
                 <span className="absolute top-3 end-3 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-bareter-navy/95 text-white shadow-sm">
                   <Lock className="h-3 w-3" />
-                  Enhanced verification
+                  {t("listingCard.enhancedVerification")}
                 </span>
               )}
 
@@ -173,7 +229,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                       data-testid={`menuitem-report-listing-${listing.id}`}
                     >
                       <Flag className="me-2 h-4 w-4" />
-                      Report listing
+                      {t("listingCard.reportListing")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -188,8 +244,17 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
             className="text-card-title text-bareter-navy dark:text-foreground line-clamp-1"
             data-testid={`text-listing-title-${listing.id}`}
           >
-            {listing.title}
+            {displayTitle}
           </h3>
+
+          {displayDescription && (
+            <p
+              className="text-[12px] text-bareter-muted dark:text-muted-foreground line-clamp-2"
+              data-testid={`text-listing-desc-${listing.id}`}
+            >
+              {displayDescription}
+            </p>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             <span
@@ -209,11 +274,39 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
           {lookingFor && (
             <div className="border-t border-bareter-border dark:border-border pt-2.5">
               <p className="text-caption text-bareter-muted dark:text-muted-foreground">
-                <span className="font-semibold text-bareter-navy dark:text-foreground">Looking for:</span>{" "}
+                <span className="font-semibold text-bareter-navy dark:text-foreground">{t("listingCard.lookingFor")}</span>{" "}
                 <span className="line-clamp-1">{lookingFor}</span>
               </p>
             </div>
           )}
+
+          {/* Translate button */}
+          <div
+            className="pt-1"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleTranslate}
+              disabled={translating}
+              className="inline-flex items-center gap-1 text-[11px] text-bareter-teal hover:text-bareter-teal/80 transition-colors disabled:opacity-50"
+              data-testid={`button-translate-${listing.id}`}
+            >
+              {translating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Languages className="h-3 w-3" />
+              )}
+              {translating
+                ? t("translate.loading")
+                : showTranslated
+                ? t("translate.original")
+                : t("translate.button")}
+            </button>
+          </div>
 
           {/* SELLER */}
           <div className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2">
@@ -229,7 +322,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
             {verified && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-bareter-teal-muted text-bareter-teal text-[10px] font-semibold">
                 <ShieldCheck className="h-3 w-3" />
-                Verified
+                {t("listingCard.verified")}
               </span>
             )}
           </div>

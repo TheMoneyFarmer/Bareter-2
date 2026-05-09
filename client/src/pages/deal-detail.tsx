@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "@/lib/posthog";
+import { useI18n } from "@/lib/i18n";
 import { Link, useParams, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -46,22 +47,21 @@ import {
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 
-const stateConfig: Record<string, { label: string; color: string; step: number }> = {
-  draft: { label: "Draft", color: "bg-gray-500", step: 0 },
-  proposed: { label: "Proposed", color: "bg-blue-500", step: 1 },
-  accepted: { label: "Accepted", color: "bg-green-500", step: 2 },
-  in_progress: { label: "In Progress", color: "bg-yellow-500", step: 3 },
-  delivery_proof: { label: "Awaiting Proof", color: "bg-orange-500", step: 4 },
-  completed: { label: "Completed", color: "bg-emerald-500", step: 5 },
-  cancelled: { label: "Cancelled", color: "bg-red-500", step: -1 },
+const STATE_COLORS: Record<string, { color: string; step: number }> = {
+  draft: { color: "bg-gray-500", step: 0 },
+  proposed: { color: "bg-blue-500", step: 1 },
+  accepted: { color: "bg-green-500", step: 2 },
+  in_progress: { color: "bg-yellow-500", step: 3 },
+  delivery_proof: { color: "bg-orange-500", step: 4 },
+  completed: { color: "bg-emerald-500", step: 5 },
+  cancelled: { color: "bg-red-500", step: -1 },
 };
-
-const steps = ["Proposed", "Accepted", "In Progress", "Delivery", "Complete"];
 
 export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -94,10 +94,10 @@ export function DealDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/deals", id, "milestones"] });
       setNewMilestoneTitle("");
       setShowAddMilestone(false);
-      toast({ title: "Milestone added" });
+      toast({ title: t("dealDetail.milestoneAdded") });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to add milestone", variant: "destructive" });
+      toast({ title: t("dealDetail.errorTitle"), description: t("dealDetail.failedAddMilestone"), variant: "destructive" });
     },
   });
 
@@ -108,10 +108,10 @@ export function DealDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/deals", id, "milestones"] });
-      toast({ title: "Milestone completed!" });
+      toast({ title: t("dealDetail.milestoneCompleted") });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to complete milestone", variant: "destructive" });
+      toast({ title: t("dealDetail.errorTitle"), description: t("dealDetail.failedCompleteMilestone"), variant: "destructive" });
     },
   });
 
@@ -138,14 +138,14 @@ export function DealDetailPage() {
         trackEvent("deal_completed", { deal_id: id });
       }
       toast({
-        title: "Deal updated",
-        description: "The deal status has been updated.",
+        title: t("dealDetail.dealUpdated"),
+        description: t("dealDetail.dealUpdatedDesc"),
       });
     },
     onError: () => {
       toast({
-        title: "Update failed",
-        description: "Could not update the deal. Please try again.",
+        title: t("dealDetail.updateFailed"),
+        description: t("dealDetail.updateFailedDesc"),
         variant: "destructive",
       });
     },
@@ -162,8 +162,8 @@ export function DealDetailPage() {
     if (!message.trim()) return;
     if (OFF_PLATFORM_RE.test(message.trim())) {
       toast({
-        title: "Stay safe — keep barters on Bareter",
-        description: "Your message may contain references to external platforms. Bartering outside the app removes your buyer & seller protections.",
+        title: t("dealDetail.stayOnPlatform"),
+        description: t("dealDetail.offPlatformWarning"),
         variant: "destructive",
       });
     }
@@ -189,12 +189,12 @@ export function DealDetailPage() {
   if (!deal || !user) {
     return (
       <div className="container px-4 py-16 mx-auto max-w-2xl text-center">
-        <h2 className="text-2xl font-bold mb-2">Deal not found</h2>
+        <h2 className="text-2xl font-bold mb-2">{t("dealDetail.notFound")}</h2>
         <p className="text-muted-foreground mb-4">
-          This deal may have been removed or you don't have access.
+          {t("dealDetail.notFoundDesc")}
         </p>
         <Link href="/deals">
-          <Button>View My Deals</Button>
+          <Button>{t("dealDetail.viewMyDeals")}</Button>
         </Link>
       </div>
     );
@@ -202,7 +202,15 @@ export function DealDetailPage() {
 
   const isSeeker = deal.seekerId === user.id;
   const otherParty = isSeeker ? deal.provider : deal.seeker;
-  const config = stateConfig[deal.state] || stateConfig.draft;
+  const config = STATE_COLORS[deal.state] || STATE_COLORS.draft;
+  const stateLabel = t(`dealDetail.state.${deal.state}`) || deal.state;
+  const steps = [
+    t("dealDetail.step.proposed"),
+    t("dealDetail.step.accepted"),
+    t("dealDetail.step.inProgress"),
+    t("dealDetail.step.delivery"),
+    t("dealDetail.step.complete"),
+  ];
   const myCompleted = isSeeker ? deal.seekerCompleted : deal.providerCompleted;
   const theirCompleted = isSeeker ? deal.providerCompleted : deal.seekerCompleted;
 
@@ -215,20 +223,20 @@ export function DealDetailPage() {
     <div className="container px-4 py-8 mx-auto max-w-6xl">
       <Link href="/deals" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
         <ArrowLeft className="h-4 w-4" />
-        Back to deals
+        {t("dealDetail.backToDeals")}
       </Link>
 
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold">Deal #{deal.dealNumber}</h1>
+            <h1 className="text-2xl font-bold">{t("dealDetail.dealNumber")} #{deal.dealNumber}</h1>
             <Badge variant="outline" className="text-sm">
               <div className={`h-2 w-2 rounded-full ${config.color} mr-1`} />
-              {config.label}
+              {stateLabel}
             </Badge>
           </div>
           <p className="text-muted-foreground inline-flex items-center gap-2 flex-wrap">
-            <span>Bartering with {otherParty?.fullName}</span>
+            <span>{t("dealDetail.barteringWith")} {otherParty?.fullName}</span>
             <FounderBadge show={!!otherParty?.founderBadge} />
           </p>
         </div>
@@ -237,13 +245,13 @@ export function DealDetailPage() {
           {deal.contractPdfUrl && (
             <Button variant="outline" className="gap-2" data-testid="button-download-contract">
               <Download className="h-4 w-4" />
-              Download Contract
+              {t("dealDetail.downloadContract")}
             </Button>
           )}
           {deal.state === "accepted" && (
             <Button variant="outline" className="gap-2" data-testid="button-generate-contract">
               <FileText className="h-4 w-4" />
-              Generate Contract
+              {t("dealDetail.generateContract")}
             </Button>
           )}
         </div>
@@ -279,14 +287,14 @@ export function DealDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Deal Details</CardTitle>
+              <CardTitle className="text-lg">{t("dealDetail.dealDetails")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Package className="h-4 w-4" />
-                    {isSeeker ? "You Offer" : "They Offer"}
+                    {isSeeker ? t("dealDetail.youOffer") : t("dealDetail.theyOffer")}
                   </div>
                   <div className="p-4 rounded-lg bg-muted">
                     <p className="font-medium mb-2">{deal.seekerOffer}</p>
@@ -298,7 +306,7 @@ export function DealDetailPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Package className="h-4 w-4" />
-                    {isSeeker ? "They Provide" : "You Provide"}
+                    {isSeeker ? t("dealDetail.theyProvide") : t("dealDetail.youProvide")}
                   </div>
                   <div className="p-4 rounded-lg bg-muted">
                     <p className="font-medium mb-2">{deal.providerOffer}</p>
@@ -311,7 +319,7 @@ export function DealDetailPage() {
 
               {deal.timeline && (
                 <div className="mt-6 pt-6 border-t">
-                  <h4 className="font-medium mb-2">Timeline</h4>
+                  <h4 className="font-medium mb-2">{t("dealDetail.timeline")}</h4>
                   <p className="text-sm text-muted-foreground">{deal.timeline}</p>
                 </div>
               )}
@@ -320,7 +328,7 @@ export function DealDetailPage() {
                 <div className="mt-6 pt-6 border-t">
                   <h4 className="font-medium mb-3 flex items-center gap-2">
                     <CheckCircle className="h-4 w-4 text-primary" />
-                    Deliverables Checklist
+                    {t("dealDetail.deliverablesChecklist")}
                   </h4>
                   <div className="space-y-2">
                     {(deal.deliverables as Array<{label: string; checked: boolean}>).map((item, index) => (
@@ -337,8 +345,8 @@ export function DealDetailPage() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mt-3">
-                    {(deal.deliverables as Array<{label: string; checked: boolean}>).filter(d => d.checked).length} of{" "}
-                    {(deal.deliverables as Array<{label: string; checked: boolean}>).length} deliverables agreed
+                    {(deal.deliverables as Array<{label: string; checked: boolean}>).filter(d => d.checked).length} {t("dealDetail.ofCompleted")}{" "}
+                    {(deal.deliverables as Array<{label: string; checked: boolean}>).length} {t("dealDetail.deliverablesAgreed")}
                   </p>
                 </div>
               )}
@@ -352,7 +360,7 @@ export function DealDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Flag className="h-5 w-5 text-primary" />
-                    Deal Milestones
+                    {t("dealDetail.dealMilestones")}
                   </CardTitle>
                   {deal.state !== "completed" && deal.state !== "cancelled" && (
                     <Button
@@ -363,7 +371,7 @@ export function DealDetailPage() {
                       data-testid="button-add-milestone"
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      Add Milestone
+                      {t("dealDetail.addMilestone")}
                     </Button>
                   )}
                 </div>
@@ -478,8 +486,8 @@ export function DealDetailPage() {
                 ) : !showAddMilestone ? (
                   <div className="text-center py-6 text-muted-foreground">
                     <Flag className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-sm">No milestones yet</p>
-                    <p className="text-xs mt-1">Break this deal into trackable steps</p>
+                    <p className="text-sm">{t("dealDetail.noMilestones")}</p>
+                    <p className="text-xs mt-1">{t("dealDetail.breakDealIntoSteps")}</p>
                   </div>
                 ) : null}
               </CardContent>
@@ -489,11 +497,11 @@ export function DealDetailPage() {
           <Card className="flex flex-col h-[500px]">
             <CardHeader className="border-b flex-shrink-0">
               <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
-                <span>Chat with {otherParty?.fullName}</span>
+                <span>{t("dealDetail.chatWith")} {otherParty?.fullName}</span>
                 <FounderBadge show={!!otherParty?.founderBadge} />
               </CardTitle>
               <CardDescription>
-                Discuss the deal details with {otherParty?.fullName}
+                {t("dealDetail.discussDetails")} {otherParty?.fullName}
               </CardDescription>
             </CardHeader>
             <ScrollArea className="flex-1 p-4">
@@ -543,7 +551,7 @@ export function DealDetailPage() {
                             data-testid={`warning-off-platform-${msg.id}`}
                           >
                             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                            <span>For your safety, keep all negotiations on Bareter. Deals made off-platform are not covered by our dispute protection.</span>
+                            <span>{t("dealDetail.offPlatformSafety")}</span>
                           </div>
                         )}
                       </div>
@@ -551,7 +559,7 @@ export function DealDetailPage() {
                   })
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    <p>No messages yet. Start the conversation!</p>
+                    <p>{t("dealDetail.noMessages")}</p>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -562,7 +570,7 @@ export function DealDetailPage() {
                 <Input
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Type a message..."
+                  placeholder={t("dealDetail.typeMessage")}
                   disabled={sendMessageMutation.isPending}
                   data-testid="input-message"
                 />
@@ -586,7 +594,7 @@ export function DealDetailPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Bartering With</CardTitle>
+              <CardTitle className="text-lg">{t("dealDetail.barteringWithTitle")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3">
@@ -612,7 +620,7 @@ export function DealDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Actions</CardTitle>
+              <CardTitle className="text-lg">{t("dealDetail.actions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {canAccept && (
@@ -623,7 +631,7 @@ export function DealDetailPage() {
                   data-testid="button-accept-deal"
                 >
                   <CheckCircle className="h-4 w-4" />
-                  Accept Barter
+                  {t("dealDetail.acceptBarter")}
                 </Button>
               )}
 
@@ -635,7 +643,7 @@ export function DealDetailPage() {
                   data-testid="button-start-deal"
                 >
                   <Package className="h-4 w-4" />
-                  Start Delivery
+                  {t("dealDetail.startDelivery")}
                 </Button>
               )}
 
@@ -646,7 +654,7 @@ export function DealDetailPage() {
                   data-testid="button-upload-proof"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload Proof
+                  {t("dealDetail.uploadProof")}
                 </Button>
               )}
 
@@ -664,7 +672,7 @@ export function DealDetailPage() {
                   data-testid="button-mark-complete"
                 >
                   <CheckCircle className="h-4 w-4" />
-                  Mark as Complete
+                  {t("dealDetail.markAsComplete")}
                 </Button>
               )}
 
@@ -676,7 +684,7 @@ export function DealDetailPage() {
                   data-testid="button-rate-deal"
                 >
                   <Star className="h-4 w-4" />
-                  Rate Your Experience
+                  {t("dealDetail.rateExperience")}
                 </Button>
               )}
 
@@ -685,23 +693,23 @@ export function DealDetailPage() {
                   <DialogTrigger asChild>
                     <Button variant="outline" className="w-full gap-2 text-destructive" data-testid="button-cancel-deal">
                       <XCircle className="h-4 w-4" />
-                      Cancel Deal
+                      {t("dealDetail.cancelDeal")}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Cancel this deal?</DialogTitle>
+                      <DialogTitle>{t("dealDetail.cancelDealConfirm")}</DialogTitle>
                       <DialogDescription>
-                        This action cannot be undone. Both parties will be notified.
+                        {t("dealDetail.cancelDealDesc")}
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="outline">Keep Deal</Button>
+                      <Button variant="outline">{t("dealDetail.keepDeal")}</Button>
                       <Button
                         variant="destructive"
                         onClick={() => updateDealMutation.mutate({ state: "cancelled" })}
                       >
-                        Cancel Deal
+                        {t("dealDetail.cancelDeal")}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -715,21 +723,21 @@ export function DealDetailPage() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                  Completion Status
+                  {t("dealDetail.completionStatus")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">You</span>
+                  <span className="text-sm">{t("dealDetail.you")}</span>
                   {myCompleted ? (
                     <Badge variant="default" className="gap-1">
                       <CheckCircle className="h-3 w-3" />
-                      Complete
+                      {t("dealDetail.complete")}
                     </Badge>
                   ) : (
                     <Badge variant="secondary" className="gap-1">
                       <Clock className="h-3 w-3" />
-                      Pending
+                      {t("dealDetail.pending")}
                     </Badge>
                   )}
                 </div>
@@ -738,12 +746,12 @@ export function DealDetailPage() {
                   {theirCompleted ? (
                     <Badge variant="default" className="gap-1">
                       <CheckCircle className="h-3 w-3" />
-                      Complete
+                      {t("dealDetail.complete")}
                     </Badge>
                   ) : (
                     <Badge variant="secondary" className="gap-1">
                       <Clock className="h-3 w-3" />
-                      Pending
+                      {t("dealDetail.pending")}
                     </Badge>
                   )}
                 </div>
