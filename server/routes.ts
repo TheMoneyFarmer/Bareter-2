@@ -6786,23 +6786,10 @@ export async function registerRoutes(
         return;
       }
 
-      const [listingRows, userRows] = await Promise.all([
-        db
-          .select({ id: listings.id, updatedAt: listings.updatedAt })
-          .from(listings)
-          .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true))),
-        db
-          .select({ id: users.id, updatedAt: users.updatedAt })
-          .from(users)
-          .where(
-            or(
-              eq(users.isVerified, true),
-              eq(users.kycStatus, "APPROVED"),
-              eq(users.kybStatus, "APPROVED"),
-            ),
-          ),
-      ]);
-      const rows = listingRows;
+      const rows = await db
+        .select({ id: listings.id, updatedAt: listings.updatedAt })
+        .from(listings)
+        .where(and(eq(listings.moderationStatus, "approved"), eq(listings.isActive, true)));
 
       const base = getBaseUrl(req);
       const staticPaths = [
@@ -6850,12 +6837,6 @@ export async function registerRoutes(
             ? new Date(row.updatedAt).toISOString().split("T")[0]
             : new Date().toISOString().split("T")[0];
           return `  <url>\n    <loc>${escapeXml(`${base}/listings/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`;
-        }),
-        ...userRows.map((row) => {
-          const lastmod = row.updatedAt
-            ? new Date(row.updatedAt).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0];
-          return `  <url>\n    <loc>${escapeXml(`${base}/users/${row.id}`)}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.5</priority>\n  </url>`;
         }),
       ].join("\n");
 

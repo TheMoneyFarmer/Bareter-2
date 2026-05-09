@@ -118,9 +118,7 @@ export function BrowsePage() {
     if (!routeCategory) return;
     setSelectedCategories([routeCategory]);
     setActiveTab("search");
-    if (routeSubcategory) {
-      setSearch(routeSubcategory);
-    }
+    setSearch(routeSubcategory ?? "");
   }, [routeCategory, routeSubcategory]);
 
   useEffect(() => {
