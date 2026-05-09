@@ -71,11 +71,22 @@ export function DealDetailPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Per-message translation state. Cache is keyed `${msgId}-${language}` so
-  // switching the UI language clears any stale translated text automatically.
+  // the same message doesn't cost an extra API call when the user toggles
+  // back-and-forth. Display state (which bubbles show translated text) is
+  // cleared whenever the active language changes so no stale-language text
+  // can remain visible after the user switches EN ↔ AR.
   const msgTranslationCache = useRef<Map<string, string>>(new Map());
   const [translatingMsgIds, setTranslatingMsgIds] = useState<Set<string>>(new Set());
   const [translatedMsgIds, setTranslatedMsgIds] = useState<Set<string>>(new Set());
   const [msgTranslations, setMsgTranslations] = useState<Record<string, string>>({});
+
+  // When the UI language changes, collapse all in-place translations so the
+  // user always sees text in the new target language (or the original, if
+  // they haven't translated yet in that language).
+  useEffect(() => {
+    setTranslatedMsgIds(new Set());
+    setMsgTranslations({});
+  }, [language]);
 
   const handleTranslateMessage = async (msgId: string, content: string) => {
     const cacheKey = `${msgId}-${language}`;
