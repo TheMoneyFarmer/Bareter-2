@@ -1996,7 +1996,7 @@ export function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Conversion Funnel</CardTitle>
-          <CardDescription>Waitlist → Registration → First listing → First deal</CardDescription>
+          <CardDescription>Waitlist → Registration → First listing → First deal · Aggregate platform totals, not strict cohort attribution</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
