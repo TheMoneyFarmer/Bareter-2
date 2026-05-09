@@ -62,7 +62,7 @@ export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { t, language } = useI18n();
+  const { t, language, isRTL } = useI18n();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -276,7 +276,7 @@ export function DealDetailPage() {
   return (
     <div className="container px-4 py-8 mx-auto max-w-6xl">
       <Link href="/deals" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft className={`h-4 w-4 ${isRTL ? "rotate-180" : ""}`} />
         {t("dealDetail.backToDeals")}
       </Link>
 
@@ -285,7 +285,7 @@ export function DealDetailPage() {
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-2xl font-bold">{t("dealDetail.dealNumber")} #{deal.dealNumber}</h1>
             <Badge variant="outline" className="text-sm">
-              <div className={`h-2 w-2 rounded-full ${config.color} mr-1`} />
+              <div className={`h-2 w-2 rounded-full ${config.color} me-1`} />
               {stateLabel}
             </Badge>
           </div>
@@ -528,7 +528,7 @@ export function DealDetailPage() {
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               <>
-                                <CheckCircle className="h-3 w-3 mr-1" />
+                                <CheckCircle className="h-3 w-3 me-1" />
                                 Done
                               </>
                             )}
@@ -573,9 +573,9 @@ export function DealDetailPage() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+                        className={`flex flex-col ${isMe !== isRTL ? "items-end" : "items-start"}`}
                       >
-                        <div className={`flex gap-2 max-w-[80%] ${isMe ? "flex-row-reverse" : ""}`}>
+                        <div className={`flex gap-2 max-w-[80%] ${isMe !== isRTL ? "flex-row-reverse" : ""}`}>
                           <Avatar className="h-8 w-8 flex-shrink-0">
                             <AvatarImage src={msg.sender?.avatarUrl || undefined} />
                             <AvatarFallback className="text-xs">

@@ -72,7 +72,7 @@ export function ListingDetailPage() {
   const { user } = useAuth();
   const { gate } = useWaitlist();
   const { toast } = useToast();
-  const { t, language } = useI18n();
+  const { t, language, isRTL } = useI18n();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
@@ -352,7 +352,7 @@ export function ListingDetailPage() {
       </nav>
 
       <Link href="/browse" className="inline-flex items-center gap-2 text-bareter-muted hover:text-bareter-teal mb-4 text-sm">
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft className={`h-4 w-4 ${isRTL ? "rotate-180" : ""}`} />
         {t("listingDetail.backToListings")}
       </Link>
 
@@ -1114,21 +1114,25 @@ export function ListingDetailPage() {
                   <>
                     <button
                       type="button"
-                      onClick={() => setLightboxIndex((i) => (i! - 1 + listing.images!.length) % listing.images!.length)}
+                      onClick={() => isRTL
+                        ? setLightboxIndex((i) => (i! + 1) % listing.images!.length)
+                        : setLightboxIndex((i) => (i! - 1 + listing.images!.length) % listing.images!.length)}
                       className="absolute start-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 hover:bg-white/25 text-white inline-flex items-center justify-center transition-colors"
                       data-testid="button-lightbox-prev"
                       aria-label="Previous image"
                     >
-                      <ArrowLeft className="h-5 w-5" />
+                      <ArrowLeft className={`h-5 w-5 ${isRTL ? "rotate-180" : ""}`} />
                     </button>
                     <button
                       type="button"
-                      onClick={() => setLightboxIndex((i) => (i! + 1) % listing.images!.length)}
+                      onClick={() => isRTL
+                        ? setLightboxIndex((i) => (i! - 1 + listing.images!.length) % listing.images!.length)
+                        : setLightboxIndex((i) => (i! + 1) % listing.images!.length)}
                       className="absolute end-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 hover:bg-white/25 text-white inline-flex items-center justify-center transition-colors"
                       data-testid="button-lightbox-next"
                       aria-label="Next image"
                     >
-                      <ArrowLeft className="h-5 w-5 rotate-180" />
+                      <ArrowLeft className={`h-5 w-5 ${isRTL ? "" : "rotate-180"}`} />
                     </button>
                     <div className="absolute bottom-3 inset-x-0 mx-auto w-fit px-3 py-1 rounded-full bg-bareter-navy-deep/60 text-white text-xs">
                       {lightboxIndex + 1} / {listing.images.length}
