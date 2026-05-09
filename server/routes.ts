@@ -6679,6 +6679,19 @@ export async function registerRoutes(
   const getBaseUrl = (req: Request) =>
     (process.env.APP_BASE_URL ?? `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 
+  // ── Google Search Console HTML verification file ────────────────────────────
+  // Set GOOGLE_SITE_VERIFICATION env var to the code from GSC's HTML file method
+  // (the part of the filename between "google" and ".html", e.g. "abc123def456")
+  app.get("/google:code.html", (req, res) => {
+    const envCode = process.env.GOOGLE_SITE_VERIFICATION;
+    if (!envCode || req.params.code !== envCode) {
+      return void res.status(404).send("Not found");
+    }
+    res
+      .type("text/html")
+      .send(`google-site-verification: google${envCode}.html`);
+  });
+
   // ── robots.txt ──────────────────────────────────────────────────────────────
   app.get("/robots.txt", (req, res) => {
     const base = getBaseUrl(req);
