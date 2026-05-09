@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile } from "@shared/schema";
@@ -30,8 +31,6 @@ import {
   Package,
   ShoppingCart,
   ImageIcon,
-  Upload,
-  FileText,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -39,24 +38,18 @@ import {
   Users,
   Award,
   ThumbsUp,
-  Zap,
-  TrendingUp,
-  MessageCircle,
-  ExternalLink,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import { SiInstagram, SiTiktok, SiYoutube, SiLinkedin, SiX } from "react-icons/si";
 import { z } from "zod";
 
-const profileSchema = z.object({
-  fullName: z.string().min(2, "Name must be at least 2 characters"),
-  bio: z.string().optional(),
-  location: z.string().optional(),
-  businessName: z.string().optional(),
-});
-
-type ProfileForm = z.infer<typeof profileSchema>;
+type ProfileForm = {
+  fullName: string;
+  bio?: string;
+  location?: string;
+  businessName?: string;
+};
 
 type User = {
   id: string;
@@ -71,6 +64,7 @@ type User = {
 
 function VerificationSection({ user }: { user: User }) {
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [selectedAccountType, setSelectedAccountType] = useState(user.accountType || "individual");
 
@@ -95,8 +89,8 @@ function VerificationSection({ user }: { user: User }) {
       if (data.verificationUrl) {
         window.open(data.verificationUrl, "_blank");
         toast({
-          title: "Verification Started",
-          description: "Complete the verification process in the new window.",
+          title: t("profile.startVerification"),
+          description: t("profile.inProgress"),
         });
         queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -104,8 +98,8 @@ function VerificationSection({ user }: { user: User }) {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to start verification. Please try again.",
+        title: t("common.error"),
+        description: t("common.somethingWentWrong"),
         variant: "destructive",
       });
     },
@@ -133,19 +127,19 @@ function VerificationSection({ user }: { user: User }) {
   const getStatusConfig = () => {
     switch (status) {
       case "APPROVED":
-        return { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50 dark:bg-green-950", text: "Verified" };
+        return { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50 dark:bg-green-950", text: t("profile.status.verified") };
       case "IN_PROGRESS":
-        return { icon: Clock, color: "text-yellow-500", bgColor: "bg-yellow-50 dark:bg-yellow-950", text: "Verification In Progress" };
+        return { icon: Clock, color: "text-yellow-500", bgColor: "bg-yellow-50 dark:bg-yellow-950", text: t("profile.status.inProgress") };
       case "IN_REVIEW":
-        return { icon: Clock, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950", text: "Under Review" };
+        return { icon: Clock, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950", text: t("profile.status.underReview") };
       case "DECLINED":
-        return { icon: AlertCircle, color: "text-red-500", bgColor: "bg-red-50 dark:bg-red-950", text: "Verification Failed" };
+        return { icon: AlertCircle, color: "text-red-500", bgColor: "bg-red-50 dark:bg-red-950", text: t("profile.status.failed") };
       case "EXPIRED":
-        return { icon: AlertCircle, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950", text: "Verification Expired" };
+        return { icon: AlertCircle, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950", text: t("profile.status.expired") };
       case "ABANDONED":
-        return { icon: AlertCircle, color: "text-gray-500", bgColor: "bg-gray-50 dark:bg-gray-950", text: "Verification Abandoned" };
+        return { icon: AlertCircle, color: "text-gray-500", bgColor: "bg-gray-50 dark:bg-gray-950", text: t("profile.status.abandoned") };
       default:
-        return { icon: Shield, color: "text-muted-foreground", bgColor: "bg-muted", text: "Not Verified" };
+        return { icon: Shield, color: "text-muted-foreground", bgColor: "bg-muted", text: t("profile.status.notVerified") };
     }
   };
 
@@ -157,10 +151,10 @@ function VerificationSection({ user }: { user: User }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-primary" />
-          Identity Verification
+          {t("profile.identityVerification")}
         </CardTitle>
         <CardDescription>
-          Verify your identity to start bartering on Bareter
+          {t("profile.verifyToStart")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -169,15 +163,15 @@ function VerificationSection({ user }: { user: User }) {
             <StatusIcon className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <h4 className="font-medium">Status: {statusConfig.text}</h4>
+            <h4 className="font-medium">{t("profile.statusLabel")} {statusConfig.text}</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              {status === "NOT_STARTED" && "Complete identity verification to start bartering."}
-              {status === "IN_PROGRESS" && "Please complete the verification process in the verification window."}
-              {status === "IN_REVIEW" && "Your documents are being reviewed. This usually takes a few minutes."}
-              {status === "APPROVED" && "You are verified and can now barter on Bareter!"}
-              {status === "DECLINED" && "Your verification was declined. Please try again with valid documents."}
-              {status === "EXPIRED" && "Your verification session expired. Please start again."}
-              {status === "ABANDONED" && "You didn't complete verification. Please try again."}
+              {status === "NOT_STARTED" && t("profile.notStarted")}
+              {status === "IN_PROGRESS" && t("profile.inProgress")}
+              {status === "IN_REVIEW" && t("profile.inReview")}
+              {status === "APPROVED" && t("profile.approved")}
+              {status === "DECLINED" && t("profile.declined")}
+              {status === "EXPIRED" && t("profile.expired")}
+              {status === "ABANDONED" && t("profile.abandoned")}
             </p>
           </div>
         </div>
@@ -186,20 +180,20 @@ function VerificationSection({ user }: { user: User }) {
           <>
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Account Type</label>
+                <label className="text-sm font-medium">{t("profile.accountType")}</label>
                 <Select value={selectedAccountType} onValueChange={handleAccountTypeChange}>
                   <SelectTrigger data-testid="select-account-type">
-                    <SelectValue placeholder="Select account type" />
+                    <SelectValue placeholder={t("profile.selectAccountType")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="individual">Individual (Personal ID)</SelectItem>
-                    <SelectItem value="business">Business (with license)</SelectItem>
+                    <SelectItem value="individual">{t("profile.individualAccount")}</SelectItem>
+                    <SelectItem value="business">{t("profile.businessAccount")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {selectedAccountType === "individual" 
-                    ? "You'll verify with Emirates ID or Passport"
-                    : "You'll verify with a business license and authorized signatory ID"
+                  {selectedAccountType === "individual"
+                    ? t("profile.individualVerifyWith")
+                    : t("profile.businessVerifyWith")
                   }
                 </p>
               </div>
@@ -220,16 +214,16 @@ function VerificationSection({ user }: { user: User }) {
                 ) : (
                   <Shield className="h-4 w-4" />
                 )}
-                {status === "NOT_STARTED" ? "Start Verification" : "Retry Verification"}
+                {status === "NOT_STARTED" ? t("profile.startVerification") : t("profile.retryVerification")}
               </Button>
             )}
 
             {status === "IN_PROGRESS" && (
               <Alert>
                 <Clock className="h-4 w-4" />
-                <AlertTitle>Verification in Progress</AlertTitle>
+                <AlertTitle>{t("profile.verificationInProgress")}</AlertTitle>
                 <AlertDescription>
-                  If you closed the verification window, click the button below to continue.
+                  {t("profile.verificationWindowClosed")}
                   <Button
                     variant="outline"
                     className="mt-2 w-full"
@@ -237,7 +231,7 @@ function VerificationSection({ user }: { user: User }) {
                     disabled={startVerificationMutation.isPending}
                     data-testid="button-continue-verification"
                   >
-                    Continue Verification
+                    {t("profile.continueVerification")}
                   </Button>
                 </AlertDescription>
               </Alert>
@@ -248,9 +242,9 @@ function VerificationSection({ user }: { user: User }) {
         {isVerified && (
           <Alert className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
             <CheckCircle className="h-4 w-4 text-green-500" />
-            <AlertTitle className="text-green-700 dark:text-green-300">Verified Account</AlertTitle>
+            <AlertTitle className="text-green-700 dark:text-green-300">{t("profile.verifiedAccount")}</AlertTitle>
             <AlertDescription className="text-green-600 dark:text-green-400">
-              Your identity has been verified. You can now barter with confidence on Bareter.
+              {t("profile.verifiedDesc")}
             </AlertDescription>
           </Alert>
         )}
@@ -258,23 +252,23 @@ function VerificationSection({ user }: { user: User }) {
         <Separator />
 
         <div className="space-y-3">
-          <h4 className="font-medium">Why Verification is Required</h4>
+          <h4 className="font-medium">{t("profile.whyVerification")}</h4>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Mandatory for all bartering activities
+              {t("profile.mandatoryBartering")}
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Builds trust with bartering partners
+              {t("profile.buildsTrust")}
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Complies with UAE regulations
+              {t("profile.uaeCompliance")}
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              Protects against fraud
+              {t("profile.protectsAgainstFraud")}
             </li>
           </ul>
         </div>
@@ -285,6 +279,7 @@ function VerificationSection({ user }: { user: User }) {
 
 export function ProfilePage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [newOfferName, setNewOfferName] = useState("");
@@ -338,6 +333,13 @@ export function ProfilePage() {
     enabled: !!user,
   });
 
+  const profileSchema = useMemo(() => z.object({
+    fullName: z.string().min(2, t("validation.nameTooShort")),
+    bio: z.string().optional(),
+    location: z.string().optional(),
+    businessName: z.string().optional(),
+  }), [t]);
+
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -356,14 +358,14 @@ export function ProfilePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
-        title: "Profile updated",
-        description: "Your profile has been saved successfully.",
+        title: t("profile.profileUpdated"),
+        description: t("profile.profileSaved"),
       });
     },
     onError: () => {
       toast({
-        title: "Update failed",
-        description: "Something went wrong. Please try again.",
+        title: t("profile.updateFailed"),
+        description: t("profile.updateFailedDesc"),
         variant: "destructive",
       });
     },
@@ -392,17 +394,17 @@ export function ProfilePage() {
       if (!res.ok) throw new Error("Upload failed");
       return res.json();
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
-        title: "File uploaded",
-        description: `Your ${variables.type === "verification" ? "verification document" : variables.type} has been uploaded.`,
+        title: t("profile.fileUploaded"),
+        description: t("profile.fileUploadedDesc"),
       });
     },
     onError: () => {
       toast({
-        title: "Upload failed",
-        description: "Could not upload file. Please try again.",
+        title: t("profile.uploadFailed"),
+        description: t("common.somethingWentWrong"),
         variant: "destructive",
       });
     },
@@ -468,10 +470,10 @@ export function ProfilePage() {
   const totalNeedValue = (user?.whatINeed || []).reduce((sum, item) => sum + (item.value || 0), 0);
 
   const verificationStatusConfig: Record<string, { icon: typeof CheckCircle; color: string; text: string }> = {
-    pending: { icon: Clock, color: "text-yellow-500", text: "Not submitted" },
-    submitted: { icon: Clock, color: "text-blue-500", text: "Under review" },
-    verified: { icon: CheckCircle, color: "text-green-500", text: "Verified" },
-    rejected: { icon: AlertCircle, color: "text-red-500", text: "Rejected" },
+    pending: { icon: Clock, color: "text-yellow-500", text: t("profile.verification.notSubmitted") },
+    submitted: { icon: Clock, color: "text-blue-500", text: t("profile.verification.underReview") },
+    verified: { icon: CheckCircle, color: "text-green-500", text: t("profile.verification.verified") },
+    rejected: { icon: AlertCircle, color: "text-red-500", text: t("profile.verification.rejected") },
   };
 
   const verificationStatus = verificationStatusConfig[user?.verificationStatus || "pending"] || verificationStatusConfig.pending;
@@ -479,7 +481,7 @@ export function ProfilePage() {
   if (!user) {
     return (
       <div className="container px-4 py-12 mx-auto max-w-4xl text-center">
-        <p className="text-muted-foreground">Please sign in to view your profile.</p>
+        <p className="text-muted-foreground">{t("profile.signIn")}</p>
       </div>
     );
   }
@@ -491,9 +493,9 @@ export function ProfilePage() {
       {isProfileIncomplete && (
         <Alert className="mb-6">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Complete your profile</AlertTitle>
+          <AlertTitle>{t("profile.completeProfile")}</AlertTitle>
           <AlertDescription>
-            Add your bio, location, and business details to start bartering. Complete profiles get more barter proposals.
+            {t("profile.completeProfileDesc")}
           </AlertDescription>
         </Alert>
       )}
@@ -533,7 +535,7 @@ export function ProfilePage() {
             {(isUserVerified(user.kycStatus, user.kybStatus) || user.isVerified) ? (
               <Badge className="gap-1">
                 <Shield className="h-3 w-3" />
-                Verified
+                {t("profile.status.verified")}
               </Badge>
             ) : (
               <Badge variant="outline" className={verificationStatus.color}>
@@ -563,7 +565,7 @@ export function ProfilePage() {
           )}
           {user.signupType && (
             <Badge variant="outline" className="mt-2">
-              {user.signupType === "creator" ? "Creator" : "Brand"}
+              {user.signupType === "creator" ? t("profile.signupCreator") : t("profile.signupBrand")}
             </Badge>
           )}
           {user.socialProfiles && (user.socialProfiles as SocialProfile[]).length > 0 && (
@@ -599,12 +601,12 @@ export function ProfilePage() {
                 <span className="text-sm font-semibold text-primary" data-testid="text-credibility-score">
                   {credibility.credibilityScore}/100
                 </span>
-                <span className="text-xs text-muted-foreground">Credibility</span>
+                <span className="text-xs text-muted-foreground">{t("profile.credibility")}</span>
               </div>
               {credibility.completedDeals > 0 && (
                 <Badge variant="secondary" className="gap-1">
                   <CheckCircle className="h-3 w-3" />
-                  {credibility.completedDeals} deals
+                  {credibility.completedDeals} {t("profile.deals")}
                 </Badge>
               )}
             </div>
@@ -612,7 +614,7 @@ export function ProfilePage() {
           <div className="flex items-center justify-center md:justify-start gap-4 mt-4 flex-wrap">
             <div className="text-center">
               <div className="text-xl font-bold">{listings?.length || 0}</div>
-              <div className="text-xs text-muted-foreground">Listings</div>
+              <div className="text-xs text-muted-foreground">{t("profile.listings")}</div>
             </div>
             <Separator orientation="vertical" className="h-10" />
             <div className="text-center">
@@ -620,14 +622,14 @@ export function ProfilePage() {
                 {averageRating || "-"}
                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
               </div>
-              <div className="text-xs text-muted-foreground">Rating ({ratings?.length || 0})</div>
+              <div className="text-xs text-muted-foreground">{t("profile.rating")} ({ratings?.length || 0})</div>
             </div>
             <Separator orientation="vertical" className="h-10" />
             <div className="text-center">
               <div className="text-xl font-bold text-primary">
-                AED {totalOfferValue.toLocaleString()}
+                {t("common.aed")} {totalOfferValue.toLocaleString()}
               </div>
-              <div className="text-xs text-muted-foreground">Offers Value</div>
+              <div className="text-xs text-muted-foreground">{t("profile.offersValue")}</div>
             </div>
             {endorsements && endorsements.length > 0 && (
               <>
@@ -637,7 +639,7 @@ export function ProfilePage() {
                     {endorsements.length}
                     <ThumbsUp className="h-4 w-4 text-primary" />
                   </div>
-                  <div className="text-xs text-muted-foreground">Endorsements</div>
+                  <div className="text-xs text-muted-foreground">{t("profile.tabEndorsements")}</div>
                 </div>
               </>
             )}
@@ -649,35 +651,35 @@ export function ProfilePage() {
         <TabsList className="flex w-full overflow-x-auto">
           <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
             <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Profile</span>
+            <span className="truncate">{t("profile.tabProfile")}</span>
           </TabsTrigger>
           <TabsTrigger value="offers" className="flex-1 min-w-0" data-testid="tab-offers">
             <Package className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Offers</span>
+            <span className="truncate">{t("profile.tabOffers")}</span>
           </TabsTrigger>
           <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
             <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Needs</span>
+            <span className="truncate">{t("profile.tabNeeds")}</span>
           </TabsTrigger>
           <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
             <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Endorsements</span>
+            <span className="truncate">{t("profile.tabEndorsements")}</span>
           </TabsTrigger>
           <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
             <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Portfolio</span>
+            <span className="truncate">{t("profile.tabPortfolio")}</span>
           </TabsTrigger>
           <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
             <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Verify</span>
+            <span className="truncate">{t("profile.tabVerify")}</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
           <Card>
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Update your personal and business details</CardDescription>
+              <CardTitle>{t("profile.profileInformation")}</CardTitle>
+              <CardDescription>{t("profile.updateDetails")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...form}>
@@ -687,7 +689,7 @@ export function ProfilePage() {
                     name="fullName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Full Name</FormLabel>
+                        <FormLabel>{t("auth.fullName")}</FormLabel>
                         <FormControl>
                           <Input {...field} data-testid="input-profile-name" />
                         </FormControl>
@@ -701,10 +703,10 @@ export function ProfilePage() {
                     name="businessName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Business Name</FormLabel>
+                        <FormLabel>{t("auth.businessName")}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Your company or business name"
+                            placeholder={t("profile.businessNamePlaceholder")}
                             {...field}
                             data-testid="input-business-name"
                           />
@@ -719,11 +721,11 @@ export function ProfilePage() {
                     name="location"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Location</FormLabel>
+                        <FormLabel>{t("profile.location")}</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-location">
-                              <SelectValue placeholder="Select your location" />
+                              <SelectValue placeholder={t("profile.selectLocation")} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -744,17 +746,17 @@ export function ProfilePage() {
                     name="bio"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Bio</FormLabel>
+                        <FormLabel>{t("profile.bio")}</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Tell others about yourself and your business..."
+                            placeholder={t("profile.bioPlaceholder")}
                             className="min-h-[100px] resize-none"
                             {...field}
                             data-testid="textarea-bio"
                           />
                         </FormControl>
                         <FormDescription>
-                          This will be visible on your public profile
+                          {t("profile.bioDescription")}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -770,10 +772,10 @@ export function ProfilePage() {
                       {updateProfileMutation.isPending ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
+                          {t("profile.saving")}
                         </>
                       ) : (
-                        "Save Changes"
+                        t("profile.saveChanges")
                       )}
                     </Button>
                   </div>
@@ -788,10 +790,10 @@ export function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
-                What I Offer
+                {t("profile.whatIOffer")}
               </CardTitle>
               <CardDescription>
-                List the goods and services you can provide in barters with their retail values
+                {t("profile.whatIOfferDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -799,14 +801,14 @@ export function ProfilePage() {
                 <Input
                   value={newOfferName}
                   onChange={(e) => setNewOfferName(e.target.value)}
-                  placeholder="e.g., Hotel room nights"
+                  placeholder={t("profile.offerInputPlaceholder")}
                   className="flex-1"
                   onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addOffer())}
                   data-testid="input-new-offer-name"
                 />
                 <div className="flex gap-2">
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">AED</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{t("common.aed")}</span>
                     <Input
                       type="number"
                       value={newOfferValue}
@@ -833,7 +835,7 @@ export function ProfilePage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-primary font-bold">
-                        AED {(item.value || 0).toLocaleString()}
+                        {t("common.aed")} {(item.value || 0).toLocaleString()}
                       </span>
                       <Button
                         variant="ghost"
@@ -849,15 +851,15 @@ export function ProfilePage() {
                 ))}
                 {(user.whatIOffer || []).length === 0 && (
                   <p className="text-muted-foreground text-sm text-center py-4">
-                    No offers added yet. Add what you can provide in barters.
+                    {t("profile.noOffers")}
                   </p>
                 )}
               </div>
               {(user.whatIOffer || []).length > 0 && (
                 <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Offer Value</span>
+                  <span className="text-sm text-muted-foreground">{t("profile.totalOfferValue")}</span>
                   <span className="text-xl font-bold text-primary">
-                    AED {totalOfferValue.toLocaleString()}
+                    {t("common.aed")} {totalOfferValue.toLocaleString()}
                   </span>
                 </div>
               )}
@@ -870,10 +872,10 @@ export function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5 text-primary" />
-                What I Need
+                {t("profile.whatINeed")}
               </CardTitle>
               <CardDescription>
-                List the goods and services you're looking to receive with estimated values
+                {t("profile.whatINeedDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -881,14 +883,14 @@ export function ProfilePage() {
                 <Input
                   value={newNeedName}
                   onChange={(e) => setNewNeedName(e.target.value)}
-                  placeholder="e.g., Office supplies"
+                  placeholder={t("profile.needInputPlaceholder")}
                   className="flex-1"
                   onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addNeed())}
                   data-testid="input-new-need-name"
                 />
                 <div className="flex gap-2">
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">AED</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{t("common.aed")}</span>
                     <Input
                       type="number"
                       value={newNeedValue}
@@ -915,7 +917,7 @@ export function ProfilePage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-primary font-bold">
-                        AED {(item.value || 0).toLocaleString()}
+                        {t("common.aed")} {(item.value || 0).toLocaleString()}
                       </span>
                       <Button
                         variant="ghost"
@@ -931,15 +933,15 @@ export function ProfilePage() {
                 ))}
                 {(user.whatINeed || []).length === 0 && (
                   <p className="text-muted-foreground text-sm text-center py-4">
-                    No needs added yet. Add what you're looking for in barters.
+                    {t("profile.noNeeds")}
                   </p>
                 )}
               </div>
               {(user.whatINeed || []).length > 0 && (
                 <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Need Value</span>
+                  <span className="text-sm text-muted-foreground">{t("profile.totalNeedValue")}</span>
                   <span className="text-xl font-bold text-primary">
-                    AED {totalNeedValue.toLocaleString()}
+                    {t("common.aed")} {totalNeedValue.toLocaleString()}
                   </span>
                 </div>
               )}
@@ -952,10 +954,10 @@ export function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ThumbsUp className="h-5 w-5 text-primary" />
-                Skill Endorsements
+                {t("profile.skillEndorsements")}
               </CardTitle>
               <CardDescription>
-                Endorsements from other members who have worked with you
+                {t("profile.endorsementsDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -974,7 +976,9 @@ export function ProfilePage() {
                           <Award className="h-4 w-4 text-primary" />
                           <span className="font-medium">{skill}</span>
                         </div>
-                        <Badge variant="secondary">{skillEndorsements.length} endorsement{skillEndorsements.length !== 1 ? "s" : ""}</Badge>
+                        <Badge variant="secondary">
+                          {skillEndorsements.length} {skillEndorsements.length !== 1 ? t("profile.endorsementPlural") : t("profile.endorsementSingular")}
+                        </Badge>
                       </div>
                       <div className="flex -space-x-2">
                         {skillEndorsements.slice(0, 5).map((e) => (
@@ -995,8 +999,8 @@ export function ProfilePage() {
               ) : (
                 <div className="text-center py-8">
                   <ThumbsUp className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-                  <p className="text-muted-foreground text-sm">No endorsements yet</p>
-                  <p className="text-muted-foreground text-xs mt-1">Complete deals to receive endorsements from other users</p>
+                  <p className="text-muted-foreground text-sm">{t("profile.noEndorsements")}</p>
+                  <p className="text-muted-foreground text-xs mt-1">{t("profile.endorsementsHint")}</p>
                 </div>
               )}
             </CardContent>
@@ -1008,10 +1012,10 @@ export function ProfilePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ImageIcon className="h-5 w-5 text-primary" />
-                Portfolio Gallery
+                {t("profile.portfolioGallery")}
               </CardTitle>
               <CardDescription>
-                Showcase your work with images and videos
+                {t("profile.portfolioDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1035,7 +1039,7 @@ export function ProfilePage() {
                   ) : (
                     <>
                       <Plus className="h-8 w-8 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Add Image</span>
+                      <span className="text-sm text-muted-foreground">{t("profile.addImage")}</span>
                     </>
                   )}
                 </Button>
@@ -1051,14 +1055,14 @@ export function ProfilePage() {
                   ))
                   : (user.portfolioImages || []).map((image, index) => (
                     <div key={index} className="relative aspect-square rounded-md overflow-hidden bg-muted group">
-                      <img src={image} alt={`Portfolio ${index + 1}`} className="w-full h-full object-cover" />
+                      <img src={image} alt={t("profile.portfolioAlt", { n: String(index + 1) })} className="w-full h-full object-cover" />
                     </div>
                   ))
                 }
               </div>
               {(!portfolioItems || portfolioItems.length === 0) && (user.portfolioImages || []).length === 0 && (
                 <p className="text-muted-foreground text-sm text-center mt-4">
-                  Add images to showcase your products and services
+                  {t("profile.portfolioHint")}
                 </p>
               )}
             </CardContent>

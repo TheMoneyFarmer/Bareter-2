@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -39,9 +38,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { z } from "zod";
+import { useMemo } from "react";
 
 function VerificationRefreshButton({ onRefresh }: { onRefresh: () => void }) {
   const { toast } = useToast();
+  const { t } = useI18n();
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/verification/refresh");
@@ -49,14 +50,14 @@ function VerificationRefreshButton({ onRefresh }: { onRefresh: () => void }) {
     },
     onSuccess: (data) => {
       if (data.synced) {
-        toast({ title: "Status Updated", description: data.message });
+        toast({ title: t("settings.statusUpdated"), description: data.message });
         onRefresh();
       } else {
-        toast({ title: "No Change", description: data.message, variant: "default" });
+        toast({ title: t("settings.noChange"), description: data.message, variant: "default" });
       }
     },
     onError: () => {
-      toast({ title: "Error", description: "Could not check verification status. Please try again.", variant: "destructive" });
+      toast({ title: t("common.error"), description: t("settings.verificationCheckError"), variant: "destructive" });
     },
   });
   return (
@@ -68,111 +69,138 @@ function VerificationRefreshButton({ onRefresh }: { onRefresh: () => void }) {
       disabled={mutation.isPending}
     >
       <RefreshCw className={`h-3 w-3 mr-1.5 ${mutation.isPending ? "animate-spin" : ""}`} />
-      {mutation.isPending ? "Checking..." : "Refresh Status"}
+      {mutation.isPending ? t("settings.checking") : t("settings.refreshStatus")}
     </Button>
   );
 }
 
-const accountSettingsSchema = z.object({
-  fullName: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().optional(),
-  website: z.string().url().optional().or(z.literal("")),
-  businessName: z.string().optional(),
-  location: z.string().optional(),
-  country: z.string().length(2).optional(),
-  city: z.string().optional(),
-  timezone: z.string(),
-  currency: z.string(),
-  language: z.string(),
-});
+type AccountSettingsForm = {
+  fullName: string;
+  email: string;
+  phone?: string;
+  website?: string;
+  businessName?: string;
+  location?: string;
+  country?: string;
+  city?: string;
+  timezone: string;
+  currency: string;
+  language: string;
+};
+type NotificationSettingsForm = {
+  emailNotifications: boolean;
+  dealNotifications: boolean;
+  messageNotifications: boolean;
+  marketingEmails: boolean;
+};
+type PrivacySettingsForm = {
+  profileVisibility: string;
+  showEmail: boolean;
+  showPhone: boolean;
+  allowDirectMessages: boolean;
+};
+type TradingSettingsForm = {
+  preferredCategories: string[];
+  tradingRadius: number;
+  minTradeValue?: string;
+  maxTradeValue?: string;
+  autoMatchEnabled: boolean;
+};
+type PasswordChangeForm = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
 
-const notificationSettingsSchema = z.object({
-  emailNotifications: z.boolean(),
-  dealNotifications: z.boolean(),
-  messageNotifications: z.boolean(),
-  marketingEmails: z.boolean(),
-});
-
-const privacySettingsSchema = z.object({
-  profileVisibility: z.string(),
-  showEmail: z.boolean(),
-  showPhone: z.boolean(),
-  allowDirectMessages: z.boolean(),
-});
-
-const tradingSettingsSchema = z.object({
-  preferredCategories: z.array(z.string()),
-  tradingRadius: z.number().min(0),
-  minTradeValue: z.string().optional(),
-  maxTradeValue: z.string().optional(),
-  autoMatchEnabled: z.boolean(),
-});
-
-const passwordChangeSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(8, "Password must be at least 8 characters"),
-  confirmPassword: z.string(),
-}).refine(data => data.newPassword === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
-
-type AccountSettingsForm = z.infer<typeof accountSettingsSchema>;
-type NotificationSettingsForm = z.infer<typeof notificationSettingsSchema>;
-type PrivacySettingsForm = z.infer<typeof privacySettingsSchema>;
-type TradingSettingsForm = z.infer<typeof tradingSettingsSchema>;
-type PasswordChangeForm = z.infer<typeof passwordChangeSchema>;
-
-const TIMEZONES = [
-  { value: "Asia/Dubai", label: "Dubai (GMT+4)" },
-  { value: "Asia/Riyadh", label: "Riyadh (GMT+3)" },
-  { value: "Asia/Qatar", label: "Doha (GMT+3)" },
-  { value: "Asia/Kuwait", label: "Kuwait (GMT+3)" },
-  { value: "Asia/Bahrain", label: "Manama (GMT+3)" },
-  { value: "Asia/Muscat", label: "Muscat (GMT+4)" },
-  { value: "Europe/London", label: "London (GMT+0)" },
-  { value: "America/New_York", label: "New York (GMT-5)" },
-];
-
-const CURRENCIES = [
-  { value: "AED", label: "AED - UAE Dirham" },
-  { value: "SAR", label: "SAR - Saudi Riyal" },
-  { value: "QAR", label: "QAR - Qatari Riyal" },
-  { value: "KWD", label: "KWD - Kuwaiti Dinar" },
-  { value: "BHD", label: "BHD - Bahraini Dinar" },
-  { value: "OMR", label: "OMR - Omani Rial" },
-  { value: "USD", label: "USD - US Dollar" },
-];
-
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "ar", label: "العربية (Arabic)" },
-];
-
-const VISIBILITY_OPTIONS = [
-  { value: "public", label: "Public - Anyone can view your profile" },
-  { value: "verified_only", label: "Verified Only - Only verified users can view" },
-  { value: "private", label: "Private - Only you can see your profile" },
-];
-
-const RADIUS_OPTIONS = [
-  { value: 0, label: "Unlimited (Any location)" },
-  { value: 25, label: "25 km" },
-  { value: 50, label: "50 km" },
-  { value: 100, label: "100 km" },
-  { value: 250, label: "250 km" },
-  { value: 500, label: "500 km" },
-];
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const { language: activeLanguage, setLanguage } = useI18n();
+  const { language: activeLanguage, setLanguage, t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
+
+  const RADIUS_OPTIONS = [
+    { value: 0, label: t("settings.radiusUnlimited") },
+    { value: 25, label: `25 ${t("common.km")}` },
+    { value: 50, label: `50 ${t("common.km")}` },
+    { value: 100, label: `100 ${t("common.km")}` },
+    { value: 250, label: `250 ${t("common.km")}` },
+    { value: 500, label: `500 ${t("common.km")}` },
+  ];
+
+  const TIMEZONES = useMemo(() => [
+    { value: "Asia/Dubai", label: t("settings.tz.dubai") },
+    { value: "Asia/Riyadh", label: t("settings.tz.riyadh") },
+    { value: "Asia/Qatar", label: t("settings.tz.doha") },
+    { value: "Asia/Kuwait", label: t("settings.tz.kuwait") },
+    { value: "Asia/Bahrain", label: t("settings.tz.manama") },
+    { value: "Asia/Muscat", label: t("settings.tz.muscat") },
+    { value: "Europe/London", label: t("settings.tz.london") },
+    { value: "America/New_York", label: t("settings.tz.newYork") },
+  ], [t]);
+
+  const CURRENCIES = useMemo(() => [
+    { value: "AED", label: t("settings.cur.aed") },
+    { value: "SAR", label: t("settings.cur.sar") },
+    { value: "QAR", label: t("settings.cur.qar") },
+    { value: "KWD", label: t("settings.cur.kwd") },
+    { value: "BHD", label: t("settings.cur.bhd") },
+    { value: "OMR", label: t("settings.cur.omr") },
+    { value: "USD", label: t("settings.cur.usd") },
+  ], [t]);
+
+  const LANGUAGES = useMemo(() => [
+    { value: "en", label: t("settings.lang.en") },
+    { value: "ar", label: t("settings.lang.ar") },
+  ], [t]);
+
+  const accountSettingsSchema = useMemo(() => z.object({
+    fullName: z.string().min(2, t("validation.nameTooShort")),
+    email: z.string().email(t("validation.invalidEmail")),
+    phone: z.string().optional(),
+    website: z.string().url().optional().or(z.literal("")),
+    businessName: z.string().optional(),
+    location: z.string().optional(),
+    country: z.string().length(2).optional(),
+    city: z.string().optional(),
+    timezone: z.string(),
+    currency: z.string(),
+    language: z.string(),
+  }), [t]);
+
+  const notificationSettingsSchema = useMemo(() => z.object({
+    emailNotifications: z.boolean(),
+    dealNotifications: z.boolean(),
+    messageNotifications: z.boolean(),
+    marketingEmails: z.boolean(),
+  }), []);
+
+  const privacySettingsSchema = useMemo(() => z.object({
+    profileVisibility: z.string(),
+    showEmail: z.boolean(),
+    showPhone: z.boolean(),
+    allowDirectMessages: z.boolean(),
+  }), []);
+
+  const tradingSettingsSchema = useMemo(() => z.object({
+    preferredCategories: z.array(z.string()),
+    tradingRadius: z.number().min(0),
+    minTradeValue: z.string().optional(),
+    maxTradeValue: z.string().optional(),
+    autoMatchEnabled: z.boolean(),
+  }), []);
+
+  const passwordChangeSchema = useMemo(() => z.object({
+    currentPassword: z.string().min(1, t("validation.currentPasswordRequired")),
+    newPassword: z.string().min(8, t("validation.passwordTooShort")),
+    confirmPassword: z.string(),
+  }).refine(data => data.newPassword === data.confirmPassword, {
+    message: t("validation.passwordsNoMatch"),
+    path: ["confirmPassword"],
+  }), [t]);
 
   const accountForm = useForm<AccountSettingsForm>({
     resolver: zodResolver(accountSettingsSchema),
@@ -191,11 +219,6 @@ export function SettingsPage() {
     },
   });
 
-  // The Account form's defaultValues are only read once on mount, but the
-  // /api/auth/me query is asynchronous: on first render `user` is often
-  // null, so the form mounts with empty fullName/email. Reset the form
-  // once the user data arrives (and whenever the persisted user record
-  // changes elsewhere) so the inputs stay in sync with the saved profile.
   useEffect(() => {
     if (!user) return;
     accountForm.reset({
@@ -214,9 +237,6 @@ export function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.fullName, user?.email, user?.phone, user?.website, user?.businessName, user?.location, user?.country, user?.city, user?.timezone, user?.currency, user?.language]);
 
-  // Mirror the live i18n language (which updates immediately on header
-  // toggle, before /api/auth/me has refetched) into the form so the
-  // language Select always reflects the currently-active language.
   useEffect(() => {
     if (accountForm.getValues("language") !== activeLanguage) {
       accountForm.setValue("language", activeLanguage);
@@ -270,23 +290,19 @@ export function SettingsPage() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      // If the user changed their language preference here, mirror it into
-      // the live i18n context so the UI updates immediately without waiting
-      // for /api/auth/me to refetch (LanguageSync will also no-op once it
-      // sees the new server value).
       const nextLang = (variables as { language?: string } | undefined)?.language;
       if (nextLang === "en" || nextLang === "ar") {
         setLanguage(nextLang as Language);
       }
       toast({
-        title: "Settings saved",
-        description: "Your settings have been updated successfully.",
+        title: t("settings.settingsSaved"),
+        description: t("settings.settingsSavedDesc"),
       });
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to save settings. Please try again.",
+        title: t("common.error"),
+        description: t("settings.saveFailed"),
         variant: "destructive",
       });
     },
@@ -299,15 +315,15 @@ export function SettingsPage() {
     },
     onSuccess: () => {
       toast({
-        title: "Password changed",
-        description: "Your password has been updated successfully.",
+        title: t("settings.passwordChanged"),
+        description: t("settings.passwordChangedDesc"),
       });
       passwordForm.reset();
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to change password.",
+        title: t("common.error"),
+        description: error.message || t("settings.passwordChangeFailed"),
         variant: "destructive",
       });
     },
@@ -337,8 +353,8 @@ export function SettingsPage() {
   };
 
   const toggleCategory = (category: string) => {
-    setSelectedCategories(prev => 
-      prev.includes(category) 
+    setSelectedCategories(prev =>
+      prev.includes(category)
         ? prev.filter(c => c !== category)
         : [...prev, category]
     );
@@ -347,7 +363,7 @@ export function SettingsPage() {
   if (!user) {
     return (
       <div className="container px-4 py-12 mx-auto max-w-4xl text-center">
-        <p className="text-muted-foreground">Please sign in to access settings.</p>
+        <p className="text-muted-foreground">{t("settings.signInRequired")}</p>
       </div>
     );
   }
@@ -357,8 +373,8 @@ export function SettingsPage() {
       <div className="flex items-center gap-3 mb-8">
         <Settings className="h-8 w-8 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">Account Settings</h1>
-          <p className="text-muted-foreground">Manage your account preferences and settings</p>
+          <h1 className="text-2xl font-bold">{t("settings.accountSettings")}</h1>
+          <p className="text-muted-foreground">{t("settings.managePreferences")}</p>
         </div>
       </div>
 
@@ -366,31 +382,31 @@ export function SettingsPage() {
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="account" data-testid="tab-account">
             <User className="h-4 w-4 mr-2" />
-            Account
+            {t("settings.account")}
           </TabsTrigger>
           <TabsTrigger value="notifications" data-testid="tab-notifications">
             <Bell className="h-4 w-4 mr-2" />
-            Notifications
+            {t("settings.notifications")}
           </TabsTrigger>
           <TabsTrigger value="privacy" data-testid="tab-privacy">
             <Eye className="h-4 w-4 mr-2" />
-            Privacy
+            {t("settings.privacy")}
           </TabsTrigger>
           <TabsTrigger value="trading" data-testid="tab-bartering">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Bartering
+            {t("settings.bartering")}
           </TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-security">
             <Lock className="h-4 w-4 mr-2" />
-            Security
+            {t("settings.security")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="account">
           <Card>
             <CardHeader>
-              <CardTitle>Account Information</CardTitle>
-              <CardDescription>Update your personal and business details</CardDescription>
+              <CardTitle>{t("settings.accountInformation")}</CardTitle>
+              <CardDescription>{t("settings.updateDetails")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...accountForm}>
@@ -401,9 +417,9 @@ export function SettingsPage() {
                       name="fullName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Full Name</FormLabel>
+                          <FormLabel>{t("auth.fullName")}</FormLabel>
                           <FormControl>
-                            <Input placeholder="Your full name" {...field} data-testid="input-fullname" />
+                            <Input placeholder={t("auth.fullName")} {...field} data-testid="input-fullname" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -414,9 +430,9 @@ export function SettingsPage() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Email Address</FormLabel>
+                          <FormLabel>{t("settings.emailAddress")}</FormLabel>
                           <FormControl>
-                            <Input type="email" placeholder="your@email.com" {...field} data-testid="input-email" />
+                            <Input type="email" placeholder={t("settings.emailPlaceholder")} {...field} data-testid="input-email" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -427,9 +443,9 @@ export function SettingsPage() {
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
+                          <FormLabel>{t("settings.phoneNumber")}</FormLabel>
                           <FormControl>
-                            <Input placeholder="+971 XX XXX XXXX" {...field} data-testid="input-phone" />
+                            <Input placeholder={t("settings.phonePlaceholder")} {...field} data-testid="input-phone" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -440,9 +456,9 @@ export function SettingsPage() {
                       name="website"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Website</FormLabel>
+                          <FormLabel>{t("settings.website")}</FormLabel>
                           <FormControl>
-                            <Input placeholder="https://yourwebsite.com" {...field} data-testid="input-website" />
+                            <Input placeholder={t("settings.websitePlaceholder")} {...field} data-testid="input-website" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -453,9 +469,9 @@ export function SettingsPage() {
                       name="businessName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Business Name</FormLabel>
+                          <FormLabel>{t("auth.businessName")}</FormLabel>
                           <FormControl>
-                            <Input placeholder="Your company name" {...field} data-testid="input-business-name" />
+                            <Input placeholder={t("auth.businessName")} {...field} data-testid="input-business-name" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -466,7 +482,7 @@ export function SettingsPage() {
                       name="country"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Country</FormLabel>
+                          <FormLabel>{t("create.country")}</FormLabel>
                           <Select
                             onValueChange={(v) => {
                               field.onChange(v);
@@ -477,7 +493,7 @@ export function SettingsPage() {
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-country">
-                                <SelectValue placeholder="Select country" />
+                                <SelectValue placeholder={t("settings.selectCountry")} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent className="max-h-72">
@@ -498,14 +514,14 @@ export function SettingsPage() {
                         const cities = getCitiesForCountry(countryCode);
                         return (
                           <FormItem>
-                            <FormLabel>City</FormLabel>
+                            <FormLabel>{t("create.city")}</FormLabel>
                             <Select
                               onValueChange={(v) => { field.onChange(v); accountForm.setValue("location", v); }}
                               value={field.value || ""}
                             >
                               <FormControl>
                                 <SelectTrigger data-testid="select-city">
-                                  <SelectValue placeholder="Select city" />
+                                  <SelectValue placeholder={t("create.selectCity")} />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -524,14 +540,14 @@ export function SettingsPage() {
                   <Separator />
 
                   <div className="space-y-4">
-                    <h4 className="font-medium">Display Preferences</h4>
+                    <h4 className="font-medium">{t("settings.displayPreferences")}</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <FormField
                         control={accountForm.control}
                         name="language"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Language</FormLabel>
+                            <FormLabel>{t("settings.language")}</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger data-testid="select-language">
@@ -553,7 +569,7 @@ export function SettingsPage() {
                         name="timezone"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Timezone</FormLabel>
+                            <FormLabel>{t("settings.timezone")}</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger data-testid="select-timezone">
@@ -575,7 +591,7 @@ export function SettingsPage() {
                         name="currency"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Currency</FormLabel>
+                            <FormLabel>{t("settings.currency")}</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger data-testid="select-currency">
@@ -595,8 +611,8 @@ export function SettingsPage() {
                     </div>
                   </div>
 
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="w-full md:w-auto"
                     disabled={updateSettingsMutation.isPending}
                     data-testid="button-save-account"
@@ -604,7 +620,7 @@ export function SettingsPage() {
                     {updateSettingsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    Save Changes
+                    {t("settings.saveChanges")}
                   </Button>
                 </form>
               </Form>
@@ -612,21 +628,20 @@ export function SettingsPage() {
           </Card>
 
           {user?.accountType === "business" && (
-            <Card>
+            <Card className="mt-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Building2 className="h-5 w-5" />
-                  Business License Verification
+                  {t("settings.businessLicenseTitle")}
                 </CardTitle>
                 <CardDescription>
-                  Business accounts must upload a valid UAE business license before creating listings or accepting deals. 
-                  Data is handled per PDPL guidelines.
+                  {t("settings.businessLicenseDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-3 p-3 rounded-lg border">
                   <div>
-                    <p className="text-sm font-medium">KYB Status</p>
+                    <p className="text-sm font-medium">{t("settings.kybStatus")}</p>
                     <Badge
                       variant={
                         user?.kybStatus === "APPROVED" ? "default" :
@@ -634,9 +649,9 @@ export function SettingsPage() {
                       }
                       className="mt-1"
                     >
-                      {user?.kybStatus === "APPROVED" ? "Verified" :
-                       user?.kybStatus === "PENDING_REVIEW" ? "Pending Review" :
-                       "Not Uploaded"}
+                      {user?.kybStatus === "APPROVED" ? t("settings.kybVerified") :
+                       user?.kybStatus === "PENDING_REVIEW" ? t("settings.kybPendingReview") :
+                       t("settings.kybNotUploaded")}
                     </Badge>
                   </div>
                   {user?.businessLicenseUrl && (
@@ -647,7 +662,7 @@ export function SettingsPage() {
                       className="ml-auto"
                     >
                       <Button variant="outline" size="sm">
-                        View Document
+                        {t("settings.viewDocument")}
                       </Button>
                     </a>
                   )}
@@ -655,9 +670,9 @@ export function SettingsPage() {
 
                 {user?.kybStatus !== "APPROVED" && (
                   <div>
-                    <Label htmlFor="license-upload">Upload Business License (PDF or Image)</Label>
+                    <Label htmlFor="license-upload">{t("settings.uploadLicenseLabel")}</Label>
                     <p className="text-xs text-muted-foreground mb-2 mt-1">
-                      Upload a valid DED-issued business license. Our team will review and verify it.
+                      {t("settings.uploadLicenseHint")}
                     </p>
                     <input
                       id="license-upload"
@@ -689,7 +704,7 @@ export function SettingsPage() {
                       data-testid="button-upload-license"
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      Choose File to Upload
+                      {t("settings.chooseFileUpload")}
                     </Button>
                   </div>
                 )}
@@ -697,7 +712,7 @@ export function SettingsPage() {
                 {user?.kybStatus === "APPROVED" && (
                   <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                     <CheckCircle className="h-4 w-4" />
-                    Your business license has been verified. You can create listings and accept deals.
+                    {t("settings.licenseVerified")}
                   </div>
                 )}
               </CardContent>
@@ -708,8 +723,8 @@ export function SettingsPage() {
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Choose how and when you want to be notified</CardDescription>
+              <CardTitle>{t("settings.notificationPreferences")}</CardTitle>
+              <CardDescription>{t("settings.chooseNotifications")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...notificationForm}>
@@ -720,9 +735,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Email Notifications</FormLabel>
+                          <FormLabel className="text-base">{t("settings.emailNotifications")}</FormLabel>
                           <FormDescription>
-                            Receive email notifications for important updates
+                            {t("settings.emailNotificationsDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -742,9 +757,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Deal Updates</FormLabel>
+                          <FormLabel className="text-base">{t("settings.dealUpdates")}</FormLabel>
                           <FormDescription>
-                            Get notified when deals are proposed, accepted, or completed
+                            {t("settings.dealUpdatesDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -764,9 +779,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Message Alerts</FormLabel>
+                          <FormLabel className="text-base">{t("settings.messageAlerts")}</FormLabel>
                           <FormDescription>
-                            Receive notifications for new messages in your deals
+                            {t("settings.messageAlertsDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -786,9 +801,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Marketing & Promotions</FormLabel>
+                          <FormLabel className="text-base">{t("settings.marketingPromo")}</FormLabel>
                           <FormDescription>
-                            Receive updates about new features, tips, and special offers
+                            {t("settings.marketingPromoDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -802,7 +817,7 @@ export function SettingsPage() {
                     )}
                   />
 
-                  <Button 
+                  <Button
                     type="submit"
                     disabled={updateSettingsMutation.isPending}
                     data-testid="button-save-notifications"
@@ -810,7 +825,7 @@ export function SettingsPage() {
                     {updateSettingsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    Save Preferences
+                    {t("settings.savePreferences")}
                   </Button>
                 </form>
               </Form>
@@ -821,8 +836,8 @@ export function SettingsPage() {
         <TabsContent value="privacy">
           <Card>
             <CardHeader>
-              <CardTitle>Privacy Settings</CardTitle>
-              <CardDescription>Control who can see your information</CardDescription>
+              <CardTitle>{t("settings.privacySettings")}</CardTitle>
+              <CardDescription>{t("settings.controlWhoSees")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...privacyForm}>
@@ -832,7 +847,7 @@ export function SettingsPage() {
                     name="profileVisibility"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Profile Visibility</FormLabel>
+                        <FormLabel>{t("settings.profileVisibility")}</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-profile-visibility">
@@ -840,9 +855,9 @@ export function SettingsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {VISIBILITY_OPTIONS.map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                            ))}
+                            <SelectItem value="public">{t("settings.visibility.public")}</SelectItem>
+                            <SelectItem value="verified_only">{t("settings.visibility.verifiedOnly")}</SelectItem>
+                            <SelectItem value="private">{t("settings.visibility.private")}</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -858,9 +873,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Show Email Address</FormLabel>
+                          <FormLabel className="text-base">{t("settings.showEmail")}</FormLabel>
                           <FormDescription>
-                            Allow other users to see your email on your profile
+                            {t("settings.showEmailDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -880,9 +895,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Show Phone Number</FormLabel>
+                          <FormLabel className="text-base">{t("settings.showPhone")}</FormLabel>
                           <FormDescription>
-                            Allow other users to see your phone number
+                            {t("settings.showPhoneDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -902,9 +917,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">Allow Direct Messages</FormLabel>
+                          <FormLabel className="text-base">{t("settings.allowDMs")}</FormLabel>
                           <FormDescription>
-                            Let other users contact you directly about potential barters
+                            {t("settings.allowDMsDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -918,7 +933,7 @@ export function SettingsPage() {
                     )}
                   />
 
-                  <Button 
+                  <Button
                     type="submit"
                     disabled={updateSettingsMutation.isPending}
                     data-testid="button-save-privacy"
@@ -926,7 +941,7 @@ export function SettingsPage() {
                     {updateSettingsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    Save Privacy Settings
+                    {t("settings.savePrivacy")}
                   </Button>
                 </form>
               </Form>
@@ -937,16 +952,16 @@ export function SettingsPage() {
         <TabsContent value="trading">
           <Card>
             <CardHeader>
-              <CardTitle>Bartering Preferences</CardTitle>
-              <CardDescription>Customize your bartering experience and preferences</CardDescription>
+              <CardTitle>{t("settings.barteringPreferences")}</CardTitle>
+              <CardDescription>{t("settings.barteringPreferencesDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...tradingForm}>
                 <form onSubmit={tradingForm.handleSubmit(onTradingSubmit)} className="space-y-6">
                   <div className="space-y-4">
-                    <Label>Preferred Categories</Label>
+                    <Label>{t("settings.preferredCategories")}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Select categories you're most interested in bartering
+                      {t("settings.selectCategories")}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {CATEGORIES.map(category => (
@@ -970,9 +985,9 @@ export function SettingsPage() {
                     name="tradingRadius"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Bartering Radius</FormLabel>
-                        <Select 
-                          onValueChange={(v) => field.onChange(parseInt(v))} 
+                        <FormLabel>{t("settings.barteringRadius")}</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(parseInt(v))}
                           value={field.value.toString()}
                         >
                           <FormControl>
@@ -987,7 +1002,7 @@ export function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          Only see barters within this distance from your location
+                          {t("settings.barteringRadiusDesc")}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1000,17 +1015,17 @@ export function SettingsPage() {
                       name="minTradeValue"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Minimum Barter Value (AED)</FormLabel>
+                          <FormLabel>{t("settings.minBarterValue")}</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="number" 
-                              placeholder="0" 
-                              {...field} 
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              {...field}
                               data-testid="input-min-trade-value"
                             />
                           </FormControl>
                           <FormDescription>
-                            Minimum value for barters you're interested in
+                            {t("settings.minBarterValueDesc")}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -1021,17 +1036,17 @@ export function SettingsPage() {
                       name="maxTradeValue"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Maximum Barter Value (AED)</FormLabel>
+                          <FormLabel>{t("settings.maxBarterValue")}</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="number" 
-                              placeholder="Unlimited" 
-                              {...field} 
+                            <Input
+                              type="number"
+                              placeholder={t("settings.unlimitedPlaceholder")}
+                              {...field}
                               data-testid="input-max-trade-value"
                             />
                           </FormControl>
                           <FormDescription>
-                            Maximum value for barters you're interested in
+                            {t("settings.maxBarterValueDesc")}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -1045,9 +1060,9 @@ export function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">AI Auto-Match</FormLabel>
+                          <FormLabel className="text-base">{t("settings.aiAutoMatch")}</FormLabel>
                           <FormDescription>
-                            Get AI-powered suggestions for potential barters based on your offers and needs
+                            {t("settings.aiAutoMatchDesc")}
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -1061,7 +1076,7 @@ export function SettingsPage() {
                     )}
                   />
 
-                  <Button 
+                  <Button
                     type="submit"
                     disabled={updateSettingsMutation.isPending}
                     data-testid="button-save-bartering"
@@ -1069,7 +1084,7 @@ export function SettingsPage() {
                     {updateSettingsMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    Save Bartering Preferences
+                    {t("settings.saveBarteringPrefs")}
                   </Button>
                 </form>
               </Form>
@@ -1081,8 +1096,8 @@ export function SettingsPage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-                <CardDescription>Update your account password</CardDescription>
+                <CardTitle>{t("settings.changePassword")}</CardTitle>
+                <CardDescription>{t("settings.updatePassword")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...passwordForm}>
@@ -1092,12 +1107,12 @@ export function SettingsPage() {
                       name="currentPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Current Password</FormLabel>
+                          <FormLabel>{t("settings.currentPassword")}</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              {...field} 
+                            <Input
+                              type="password"
+                              placeholder="••••••••"
+                              {...field}
                               data-testid="input-current-password"
                             />
                           </FormControl>
@@ -1110,17 +1125,17 @@ export function SettingsPage() {
                       name="newPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>New Password</FormLabel>
+                          <FormLabel>{t("settings.newPassword")}</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              {...field} 
+                            <Input
+                              type="password"
+                              placeholder="••••••••"
+                              {...field}
                               data-testid="input-new-password"
                             />
                           </FormControl>
                           <FormDescription>
-                            Must be at least 8 characters
+                            {t("settings.passwordMinLength")}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -1131,12 +1146,12 @@ export function SettingsPage() {
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Confirm New Password</FormLabel>
+                          <FormLabel>{t("settings.confirmNewPassword")}</FormLabel>
                           <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              {...field} 
+                            <Input
+                              type="password"
+                              placeholder="••••••••"
+                              {...field}
                               data-testid="input-confirm-password"
                             />
                           </FormControl>
@@ -1144,7 +1159,7 @@ export function SettingsPage() {
                         </FormItem>
                       )}
                     />
-                    <Button 
+                    <Button
                       type="submit"
                       disabled={changePasswordMutation.isPending}
                       data-testid="button-change-password"
@@ -1152,7 +1167,7 @@ export function SettingsPage() {
                       {changePasswordMutation.isPending ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : null}
-                      Change Password
+                      {t("settings.changePasswordBtn")}
                     </Button>
                   </form>
                 </Form>
@@ -1161,8 +1176,8 @@ export function SettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Account Security</CardTitle>
-                <CardDescription>Manage your account security settings</CardDescription>
+                <CardTitle>{t("settings.accountSecurity")}</CardTitle>
+                <CardDescription>{t("settings.manageSecuritySettings")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 rounded-lg border">
@@ -1171,15 +1186,15 @@ export function SettingsPage() {
                       {user.emailVerified ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                     </div>
                     <div>
-                      <p className="font-medium">Email Verification</p>
+                      <p className="font-medium">{t("settings.emailVerification")}</p>
                       <p className="text-sm text-muted-foreground">
-                        {user.emailVerified ? "Your email is verified" : "Your email is not verified"}
+                        {user.emailVerified ? t("settings.emailVerified") : t("settings.emailNotVerified")}
                       </p>
                     </div>
                   </div>
                   {!user.emailVerified && (
                     <Button variant="outline" size="sm" data-testid="button-verify-email">
-                      Verify Email
+                      {t("settings.verifyEmailBtn")}
                     </Button>
                   )}
                 </div>
@@ -1200,19 +1215,19 @@ export function SettingsPage() {
                       <Shield className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="font-medium">Identity Verification</p>
+                      <p className="font-medium">{t("settings.identityVerification")}</p>
                       <p className="text-sm text-muted-foreground">
                         {user.isVerified
-                          ? "Your identity is verified — you can create listings and barter"
+                          ? t("settings.verificationIdentityVerified")
                           : (user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED")
-                            ? "Verification session expired — please start a new one"
+                            ? t("settings.verificationExpired")
                             : (user.kycStatus === "IN_REVIEW" || user.kybStatus === "IN_REVIEW")
-                              ? "Documents received — under review (usually a few minutes)"
+                              ? t("settings.verificationInReview")
                               : (user.kycStatus === "IN_PROGRESS" || user.kybStatus === "IN_PROGRESS" || user.kycStatus === "PENDING_REVIEW" || user.kybStatus === "PENDING_REVIEW")
-                                ? "Verification in progress — please complete the steps"
+                                ? t("settings.verificationInProgress")
                                 : (user.kycStatus === "DECLINED" || user.kybStatus === "DECLINED")
-                                  ? "Verification was not approved — please try again"
-                                  : "Complete KYC/KYB verification to barter"}
+                                  ? t("settings.verificationDeclined")
+                                  : t("settings.verificationRequired")}
                       </p>
                     </div>
                   </div>
@@ -1225,7 +1240,7 @@ export function SettingsPage() {
                     {!user.isVerified && (
                       <Button variant="outline" size="sm" asChild data-testid="button-verify-identity">
                         <a href="/profile">
-                          {(user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED") ? "Start New Verification" : "Verify Now"}
+                          {(user.kycStatus === "EXPIRED" || user.kybStatus === "EXPIRED") ? t("settings.startNewVerification") : t("settings.verifyNow")}
                         </a>
                       </Button>
                     )}
@@ -1236,33 +1251,33 @@ export function SettingsPage() {
 
             <Card className="border-destructive">
               <CardHeader>
-                <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                <CardDescription>Irreversible and destructive actions</CardDescription>
+                <CardTitle className="text-destructive">{t("settings.dangerZone")}</CardTitle>
+                <CardDescription>{t("settings.dangerZoneDesc")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">Export Your Data</p>
+                    <p className="font-medium">{t("settings.exportData")}</p>
                     <p className="text-sm text-muted-foreground">
-                      Download a copy of all your data
+                      {t("settings.exportDataDesc")}
                     </p>
                   </div>
                   <Button variant="outline" size="sm" data-testid="button-export-data">
                     <Download className="h-4 w-4 mr-2" />
-                    Export
+                    {t("settings.exportBtn")}
                   </Button>
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-destructive">Delete Account</p>
+                    <p className="font-medium text-destructive">{t("settings.deleteAccount")}</p>
                     <p className="text-sm text-muted-foreground">
-                      Permanently delete your account and all data
+                      {t("settings.deleteAccountDesc")}
                     </p>
                   </div>
                   <Button variant="destructive" size="sm" data-testid="button-delete-account">
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Account
+                    {t("settings.deleteAccount")}
                   </Button>
                 </div>
               </CardContent>

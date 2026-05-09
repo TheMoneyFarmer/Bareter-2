@@ -16,19 +16,19 @@ import { LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import { Check, ChevronLeft, ChevronRight, MapPin, Briefcase, Package, Camera, Plus, Trash2 } from "lucide-react";
 import type { OfferNeedItem } from "@shared/schema";
 
-const STEPS = [
-  { id: 1, title: "Basic Info", icon: Briefcase },
-  { id: 2, title: "What You Offer", icon: Package },
-  { id: 3, title: "What You Need", icon: Package },
-  { id: 4, title: "Profile Photo", icon: Camera },
-];
-
 export default function OnboardingPage() {
   const { user, isLoading, refetch } = useAuth();
   const { t } = useI18n();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  
+
+  const STEPS = [
+    { id: 1, title: t("onboarding.step1"), icon: Briefcase },
+    { id: 2, title: t("onboarding.step2"), icon: Package },
+    { id: 3, title: t("onboarding.step3"), icon: Package },
+    { id: 4, title: t("onboarding.step4"), icon: Camera },
+  ];
+
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     fullName: "",
@@ -44,7 +44,7 @@ export default function OnboardingPage() {
   });
   const [newOffer, setNewOffer] = useState({ name: "", value: 0, description: "" });
   const [newNeed, setNewNeed] = useState({ name: "", value: 0, description: "" });
-  
+
   useEffect(() => {
     if (!isLoading && !user) {
       setLocation("/login");
@@ -60,12 +60,12 @@ export default function OnboardingPage() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       if (data.onboardingCompleted) {
-        toast({ title: "Welcome to Bareter!", description: "Your profile is complete." });
+        toast({ title: t("onboarding.welcomeTitle"), description: t("onboarding.welcomeDesc") });
         setLocation("/");
       }
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to save progress", variant: "destructive" });
+      toast({ title: t("common.error"), description: t("onboarding.saveFailed"), variant: "destructive" });
     },
   });
 
@@ -87,7 +87,6 @@ export default function OnboardingPage() {
     }
   }, [user]);
 
-  // IP-based preselect when user is new (default AE + no city/locationPrompted yet)
   useEffect(() => {
     if (!user) return;
     const userHasPickedLocation =
@@ -205,7 +204,7 @@ export default function OnboardingPage() {
           <CardHeader>
             <CardTitle>{STEPS[step - 1].title}</CardTitle>
             <CardDescription>
-              Step {step} of {STEPS.length}
+              {t("onboarding.stepOf", { step: String(step), total: String(STEPS.length) })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -221,7 +220,7 @@ export default function OnboardingPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="businessName">Business Name</Label>
+                  <Label htmlFor="businessName">{t("auth.businessName")}</Label>
                   <Input
                     id="businessName"
                     value={formData.businessName}
@@ -231,13 +230,13 @@ export default function OnboardingPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
+                    <Label htmlFor="country">{t("create.country")}</Label>
                     <Select
                       value={formData.country}
                       onValueChange={(value) => setFormData({ ...formData, country: value, city: "", location: "" })}
                     >
                       <SelectTrigger data-testid="select-country">
-                        <SelectValue placeholder="Select country" />
+                        <SelectValue placeholder={t("onboarding.selectCountry")} />
                       </SelectTrigger>
                       <SelectContent className="max-h-72">
                         {COUNTRIES.map((c) => (
@@ -249,13 +248,13 @@ export default function OnboardingPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
+                    <Label htmlFor="city">{t("create.city")}</Label>
                     <Select
                       value={formData.city || formData.location}
                       onValueChange={(value) => setFormData({ ...formData, city: value, location: value })}
                     >
                       <SelectTrigger data-testid="select-city">
-                        <SelectValue placeholder="Select city" />
+                        <SelectValue placeholder={t("create.selectCity")} />
                       </SelectTrigger>
                       <SelectContent>
                         {getCitiesForCountry(formData.country).map((city) => (
@@ -271,12 +270,12 @@ export default function OnboardingPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bio">Bio</Label>
+                  <Label htmlFor="bio">{t("profile.bio")}</Label>
                   <Textarea
                     id="bio"
                     value={formData.bio}
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                    placeholder="Tell us about your business..."
+                    placeholder={t("onboarding.bioPlaceholder")}
                     rows={4}
                     data-testid="input-bio"
                   />
@@ -287,14 +286,14 @@ export default function OnboardingPage() {
             {step === 2 && (
               <>
                 <p className="text-muted-foreground">
-                  Add the services or products you offer for barter. Include estimated values in AED.
+                  {t("onboarding.step2Desc")}
                 </p>
                 <div className="space-y-4">
                   {formData.whatIOffer.map((item, index) => (
                     <div key={index} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-muted-foreground">AED {item.value.toLocaleString()}</p>
+                        <p className="text-sm text-muted-foreground">{t("common.aed")} {item.value.toLocaleString()}</p>
                       </div>
                       <Button
                         variant="ghost"
@@ -309,27 +308,27 @@ export default function OnboardingPage() {
                 </div>
                 <div className="grid gap-3 p-4 border rounded-lg">
                   <Input
-                    placeholder="What do you offer? (e.g., Web Development)"
+                    placeholder={t("onboarding.offerPlaceholder")}
                     value={newOffer.name}
                     onChange={(e) => setNewOffer({ ...newOffer, name: e.target.value })}
                     data-testid="input-offer-name"
                   />
                   <Input
                     type="number"
-                    placeholder="Value in AED"
+                    placeholder={t("onboarding.valueInAED")}
                     value={newOffer.value || ""}
                     onChange={(e) => setNewOffer({ ...newOffer, value: parseInt(e.target.value) || 0 })}
                     data-testid="input-offer-value"
                   />
                   <Textarea
-                    placeholder="Description (optional)"
+                    placeholder={t("onboarding.descriptionOptional")}
                     value={newOffer.description}
                     onChange={(e) => setNewOffer({ ...newOffer, description: e.target.value })}
                     data-testid="input-offer-description"
                   />
                   <Button onClick={addOffer} data-testid="button-add-offer">
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Offer
+                    {t("onboarding.addOffer")}
                   </Button>
                 </div>
               </>
@@ -338,14 +337,14 @@ export default function OnboardingPage() {
             {step === 3 && (
               <>
                 <p className="text-muted-foreground">
-                  Add what you're looking for in exchange. This helps us match you with the right partners.
+                  {t("onboarding.step3Desc")}
                 </p>
                 <div className="space-y-4">
                   {formData.whatINeed.map((item, index) => (
                     <div key={index} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-muted-foreground">AED {item.value.toLocaleString()}</p>
+                        <p className="text-sm text-muted-foreground">{t("common.aed")} {item.value.toLocaleString()}</p>
                       </div>
                       <Button
                         variant="ghost"
@@ -360,27 +359,27 @@ export default function OnboardingPage() {
                 </div>
                 <div className="grid gap-3 p-4 border rounded-lg">
                   <Input
-                    placeholder="What do you need? (e.g., Marketing Services)"
+                    placeholder={t("onboarding.needPlaceholder")}
                     value={newNeed.name}
                     onChange={(e) => setNewNeed({ ...newNeed, name: e.target.value })}
                     data-testid="input-need-name"
                   />
                   <Input
                     type="number"
-                    placeholder="Budget in AED"
+                    placeholder={t("onboarding.budgetInAED")}
                     value={newNeed.value || ""}
                     onChange={(e) => setNewNeed({ ...newNeed, value: parseInt(e.target.value) || 0 })}
                     data-testid="input-need-value"
                   />
                   <Textarea
-                    placeholder="Description (optional)"
+                    placeholder={t("onboarding.descriptionOptional")}
                     value={newNeed.description}
                     onChange={(e) => setNewNeed({ ...newNeed, description: e.target.value })}
                     data-testid="input-need-description"
                   />
                   <Button onClick={addNeed} data-testid="button-add-need">
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Need
+                    {t("onboarding.addNeed")}
                   </Button>
                 </div>
               </>
@@ -389,22 +388,22 @@ export default function OnboardingPage() {
             {step === 4 && (
               <>
                 <p className="text-muted-foreground">
-                  Add a profile photo and portfolio images to build trust with potential partners.
+                  {t("onboarding.step4Desc")}
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Profile Photo URL</Label>
+                    <Label>{t("onboarding.profilePhotoUrl")}</Label>
                     <Input
-                      placeholder="https://..."
+                      placeholder={t("onboarding.urlPlaceholder")}
                       value={formData.avatarUrl}
                       onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
                       data-testid="input-avatar-url"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Portfolio Image URLs (one per line)</Label>
+                    <Label>{t("onboarding.portfolioUrls")}</Label>
                     <Textarea
-                      placeholder="https://..."
+                      placeholder={t("onboarding.urlPlaceholder")}
                       value={formData.portfolioImages.join("\n")}
                       onChange={(e) =>
                         setFormData({
