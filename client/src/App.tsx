@@ -28,6 +28,8 @@ import { HowItWorksPage } from "@/pages/how-it-works";
 import { PricingPage } from "@/pages/pricing";
 import { HelpPage } from "@/pages/help";
 import { FAQPage } from "@/pages/faq";
+import { BlogPage } from "@/pages/blog";
+import { BlogPostPage } from "@/pages/blog-post";
 import { TermsPage } from "@/pages/terms";
 import { PrivacyPage } from "@/pages/privacy";
 import { LegalPage } from "@/pages/legal";
@@ -122,6 +124,8 @@ function Router() {
       <Route path="/pricing" component={PricingPage} />
       <Route path="/help" component={HelpPage} />
       <Route path="/faq" component={FAQPage} />
+      <Route path="/blog/:slug" component={BlogPostPage} />
+      <Route path="/blog" component={BlogPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/legal/:slug" component={LegalPage} />

@@ -152,6 +152,7 @@ export function Footer() {
               <Link href="/pricing" className={linkCls}>{t("footer.pricing") || "Pricing"}</Link>
               <Link href="/browse" className={linkCls}>{t("nav.browseListings") || "Browse listings"}</Link>
               <Link href="/create-listing" className={linkCls}>{t("nav.createListing") || "List a barter"}</Link>
+              <Link href="/blog" className={linkCls} data-testid="footer-link-blog">Blog</Link>
             </nav>
           </div>
 

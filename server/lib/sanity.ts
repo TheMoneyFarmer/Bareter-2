@@ -104,6 +104,48 @@ export async function getSanityHelpArticles(): Promise<SanityHelpArticle[] | nul
   );
 }
 
+export interface SanityBlogPost {
+  slug: string;
+  title: string;
+  excerpt?: string;
+  coverImageUrl?: string;
+  author?: string;
+  category?: string;
+  publishedAt?: string;
+  body?: string;
+}
+
+const BLOG_FIELDS = `
+  "slug": slug.current,
+  title,
+  excerpt,
+  "coverImageUrl": coverImage.asset->url,
+  author,
+  category,
+  publishedAt
+`;
+
+export async function getSanityBlogPosts(): Promise<SanityBlogPost[] | null> {
+  return fetchFromSanity<SanityBlogPost[]>(
+    `*[_type == "blogPost" && defined(publishedAt) && publishedAt <= now()] | order(publishedAt desc) {
+      ${BLOG_FIELDS}
+    }`,
+    "blogPosts",
+  );
+}
+
+export async function getSanityBlogPost(slug: string): Promise<SanityBlogPost | null> {
+  const results = await fetchFromSanity<SanityBlogPost[]>(
+    `*[_type == "blogPost" && slug.current == "${slug.replace(/"/g, "")}"] {
+      ${BLOG_FIELDS},
+      "body": pt::text(body)
+    }`,
+    `blogPost:${slug}`,
+  );
+  if (!results || results.length === 0) return null;
+  return results[0];
+}
+
 export function isSanityConfigured(): boolean {
   return isConfigured;
 }

@@ -348,6 +348,34 @@ export async function registerRoutes(
     }
   });
 
+  // ── Blog posts (Sanity CMS) ──────────────────────────────────────────
+  app.get("/api/blog", async (_req, res) => {
+    try {
+      const { getSanityBlogPosts } = await import("./lib/sanity");
+      const posts = await getSanityBlogPosts();
+      return res.json(posts ?? []);
+    } catch (err) {
+      console.error("[blog] Failed to fetch blog posts:", err);
+      return res.json([]);
+    }
+  });
+
+  app.get("/api/blog/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      if (!slug || typeof slug !== "string") {
+        return res.status(400).json({ message: "Invalid slug" });
+      }
+      const { getSanityBlogPost } = await import("./lib/sanity");
+      const post = await getSanityBlogPost(slug);
+      if (!post) return res.status(404).json({ message: "Not found" });
+      return res.json(post);
+    } catch (err) {
+      console.error("[blog] Failed to fetch blog post:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // ── Public help articles (Sanity CMS with empty-array fallback) ─────
   app.get("/api/public/help-articles", async (_req, res) => {
     try {
