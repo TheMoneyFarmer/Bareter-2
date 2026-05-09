@@ -1,0 +1,8 @@
+/api/config response verified 2026-05-09 via curl:
+
+{"passwordResetEnabled":true,"cookiePolicyVersion":1,"maintenanceMode":false}
+
+Confirms:
+- passwordResetEnabled: true ✅
+- cookiePolicyVersion: 1 (non-empty) ✅
+- maintenanceMode: false ✅

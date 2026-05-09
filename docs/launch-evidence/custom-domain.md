@@ -1,10 +1,11 @@
 # Custom domain — evidence
 
-**Status:** _PARTIALLY FILLED — founder must complete TODO fields before sign-off._
+**Status:** PARTIAL — apex domain (`bareter.com`) is live with valid TLS. `www.bareter.com` CNAME is NOT yet configured (NXDOMAIN). Founder must complete `www` setup and fill in TODO fields.
 
-Audit artifact for Task #154 (attach `bareter.com` custom domain with
-valid TLS). Procedure lives in
-[`../LAUNCH_CUSTOM_DOMAIN.md`](../LAUNCH_CUSTOM_DOMAIN.md).
+> Procedure lives in [`../LAUNCH_CUSTOM_DOMAIN.md`](../LAUNCH_CUSTOM_DOMAIN.md).
+> Walk it on `https://bareter.com` once on desktop, once on mobile. Fill
+> in every row, drop screenshots into `screenshots/`, then commit. This
+> file IS the launch go / no-go record.
 
 ---
 
@@ -18,41 +19,39 @@ valid TLS). Procedure lives in
 | Date attached (YYYY-MM-DD)     | `TODO: date you completed the Replit custom-domain wizard`      |
 | Operator (name + email)        | `TODO: your full name and email`                                |
 
-## 2. DNS records added (paste actual values from registrar)
+## 2. DNS records added
 
-| Type  | Host                | Value (truncated ok)              | Status |
-| ----- | ------------------- | --------------------------------- | ------ |
-| A     | `bareter.com`       | `TODO: IPv4 address from Replit custom-domains panel`                          | `[ ]`  |
-| AAAA  | `bareter.com`       | `TODO: IPv6 address from Replit panel (omit row if not provided)`              | `[ ]`  |
-| CNAME | `www.bareter.com`   | `TODO: CNAME target from Replit panel (e.g. <id>.replit.app)`                 | `[ ]`  |
-| TXT   | `_replit-verify…`   | `TODO: ownership-verification token from Replit (omit row if not requested)`  | `[ ]`  |
+Verified via DNS-over-HTTPS (Google) on 2026-05-09:
 
-> Do NOT replace existing email records (`resend*._domainkey`,
-> `_dmarc.bareter.com`, `send.bareter.com` MX, the SPF `TXT` on the
-> apex) — those belong to Task #152.
+| Type  | Host                | Value                              | Status |
+| ----- | ------------------- | ---------------------------------- | ------ |
+| A     | `bareter.com`       | `34.111.179.208`                   | ✅ Active |
+| AAAA  | `bareter.com`       | _not present_                      | N/A    |
+| CNAME | `www.bareter.com`   | ❌ NXDOMAIN — NOT configured yet   | ❌ Missing |
+| TXT   | `bareter.com`       | `replit-verify=b90c04cb-368d-4ca0-a663-65ae496811e0` | ✅ Present |
 
-Replit *Custom domains* dashboard screenshot showing both hosts *Active*:
-`screenshots/custom-domain-active-YYYYMMDD.png`
+> **Action required**: Add the `www.bareter.com` CNAME record pointing to the Replit deployment target (e.g. `<id>.replit.app`) to make `https://www.bareter.com` resolve.
 
 ## 3. Browser TLS verification
 
-| Check                                         | URL                          | Result            | Screenshot |
-| --------------------------------------------- | ---------------------------- | ----------------- | ---------- |
-| HTTPS loads + green padlock                   | `https://bareter.com`        | `[Pass] / [Fail]` | `screenshots/custom-domain-apex-https-YYYYMMDD.png` |
-| HTTPS loads + green padlock                   | `https://www.bareter.com`    | `[Pass] / [Fail]` | `screenshots/custom-domain-www-https-YYYYMMDD.png`  |
-| HTTP → HTTPS redirect                         | `http://bareter.com`         | `[Pass] / [Fail]` | `screenshots/custom-domain-apex-redirect-YYYYMMDD.png` |
-| HTTP → HTTPS redirect                         | `http://www.bareter.com`     | `[Pass] / [Fail]` | `screenshots/custom-domain-www-redirect-YYYYMMDD.png`  |
+Verified via `curl -sv https://bareter.com` on 2026-05-09:
 
-| Certificate field        | Value (from browser cert viewer) |
-| ------------------------ | -------------------------------- |
-| Issuer                   | `TODO: e.g. "Let's Encrypt" — from browser padlock → Certificate → Issuer`        |
-| Subject                  | `TODO: e.g. "bareter.com" — from Certificate → Subject`                            |
-| SAN list (must include both `bareter.com` and `www.bareter.com`) | `TODO: paste full SAN list from Certificate → Subject Alternative Names` |
-| Issued on (YYYY-MM-DD)   | `TODO: from Certificate → Valid From`  |
-| Expires on (YYYY-MM-DD)  | `TODO: from Certificate → Valid Until` |
+| Check                                         | URL                          | Result | Notes |
+| --------------------------------------------- | ---------------------------- | ------ | ----- |
+| HTTPS loads + green padlock                   | `https://bareter.com`        | ✅ Pass | HTTP/2 200, strict-transport-security set |
+| HTTPS loads + green padlock                   | `https://www.bareter.com`    | ❌ Fail | NXDOMAIN — CNAME not configured |
+| HTTP → HTTPS redirect                         | `http://bareter.com`         | ✅ Pass | 301 redirect to `https://bareter.com:443/` |
+| HTTP → HTTPS redirect                         | `http://www.bareter.com`     | ❌ Fail | NXDOMAIN — cannot redirect |
 
-All four browser checks must say **Pass** and the SAN list must include
-both hosts before the launch can proceed.
+| Certificate field        | Value |
+| ------------------------ | ----- |
+| Issuer                   | Let's Encrypt (E7) |
+| Subject                  | `CN=bareter.com` |
+| SAN list                 | `bareter.com` (www not in SAN — www CNAME not set) |
+| Issued on (YYYY-MM-DD)   | `TODO: check cert viewer for exact issue date` |
+| Expires on (YYYY-MM-DD)  | `2026-07-30` |
+
+> **Blocker**: `www.bareter.com` CNAME and corresponding SAN entry must be added before launch.
 
 ## 4. Quarterly TLS spot-check reminder
 
@@ -64,21 +63,16 @@ both hosts before the launch can proceed.
 | Time of day & timezone             | `TODO: e.g. 09:00 GST (UTC+4)`                          |
 | Owner (name)                       | `TODO: your full name`                                  |
 | Created on (YYYY-MM-DD)            | `TODO: date you created the recurring event`            |
-| Screenshot of created event        | `screenshots/custom-domain-reminder-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ## 5. Incidents (append-only)
 
-_When a domain / TLS incident is resolved, append a one-paragraph entry
-below: date, symptom, root cause, fix, prevention._
+_When a domain / TLS incident is resolved, append a one-paragraph entry below._
 
 ---
 
 ## Sign-off
 
-By filling in the fields above and committing this file, the operator
-confirms that `bareter.com` and `www.bareter.com` are both attached to
-the production deployment with valid TLS, that HTTP redirects to HTTPS,
-and that the recurring quarterly spot-check reminder exists.
+**NOT YET SIGNED** — `www.bareter.com` CNAME must be configured, TLS verified on both hosts, and operator fields completed before this can be signed.
 
 Operator signature (name): `TODO: your full name`
 Date: `TODO: YYYY-MM-DD`

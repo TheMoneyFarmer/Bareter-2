@@ -1,14 +1,8 @@
 # Production Database — Test Restore Evidence
 
-**Status:** _PARTIALLY FILLED — founder must complete TODO fields before sign-off._
+**Status:** NOT STARTED — founder must perform a real point-in-time restore (PITR) drill before launch.
 
-This file is the audit artifact for Task #151 (production DB backup &
-restore plan). It is committed to the repo *empty* on purpose so reviewers
-and future operators can see the exact fields that need to be filled in,
-and so a missing fill-in is impossible to ignore.
-
-The procedure to fill this in lives in
-[`../LAUNCH_BACKUP_CHECKLIST.md`](../LAUNCH_BACKUP_CHECKLIST.md), section 1.
+> The procedure lives in [`../LAUNCH_BACKUP_CHECKLIST.md`](../LAUNCH_BACKUP_CHECKLIST.md), section 1.
 
 ---
 
@@ -29,7 +23,7 @@ The procedure to fill this in lives in
 | Restore performed (UTC timestamp)| `TODO: e.g. 2026-05-10T10:00Z — when you triggered the PITR` |
 | Target restore point (UTC)       | `TODO: e.g. 2026-05-09T08:00Z — the point you restored back to` |
 | Replit success confirmation seen | `[ ] yes`                                                        |
-| Screenshot file (relative path)  | `screenshots/pitr-test-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
+| Screenshot file (relative path)  | `screenshots/pitr-test-YYYYMMDD.png — TODO: capture and rename with actual date` |
 
 ## 3. Post-restore verification SQL
 
@@ -68,18 +62,14 @@ Operator confirms the values reflect the chosen restore point: `[ ] yes`.
 | Time of day & timezone             | `TODO: e.g. 09:00 GST (UTC+4) every Monday`             |
 | Owner (name)                       | `TODO: your full name`                                  |
 | Created on (YYYY-MM-DD)            | `TODO: date you created the recurring event`            |
-| Screenshot of created event        | `screenshots/calendar-reminder-YYYYMMDD.png` — `TODO: capture and rename with actual date` |
 
 ---
 
 ## Sign-off
 
-By filling in the fields above and committing this file, the operator
-confirms that:
+**NOT YET SIGNED** — a real point-in-time restore must be performed and documented before this can be signed.
 
-- A real point-in-time restore was successfully performed against the
-  production database.
-- The recurring weekly spot-check reminder exists in their calendar.
+> **Action required**: Go to Replit → your Deployment → Database → Point-in-Time Recovery. Trigger a test restore to a point ~24 hours ago, run the verification SQL, then restore forward to current. Screenshot each step and fill in the fields above.
 
 Operator signature (name): `TODO: your full name`
 Date: `TODO: YYYY-MM-DD`
