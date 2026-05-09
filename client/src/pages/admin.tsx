@@ -301,6 +301,7 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics/funnel"] });
       toast({ title: "Success", description: "User verification updated" });
     },
   });
@@ -361,6 +362,7 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics/funnel"] });
       toast({ title: "Success", description: "Listing removed" });
     },
   });
@@ -384,6 +386,7 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics/funnel"] });
       setDeleteDialog({ open: false, user: null });
       setSelectedUserId(null);
       toast({ title: "Success", description: "User data erased (PDPL)" });
@@ -499,6 +502,7 @@ export function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics/funnel"] });
       setSelectedDeal(null);
       toast({ title: "Success", description: "Deal state updated" });
     },
