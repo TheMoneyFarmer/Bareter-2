@@ -48,6 +48,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -122,7 +123,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -865,7 +866,7 @@ export function AdminPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="week" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <Tooltip
+                  <RechartsTooltip
                     contentStyle={{
                       backgroundColor: "hsl(var(--card))",
                       border: "1px solid hsl(var(--border))",
@@ -1979,10 +1980,10 @@ export function AdminPage() {
 
   const renderAnalytics = () => {
     const funnelSteps = [
-      { label: "Waitlist Signups", value: funnelData?.waitlistCount ?? 0, color: "bg-blue-500" },
-      { label: "Registered Users", value: funnelData?.registeredCount ?? 0, color: "bg-teal-500" },
-      { label: "Created a Listing", value: funnelData?.listedCount ?? 0, color: "bg-amber-500" },
-      { label: "Completed a Deal", value: funnelData?.dealtCount ?? 0, color: "bg-green-500" },
+      { label: "Waitlist Signups", hint: "Total entries in the waitlist table (all time)", value: funnelData?.waitlistCount ?? 0, color: "bg-blue-500" },
+      { label: "Registered Users", hint: "Total verified accounts created on the platform (all time)", value: funnelData?.registeredCount ?? 0, color: "bg-teal-500" },
+      { label: "Created a Listing", hint: "Distinct users who have published at least one listing", value: funnelData?.listedCount ?? 0, color: "bg-amber-500" },
+      { label: "Completed a Deal", hint: "Distinct users who participated as seeker or provider in at least one completed deal", value: funnelData?.dealtCount ?? 0, color: "bg-green-500" },
     ];
     const topValue = funnelSteps[0].value || 1;
 
@@ -1999,6 +2000,7 @@ export function AdminPage() {
           <CardDescription>Waitlist → Registration → First listing → First deal · Aggregate platform totals, not strict cohort attribution</CardDescription>
         </CardHeader>
         <CardContent>
+          <TooltipProvider delayDuration={200}>
           <div className="space-y-4">
             {funnelSteps.map((step, i) => {
               const prev = funnelSteps[i - 1]?.value;
@@ -2009,7 +2011,14 @@ export function AdminPage() {
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-muted-foreground w-4">{i + 1}</span>
-                      <span className="text-sm font-medium">{step.label}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-sm font-medium cursor-help underline decoration-dotted underline-offset-2">{step.label}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          <p>{step.hint}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className="flex items-center gap-3">
                       {convRate !== null && (
@@ -2032,6 +2041,7 @@ export function AdminPage() {
               );
             })}
           </div>
+          </TooltipProvider>
 
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t">
             {funnelSteps.map((step, i) => {
@@ -2065,7 +2075,7 @@ export function AdminPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => v?.slice(5)} />
                   <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                  <RechartsTooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
                   <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: "hsl(var(--primary))" }} name="Signups" />
                 </LineChart>
               </ResponsiveContainer>
@@ -2085,7 +2095,7 @@ export function AdminPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="week" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <Tooltip
+                  <RechartsTooltip
                     contentStyle={{
                       backgroundColor: "hsl(var(--card))",
                       border: "1px solid hsl(var(--border))",
@@ -2123,7 +2133,7 @@ export function AdminPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
+                  <RechartsTooltip
                     contentStyle={{
                       backgroundColor: "hsl(var(--card))",
                       border: "1px solid hsl(var(--border))",
