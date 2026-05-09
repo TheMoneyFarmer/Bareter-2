@@ -1981,7 +1981,7 @@ export function AdminPage() {
   const renderAnalytics = () => {
     const funnelSteps = [
       { label: "Waitlist Signups", hint: "Total entries in the waitlist table (all time)", value: funnelData?.waitlistCount ?? 0, color: "bg-blue-500" },
-      { label: "Registered Users", hint: "Total verified accounts created on the platform (all time)", value: funnelData?.registeredCount ?? 0, color: "bg-teal-500" },
+      { label: "Registered Users", hint: "Total accounts registered on the platform (all time, including unverified)", value: funnelData?.registeredCount ?? 0, color: "bg-teal-500" },
       { label: "Created a Listing", hint: "Distinct users who have published at least one listing", value: funnelData?.listedCount ?? 0, color: "bg-amber-500" },
       { label: "Completed a Deal", hint: "Distinct users who participated as seeker or provider in at least one completed deal", value: funnelData?.dealtCount ?? 0, color: "bg-green-500" },
     ];
