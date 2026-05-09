@@ -21,6 +21,7 @@ export type DiditUserUpdate = Partial<
     | "verificationStatus"
     | "diditVerifiedAt"
     | "diditVerificationData"
+    | "emailVerified"
     | "updatedAt"
   >
 >;
@@ -97,6 +98,7 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
         updateData.isVerified = true;
         updateData.verificationStatus = "verified";
         updateData.diditVerifiedAt = new Date();
+        updateData.emailVerified = true;
         updateData.diditVerificationData =
           (data.user_data ?? data.verification ?? {}) as Record<string, unknown>;
 
