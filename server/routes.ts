@@ -5649,6 +5649,31 @@ export async function registerRoutes(
     }
   });
 
+  // Public quick-ask: lightweight one-shot AI answer for the support widget Home tab.
+  // Open to guests + auth users (rate-limited). Does not create a ticket — the widget
+  // offers a follow-up "Wasn't helpful? Open a ticket" CTA after the response.
+  app.post("/api/support/quick-ask", aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
+    try {
+      const { message } = req.body ?? {};
+      if (!message || typeof message !== "string" || message.trim().length < 3) {
+        return res.status(400).json({ message: "Message is required (min 3 chars)" });
+      }
+      if (message.length > 1000) {
+        return res.status(400).json({ message: "Message too long (max 1000 chars)" });
+      }
+      const { getSupportResponse } = await import("./agents/supportAgent");
+      const result = await getSupportResponse(
+        message.trim(),
+        [],
+        req.session?.userId,
+      );
+      res.json({ response: result.response });
+    } catch (error) {
+      console.error("Quick-ask error:", error);
+      res.status(500).json({ message: "Quick-ask unavailable" });
+    }
+  });
+
   // Valuation advice
   app.post("/api/ai/valuation", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {

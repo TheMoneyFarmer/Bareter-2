@@ -18,18 +18,51 @@ import {
   Loader2,
   Headphones,
   ChevronLeft,
+  ChevronRight,
   Plus,
   AlertTriangle,
   CheckCircle2,
   Search,
+  Home as HomeIcon,
+  MessageCircle,
+  BookOpen,
+  Sparkles,
+  Mail,
+  Phone,
+  MessageSquare,
+  UserPlus,
+  FileText,
+  CreditCard,
+  Shield,
+  HelpCircle,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
+import {
+  HELP_CATEGORIES,
+  searchHelpContent,
+  type HelpCategory,
+  type HelpArticle,
+  type HelpIconName,
+} from "@/lib/help-content";
 import type { SupportTicketWithUser, SupportMessageWithSender } from "@shared/schema";
 
-type View = "list" | "thread" | "new" | "lookup" | "identity";
+type Tab = "home" | "messages" | "help";
+type SubView = "list" | "thread" | "new" | "lookup" | "identity" | "article";
 type GuestIdentity = { name: string; email: string };
+
+const HELP_ICON_MAP: Record<HelpIconName, typeof UserPlus> = {
+  "user-plus": UserPlus,
+  "file-text": FileText,
+  "message-square": MessageSquare,
+  "credit-card": CreditCard,
+  shield: Shield,
+  "help-circle": HelpCircle,
+};
+
+type PublicSettings = Record<string, string | null>;
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   open: { label: "Open", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -713,44 +746,650 @@ function NewTicketForm({
   );
 }
 
+function HomeTab({
+  user,
+  tickets,
+  supportEmail,
+  supportPhone,
+  onAskQuestion,
+  onOpenTicket,
+  onGoMessages,
+  onGoHelp,
+  onSelectTicket,
+}: {
+  user: ReturnType<typeof useAuth>["user"];
+  tickets: SupportTicketWithUser[];
+  supportEmail?: string | null;
+  supportPhone?: string | null;
+  onAskQuestion: (question: string) => void;
+  onOpenTicket: () => void;
+  onGoMessages: () => void;
+  onGoHelp: () => void;
+  onSelectTicket: (t: SupportTicketWithUser) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const firstName = (user?.fullName || user?.email || "").trim().split(/\s+/)[0] || "there";
+  const recentOpen = tickets
+    .filter((t) => t.status !== "closed" && t.status !== "resolved")
+    .slice(0, 2);
+  const waLink =
+    supportPhone && supportPhone.replace(/\D/g, "").length >= 6
+      ? `https://wa.me/${supportPhone.replace(/\D/g, "")}`
+      : null;
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="px-4 pt-5 pb-4 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+        <p className="text-xs text-muted-foreground font-medium">Bareter Support</p>
+        <h2 className="text-2xl font-bold mt-1" data-testid="text-support-greeting">
+          Hi {firstName} <span className="inline-block">👋</span>
+        </h2>
+        <h3 className="text-2xl font-bold text-muted-foreground/80">How can we help?</h3>
+      </div>
+
+      <div className="px-3 pt-3 pb-2 space-y-2">
+        {/* Quick ask card */}
+        <div className="border rounded-xl p-3 bg-background hover-elevate">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">Ask a question</span>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              data-testid="input-support-quick-ask"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && draft.trim().length >= 3) {
+                  onAskQuestion(draft.trim());
+                  setDraft("");
+                }
+              }}
+              placeholder="Type your question…"
+              className="h-8 text-xs"
+            />
+            <Button
+              data-testid="btn-support-quick-ask"
+              size="sm"
+              className="h-8 px-3"
+              disabled={draft.trim().length < 3}
+              onClick={() => {
+                onAskQuestion(draft.trim());
+                setDraft("");
+              }}
+            >
+              <Send className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            Get an instant answer from our AI assistant.
+          </p>
+        </div>
+
+        {/* Recent open tickets */}
+        {recentOpen.length > 0 && (
+          <div className="border rounded-xl bg-background overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b">
+              <span className="text-xs font-semibold">Your recent conversations</span>
+              <Button
+                data-testid="btn-support-home-see-all"
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[11px] px-2"
+                onClick={onGoMessages}
+              >
+                See all
+                <ChevronRight className="h-3 w-3 ml-0.5" />
+              </Button>
+            </div>
+            <ul className="divide-y">
+              {recentOpen.map((t) => (
+                <li
+                  key={t.id}
+                  data-testid={`home-ticket-${t.id}`}
+                  className="px-3 py-2 hover:bg-muted/40 cursor-pointer"
+                  onClick={() => onSelectTicket(t)}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-0.5">
+                    <span className="text-xs font-medium line-clamp-1 flex-1">{t.subject}</span>
+                    <TicketStatusBadge status={t.status} />
+                  </div>
+                  {t.lastMessage && (
+                    <p className="text-[11px] text-muted-foreground line-clamp-1">{t.lastMessage}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Action cards */}
+        <button
+          type="button"
+          data-testid="btn-support-home-new-ticket"
+          onClick={onOpenTicket}
+          className="w-full border rounded-xl p-3 bg-background flex items-center justify-between hover-elevate text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <MessageCircle className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold">Send us a message</div>
+              <div className="text-[11px] text-muted-foreground">Open a support ticket</div>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+
+        <button
+          type="button"
+          data-testid="btn-support-home-help"
+          onClick={onGoHelp}
+          className="w-full border rounded-xl p-3 bg-background flex items-center justify-between hover-elevate text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <BookOpen className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold">Browse Help Center</div>
+              <div className="text-[11px] text-muted-foreground">Guides, FAQs, VAT &amp; more</div>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+
+        {waLink && (
+          <a
+            href={waLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="link-support-whatsapp"
+            className="w-full border rounded-xl p-3 bg-background flex items-center justify-between hover-elevate"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <Phone className="h-4 w-4 text-green-600" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold">Chat on WhatsApp</div>
+                <div className="text-[11px] text-muted-foreground">{supportPhone}</div>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </a>
+        )}
+
+        {supportEmail && (
+          <a
+            href={`mailto:${supportEmail}`}
+            data-testid="link-support-email"
+            className="w-full border rounded-xl p-3 bg-background flex items-center justify-between hover-elevate"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                <Mail className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold">Email us</div>
+                <div className="text-[11px] text-muted-foreground">{supportEmail}</div>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HelpTab({
+  onBack,
+  onOpenArticle,
+}: {
+  onBack: () => void;
+  onOpenArticle: (cat: HelpCategory, art: HelpArticle) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const results = query.trim() ? searchHelpContent(query) : [];
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-3 pt-4 pb-3 border-b bg-gradient-to-br from-primary/10 via-primary/5 to-transparent flex-shrink-0">
+        <h2 className="text-lg font-bold mb-2">Help Center</h2>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            data-testid="input-support-help-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search for help"
+            className="h-9 pl-8 text-sm bg-background"
+          />
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {query.trim() ? (
+          results.length === 0 ? (
+            <div className="text-center py-8">
+              <Search className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+              <p className="text-sm font-medium">No results for "{query}"</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Try different keywords or send us a message.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {results.map(({ category, article }) => (
+                <li key={`${category.slug}-${article.title}`}>
+                  <button
+                    type="button"
+                    data-testid={`help-result-${category.slug}-${article.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                    onClick={() => onOpenArticle(category, article)}
+                    className="w-full text-left border rounded-lg p-3 hover-elevate"
+                  >
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-0.5">
+                      {category.title}
+                    </div>
+                    <div className="text-sm font-medium line-clamp-1">{article.title}</div>
+                    <div className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
+                      {article.body}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground px-1">Browse by topic</p>
+            <ul className="space-y-2">
+              {HELP_CATEGORIES.map((cat) => {
+                const Icon = HELP_ICON_MAP[cat.icon];
+                return (
+                  <li key={cat.slug}>
+                    <details className="group border rounded-lg overflow-hidden">
+                      <summary
+                        data-testid={`help-category-${cat.slug}`}
+                        className="flex items-center gap-3 p-3 cursor-pointer hover-elevate list-none"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Icon className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold">{cat.title}</div>
+                          <div className="text-[11px] text-muted-foreground line-clamp-1">
+                            {cat.description}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
+                      </summary>
+                      <ul className="border-t divide-y">
+                        {cat.articles.map((art) => (
+                          <li key={art.title}>
+                            <button
+                              type="button"
+                              data-testid={`help-article-${cat.slug}-${art.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                              onClick={() => onOpenArticle(cat, art)}
+                              className="w-full text-left px-3 py-2 hover-elevate text-xs"
+                            >
+                              {art.title}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+            <Link
+              href="/help"
+              data-testid="link-support-full-help"
+              className="block text-center text-xs text-primary font-medium pt-2 pb-1 hover:underline"
+            >
+              Open full Help Center →
+            </Link>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ArticleView({
+  category,
+  article,
+  onBack,
+  onAskMore,
+}: {
+  category: HelpCategory;
+  article: HelpArticle;
+  onBack: () => void;
+  onAskMore: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-3 py-2 border-b flex-shrink-0">
+        <Button
+          data-testid="btn-support-article-back"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onBack}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-xs text-muted-foreground line-clamp-1">{category.title}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <h2 className="text-base font-semibold mb-2" data-testid="text-support-article-title">
+          {article.title}
+        </h2>
+        <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">
+          {article.body}
+        </p>
+        <div className="mt-6 pt-4 border-t">
+          <p className="text-xs text-muted-foreground mb-2">Still need help?</p>
+          <Button
+            data-testid="btn-support-article-ask"
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-xs gap-1"
+            onClick={onAskMore}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Send us a message
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickAskResult({
+  question,
+  answer,
+  isLoading,
+  onBack,
+  onEscalate,
+}: {
+  question: string;
+  answer: string;
+  isLoading: boolean;
+  onBack: () => void;
+  onEscalate: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-3 py-2 border-b flex-shrink-0">
+        <Button
+          data-testid="btn-support-quickask-back"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onBack}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-xs font-semibold">AI Assistant</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div className="flex justify-end">
+          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-3 py-2 max-w-[85%] text-sm">
+            {question}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Bot className="h-4 w-4 text-primary" />
+          </div>
+          <div className="bg-muted rounded-2xl rounded-tl-sm px-3 py-2 max-w-[85%] text-sm whitespace-pre-line">
+            {isLoading ? (
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
+              </span>
+            ) : (
+              answer || "Sorry — I couldn't find an answer right now."
+            )}
+          </div>
+        </div>
+        {!isLoading && (
+          <div className="pt-3 border-t">
+            <p className="text-xs text-muted-foreground mb-2">Was this helpful?</p>
+            <Button
+              data-testid="btn-support-quickask-escalate"
+              variant="outline"
+              size="sm"
+              className="w-full h-8 text-xs gap-1"
+              onClick={onEscalate}
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              No — open a support ticket
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AiSupportChat() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [view, setView] = useState<View>("list");
+  const [tab, setTab] = useState<Tab>("home");
+  const [subView, setSubView] = useState<SubView | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicketWithUser | null>(null);
-  const [guestIdentity, setGuestIdentity] = useState<GuestIdentity | null>(null);
+  const [selectedArticle, setSelectedArticle] = useState<{
+    category: HelpCategory;
+    article: HelpArticle;
+  } | null>(null);
+  const [guestIdentity, setGuestIdentityState] = useState<GuestIdentity | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("bareter:supportGuestIdentity");
+      return raw ? (JSON.parse(raw) as GuestIdentity) : null;
+    } catch {
+      return null;
+    }
+  });
+  const setGuestIdentity = (identity: GuestIdentity | null) => {
+    setGuestIdentityState(identity);
+    try {
+      if (identity) {
+        localStorage.setItem("bareter:supportGuestIdentity", JSON.stringify(identity));
+      } else {
+        localStorage.removeItem("bareter:supportGuestIdentity");
+      }
+    } catch {
+      /* ignore quota / privacy mode */
+    }
+  };
+  const [quickAsk, setQuickAsk] = useState<{ question: string; answer: string } | null>(null);
 
   const { data: tickets = [] } = useQuery<SupportTicketWithUser[]>({
     queryKey: ["/api/support/tickets"],
-    // For guests: only fetch after identity is provided (so session guestTicketIds are populated)
     enabled: isOpen && (!user ? guestIdentity !== null : true),
   });
+
+  const { data: settings } = useQuery<PublicSettings>({
+    queryKey: ["/api/public/settings"],
+    staleTime: 60_000,
+  });
+
+  const supportEmail = settings?.support_email || settings?.contact_email || null;
+  const supportPhone = settings?.support_phone || null;
 
   const openCount = tickets.filter(
     (t) => t.status !== "closed" && t.status !== "resolved",
   ).length;
 
+  const quickAskMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const res = await apiRequest("POST", "/api/support/quick-ask", { message });
+      return (await res.json()) as { response: string };
+    },
+    onSuccess: (data, message) => {
+      setQuickAsk({ question: message, answer: data.response });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't get an answer",
+        description: err?.message ?? "Please try again or open a support ticket.",
+        variant: "destructive",
+      });
+      setQuickAsk(null);
+    },
+  });
+
   const handleSelectTicket = (t: SupportTicketWithUser) => {
     setSelectedTicket(t);
-    setView("thread");
+    setSubView("thread");
+    setTab("messages");
   };
 
-  const handleBack = () => {
-    setSelectedTicket(null);
-    setView("list");
+  const handleNewTicket = () => {
+    setSubView("new");
+    setTab("messages");
   };
+
+  const handleSubBack = () => {
+    setSelectedTicket(null);
+    setSubView(null);
+  };
+
+  const handleAskQuestion = (q: string) => {
+    setQuickAsk({ question: q, answer: "" });
+    quickAskMutation.mutate(q);
+  };
+
+  // Subview rendering (overlays the active tab)
+  const renderSubView = () => {
+    if (!subView) return null;
+    if (subView === "new") {
+      return (
+        <NewTicketForm
+          onBack={handleSubBack}
+          onSuccess={() => {
+            setSubView(null);
+            setTab("messages");
+          }}
+          isGuest={!user}
+          prefillName={guestIdentity?.name}
+          prefillEmail={guestIdentity?.email}
+        />
+      );
+    }
+    if (subView === "lookup") {
+      return (
+        <GuestLookupForm
+          onBack={handleSubBack}
+          onFound={handleSubBack}
+          prefillEmail={guestIdentity?.email}
+        />
+      );
+    }
+    if (subView === "thread" && selectedTicket) {
+      return <TicketThread ticket={selectedTicket} onBack={handleSubBack} />;
+    }
+    if (subView === "article" && selectedArticle) {
+      return (
+        <ArticleView
+          category={selectedArticle.category}
+          article={selectedArticle.article}
+          onBack={() => {
+            setSelectedArticle(null);
+            setSubView(null);
+          }}
+          onAskMore={() => {
+            setSelectedArticle(null);
+            handleNewTicket();
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderTab = () => {
+    if (tab === "home") {
+      if (quickAsk) {
+        return (
+          <QuickAskResult
+            question={quickAsk.question}
+            answer={quickAsk.answer}
+            isLoading={quickAskMutation.isPending}
+            onBack={() => setQuickAsk(null)}
+            onEscalate={() => {
+              setQuickAsk(null);
+              handleNewTicket();
+            }}
+          />
+        );
+      }
+      return (
+        <HomeTab
+          user={user}
+          tickets={tickets}
+          supportEmail={supportEmail}
+          supportPhone={supportPhone}
+          onAskQuestion={handleAskQuestion}
+          onOpenTicket={handleNewTicket}
+          onGoMessages={() => setTab("messages")}
+          onGoHelp={() => setTab("help")}
+          onSelectTicket={handleSelectTicket}
+        />
+      );
+    }
+    if (tab === "messages") {
+      return (
+        <TicketList
+          tickets={tickets}
+          onSelect={handleSelectTicket}
+          onNewTicket={handleNewTicket}
+          onLookup={!user ? () => setSubView("lookup") : undefined}
+          isGuest={!user}
+        />
+      );
+    }
+    return (
+      <HelpTab
+        onBack={() => setTab("home")}
+        onOpenArticle={(category, article) => {
+          setSelectedArticle({ category, article });
+          setSubView("article");
+        }}
+      />
+    );
+  };
+
+  const showTabBar = !subView;
+  const guestNeedsIdentity = !user && !guestIdentity && tab === "messages";
 
   return (
     <>
       {isOpen && (
         <div
           data-testid="support-chat-panel"
-          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 w-80 h-[480px] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-6rem)] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         >
-          <div className="flex items-center justify-between px-4 py-3 bg-primary text-primary-foreground flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <Headphones className="h-4 w-4" />
-              <span className="font-semibold text-sm">Support</span>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="flex -space-x-1.5">
+                <div className="w-7 h-7 rounded-full bg-white/20 border-2 border-primary flex items-center justify-center text-[10px] font-bold">
+                  B
+                </div>
+                <div className="w-7 h-7 rounded-full bg-white/30 border-2 border-primary flex items-center justify-center">
+                  <Bot className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <div className="flex flex-col leading-tight">
+                <span className="font-semibold text-sm">Bareter</span>
+                <span className="text-[10px] opacity-80">Usually replies within an hour</span>
+              </div>
             </div>
             <Button
               data-testid="btn-support-close"
@@ -763,54 +1402,86 @@ export default function AiSupportChat() {
             </Button>
           </div>
 
+          {/* Body */}
           <div className="flex-1 overflow-hidden">
-            {!user && !guestIdentity ? (
-              // Guests must identify themselves before accessing tickets
+            {subView ? (
+              renderSubView()
+            ) : guestNeedsIdentity ? (
               <GuestIdentityForm
                 onIdentified={(identity) => {
                   setGuestIdentity(identity);
-                  setView("list");
                 }}
               />
-            ) : view === "new" ? (
-              <NewTicketForm
-                onBack={handleBack}
-                onSuccess={() => setView("list")}
-                isGuest={!user}
-                prefillName={guestIdentity?.name}
-                prefillEmail={guestIdentity?.email}
-              />
-            ) : view === "lookup" ? (
-              <GuestLookupForm
-                onBack={handleBack}
-                onFound={handleBack}
-                prefillEmail={guestIdentity?.email}
-              />
-            ) : view === "thread" && selectedTicket ? (
-              <TicketThread ticket={selectedTicket} onBack={handleBack} />
             ) : (
-              <TicketList
-                tickets={tickets}
-                onSelect={handleSelectTicket}
-                onNewTicket={() => setView("new")}
-                onLookup={!user ? () => setView("lookup") : undefined}
-                isGuest={!user}
-              />
+              renderTab()
             )}
           </div>
+
+          {/* Bottom tab bar */}
+          {showTabBar && (
+            <div className="flex items-stretch border-t bg-background flex-shrink-0">
+              {(
+                [
+                  { id: "home" as const, label: "Home", icon: HomeIcon, badge: 0 },
+                  {
+                    id: "messages" as const,
+                    label: "Messages",
+                    icon: MessageCircle,
+                    badge: openCount,
+                  },
+                  { id: "help" as const, label: "Help", icon: BookOpen, badge: 0 },
+                ]
+              ).map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    data-testid={`tab-support-${t.id}`}
+                    onClick={() => {
+                      setTab(t.id);
+                      setQuickAsk(null);
+                    }}
+                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors relative ${
+                      active
+                        ? "text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className="relative">
+                      <Icon className="h-5 w-5" />
+                      {t.badge > 0 && (
+                        <span
+                          data-testid={`badge-tab-${t.id}`}
+                          className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"
+                        >
+                          {t.badge > 9 ? "9+" : t.badge}
+                        </span>
+                      )}
+                    </div>
+                    <span>{t.label}</span>
+                    {active && (
+                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-b-full" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       <button
         data-testid="btn-support-toggle"
         onClick={() => setIsOpen((o) => !o)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105"
         aria-label="Support"
         style={{ display: isOpen ? "none" : "flex" }}
       >
-        <Headphones className="h-5 w-5" />
+        <MessageCircle className="h-6 w-6" />
         {user && openCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-background">
             {openCount > 9 ? "9+" : openCount}
           </span>
         )}
