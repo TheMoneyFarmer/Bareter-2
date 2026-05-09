@@ -257,6 +257,8 @@ export const users = pgTable("users", {
   emailVerificationExpires: timestamp("email_verification_expires"),
   passwordResetToken: text("password_reset_token"),
   passwordResetExpires: timestamp("password_reset_expires"),
+  passwordChangeOtp: text("password_change_otp"),
+  passwordChangeOtpExpires: timestamp("password_change_otp_expires"),
   whatIOffer: jsonb("what_i_offer").$type<OfferNeedItem[]>().default([]),
   whatINeed: jsonb("what_i_need").$type<OfferNeedItem[]>().default([]),
   portfolioImages: jsonb("portfolio_images").$type<string[]>().default([]),

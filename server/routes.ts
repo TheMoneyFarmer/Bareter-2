@@ -1066,15 +1066,14 @@ export async function registerRoutes(
     }
   });
 
-  // Password change route
-  app.post("/api/users/change-password", requireAuth, async (req, res) => {
+  // Step 1: request a password change OTP — verifies current password, emails 6-digit code
+  app.post("/api/users/change-password/request", requireAuth, async (req, res) => {
     try {
       const { currentPassword, newPassword } = req.body;
 
       if (!currentPassword || !newPassword) {
         return res.status(400).json({ message: "Current and new passwords are required" });
       }
-
       if (newPassword.length < 8) {
         return res.status(400).json({ message: "New password must be at least 8 characters" });
       }
@@ -1089,13 +1088,83 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      await storage.updateUser(user.id, {
+        passwordChangeOtp: otp,
+        passwordChangeOtpExpires: expires,
+      });
+
+      const { sendPasswordChangeOtpEmail } = await import("./emailService");
+      const sent = await sendPasswordChangeOtpEmail(user.email, otp, user.fullName);
+
+      if (!sent) {
+        // Email not configured — log it and return the OTP in dev so it's not silent
+        if (process.env.NODE_ENV !== "production") {
+          return res.json({ message: "Code sent (dev: check server logs)", devOtp: otp });
+        }
+      }
+
+      return res.json({ message: "Verification code sent to your email" });
+    } catch (error) {
+      console.error("Change password request error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Step 2: confirm the change using the OTP
+  app.post("/api/users/change-password", requireAuth, async (req, res) => {
+    try {
+      const { currentPassword, newPassword, otp } = req.body;
+
+      if (!currentPassword || !newPassword || !otp) {
+        return res.status(400).json({ message: "Current password, new password, and verification code are required" });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters" });
+      }
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Re-verify current password as a safety net
+      const validPassword = await bcrypt.compare(currentPassword, user.password);
+      if (!validPassword) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      // Verify OTP
+      if (!user.passwordChangeOtp || !user.passwordChangeOtpExpires) {
+        return res.status(400).json({ message: "No pending verification code. Please request a new one." });
+      }
+      if (user.passwordChangeOtp !== otp.trim()) {
+        return res.status(400).json({ message: "Invalid verification code" });
+      }
+      if (new Date() > new Date(user.passwordChangeOtpExpires)) {
+        return res.status(400).json({ message: "Verification code has expired. Please request a new one." });
+      }
+
       const hashedPassword = await hashPassword(newPassword);
-      await storage.updateUser(req.session.userId!, { password: hashedPassword });
+      await storage.updateUser(req.session.userId!, {
+        password: hashedPassword,
+        passwordChangeOtp: null,
+        passwordChangeOtpExpires: null,
+      });
 
       // Destroy every other active session for this user so a stolen
       // session is invalidated as soon as the legitimate user changes
       // their password. Keep the caller's current session alive.
       await destroyUserSessions(req.session.userId!, req.sessionID);
+
+      // Send confirmation email (non-blocking)
+      import("./emailService").then(({ sendPasswordChangedNotificationEmail }) => {
+        sendPasswordChangedNotificationEmail(user.email, user.fullName).catch((err) =>
+          console.error("[EMAIL] Password changed notification failed:", err),
+        );
+      });
 
       res.json({ message: "Password changed successfully" });
     } catch (error) {

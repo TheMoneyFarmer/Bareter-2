@@ -166,6 +166,63 @@ export function renderBroadcastEmailHtml(opts: {
 </body></html>`;
 }
 
+export async function sendPasswordChangeOtpEmail(toEmail: string, otp: string, fullName?: string | null): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Password change OTP for ${toEmail}: ${otp}`);
+    return false;
+  }
+  const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Password change request</h2>
+    <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">${greeting} use the code below to confirm your password change. It expires in <strong>15 minutes</strong>.</p>
+    <div style="text-align: center; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 20px; margin: 20px 0;">
+      <p style="margin: 0 0 6px; color: #134e4a; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;">VERIFICATION CODE</p>
+      <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 0.12em; color: #136c68;">${otp}</p>
+    </div>
+    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
+      If you did not request this change, your password has not been changed.<br/>Please contact support if you're concerned.
+    </p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour ${APP_NAME} password change verification code is: ${otp}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, your password has not been changed.`;
+  return sendMail({ to: toEmail, subject: `Your ${APP_NAME} password change code`, html, text });
+}
+
+export async function sendPasswordChangedNotificationEmail(toEmail: string, fullName?: string | null): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Password changed notification for ${toEmail}`);
+    return false;
+  }
+  const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Password changed successfully</h2>
+    <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">${greeting} your ${APP_NAME} account password was just changed.</p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; color: #166534; font-size: 13px; line-height: 1.5;">✓ Password updated successfully. All other active sessions have been signed out for your security.</p>
+    </div>
+    <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">If you did not make this change, please <a href="mailto:hello@bareter.com" style="color: #136c68;">contact support immediately</a>.</p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour ${APP_NAME} account password was just changed successfully. All other active sessions have been signed out.\n\nIf you did not make this change, contact support immediately at hello@bareter.com.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your ${APP_NAME} password has been changed`, html, text });
+}
+
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 

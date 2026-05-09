@@ -111,6 +111,7 @@ type PasswordChangeForm = {
   newPassword: string;
   confirmPassword: string;
 };
+type PasswordChangeStep = "form" | "otp";
 
 
 export function SettingsPage() {
@@ -121,6 +122,9 @@ export function SettingsPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
+  const [passwordChangeStep, setPasswordChangeStep] = useState<PasswordChangeStep>("form");
+  const [pendingPasswordData, setPendingPasswordData] = useState<{ currentPassword: string; newPassword: string } | null>(null);
+  const [otpValue, setOtpValue] = useState("");
 
   const RADIUS_OPTIONS = [
     { value: 0, label: t("settings.radiusUnlimited") },
@@ -308,9 +312,42 @@ export function SettingsPage() {
     },
   });
 
-  const changePasswordMutation = useMutation({
+  // Step 1: verify current password + email OTP
+  const requestPasswordChangeMutation = useMutation({
     mutationFn: async (data: PasswordChangeForm) => {
-      const res = await apiRequest("POST", "/api/users/change-password", data);
+      const res = await apiRequest("POST", "/api/users/change-password/request", {
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+      });
+      return res.json();
+    },
+    onSuccess: (_resp, data) => {
+      setPendingPasswordData({ currentPassword: data.currentPassword, newPassword: data.newPassword });
+      setPasswordChangeStep("otp");
+      setOtpValue("");
+      toast({
+        title: t("settings.otpSent"),
+        description: t("settings.otpSentDesc"),
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: t("common.error"),
+        description: error.message || t("settings.passwordChangeFailed"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Step 2: submit OTP to confirm the change
+  const changePasswordMutation = useMutation({
+    mutationFn: async ({ otp }: { otp: string }) => {
+      if (!pendingPasswordData) throw new Error("No pending change");
+      const res = await apiRequest("POST", "/api/users/change-password", {
+        currentPassword: pendingPasswordData.currentPassword,
+        newPassword: pendingPasswordData.newPassword,
+        otp,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -319,11 +356,14 @@ export function SettingsPage() {
         description: t("settings.passwordChangedDesc"),
       });
       passwordForm.reset();
+      setPasswordChangeStep("form");
+      setPendingPasswordData(null);
+      setOtpValue("");
     },
     onError: (error: any) => {
       toast({
         title: t("common.error"),
-        description: error.message || t("settings.passwordChangeFailed"),
+        description: error.message || t("settings.otpInvalid"),
         variant: "destructive",
       });
     },
@@ -349,7 +389,7 @@ export function SettingsPage() {
   };
 
   const onPasswordSubmit = (data: PasswordChangeForm) => {
-    changePasswordMutation.mutate(data);
+    requestPasswordChangeMutation.mutate(data);
   };
 
   const toggleCategory = (category: string) => {
@@ -1100,77 +1140,135 @@ export function SettingsPage() {
                 <CardDescription>{t("settings.updatePassword")}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Form {...passwordForm}>
-                  <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
-                    <FormField
-                      control={passwordForm.control}
-                      name="currentPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("settings.currentPassword")}</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="••••••••"
-                              {...field}
-                              data-testid="input-current-password"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={passwordForm.control}
-                      name="newPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("settings.newPassword")}</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="••••••••"
-                              {...field}
-                              data-testid="input-new-password"
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t("settings.passwordMinLength")}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={passwordForm.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("settings.confirmNewPassword")}</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="••••••••"
-                              {...field}
-                              data-testid="input-confirm-password"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button
-                      type="submit"
-                      disabled={changePasswordMutation.isPending}
-                      data-testid="button-change-password"
-                    >
-                      {changePasswordMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : null}
-                      {t("settings.changePasswordBtn")}
-                    </Button>
-                  </form>
-                </Form>
+                {passwordChangeStep === "form" ? (
+                  <Form {...passwordForm}>
+                    <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
+                      <FormField
+                        control={passwordForm.control}
+                        name="currentPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t("settings.currentPassword")}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                {...field}
+                                data-testid="input-current-password"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={passwordForm.control}
+                        name="newPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t("settings.newPassword")}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                {...field}
+                                data-testid="input-new-password"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t("settings.passwordMinLength")}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={passwordForm.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t("settings.confirmNewPassword")}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                {...field}
+                                data-testid="input-confirm-password"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        disabled={requestPasswordChangeMutation.isPending}
+                        data-testid="button-send-verification-code"
+                      >
+                        {requestPasswordChangeMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        {t("settings.sendVerificationCode")}
+                      </Button>
+                    </form>
+                  </Form>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      {t("settings.otpSentDesc")}
+                    </p>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none" htmlFor="otp-input">
+                        {t("settings.verificationCode")}
+                      </label>
+                      <Input
+                        id="otp-input"
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder={t("settings.verificationCodePlaceholder")}
+                        value={otpValue}
+                        onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        data-testid="input-otp"
+                        className="tracking-widest text-center text-lg font-mono"
+                      />
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        onClick={() => changePasswordMutation.mutate({ otp: otpValue })}
+                        disabled={changePasswordMutation.isPending || otpValue.length !== 6}
+                        data-testid="button-confirm-change"
+                      >
+                        {changePasswordMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        {t("settings.confirmChange")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => requestPasswordChangeMutation.mutate(passwordForm.getValues())}
+                        disabled={requestPasswordChangeMutation.isPending}
+                        data-testid="button-resend-code"
+                      >
+                        {requestPasswordChangeMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        {t("settings.resendCode")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setPasswordChangeStep("form");
+                          setPendingPasswordData(null);
+                          setOtpValue("");
+                        }}
+                        data-testid="button-back-to-form"
+                      >
+                        {t("settings.backToForm")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
