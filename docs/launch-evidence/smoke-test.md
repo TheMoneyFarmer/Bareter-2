@@ -23,7 +23,7 @@
 
 | Task | Status (✅ / ❌) | Evidence link |
 | --- | --- | --- |
-| #150 Resend domain verified |  | `email-deliverability.md` |
+| #152 Resend domain verified |  | `email-deliverability.md` |
 | #151 DB backup + restore drill |  | `backup-restore-test.md` |
 | #154 Custom domain + TLS live |  | `custom-domain.md` |
 | #155 `PUBLIC_APP_URL` set in prod |  | `public-app-url.md` |
