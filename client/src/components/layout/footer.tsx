@@ -27,28 +27,28 @@ type Social = {
 const SOCIALS: Social[] = [
   {
     name: "Instagram",
-    href: "#",
+    href: "https://www.instagram.com/bareter_barter",
     Icon: SiInstagram,
     color: "group-hover:text-[#E4405F]",
     glow: "group-hover:shadow-[0_0_24px_-4px_rgba(228,64,95,0.55)]",
   },
   {
     name: "LinkedIn",
-    href: "#",
+    href: "https://www.linkedin.com/company/bareter",
     Icon: SiLinkedin,
     color: "group-hover:text-[#0A66C2]",
     glow: "group-hover:shadow-[0_0_24px_-4px_rgba(10,102,194,0.55)]",
   },
   {
     name: "TikTok",
-    href: "#",
+    href: "https://www.tiktok.com/@bareter81",
     Icon: SiTiktok,
     color: "group-hover:text-[#FF0050]",
     glow: "group-hover:shadow-[0_0_24px_-4px_rgba(255,0,80,0.55)]",
   },
   {
     name: "Facebook",
-    href: "#",
+    href: "https://www.facebook.com/share/1DnCWufgyZ/",
     Icon: SiFacebook,
     color: "group-hover:text-[#1877F2]",
     glow: "group-hover:shadow-[0_0_24px_-4px_rgba(24,119,242,0.55)]",
@@ -200,10 +200,14 @@ export function Footer() {
                 <Mail className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
                 <span>{contactEmail}</span>
               </a>
-              <div className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70">
+              <a
+                href={`tel:${supportPhone.replace(/\s/g, "")}`}
+                className="flex items-center gap-2 text-sm text-bareter-navy/75 dark:text-white/70 hover:text-bareter-teal dark:hover:text-bareter-teal-light transition-colors"
+                data-testid="footer-link-phone"
+              >
                 <Phone className="h-4 w-4 flex-shrink-0 text-bareter-teal dark:text-bareter-teal-light" />
                 <span>{supportPhone}</span>
-              </div>
+              </a>
             </div>
           </div>
         </div>

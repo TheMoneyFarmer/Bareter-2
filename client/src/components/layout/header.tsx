@@ -51,7 +51,7 @@ export function Header() {
   const { user, logout } = useAuth();
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { theme, toggleTheme } = useTheme();
-  const { language, setLanguage, t } = useI18n();
+  const { language, setLanguage, t, isRTL } = useI18n();
   const [location, navigate] = useLocation();
 
   // When the language is toggled from the header, persist the choice to the
@@ -211,7 +211,8 @@ export function Header() {
               onClick={toggleLanguage}
               className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md text-white hover:bg-white/10"
               data-testid="button-language-toggle"
-              aria-label="Toggle language"
+              aria-label={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}
+              title={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}
             >
               <Languages className="h-5 w-5" />
             </button>
@@ -436,7 +437,7 @@ export function Header() {
                       <Menu className="h-5 w-5" />
                     </button>
                   </SheetTrigger>
-                  <SheetContent side="right" className="w-72">
+                  <SheetContent side={isRTL ? "left" : "right"} className="w-72">
                     <nav className="flex flex-col gap-1 mt-8">
                       <Link href="/create-listing">
                         <Button variant="bareter" className="w-full justify-start gap-2 h-11">
