@@ -59,7 +59,7 @@ If any row is ❌, **stop**. Do not run the smoke test until it's green.
 | 8 | Signed PDF downloadable + valid |  | `desktop-08-pdf.png` | PDF opens in browser; both signatures visible; parties' names correct |
 | 9 | Cookie "Manage" + analytics toggle |  | `desktop-09-consent.png` | "Manage" in cookie banner opens preference panel; analytics toggle saves and persists |
 | 9 | Branded 404 page |  | `desktop-09-404.png` | `/this-page-does-not-exist` shows the branded 404 component, not a generic error |
-| 10 | `/api/config` JSON sane |  | `desktop-10-config.png` | Response contains expected fields (`appName`, `maintenanceMode: false`, `registrationEnabled: true`) |
+| 10 | `/api/config` JSON sane |  | `desktop-10-config.png` | Response contains `passwordResetEnabled: true`, `cookiePolicyVersion` (non-empty string), `maintenanceMode: false` |
 | 10 | No new ERROR in prod logs |  | `desktop-10-logs.png` | Deployment logs show no `[ERROR]` lines introduced during this run |
 | 10 | No `[client-error]` from this run |  | _grep prod logs_ | `grep "[client-error]"` in deployment logs returns nothing new from this session |
 
