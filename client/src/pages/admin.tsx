@@ -274,7 +274,7 @@ export function AdminPage() {
     enabled: !!user?.isAdmin,
   });
 
-  const { data: funnelData } = useQuery<FunnelData>({
+  const { data: funnelData, isLoading: funnelLoading } = useQuery<FunnelData>({
     queryKey: ["/api/admin/analytics/funnel"],
     enabled: !!user?.isAdmin,
   });
@@ -2004,6 +2004,20 @@ export function AdminPage() {
           <CardDescription>Waitlist → Registration → First listing → First deal · Aggregate platform totals, not strict cohort attribution</CardDescription>
         </CardHeader>
         <CardContent>
+          {funnelLoading ? (
+            <div className="space-y-4" data-testid="funnel-skeleton">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex justify-between">
+                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                    <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+                  </div>
+                  <div className="h-2 w-full bg-muted animate-pulse rounded-full" />
+                </div>
+              ))}
+            </div>
+          ) : (
+          <>
           <TooltipProvider delayDuration={200}>
           <div className="space-y-4">
             {funnelSteps.map((step, i) => {
@@ -2067,6 +2081,8 @@ export function AdminPage() {
             <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
               ⚠ One or more steps exceed the previous step. This is expected when not all registered users originated from the waitlist (aggregate totals, not cohort attribution).
             </p>
+          )}
+          </>
           )}
         </CardContent>
       </Card>
