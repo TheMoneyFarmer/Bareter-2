@@ -69,6 +69,18 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Prevent browsers and CDNs from caching API responses. Without this,
+// Express's default ETag behaviour causes browsers to serve stale JSON
+// (304 Not Modified) for dynamic endpoints such as waitlist counts,
+// listings, notifications, etc. Endpoints that intentionally want a
+// longer cache lifetime (e.g. /api/public/settings, /sitemap.xml) set
+// their own Cache-Control header AFTER this middleware runs, which
+// overrides this default.
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
