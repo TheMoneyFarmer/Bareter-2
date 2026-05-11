@@ -36,10 +36,45 @@ function formatDate(iso?: string) {
 }
 
 function BlogPostSeo({ post }: { post: BlogPostDetail }) {
+  const canonical = `https://bareter.com/blog/${post.slug}`;
+  const description = post.excerpt ?? `Read ${post.title} on the Bareter Blog.`;
+  const sectionLabel =
+    post.category && CATEGORY_LABELS[post.category]
+      ? CATEGORY_LABELS[post.category]
+      : post.category;
+
   useSeo({
     title: `${post.title} — Bareter Blog`,
-    description: post.excerpt ?? `Read ${post.title} on the Bareter Blog.`,
-    canonical: `/blog/${post.slug}`,
+    description,
+    canonical,
+    image: post.coverImageUrl,
+    type: "article",
+    article: {
+      publishedTime: post.publishedAt,
+      author: post.author,
+      section: sectionLabel,
+    },
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: post.title,
+      description,
+      url: canonical,
+      mainEntityOfPage: canonical,
+      datePublished: post.publishedAt,
+      dateModified: post.publishedAt,
+      image: post.coverImageUrl,
+      articleSection: sectionLabel,
+      inLanguage: "en",
+      author: post.author
+        ? { "@type": "Organization", name: post.author }
+        : undefined,
+      publisher: {
+        "@type": "Organization",
+        name: "Bareter",
+        url: "https://bareter.com",
+      },
+    },
   });
   return null;
 }

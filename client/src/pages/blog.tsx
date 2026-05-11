@@ -110,16 +110,42 @@ function PostCardSkeleton() {
 }
 
 export function BlogPage() {
-  useSeo({
-    title: "Blog — Bareter",
-    description:
-      "Insights, tips, and news about B2B bartering in the UAE. Learn how to trade smarter with Bareter.",
-    canonical: "/blog",
-  });
-
   const { data: posts, isLoading, isError } = useQuery<BlogPostSummary[]>({
     queryKey: ["/api/blog"],
     staleTime: 60_000,
+  });
+
+  const ogImage = posts?.find((p) => p.coverImageUrl)?.coverImageUrl;
+
+  useSeo({
+    title: "Bareter Blog — UAE B2B Barter Insights",
+    description:
+      "Practical guides on bartering business services in the UAE: how-to playbooks, VATP042 compliance, and platform comparisons for SMEs, hotels, agencies, and luxury dealers.",
+    canonical: "https://bareter.com/blog",
+    image: ogImage,
+    type: "website",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "Blog",
+      name: "Bareter Blog",
+      url: "https://bareter.com/blog",
+      inLanguage: "en",
+      publisher: {
+        "@type": "Organization",
+        name: "Bareter",
+        url: "https://bareter.com",
+      },
+      blogPost: (posts ?? []).map((p) => ({
+        "@type": "BlogPosting",
+        headline: p.title,
+        url: `https://bareter.com/blog/${p.slug}`,
+        datePublished: p.publishedAt,
+        author: p.author
+          ? { "@type": "Organization", name: p.author }
+          : undefined,
+        image: p.coverImageUrl,
+      })),
+    },
   });
 
   return (
