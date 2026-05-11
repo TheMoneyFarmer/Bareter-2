@@ -32,6 +32,11 @@ export function TrendingTiles({
   });
 
   const sourceListings = listings ?? fallbackListings ?? [];
+  const rankedListings = [...sourceListings].sort((a, b) => {
+    const score = (l: ListingWithUser) =>
+      (l.viewCount ?? 0) + 5 * (l.likeCount ?? 0);
+    return score(b) - score(a);
+  });
 
   const tilesPosts: Tile[] = (trendingPosts ?? []).slice(0, 6).map((p) => ({
     kind: "post",
@@ -42,7 +47,7 @@ export function TrendingTiles({
     user: p.user,
     likes: p.likeCount || 0,
   }));
-  const tilesListings: Tile[] = sourceListings.slice(0, 6).map((l) => ({
+  const tilesListings: Tile[] = rankedListings.slice(0, 6).map((l) => ({
     kind: "listing",
     id: l.id,
     cover: (l.images as string[] | undefined)?.[0] || null,

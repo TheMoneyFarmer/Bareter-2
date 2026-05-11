@@ -4701,6 +4701,7 @@ export async function registerRoutes(
       }
 
       const pw = await hashPassword("Bareter2025!");
+      const featuredUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
       // ── Demo business accounts ─────────────────────────────────────
       const demoUserInputs = [
@@ -4830,6 +4831,7 @@ export async function registerRoutes(
           openToOffers: true,
           moderationStatus: "approved",
           isFeatured: true,
+          featuredUntil,
           isActive: true,
           likeCount: 287,
           viewCount: 3120,
@@ -4855,6 +4857,7 @@ export async function registerRoutes(
           openToOffers: true,
           moderationStatus: "approved",
           isFeatured: true,
+          featuredUntil,
           isActive: true,
           likeCount: 156,
           viewCount: 1820,
@@ -4880,6 +4883,7 @@ export async function registerRoutes(
           openToOffers: true,
           moderationStatus: "approved",
           isFeatured: true,
+          featuredUntil,
           isActive: true,
           likeCount: 76,
           viewCount: 612,
@@ -4905,6 +4909,7 @@ export async function registerRoutes(
           openToOffers: true,
           moderationStatus: "approved",
           isFeatured: true,
+          featuredUntil,
           isActive: true,
           likeCount: 67,
           viewCount: 580,
