@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
+    "blogs:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seedBlogs.ts",
     "test:security": "vitest run tests/security.test.ts",
     "test": "vitest run"
   },
