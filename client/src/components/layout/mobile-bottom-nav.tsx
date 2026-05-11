@@ -31,7 +31,7 @@ export function MobileBottomNav() {
   const profileHref = user ? "/profile" : "/login";
   const profileLabel = user ? t("nav.profile") : t("nav.login");
   const loginIntercept = !user && waitlistMode.enabled;
-  const feedActive = isActive("/feed") || (!user && location === "/");
+  const feedActive = isActive("/browse") || isActive("/feed") || (!user && location === "/");
 
   return (
     <nav
@@ -41,9 +41,9 @@ export function MobileBottomNav() {
     >
       <div className="relative bg-white dark:bg-card border-t border-bareter-border dark:border-border h-[60px] safe-area-bottom shadow-[0_-2px_8px_rgba(15,25,35,0.08)]">
         <div className="grid grid-cols-5 h-full">
-          {/* Feed — always a dedicated tab */}
+          {/* Browse — primary discovery destination */}
           <Link
-            href="/feed"
+            href="/browse"
             className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
               feedActive
                 ? "text-bareter-teal"
@@ -51,22 +51,22 @@ export function MobileBottomNav() {
             }`}
             data-testid="mobile-tab-feed"
           >
-            <Rss className="h-5 w-5" strokeWidth={feedActive ? 2.5 : 2} />
+            <Compass className="h-5 w-5" strokeWidth={feedActive ? 2.5 : 2} />
             <span className="text-[10px] font-medium">Browse</span>
           </Link>
 
-          {/* Discover (Browse) */}
+          {/* Feed — social-style updates */}
           <Link
-            href="/browse"
+            href="/feed"
             className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-              isActive("/browse")
+              isActive("/feed")
                 ? "text-bareter-teal"
                 : "text-bareter-muted dark:text-muted-foreground"
             }`}
             data-testid="mobile-tab-browse"
           >
-            <Compass className="h-5 w-5" strokeWidth={isActive("/browse") ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Discover</span>
+            <Rss className="h-5 w-5" strokeWidth={isActive("/feed") ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Feed</span>
           </Link>
 
           {/* List (FAB placeholder slot — keeps grid balanced) */}

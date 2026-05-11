@@ -227,12 +227,12 @@ export function Header() {
             </button>
 
             {/* Browse — first-class destination, visible for all visitors */}
-            <Link href="/feed" className="hidden md:inline-flex">
+            <Link href="/browse" className="hidden md:inline-flex">
               <Button
                 variant="bareter-ghost"
                 size="sm"
                 className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
-                  isActive("/feed") ? "bg-white/10" : ""
+                  isActive("/browse") ? "bg-white/10" : ""
                 }`}
                 data-testid="button-nav-feed"
               >
