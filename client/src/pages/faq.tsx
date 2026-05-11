@@ -100,13 +100,7 @@ export function FAQPage() {
     staleTime: 60_000,
   });
 
-  let faqs = DEFAULT_FAQS;
-  try {
-    if (settings?.faq_entries) {
-      const parsed = JSON.parse(settings.faq_entries);
-      if (Array.isArray(parsed) && parsed.length > 0) faqs = parsed;
-    }
-  } catch {}
+  const faqs = DEFAULT_FAQS;
 
   const supportEmail = settings?.support_email || "support@bareter.com";
 
