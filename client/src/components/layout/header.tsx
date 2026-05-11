@@ -39,6 +39,7 @@ import {
   Shield,
   Languages,
   Rss,
+  Compass,
   PenSquare,
   MessageSquare,
   Globe,
@@ -226,7 +227,22 @@ export function Header() {
               {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </button>
 
-            {/* Browse — first-class destination, visible for all visitors */}
+            {/* Browse — social feed of latest barters */}
+            <Link href="/feed" className="hidden md:inline-flex">
+              <Button
+                variant="bareter-ghost"
+                size="sm"
+                className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
+                  isActive("/feed") ? "bg-white/10" : ""
+                }`}
+                data-testid="button-nav-feed"
+              >
+                <Rss className="h-4 w-4" />
+                Browse
+              </Button>
+            </Link>
+
+            {/* Discover — rich category hub with featured listings + AI matches */}
             <Link href="/browse" className="hidden md:inline-flex">
               <Button
                 variant="bareter-ghost"
@@ -234,10 +250,10 @@ export function Header() {
                 className={`h-10 gap-1.5 text-white hover:bg-white/10 ${
                   isActive("/browse") ? "bg-white/10" : ""
                 }`}
-                data-testid="button-nav-feed"
+                data-testid="button-nav-discover"
               >
-                <Rss className="h-4 w-4" />
-                Browse
+                <Compass className="h-4 w-4" />
+                Discover
               </Button>
             </Link>
 
