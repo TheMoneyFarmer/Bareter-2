@@ -214,7 +214,10 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
+      // reusePort is a Linux-only socket option (used on the production
+      // Replit host). macOS/Windows kernels reject it with ENOTSUP, so we
+      // only set it on linux to keep local dev working.
+      reusePort: process.platform === "linux",
     },
     () => {
       log(`serving on port ${port}`);
