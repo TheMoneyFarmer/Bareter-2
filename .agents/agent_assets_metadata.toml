@@ -209,3 +209,57 @@ id = "YhMcFKfEa8m_zu8OKbvBF"
 uri = "file://docs/FOUNDER_LAUNCH_CHECKLIST.md"
 type = "text"
 title = "Founder Launch Checklist — actions only humans can do"
+
+[[outputs]]
+id = "C5bja68-XK5_LitTpWlES"
+uri = "file://marketing/launch-explainer-60s/STORYBOARD.md"
+type = "text"
+title = "Storyboard + VO Script (60s Explainer)"
+
+[[outputs]]
+id = "kADOQGJCc51hO-hhhAFdd"
+uri = "file://marketing/launch-explainer-60s/scene1_empty_restaurant.mp4"
+type = "video"
+title = "Scene 1 (0:00–0:07) — Empty Restaurant"
+
+[[outputs]]
+id = "v1gXeVvrzGeSud2GGBZ5Y"
+uri = "file://marketing/launch-explainer-60s/scene2_warehouse_inventory.mp4"
+type = "video"
+title = "Scene 2 (0:07–0:15) — Warehouse Inventory"
+
+[[outputs]]
+id = "MzqEw69vaO31vxXCDis_x"
+uri = "file://marketing/launch-explainer-60s/scene3_dubai_skyline.mp4"
+type = "video"
+title = "Scene 3 (0:15–0:22) — Dubai Skyline / Brand Intro"
+
+[[outputs]]
+id = "eWamiy4FsvGQnWAb8GNf_"
+uri = "file://marketing/launch-explainer-60s/scene4_phone_listing.mp4"
+type = "video"
+title = "Scene 4 (0:22–0:30) — Step 1: List"
+
+[[outputs]]
+id = "Km7D9MWIP3GBNLsknsu6Y"
+uri = "file://marketing/launch-explainer-60s/scene5_handshake_match.mp4"
+type = "video"
+title = "Scene 5 (0:30–0:38) — Step 2: Match"
+
+[[outputs]]
+id = "xqK6hIXxO23uHSVNLXGlv"
+uri = "file://marketing/launch-explainer-60s/scene6_contract_signing.mp4"
+type = "video"
+title = "Scene 6 (0:38–0:46) — Step 3: Trade"
+
+[[outputs]]
+id = "mcwm37HbQmhpakSSvgMhK"
+uri = "file://marketing/launch-explainer-60s/scene7_business_growth.mp4"
+type = "video"
+title = "Scene 7 (0:46–0:54) — Outcome"
+
+[[outputs]]
+id = "UbZ4Qw_HuhrolJtM37FYg"
+uri = "file://marketing/launch-explainer-60s/scene8_handshake_logo_bumper.mp4"
+type = "video"
+title = "Scene 8 (0:54–1:00) — Logo Bumper / CTA"
