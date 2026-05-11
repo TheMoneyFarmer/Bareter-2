@@ -60,9 +60,9 @@ const covers: Array<{
   {
     blogPostId: "blogPost-best-uae-barter-platform-comparison-2026",
     imageUrl:
-      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_154809_95e86246-ad1d-4104-8b48-e16b0568590a.png",
+      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_155912_9c8072e6-57be-4a48-b5f4-4b4e9e063dd6.png",
     filename: "bareter-blog-cover-platform-comparison.png",
-    alt: "Editorial illustration of three platform badges compared side by side, with the deep-teal verified-platform badge elevated, representing a UAE barter platform comparison.",
+    alt: "Editorial illustration of an open hand holding a magnifying glass examining three floating platform cards, with the deep-teal verified-platform card elevated above the others, against a soft Dubai skyline.",
   },
 ];
 
