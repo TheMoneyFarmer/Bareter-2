@@ -1,0 +1,82 @@
+The production site at bareter.com is missing several UI elements that show correctly on the dev preview. I can see exactly what is missing from screenshots: the crown icon on "Featured Listings", the sparkle icon on "Recommended Barters", the Active/Growing/Hot status badges on category cards, the teal icons inside category grid cards, the Leaflet map not loading on the Map view, and the Featured gold badge styling on listing cards. Fix all of the following in one go and then do a clean redeploy.
+FIX 1 — Lucide React icons not rendering in production
+Search for every icon import across the entire client/src folder:
+bashgrep -r "lucide-react" client/src --include="*.tsx" --include="*.ts" -l
+Open every file returned. For every Lucide icon used in those files, make sure it is imported as a named static export at the very top of the file — never inside a function, never inside useEffect, never constructed dynamically. It must look exactly like this:
+tsximport { Crown, Sparkle, Flame, TrendingUp, Star, MapPin, Shield } from "lucide-react"
+If any file constructs an icon name as a variable like const IconComponent = icons[name] or imports inside a component body — refactor it to a static import map at the top of the file. Dynamic icon resolution works in dev but fails silently in Vite production builds.
+Also run this to confirm the installed lucide-react version supports the icons being used:
+bashcat node_modules/lucide-react/dist/lucide-react.js | grep -i "Crown\|Sparkle\|Flame" | head -5
+If any icon name returns nothing — it does not exist in the installed version. Replace it with an equivalent icon that does exist.
+FIX 2 — Tailwind CSS purging dynamic class names
+This is causing the Active, Growing, and Hot badge colours to disappear in production. Tailwind's production build removes any class it cannot find as a complete static string in your source files. Dynamic classes like bg-${color}-100 or text-${status}-800 are never found so they get deleted.
+Run this to find every instance:
+bashgrep -rn "bg-\${" client/src
+grep -rn "text-\${" client/src  
+grep -rn "border-\${" client/src
+grep -rn "from-\${" client/src
+grep -rn "to-\${" client/src
+For every result returned, replace the dynamic construction with a static lookup object. Example fix:
+Before (broken in production):
+tsxclassName={`bg-${category.statusColor}-100 text-${category.statusColor}-800`}
+After (works in production):
+tsxconst statusStyles: Record<string, string> = {
+  active:  "bg-green-100 text-green-800 border-green-200",
+  growing: "bg-blue-100 text-blue-800 border-blue-200", 
+  hot:     "bg-red-100 text-red-800 border-red-200",
+  default: "bg-gray-100 text-gray-800 border-gray-200",
+}
+className={statusStyles[category.status] ?? statusStyles.default}
+Apply this pattern to every single dynamic class construction found. There are no exceptions — every Tailwind class must appear as a complete unbroken string somewhere in the source.
+Also check tailwind.config.ts and make sure the content array covers all your component files:
+tscontent: [
+  "./client/src/**/*.{js,ts,jsx,tsx}",
+  "./client/index.html",
+]
+If any folder is missing from the content array — add it.
+FIX 3 — Leaflet map not loading in production
+There are two separate Leaflet issues that both need fixing.
+First, add the Leaflet CSS import to the map component file. Without this the map has no tiles in production:
+tsximport "leaflet/dist/leaflet.css"
+Add this at the very top of the file that contains your map component, before any other imports.
+Second, fix the Leaflet default marker icon path bug that affects every Leaflet + Vite combination. Vite changes asset paths during the production build and Leaflet cannot find its own marker images. Add this block immediately after your imports in the map component:
+tsximport L from "leaflet"
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
+import markerIcon from "leaflet/dist/images/marker-icon.png"
+import markerShadow from "leaflet/dist/images/marker-shadow.png"
+
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+})
+Third, if the map uses any external tile provider that requires an API key — confirm that key exists in Replit Deployment secrets. Go to Replit Deploy settings and check Secrets. If any map-related key exists in the dev environment but not in the deployment environment — add it there too.
+FIX 4 — Featured badge and card styling inconsistencies
+Check the listing card component for any styling that uses dynamic Tailwind classes or conditional class names built with template literals. Apply the same static lookup object fix from FIX 2. Also confirm the Featured badge uses a complete static class string like "bg-yellow-400 text-yellow-900" not a constructed one.
+FIX 5 — Environment variables not substituting in index.html
+The index.html file currently has %VITE_GOOGLE_SITE_VERIFICATION% and %VITE_BING_SITE_VERIFICATION% appearing as literal strings instead of being replaced. This means those Replit Secrets either do not exist or are not prefixed correctly.
+Run:
+bashgrep -n "VITE_" index.html
+For every variable found, confirm the exact same name exists in Replit Secrets with the VITE_ prefix. If you do not have Google or Bing site verification codes yet — replace those meta tags with empty strings or remove them entirely so they do not appear as broken placeholders:
+html<!-- Remove these lines entirely if you don't have the codes yet -->
+<!-- <meta name="google-site-verification" content="%VITE_GOOGLE_SITE_VERIFICATION%" /> -->
+<!-- <meta name="msvalidate.01" content="%VITE_BING_SITE_VERIFICATION%" /> -->
+FIX 6 — Clean production build and redeploy
+After making all the above fixes, do a completely clean build:
+bashrm -rf dist
+npm run build 2>&1
+Read the full build output carefully. Fix every warning and error shown — warnings in Vite production builds indicate things that work silently in dev but fail in production. Do not ignore any warning.
+After a clean successful build with no errors — redeploy using the Replit Deploy button.
+FIX 7 — Verify after redeploy
+After the new version is live at bareter.com, open the browser DevTools console on bareter.com and check for any red errors. Share the console output if anything is still broken. Also visually confirm all of the following are now working on the live site:
+
+Crown icon visible next to "Featured Listings" heading
+Active / Growing / Hot coloured badges visible on category cards
+Teal icons visible inside all category grid boxes
+Map view loads with clustering when clicking Map view on browse page
+Sparkle icon visible next to "Recommended Barters"
+Featured gold badge renders correctly on listing cards
+No %VITE_ placeholder strings visible anywhere in page source
+
+If any of the 7 are still failing after redeploy — share the browser console errors from bareter.com and I will fix the remaining issues.
