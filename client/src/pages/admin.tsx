@@ -109,6 +109,7 @@ import {
   Plus,
   ExternalLink,
   RefreshCw,
+  Database,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -2345,6 +2346,8 @@ export function AdminPage() {
               </a>
             </CardContent>
           </Card>
+
+          <SeedDemoListingsCard />
         </TabsContent>
 
         <TabsContent value="admins" className="space-y-4">
@@ -4195,6 +4198,68 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SeedDemoListingsCard() {
+  const { toast } = useToast();
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/seed-demo-listings");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.created === 0) {
+        toast({ title: "Already seeded", description: data.message });
+      } else {
+        toast({
+          title: `${data.created} demo listings created`,
+          description: "8 demo business accounts + 10 listings with photos are now live.",
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Seed failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-bareter-teal" />
+          Demo Listings Seed
+        </CardTitle>
+        <CardDescription>
+          Populate the platform with 10 realistic demo listings (Patek Philippe, yacht charter, Range Rover, interior design, and more) owned by 8 demo business accounts. Each listing has 3 professional photos. Safe to run once — idempotent.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          onClick={() => seedMutation.mutate()}
+          disabled={seedMutation.isPending}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          data-testid="button-seed-demo-listings"
+        >
+          <Database className="h-4 w-4" />
+          {seedMutation.isPending ? "Seeding…" : "Seed Demo Listings"}
+        </Button>
+        {seedMutation.isSuccess && seedMutation.data?.created > 0 && (
+          <p className="mt-2 text-sm text-green-600">
+            ✓ {seedMutation.data.created} listings seeded successfully.
+          </p>
+        )}
+        {seedMutation.isSuccess && seedMutation.data?.created === 0 && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Demo data already present — no changes made.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -4686,6 +4686,388 @@ export async function registerRoutes(
     }
   });
 
+  // ── Seed demo listings into any environment (including production) ──────────
+  app.post("/api/admin/seed-demo-listings", requireAdmin, async (req, res) => {
+    try {
+      const DEMO_TAG = "_bareter_demo";
+
+      // Idempotency check — don't re-seed if already done
+      const existing = await storage.getListings();
+      const alreadySeeded = existing.some(
+        (l) => Array.isArray(l.tags) && (l.tags as string[]).includes(DEMO_TAG),
+      );
+      if (alreadySeeded) {
+        return res.json({ message: "Demo listings already seeded.", created: 0 });
+      }
+
+      const pw = await hashPassword("Bareter2025!");
+
+      // ── Demo business accounts ─────────────────────────────────────
+      const demoUserInputs = [
+        {
+          email: "marco.rossetti@rossettiwatches-demo.bareter.com",
+          password: pw,
+          fullName: "Marco Rossetti",
+          businessName: "Rossetti Luxury Timepieces",
+          bio: "Authorised dealer of Swiss luxury timepieces in Dubai. Patek Philippe, Rolex and Audemars Piguet specialist with 18 years of experience.",
+          location: "Dubai", country: "AE", city: "Dubai",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "captain.khalil@bluehorizonmarine-demo.bareter.com",
+          password: pw,
+          fullName: "Khalil Al-Mansoori",
+          businessName: "Blue Horizon Marine",
+          bio: "Premium yacht charter and brokerage company operating out of Dubai Marina with a fleet of 12 luxury vessels.",
+          location: "Dubai", country: "AE", city: "Dubai",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "ibrahim@alfahadmotors-demo.bareter.com",
+          password: pw,
+          fullName: "Ibrahim Al-Fahad",
+          businessName: "Al Fahad Premium Motors",
+          bio: "Exclusive pre-owned luxury and super-car dealer in Abu Dhabi. Range Rover, Bentley, Lamborghini and McLaren specialist.",
+          location: "Abu Dhabi", country: "AE", city: "Abu Dhabi",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "sarah@studioforme-demo.bareter.com",
+          password: pw,
+          fullName: "Sarah Fontaine",
+          businessName: "Studio Forme Interior Design",
+          bio: "Award-winning interior design studio specialising in luxury residential and hospitality projects across the UAE and GCC.",
+          location: "Abu Dhabi", country: "AE", city: "Abu Dhabi",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "events@grandvenuedubai-demo.bareter.com",
+          password: pw,
+          fullName: "Aisha Al-Rashidi",
+          businessName: "Grand Venue Dubai",
+          bio: "Dubai's premier corporate event and wedding venue. 12,000 sq ft of flexible space, in-house catering, and AV production.",
+          location: "Dubai", country: "AE", city: "Dubai",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "gm@azuremarinahotel-demo.bareter.com",
+          password: pw,
+          fullName: "Layla Bin Zayed",
+          businessName: "Azure Marina Hotel & Spa",
+          bio: "Boutique 5-star hotel on Dubai Marina waterfront. 48 luxury suites, rooftop infinity pool, award-winning spa, and private event rooms.",
+          location: "Dubai", country: "AE", city: "Dubai",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "ceo@techbridge-demo.bareter.com",
+          password: pw,
+          fullName: "Omar Hassan",
+          businessName: "TechBridge Solutions",
+          bio: "UAE-based enterprise SaaS provider. Our flagship platform powers operations for 200+ businesses across the GCC.",
+          location: "Abu Dhabi", country: "AE", city: "Abu Dhabi",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+        {
+          email: "design@noorcouture-demo.bareter.com",
+          password: pw,
+          fullName: "Noor Al-Suwaidi",
+          businessName: "Noor Couture",
+          bio: "Luxury modest fashion house in Sharjah crafting bespoke abayas and evening wear for discerning clients across the Gulf.",
+          location: "Sharjah", country: "AE", city: "Sharjah",
+          accountType: "business" as const,
+          isVerified: true, kycStatus: "APPROVED",
+          profileCompleted: true,
+        },
+      ];
+
+      const createdUsers: Record<string, string> = {}; // email -> id
+      for (const u of demoUserInputs) {
+        let existing = await storage.getUserByEmail(u.email);
+        if (!existing) {
+          existing = await storage.createUser(u as any);
+        }
+        createdUsers[u.email] = existing.id;
+      }
+
+      const uid = (email: string) => createdUsers[email];
+      const img = (id: string) =>
+        `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=900&q=80`;
+
+      // ── Listing definitions ────────────────────────────────────────
+      const demoListings = [
+        {
+          userId: uid("marco.rossetti@rossettiwatches-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Patek Philippe Nautilus 5711 — Stainless Steel",
+          description:
+            "Exceptionally rare Patek Philippe Nautilus ref. 5711/1A-010 in full set. Purchased from authorised dealer in Geneva. Complete with original box, papers, service history. No scratches, all original bracelet links. One of the most sought-after watches in the secondary market. Valuation certified by independent Swiss horology expert.",
+          categories: ["Watches", "Luxury"],
+          retailValue: "650000",
+          images: [
+            img("1547996160-81dfa63595aa"),
+            img("1523170335258-f5ed11844a49"),
+            img("1612817159949-195b6eb9e31a"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai",
+          tags: ["watch", "patek", "luxury", "swiss", DEMO_TAG],
+          condition: "like_new",
+          wantedCategories: ["Automotive", "Real Estate"],
+          exchangeItems: [{ title: "Luxury SUV", estimatedValue: 650000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isFeatured: true,
+          isActive: true,
+          likeCount: 287,
+          viewCount: 3120,
+        },
+        {
+          userId: uid("captain.khalil@bluehorizonmarine-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Sunseeker 76 Yacht — 1-Week Exclusive Charter",
+          description:
+            "Charter the iconic Sunseeker 76 for one full week. Accommodates 8 guests in 4 en-suite cabins. Includes captain, first mate, and chef. Fully equipped with jet skis, paddleboards, fishing gear, and snorkelling equipment. Route covers Dubai Creek, Palm Jumeirah, World Islands, and Musandam peninsula. All fuel, provisions, and port fees included.",
+          categories: ["Yachts", "Vehicles"],
+          retailValue: "180000",
+          images: [
+            img("1567899378494-47b22a2ae96a"),
+            img("1544551763-46a013bb70d5"),
+            img("1513161455079-7dc1de15ef3e"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai Marina",
+          tags: ["yacht", "sunseeker", "charter", "luxury", DEMO_TAG],
+          condition: "excellent",
+          wantedCategories: ["Automotive"],
+          exchangeItems: [{ title: "Luxury car (1 year lease)", estimatedValue: 180000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isFeatured: true,
+          isActive: true,
+          likeCount: 156,
+          viewCount: 1820,
+        },
+        {
+          userId: uid("ibrahim@alfahadmotors-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Range Rover Autobiography LWB 2024 — Full Option",
+          description:
+            "2024 Range Rover Autobiography Long Wheelbase in Santorini Black with Ebony/Tan interior. 4.4L V8 BiTurbo, 530 HP. Panoramic sunroof, Executive rear seats with massage, Meridian 1,600W sound system, 360° camera, night vision, laser headlights. Under manufacturer warranty until 2028. 3,200 km only. Every option checked.",
+          categories: ["Automotive"],
+          retailValue: "780000",
+          images: [
+            img("1519245659620-e859806a8d3b"),
+            img("1553440569-bcc63803a83d"),
+            img("1503376780353-7e6692767b70"),
+          ],
+          city: "Abu Dhabi", country: "AE", location: "Abu Dhabi",
+          tags: ["range-rover", "suv", "luxury", "automotive", DEMO_TAG],
+          condition: "brand_new",
+          wantedCategories: ["Real Estate"],
+          exchangeItems: [{ title: "Villa rental (1 year)", estimatedValue: 780000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isFeatured: true,
+          isActive: true,
+          likeCount: 76,
+          viewCount: 612,
+        },
+        {
+          userId: uid("sarah@studioforme-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Full Interior Design Package — 4-Bedroom Villa",
+          description:
+            "Complete turnkey interior design and fit-out service for a 4–5 bedroom luxury villa. Includes concept development, 3D rendering, material specification, contractor management, furniture sourcing (Europe and USA), lighting design, soft furnishings, art curation, and project management. Studio Forme has completed over 60 luxury projects in the UAE with an average client satisfaction rating of 4.9/5.",
+          categories: ["Home", "Services"],
+          retailValue: "220000",
+          images: [
+            img("1618221195710-dd6b41faaea6"),
+            img("1631679706909-1844bbd07221"),
+            img("1556909114-f6e7ad7d3136"),
+          ],
+          city: "Abu Dhabi", country: "AE", location: "Abu Dhabi",
+          tags: ["interior-design", "home", "villa", DEMO_TAG],
+          condition: "brand_new",
+          wantedCategories: ["Hospitality"],
+          exchangeItems: [{ title: "Hotel stays (30 nights)", estimatedValue: 220000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isFeatured: true,
+          isActive: true,
+          likeCount: 67,
+          viewCount: 580,
+        },
+        {
+          userId: uid("events@grandvenuedubai-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Corporate Event Space — 10,000 sqft Grand Ballroom",
+          description:
+            "Exclusive use of Grand Venue Dubai's 10,000 sq ft pillar-free ballroom for one corporate event. Capacity: 800 seated / 1,400 cocktail. Includes: full AV setup (4K projection, line-array speakers, LED stage), 16-hour access, dedicated event coordinator, valet parking for 200 cars, bridal suite, VIP lounge, and on-site catering kitchen. Ideal for product launches, galas, or conferences.",
+          categories: ["Hospitality", "Events"],
+          retailValue: "25000",
+          images: [
+            img("1511578314322-379afb476865"),
+            img("1464366400600-7168b8af9bc3"),
+            img("1519167758481-83f550bb49b3"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai",
+          tags: ["event", "corporate", "venue", "ballroom", DEMO_TAG],
+          condition: "excellent",
+          wantedCategories: ["Services"],
+          exchangeItems: [{ title: "Corporate services (branding / legal)", estimatedValue: 25000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 41,
+        },
+        {
+          userId: uid("gm@azuremarinahotel-demo.bareter.com"),
+          type: "offer" as const,
+          title: "5 Nights Luxury Suite — Azure Marina Hotel & Spa",
+          description:
+            "Five consecutive nights in Azure Marina Hotel's signature Skyline Suite (95 sqm) overlooking Dubai Marina. Includes: daily breakfast for 2, unlimited minibar, 60-min spa treatment per guest per stay, airport transfer both ways, complimentary room service, and access to the rooftop infinity pool and fitness centre. Blackout dates: public holidays and UAE National Day week.",
+          categories: ["Hospitality"],
+          retailValue: "15000",
+          images: [
+            img("1542314831-068cd1dbfeeb"),
+            img("1631049307264-da0ec9d70304"),
+            img("1520250497591-112f2f40a3f4"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai Marina",
+          tags: ["hotel", "luxury", "suite", "spa", DEMO_TAG],
+          condition: "excellent",
+          wantedCategories: ["Services"],
+          exchangeItems: [{ title: "Corporate branding / photography", estimatedValue: 15000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 57,
+        },
+        {
+          userId: uid("ceo@techbridge-demo.bareter.com"),
+          type: "offer" as const,
+          title: "1-Year Enterprise SaaS Licence — TechBridge ERP Suite",
+          description:
+            "Full enterprise licence for TechBridge ERP Suite: HR & payroll, procurement, project management, CRM, and financial reporting modules. Includes onboarding training (40 hours), dedicated account manager, 99.9% SLA uptime guarantee, unlimited users, Arabic & English UI, and integration with UAE VAT filing systems. Currently used by 60+ companies including hospitality, construction, and retail brands.",
+          categories: ["Technology", "SaaS"],
+          retailValue: "12000",
+          images: [
+            img("1497366216548-37526070297c"),
+            img("1555421689-d68471e189f2"),
+            img("1519389950473-47ba0277781c"),
+          ],
+          city: "Abu Dhabi", country: "AE", location: "Abu Dhabi",
+          tags: ["saas", "software", "technology", "erp", DEMO_TAG],
+          condition: "brand_new",
+          wantedCategories: ["Real Estate"],
+          exchangeItems: [{ title: "Office space (1 year)", estimatedValue: 12000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 32,
+        },
+        {
+          userId: uid("design@noorcouture-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Custom Designer Abaya Collection — 10 Bespoke Pieces",
+          description:
+            "Ten hand-crafted bespoke abayas from Noor Couture's 2025 Majlis Collection. Each piece is individually fitted and made to order using Italian crepe, French chiffon, and hand-embroidered Swarovski detailing. Delivery in 6–8 weeks. Includes two fittings in Sharjah studio. Perfect for a corporate uniform gift or personal wardrobe investment. Past clients include royalty and public figures across the GCC.",
+          categories: ["Fashion"],
+          retailValue: "18000",
+          images: [
+            img("1558769132-cb1aea458c5e"),
+            img("1490481651871-ab68de25d43d"),
+            img("1509631179647-0177331693ae"),
+          ],
+          city: "Sharjah", country: "AE", location: "Sharjah",
+          tags: ["fashion", "abaya", "luxury", "bespoke", DEMO_TAG],
+          condition: "brand_new",
+          wantedCategories: ["Services"],
+          exchangeItems: [{ title: "Photography / content creation", estimatedValue: 18000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 56,
+        },
+        {
+          userId: uid("ceo@techbridge-demo.bareter.com"),
+          type: "offer" as const,
+          title: "MacBook Pro M3 Max + Professional Creator Setup",
+          description:
+            "Complete professional creator workstation: MacBook Pro 16\" M3 Max (48GB RAM, 2TB SSD), Apple Studio Display 27\", Magic Keyboard with Touch ID, Magic Trackpad, Elgato 4K webcam, Shure MV7 USB microphone, CalDigit TS4 Thunderbolt 4 hub, and LG 4K monitor. Everything sealed or like-new condition. Perfect for a content studio, architecture firm, or design agency upgrade.",
+          categories: ["Technology", "Electronics"],
+          retailValue: "22000",
+          images: [
+            img("1517336714731-489689fd1ca8"),
+            img("1496181133206-80ce9b88a853"),
+            img("1498050108023-c5249f4df085"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai",
+          tags: ["macbook", "apple", "technology", "electronics", DEMO_TAG],
+          condition: "like_new",
+          wantedCategories: ["Services"],
+          exchangeItems: [{ title: "Web design or digital marketing", estimatedValue: 22000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 89,
+        },
+        {
+          userId: uid("gm@azuremarinahotel-demo.bareter.com"),
+          type: "offer" as const,
+          title: "Private Chef Service — 6-Month Retainer (Dubai)",
+          description:
+            "Six-month retainer with Chef Ahmad, a Michelin-trained Emirati chef with experience at Nobu Dubai, Zuma, and Jean-Georges Abu Dhabi. Services include: 5 dinners/week at your home or office, custom weekly menus, grocery procurement, kitchen setup guidance, and meal prep. Specialities: Modern Emirati, Contemporary Japanese, and Mediterranean cuisines. References available from 12 long-term clients.",
+          categories: ["Food & Hospitality", "Services"],
+          retailValue: "45000",
+          images: [
+            img("1556910103-1c02745aae4d"),
+            img("1414235077428-338989a2e8c0"),
+            img("1504674900247-0877df9cc836"),
+          ],
+          city: "Dubai", country: "AE", location: "Dubai",
+          tags: ["chef", "food", "hospitality", "luxury", DEMO_TAG],
+          condition: "excellent",
+          wantedCategories: ["Real Estate"],
+          exchangeItems: [{ title: "Commercial kitchen space (6 months)", estimatedValue: 45000 }],
+          openToOffers: true,
+          moderationStatus: "approved",
+          isActive: true,
+          likeCount: 0,
+          viewCount: 74,
+        },
+      ];
+
+      let created = 0;
+      for (const l of demoListings) {
+        await storage.createListing(l as any);
+        created++;
+      }
+
+      return res.json({ message: `Demo listings seeded successfully.`, created });
+    } catch (error) {
+      console.error("Seed demo listings error:", error);
+      return res.status(500).json({ message: "Seeding failed", error: String(error) });
+    }
+  });
+
   // Create sample barter scenario deals for the current user — admin-only,
   // and disabled in production to prevent accidental data pollution.
   app.post("/api/demo/sample-deals", requireAdmin, async (req, res) => {
