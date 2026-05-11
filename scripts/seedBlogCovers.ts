@@ -46,9 +46,9 @@ const covers: Array<{
   {
     blogPostId: "blogPost-how-to-barter-business-services-dubai-2026",
     imageUrl:
-      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_154758_72da81ec-27f8-4cb1-807c-c7c10fd03105.png",
+      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_160458_8225cc52-0032-4f43-92f4-fb29f569f545.png",
     filename: "bareter-blog-cover-how-to-barter.png",
-    alt: "Editorial illustration of two hands exchanging a small office building and design tools in front of a soft Dubai skyline, signalling B2B barter between services and assets.",
+    alt: "Editorial illustration of two hands exchanging a balanced set of business assets and services (office, briefcase, paintbrush, document) in front of a full-width Dubai skyline, signalling B2B barter between services and assets.",
   },
   {
     blogPostId: "blogPost-uae-vat-barter-transactions-vatp042-explained",
@@ -60,9 +60,9 @@ const covers: Array<{
   {
     blogPostId: "blogPost-best-uae-barter-platform-comparison-2026",
     imageUrl:
-      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_155912_9c8072e6-57be-4a48-b5f4-4b4e9e063dd6.png",
+      "https://d8j0ntlcm91z4.cloudfront.net/user_3DDqRMoWAHd5HQ1hFlOiysjL9NU/hf_20260511_154809_95e86246-ad1d-4104-8b48-e16b0568590a.png",
     filename: "bareter-blog-cover-platform-comparison.png",
-    alt: "Editorial illustration of an open hand holding a magnifying glass examining three floating platform cards, with the deep-teal verified-platform card elevated above the others, against a soft Dubai skyline.",
+    alt: "Editorial illustration of three platform badges compared side by side, with the deep-teal verified-platform badge elevated, representing a UAE barter platform comparison.",
   },
 ];
 
