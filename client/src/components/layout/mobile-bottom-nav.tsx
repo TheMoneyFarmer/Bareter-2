@@ -52,7 +52,7 @@ export function MobileBottomNav() {
             data-testid="mobile-tab-feed"
           >
             <Rss className="h-5 w-5" strokeWidth={feedActive ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Feed</span>
+            <span className="text-[10px] font-medium">Browse</span>
           </Link>
 
           {/* Discover (Browse) */}

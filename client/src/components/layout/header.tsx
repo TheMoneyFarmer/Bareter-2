@@ -226,7 +226,7 @@ export function Header() {
               {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </button>
 
-            {/* Feed — first-class destination, visible for all visitors */}
+            {/* Browse — first-class destination, visible for all visitors */}
             <Link href="/feed" className="hidden md:inline-flex">
               <Button
                 variant="bareter-ghost"
@@ -237,7 +237,7 @@ export function Header() {
                 data-testid="button-nav-feed"
               >
                 <Rss className="h-4 w-4" />
-                Feed
+                Browse
               </Button>
             </Link>
 

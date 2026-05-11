@@ -292,14 +292,14 @@ export function LandingPage() {
             return (
               <div className="space-y-8">
                 {featuredRow.length > 0 && (
-                  <TrendingDetailedRow listings={featuredRow} max={10} />
+                  <TrendingDetailedRow listings={featuredRow} max={10} feedLinks />
                 )}
                 {justListedRow.length > 0 && (
                   <div>
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
                       Just listed ✨
                     </h3>
-                    <TrendingDetailedRow listings={justListedRow} max={10} />
+                    <TrendingDetailedRow listings={justListedRow} max={10} feedLinks />
                   </div>
                 )}
                 {bigTicketRow.length > 0 && (
@@ -307,7 +307,7 @@ export function LandingPage() {
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
                       Big-ticket deals 💎
                     </h3>
-                    <TrendingDetailedRow listings={bigTicketRow} max={10} />
+                    <TrendingDetailedRow listings={bigTicketRow} max={10} feedLinks />
                   </div>
                 )}
               </div>
@@ -453,9 +453,9 @@ type TrustStatItem = {
 };
 
 const STATIC_TRUST_STATS: TrustStatItem[] = [
-  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart barter engine",    countTo: 1200, suffix: "+" },
+  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart barter engine" },
   { icon: FileSignature, label: "Auto Contracts",    desc: "E-signed agreements" },
-  { icon: CheckCircle2,  label: "🇦🇪 UAE Compliant", desc: "VAT-ready receipts"   },
+  { icon: CheckCircle2,  label: "Zero Platform Fees", desc: "Always free to use" },
 ];
 
 function TrustBar() {

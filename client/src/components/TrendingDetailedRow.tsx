@@ -16,6 +16,8 @@ import type { ListingWithUser } from "@shared/schema";
 interface TrendingDetailedRowProps {
   listings: ListingWithUser[];
   max?: number;
+  /** When true, cards link to /feed instead of the individual listing page */
+  feedLinks?: boolean;
 }
 
 const CONDITION_LABEL: Record<string, string> = {
@@ -43,7 +45,7 @@ function topCornerBadge(l: ListingWithUser) {
   return { label: "New offer", className: "bg-emerald-500 text-white" };
 }
 
-export function TrendingDetailedRow({ listings, max = 8 }: TrendingDetailedRowProps) {
+export function TrendingDetailedRow({ listings, max = 8, feedLinks = false }: TrendingDetailedRowProps) {
   const items = (listings ?? []).slice(0, max);
   if (items.length === 0) return null;
 
@@ -77,7 +79,7 @@ export function TrendingDetailedRow({ listings, max = 8 }: TrendingDetailedRowPr
           return (
             <Link
               key={l.id}
-              href={`/listings/${l.id}`}
+              href={feedLinks ? "/feed" : `/listings/${l.id}`}
               className="group flex-shrink-0 w-[280px] sm:w-[300px]"
               data-testid={`card-trending-${l.id}`}
             >
