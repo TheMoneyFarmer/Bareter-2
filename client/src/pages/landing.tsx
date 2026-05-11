@@ -292,14 +292,14 @@ export function LandingPage() {
             return (
               <div className="space-y-8">
                 {featuredRow.length > 0 && (
-                  <TrendingDetailedRow listings={featuredRow} max={10} feedLinks />
+                  <TrendingDetailedRow listings={featuredRow} max={10} />
                 )}
                 {justListedRow.length > 0 && (
                   <div>
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
                       Just listed ✨
                     </h3>
-                    <TrendingDetailedRow listings={justListedRow} max={10} feedLinks />
+                    <TrendingDetailedRow listings={justListedRow} max={10} />
                   </div>
                 )}
                 {bigTicketRow.length > 0 && (
@@ -307,7 +307,7 @@ export function LandingPage() {
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
                       Big-ticket deals 💎
                     </h3>
-                    <TrendingDetailedRow listings={bigTicketRow} max={10} feedLinks />
+                    <TrendingDetailedRow listings={bigTicketRow} max={10} />
                   </div>
                 )}
               </div>
