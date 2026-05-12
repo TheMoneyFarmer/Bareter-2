@@ -223,6 +223,35 @@ async function loadOverrideCache(): Promise<void> {
 }
 
 /**
+ * Seed default `agent_budgets` rows for every canonical agent the
+ * platform knows about. Idempotent — `onConflictDoNothing` so existing
+ * founder edits are never clobbered. Called once from the server
+ * bootstrap so the admin /agent-budgets surface stops showing fake
+ * placeholder caps that have no DB row backing them.
+ */
+export async function seedAgentBudgetDefaults(): Promise<void> {
+  const seedAgents = [
+    "manager", "finance", "marketing", "sales", "legal", "dashboard",
+    "memory", "intelligenceAgent", "board", "admin", "matching",
+    "moderation", "support", "valuation", "engagement",
+  ];
+  try {
+    const now = new Date();
+    const rows = seedAgents.map((agentName) => ({
+      agentName,
+      monthlyCapAed: (AGENT_LIMITS_AED[agentName] ?? DEFAULT_AGENT_LIMIT_AED).toFixed(2),
+      enabled: true,
+      updatedAt: now,
+    }));
+    await db.insert(agentBudgets).values(rows).onConflictDoNothing();
+    // Refresh the in-memory cache so the new rows take effect immediately.
+    await loadOverrideCache();
+  } catch (err) {
+    console.error("[companyOs] seedAgentBudgetDefaults failed:", err);
+  }
+}
+
+/**
  * Eagerly load the per-agent override cache. Safe to call multiple
  * times — concurrent calls share a single in-flight promise.
  *

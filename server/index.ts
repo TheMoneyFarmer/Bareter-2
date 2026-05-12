@@ -158,7 +158,8 @@ app.use((req, res, next) => {
   // retry on the next read because loadOverrideCache only flips the
   // ready flag on success.
   try {
-    const { ensureAgentBudgetOverridesLoaded } = await import("./companyOs/costTracker");
+    const { ensureAgentBudgetOverridesLoaded, seedAgentBudgetDefaults } = await import("./companyOs/costTracker");
+    await seedAgentBudgetDefaults();
     await ensureAgentBudgetOverridesLoaded();
   } catch (err) {
     console.error("[startup] Failed to warm agent-budget cache:", err);

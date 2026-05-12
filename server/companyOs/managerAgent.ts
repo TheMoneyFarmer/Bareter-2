@@ -15,6 +15,7 @@ import {
   listings,
   deals,
   reports,
+  waitlistEntries,
 } from "@shared/schema";
 import { chatCompletion, type ChatMessage } from "../agents/llm";
 import {
@@ -242,12 +243,13 @@ interface FreeformContext {
   agentActivity24h?: { agent: string; count: number }[];
   budget?: { spentAed: number; budgetAed: number; pctUsed: number };
   totals?: { users: number; listings: number; deals: number; reports: number };
+  waitlist?: { total: number; today: number };
 }
 
 async function gatherFreeformContext(): Promise<FreeformContext> {
   const ctx: FreeformContext = {};
   try {
-    const [week, verdict, u, l, d, r, ai] = await Promise.all([
+    const [week, verdict, u, l, d, r, ai, wTotal, wToday] = await Promise.all([
       getWeeklyRevenue(),
       getBudgetVerdict(),
       db.select({ c: count() }).from(users),
@@ -259,6 +261,11 @@ async function gatherFreeformContext(): Promise<FreeformContext> {
         .from(agentInteractions)
         .where(gte(agentInteractions.createdAt, startOf24hAgo()))
         .groupBy(agentInteractions.agentType),
+      db.select({ c: count() }).from(waitlistEntries),
+      db
+        .select({ c: count() })
+        .from(waitlistEntries)
+        .where(gte(waitlistEntries.createdAt, startOfDubaiToday())),
     ]);
     ctx.weekRevenue = { totalAed: week.totalAed, count: week.count };
     ctx.todayRevenue = week.byDay[week.byDay.length - 1]
@@ -272,6 +279,7 @@ async function gatherFreeformContext(): Promise<FreeformContext> {
       reports: r[0]?.c ?? 0,
     };
     ctx.agentActivity24h = ai.map((row) => ({ agent: row.agent, count: row.c }));
+    ctx.waitlist = { total: wTotal[0]?.c ?? 0, today: wToday[0]?.c ?? 0 };
   } catch (err) {
     console.error("[companyOs.manager] gatherFreeformContext failed:", err);
   }
