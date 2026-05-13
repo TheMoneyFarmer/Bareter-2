@@ -119,21 +119,26 @@ function startOf24hAgo(): Date {
 
 export async function getPlatformStatus(): Promise<string> {
   const since24h = startOf24hAgo();
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const startToday = startOfDubaiToday();
   try {
-    const [u, l, d, r, dToday] = await Promise.all([
+    const [u, uToday, uActive7d, l, lToday, d, r, dToday, wTotal, wToday] = await Promise.all([
       db.select({ c: count() }).from(users),
+      db.select({ c: count() }).from(users).where(gte(users.createdAt, startToday)),
+      db.select({ c: count() }).from(users).where(gte(users.lastActiveAt, since7d)),
       db.select({ c: count() }).from(listings),
+      db.select({ c: count() }).from(listings).where(gte(listings.createdAt, startToday)),
       db.select({ c: count() }).from(deals),
       db.select({ c: count() }).from(reports),
-      db
-        .select({ c: count() })
-        .from(deals)
-        .where(gte(deals.createdAt, since24h)),
+      db.select({ c: count() }).from(deals).where(gte(deals.createdAt, since24h)),
+      db.select({ c: count() }).from(waitlistEntries),
+      db.select({ c: count() }).from(waitlistEntries).where(gte(waitlistEntries.createdAt, startToday)),
     ]);
     const lines = [
       `*Platform status · ${dubaiDateString()}*`,
-      `• Users: ${u[0]?.c ?? 0}`,
-      `• Listings: ${l[0]?.c ?? 0}`,
+      `• Users: ${u[0]?.c ?? 0} (+${uToday[0]?.c ?? 0} today, ${uActive7d[0]?.c ?? 0} active 7d)`,
+      `• Waitlist: ${wTotal[0]?.c ?? 0} (+${wToday[0]?.c ?? 0} today)`,
+      `• Listings: ${l[0]?.c ?? 0} (+${lToday[0]?.c ?? 0} today)`,
       `• Deals: ${d[0]?.c ?? 0} (${dToday[0]?.c ?? 0} new in 24h)`,
       `• Reports: ${r[0]?.c ?? 0}`,
     ];
