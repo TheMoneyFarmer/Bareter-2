@@ -599,6 +599,17 @@ export const listings = pgTable("listings", {
   aiMatchScore: decimal("ai_match_score", { precision: 5, scale: 2 }),
   isFeatured: boolean("is_featured").default(false),
   featuredUntil: timestamp("featured_until"),
+  // ── AI valuation (persisted output from the valuation agent) ──────────
+  // Populated when the user accepts the AI estimate during create-listing.
+  // All columns are nullable so existing listings remain valid.
+  valuationMinAed: integer("valuation_min_aed"),
+  valuationMaxAed: integer("valuation_max_aed"),
+  valuationFairAed: integer("valuation_fair_aed"),
+  valuationConfidence: decimal("valuation_confidence", { precision: 3, scale: 2 }), // 0.00–1.00
+  valuationReasoning: text("valuation_reasoning"),
+  valuationMarketNote: text("valuation_market_note"),
+  valuationCurrency: text("valuation_currency").default("AED"),
+  valuationAt: timestamp("valuation_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

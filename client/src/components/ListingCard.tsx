@@ -13,6 +13,7 @@ import type { ListingWithUser } from "@shared/schema";
 import { isUserVerified } from "@/components/verified-badge";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { ReportModal } from "@/components/report-modal";
+import { ValuationBadge } from "@/components/ValuationBadge";
 import { useWaitlist } from "@/lib/waitlist";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -270,6 +271,20 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               </span>
             )}
           </div>
+
+          {(listing.valuationMinAed != null && listing.valuationMaxAed != null) && (
+            <div data-testid={`row-valuation-${listing.id}`}>
+              <ValuationBadge
+                minAed={listing.valuationMinAed}
+                maxAed={listing.valuationMaxAed}
+                fairAed={listing.valuationFairAed}
+                confidence={listing.valuationConfidence}
+                reasoning={listing.valuationReasoning}
+                marketNote={listing.valuationMarketNote}
+                size="sm"
+              />
+            </div>
+          )}
 
           {lookingFor && (
             <div className="border-t border-bareter-border dark:border-border pt-2.5">
