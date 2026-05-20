@@ -22,6 +22,7 @@ import {
   posts,
   salesLeads,
   users,
+  waitlistEntries,
 } from "@shared/schema";
 import { dubaiDateString } from "./financeAgent";
 import { getMonthSpendAed, getMonthSpendByAgent } from "./costTracker";
@@ -41,6 +42,8 @@ export interface LiveKpis {
   totalUsers: number;
   newUsersToday: number;
   activeUsers7d: number;
+  waitlistTotal: number;
+  waitlistSignupsToday: number;
   totalPosts: number;
   postsToday: number;
   totalDeals: number;
@@ -249,6 +252,8 @@ export async function getLiveKpis(): Promise<LiveKpis> {
     uTotal,
     uToday,
     uActive7d,
+    wTotal,
+    wToday,
     pTotal,
     pToday,
     dTotal,
@@ -291,6 +296,20 @@ export async function getLiveKpis(): Promise<LiveKpis> {
         .then((r) => safeNum(r[0]?.c)),
       0,
       "users.active7d",
+    ),
+    safe(
+      db.select({ c: count() }).from(waitlistEntries).then((r) => safeNum(r[0]?.c)),
+      0,
+      "waitlist.total",
+    ),
+    safe(
+      db
+        .select({ c: count() })
+        .from(waitlistEntries)
+        .where(gte(waitlistEntries.createdAt, startToday))
+        .then((r) => safeNum(r[0]?.c)),
+      0,
+      "waitlist.today",
     ),
     safe(
       db.select({ c: count() }).from(posts).then((r) => safeNum(r[0]?.c)),
@@ -600,6 +619,8 @@ export async function getLiveKpis(): Promise<LiveKpis> {
     totalUsers: uTotal,
     newUsersToday: uToday,
     activeUsers7d: uActive7d,
+    waitlistTotal: wTotal,
+    waitlistSignupsToday: wToday,
     totalPosts: pTotal,
     postsToday: pToday,
     totalDeals: dTotal,
@@ -699,6 +720,8 @@ export async function captureDailySnapshot(): Promise<{
           revenue30d: live.revenue30d,
           gmv30d: live.gmv30d,
           agentCost30d: live.agentCost30d,
+          waitlistTotal: live.waitlistTotal,
+          waitlistSignupsToday: live.waitlistSignupsToday,
         },
       })
       .onConflictDoUpdate({
@@ -723,6 +746,8 @@ export async function captureDailySnapshot(): Promise<{
             revenue30d: live.revenue30d,
             gmv30d: live.gmv30d,
             agentCost30d: live.agentCost30d,
+            waitlistTotal: live.waitlistTotal,
+            waitlistSignupsToday: live.waitlistSignupsToday,
           },
         },
       });
@@ -822,9 +847,22 @@ export async function getKpiSummary(): Promise<string> {
     };
   }
 
+  // Waitlist comes from live data (not the snapshot row), so the
+  // founder always sees today's count even before the 02:00 cron upsert.
+  let waitlistTotal = 0;
+  let waitlistToday = 0;
+  try {
+    const live = await getLiveKpis();
+    waitlistTotal = live.waitlistTotal;
+    waitlistToday = live.waitlistSignupsToday;
+  } catch {
+    // Non-fatal — render dashboard without waitlist line if live fails.
+  }
+
   const lines = [
     `*Dashboard · ${latest.snapshotDate}*`,
     `• Users: ${latest.totalUsers} (+${latest.newUsersToday} today, ${latest.activeUsers7d} active 7d)`,
+    `• Waitlist: ${waitlistTotal} (+${waitlistToday} today)`,
     `• Posts: ${latest.totalPosts} (+${latest.postsToday} today)`,
     `• Deals: ${latest.totalDeals} (${latest.dealsCompletedToday} completed today)`,
     `• GMV 7d: AED ${safeNum(latest.gmvAed7d).toFixed(2)}`,

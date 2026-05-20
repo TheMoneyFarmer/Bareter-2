@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trackEvent } from "@/lib/posthog";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -13,11 +13,16 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useWaitlist } from "@/lib/waitlist";
-import { COUNTRIES } from "@shared/schema";
-import { Handshake, Loader2, Copy, Check, Share2, Trophy } from "lucide-react";
+import { COUNTRIES, getCitiesForCountry, getCountryByCode } from "@shared/schema";
+import { Handshake, Loader2, Copy, Check, Share2, Trophy, ChevronsUpDown } from "lucide-react";
+
+const OTHER_CITY = "__other__";
 
 type SubmitResponse = {
   ok: boolean;
@@ -39,16 +44,25 @@ export function WaitlistDialog() {
   const [name, setName] = useState("");
   const [country, setCountry] = useState<string>("");
   const [city, setCity] = useState<string>("");
+  const [cityIsOther, setCityIsOther] = useState<boolean>(false);
   const [accountType, setAccountType] = useState<string>("individual");
   const [businessName, setBusinessName] = useState("");
   const [honeypot, setHoneypot] = useState("");
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
 
-  // Prefill country/city from context defaults whenever the dialog opens with new defaults.
-  // We refresh on every open so geo-detected values aren't stuck behind earlier user-typed ones.
+  const cityOptions = useMemo(() => getCitiesForCountry(country), [country]);
+
+  // Prefill country/city from context defaults whenever the dialog opens.
+  // Always reset country/city/cityIsOther on open so prior session state never
+  // leaks a stale city under the new country selection.
   useEffect(() => {
     if (isOpen) {
-      if (defaults.country) setCountry(defaults.country);
-      if (defaults.city) setCity(defaults.city);
+      const nextCountry = defaults.country || "";
+      const nextCity = defaults.city || "";
+      setCountry(nextCountry);
+      setCity(nextCity);
+      const known = getCitiesForCountry(nextCountry);
+      setCityIsOther(!!nextCity && !known.includes(nextCity));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, defaults.country, defaults.city]);
@@ -77,11 +91,22 @@ export function WaitlistDialog() {
 
   const submit = useMutation({
     mutationFn: async () => {
+      // Resolve city to match what the user actually sees in the form.
+      // - If the city Select is active (country has a list, not in "Other" mode),
+      //   only submit the city when it's still in the country's list; otherwise
+      //   the Select is showing the placeholder and we should send null.
+      // - In "Other" / free-text mode, submit whatever was typed.
+      let submittedCity: string | null = null;
+      if (country && cityOptions.length > 0 && !cityIsOther) {
+        submittedCity = city && cityOptions.includes(city) ? city : null;
+      } else {
+        submittedCity = city.trim() ? city.trim() : null;
+      }
       const res = await apiRequest("POST", "/api/waitlist", {
         email,
         name: name || null,
         country: country || null,
-        city: city || null,
+        city: submittedCity,
         accountType,
         businessName: accountType === "business" ? (businessName || null) : null,
         source: typeof window !== "undefined" ? window.location.pathname : null,
@@ -228,28 +253,107 @@ export function WaitlistDialog() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="wl-country">Country</Label>
-                  <Select value={country} onValueChange={setCountry}>
-                    <SelectTrigger id="wl-country" data-testid="select-waitlist-country">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COUNTRIES.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={countryPickerOpen} onOpenChange={setCountryPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="wl-country"
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={countryPickerOpen}
+                        className="w-full justify-between font-normal"
+                        data-testid="select-waitlist-country"
+                      >
+                        <span className={cn("truncate", !country && "text-muted-foreground")}>
+                          {country ? getCountryByCode(country)?.name ?? "Select" : "Select"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search country..." data-testid="input-waitlist-country-search" />
+                        <CommandList>
+                          <CommandEmpty>No country found.</CommandEmpty>
+                          <CommandGroup>
+                            {COUNTRIES.map((c) => (
+                              <CommandItem
+                                key={c.code}
+                                value={`${c.name} ${c.code}`}
+                                onSelect={() => {
+                                  if (c.code !== country) {
+                                    setCountry(c.code);
+                                    setCity("");
+                                    setCityIsOther(false);
+                                  }
+                                  setCountryPickerOpen(false);
+                                }}
+                                data-testid={`option-waitlist-country-${c.code}`}
+                              >
+                                <span className="flex-1 truncate">{c.name}</span>
+                                <Check
+                                  className={cn(
+                                    "ml-2 h-4 w-4",
+                                    country === c.code ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div>
                   <Label htmlFor="wl-city">City</Label>
-                  <Input
-                    id="wl-city"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Your city"
-                    data-testid="input-waitlist-city"
-                  />
+                  {country && cityOptions.length > 0 && !cityIsOther ? (
+                    <Select
+                      value={city && cityOptions.includes(city) ? city : ""}
+                      onValueChange={(val) => {
+                        if (val === OTHER_CITY) {
+                          setCityIsOther(true);
+                          setCity("");
+                        } else {
+                          setCity(val);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="wl-city" data-testid="select-waitlist-city">
+                        <SelectValue placeholder="Pick your city" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cityOptions.map((c) => (
+                          <SelectItem key={c} value={c} data-testid={`option-waitlist-city-${c}`}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={OTHER_CITY} data-testid="option-waitlist-city-other">
+                          Other / type my city
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="space-y-1">
+                      <Input
+                        id="wl-city"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="Your city"
+                        data-testid="input-waitlist-city"
+                      />
+                      {country && cityOptions.length > 0 && cityIsOther && (
+                        <button
+                          type="button"
+                          className="text-[11px] text-primary underline"
+                          onClick={() => { setCityIsOther(false); setCity(""); }}
+                          data-testid="button-waitlist-city-back"
+                        >
+                          Pick from list instead
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

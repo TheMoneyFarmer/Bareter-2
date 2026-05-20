@@ -156,9 +156,34 @@ function param(val: string | string[] | undefined): string {
   return val || "";
 }
 
+// Module-level throttle: only update users.last_active_at at most once per
+// minute per user. Keeps requireAuth essentially free on hot paths while
+// still keeping the activeUsers7d KPI accurate. Entries older than the
+// throttle window are pruned periodically so the Map can never grow
+// unbounded over the lifetime of the process.
+const lastActiveTouchedAt = new Map<string, number>();
+const LAST_ACTIVE_THROTTLE_MS = 60 * 1000;
+const LAST_ACTIVE_SWEEP_MS = 5 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - LAST_ACTIVE_THROTTLE_MS;
+  for (const [uid, ts] of lastActiveTouchedAt) {
+    if (ts < cutoff) lastActiveTouchedAt.delete(uid);
+  }
+}, LAST_ACTIVE_SWEEP_MS).unref?.();
+
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (!req.session.userId) {
+  const uid = req.session.userId;
+  if (!uid) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+  const now = Date.now();
+  const lastTouch = lastActiveTouchedAt.get(uid) ?? 0;
+  if (now - lastTouch > LAST_ACTIVE_THROTTLE_MS) {
+    lastActiveTouchedAt.set(uid, now);
+    // Fire-and-forget so the request is never blocked on this write.
+    storage
+      .updateUser(uid, { lastActiveAt: new Date() })
+      .catch((err) => console.error("[requireAuth] lastActiveAt update failed:", err));
   }
   next();
 };
@@ -3174,6 +3199,105 @@ export async function registerRoutes(
       res.json({ message: "Templates updated" });
     } catch (error) {
       console.error("Update email templates error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Agent Health Dashboard — for each canonical agent, surface
+  // last-call timestamp, recent activity counts, status (healthy /
+  // never_called / errored), enabled flag, and budget row presence.
+  // Single endpoint so the founder has one place to verify the entire
+  // agent fleet is alive.
+  app.get("/api/admin/agents/health", requireAdmin, async (_req, res) => {
+    try {
+      const KNOWN_AGENTS = [
+        "manager", "finance", "marketing", "sales", "legal", "dashboard",
+        "intelligence", "admin", "matching", "moderation", "support",
+        "valuation", "engagement", "board", "memory",
+      ];
+      const { companyOsLogs, agentInteractions, agentBudgets } = await import("@shared/schema");
+      const { db } = await import("./db");
+      const { sql: drizzleSql } = await import("drizzle-orm");
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      const [osStats, intStats, budgetRows, toggles] = await Promise.all([
+        db.execute(drizzleSql`
+          SELECT agent_name AS name,
+                 COUNT(*)::int AS total,
+                 COUNT(*) FILTER (WHERE created_at >= ${since24h})::int AS calls_24h,
+                 COUNT(*) FILTER (WHERE created_at >= ${since7d})::int AS calls_7d,
+                 COUNT(*) FILTER (WHERE status NOT IN ('ok','success') AND status IS NOT NULL)::int AS errors,
+                 MAX(created_at)::text AS last_at
+          FROM company_os_logs
+          GROUP BY agent_name
+        `),
+        db.execute(drizzleSql`
+          SELECT agent_type AS name,
+                 COUNT(*)::int AS total,
+                 COUNT(*) FILTER (WHERE created_at >= ${since24h})::int AS calls_24h,
+                 COUNT(*) FILTER (WHERE created_at >= ${since7d})::int AS calls_7d,
+                 MAX(created_at)::text AS last_at
+          FROM agent_interactions
+          GROUP BY agent_type
+        `),
+        db.select().from(agentBudgets),
+        storage.getAllAgentToggles(),
+      ]);
+
+      const unwrap = <R,>(r: unknown): R[] =>
+        Array.isArray(r) ? (r as R[]) : ((r as { rows?: R[] })?.rows ?? []);
+      type StatRow = { name: string; total: number; calls_24h: number; calls_7d: number; errors?: number; last_at: string | null };
+      const osMap = new Map<string, StatRow>();
+      for (const r of unwrap<StatRow>(osStats)) osMap.set(String(r.name), r);
+      const intMap = new Map<string, StatRow>();
+      for (const r of unwrap<StatRow>(intStats)) intMap.set(String(r.name), r);
+      const budgetMap = new Map(budgetRows.map((b) => [b.agentName, b]));
+      const toggleMap = new Map(toggles.map((t) => [t.agentName, t.enabled]));
+
+      const agents = KNOWN_AGENTS.map((name) => {
+        // company_os_logs uses both short ("intelligence") and suffixed
+        // ("intelligenceAgent") forms — try both.
+        const os = osMap.get(name) ?? osMap.get(`${name}Agent`);
+        const inApp = intMap.get(name) ?? intMap.get(`${name}Agent`);
+        const total = (os?.total ?? 0) + (inApp?.total ?? 0);
+        const calls24h = (os?.calls_24h ?? 0) + (inApp?.calls_24h ?? 0);
+        const calls7d = (os?.calls_7d ?? 0) + (inApp?.calls_7d ?? 0);
+        const errors = os?.errors ?? 0;
+        const lastAt = [os?.last_at, inApp?.last_at]
+          .filter(Boolean)
+          .sort()
+          .pop() ?? null;
+        const budget = budgetMap.get(name) ?? budgetMap.get(`${name}Agent`);
+        const enabled = toggleMap.has(name) ? toggleMap.get(name)! : true;
+
+        let status: "healthy" | "idle" | "never_called" | "errored" | "disabled";
+        if (!enabled) status = "disabled";
+        else if (errors > 0 && calls24h > 0) status = "errored";
+        else if (total === 0) status = "never_called";
+        else if (calls7d === 0) status = "idle";
+        else status = "healthy";
+
+        return {
+          agentName: name,
+          enabled,
+          status,
+          totalCalls: total,
+          calls24h,
+          calls7d,
+          errors,
+          lastInvocationAt: lastAt,
+          monthlyCapAed: budget ? Number(budget.monthlyCapAed) : null,
+          hasBudgetRow: Boolean(budget),
+        };
+      });
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        agents,
+      });
+    } catch (error) {
+      console.error("Agent health error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -15,6 +15,7 @@ import {
   listings,
   deals,
   reports,
+  waitlistEntries,
 } from "@shared/schema";
 import { chatCompletion, type ChatMessage } from "../agents/llm";
 import {
@@ -118,21 +119,26 @@ function startOf24hAgo(): Date {
 
 export async function getPlatformStatus(): Promise<string> {
   const since24h = startOf24hAgo();
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const startToday = startOfDubaiToday();
   try {
-    const [u, l, d, r, dToday] = await Promise.all([
+    const [u, uToday, uActive7d, l, lToday, d, r, dToday, wTotal, wToday] = await Promise.all([
       db.select({ c: count() }).from(users),
+      db.select({ c: count() }).from(users).where(gte(users.createdAt, startToday)),
+      db.select({ c: count() }).from(users).where(gte(users.lastActiveAt, since7d)),
       db.select({ c: count() }).from(listings),
+      db.select({ c: count() }).from(listings).where(gte(listings.createdAt, startToday)),
       db.select({ c: count() }).from(deals),
       db.select({ c: count() }).from(reports),
-      db
-        .select({ c: count() })
-        .from(deals)
-        .where(gte(deals.createdAt, since24h)),
+      db.select({ c: count() }).from(deals).where(gte(deals.createdAt, since24h)),
+      db.select({ c: count() }).from(waitlistEntries),
+      db.select({ c: count() }).from(waitlistEntries).where(gte(waitlistEntries.createdAt, startToday)),
     ]);
     const lines = [
       `*Platform status · ${dubaiDateString()}*`,
-      `• Users: ${u[0]?.c ?? 0}`,
-      `• Listings: ${l[0]?.c ?? 0}`,
+      `• Users: ${u[0]?.c ?? 0} (+${uToday[0]?.c ?? 0} today, ${uActive7d[0]?.c ?? 0} active 7d)`,
+      `• Waitlist: ${wTotal[0]?.c ?? 0} (+${wToday[0]?.c ?? 0} today)`,
+      `• Listings: ${l[0]?.c ?? 0} (+${lToday[0]?.c ?? 0} today)`,
       `• Deals: ${d[0]?.c ?? 0} (${dToday[0]?.c ?? 0} new in 24h)`,
       `• Reports: ${r[0]?.c ?? 0}`,
     ];
@@ -142,6 +148,17 @@ export async function getPlatformStatus(): Promise<string> {
     return "Unable to read platform status right now.";
   }
 }
+
+// Canonical roster of every agent the platform knows about — so the
+// daily briefing always shows the full team, and a 0 means "idle"
+// rather than "missing from the report".
+const COMPANY_OS_AGENTS = [
+  "manager", "finance", "marketing", "sales", "legal",
+  "dashboard", "intelligenceAgent", "memory", "board",
+] as const;
+const IN_APP_AGENTS = [
+  "moderation", "matching", "valuation", "support", "engagement", "admin",
+] as const;
 
 export async function getAgentActivity(): Promise<string> {
   const since = startOf24hAgo();
@@ -164,16 +181,35 @@ export async function getAgentActivity(): Promise<string> {
       .where(gte(companyOsLogs.createdAt, since))
       .groupBy(companyOsLogs.agentName);
 
-    const lines = [`*AI agent activity · last 24h*`];
-    if (rows.length === 0 && osRows.length === 0) {
-      lines.push("No agent activity in the last 24 hours.");
-    } else {
-      for (const r of rows.sort((a, b) => a.agentType.localeCompare(b.agentType))) {
-        lines.push(`• ${r.agentType}: ${r.c}`);
-      }
-      for (const r of osRows.sort((a, b) => a.agentName.localeCompare(b.agentName))) {
-        lines.push(`• os/${r.agentName}: ${r.c}`);
-      }
+    const inAppCounts = new Map<string, number>();
+    for (const r of rows) inAppCounts.set(r.agentType, r.c);
+    const osCounts = new Map<string, number>();
+    for (const r of osRows) osCounts.set(r.agentName, r.c);
+
+    const fmt = (n: number) => (n > 0 ? `${n}` : "idle");
+
+    const lines = [
+      `*AI agent activity · last 24h*`,
+      `_Company OS_`,
+    ];
+    for (const name of COMPANY_OS_AGENTS) {
+      lines.push(`• ${name}: ${fmt(osCounts.get(name) ?? 0)}`);
+    }
+    lines.push("_In-app_");
+    for (const name of IN_APP_AGENTS) {
+      lines.push(`• ${name}: ${fmt(inAppCounts.get(name) ?? 0)}`);
+    }
+
+    // Surface anything we logged that isn't in the canonical roster
+    // (e.g. a new agent shipped without updating this list) so it
+    // doesn't silently disappear.
+    const known = new Set<string>([...COMPANY_OS_AGENTS, ...IN_APP_AGENTS]);
+    const extras: string[] = [];
+    for (const [name, c] of osCounts) if (!known.has(name)) extras.push(`os/${name}: ${c}`);
+    for (const [name, c] of inAppCounts) if (!known.has(name)) extras.push(`${name}: ${c}`);
+    if (extras.length > 0) {
+      lines.push("_Other_");
+      for (const e of extras.sort()) lines.push(`• ${e}`);
     }
     return lines.join("\n");
   } catch (err) {
@@ -242,12 +278,13 @@ interface FreeformContext {
   agentActivity24h?: { agent: string; count: number }[];
   budget?: { spentAed: number; budgetAed: number; pctUsed: number };
   totals?: { users: number; listings: number; deals: number; reports: number };
+  waitlist?: { total: number; today: number };
 }
 
 async function gatherFreeformContext(): Promise<FreeformContext> {
   const ctx: FreeformContext = {};
   try {
-    const [week, verdict, u, l, d, r, ai] = await Promise.all([
+    const [week, verdict, u, l, d, r, ai, wTotal, wToday] = await Promise.all([
       getWeeklyRevenue(),
       getBudgetVerdict(),
       db.select({ c: count() }).from(users),
@@ -259,6 +296,11 @@ async function gatherFreeformContext(): Promise<FreeformContext> {
         .from(agentInteractions)
         .where(gte(agentInteractions.createdAt, startOf24hAgo()))
         .groupBy(agentInteractions.agentType),
+      db.select({ c: count() }).from(waitlistEntries),
+      db
+        .select({ c: count() })
+        .from(waitlistEntries)
+        .where(gte(waitlistEntries.createdAt, startOfDubaiToday())),
     ]);
     ctx.weekRevenue = { totalAed: week.totalAed, count: week.count };
     ctx.todayRevenue = week.byDay[week.byDay.length - 1]
@@ -272,6 +314,7 @@ async function gatherFreeformContext(): Promise<FreeformContext> {
       reports: r[0]?.c ?? 0,
     };
     ctx.agentActivity24h = ai.map((row) => ({ agent: row.agent, count: row.c }));
+    ctx.waitlist = { total: wTotal[0]?.c ?? 0, today: wToday[0]?.c ?? 0 };
   } catch (err) {
     console.error("[companyOs.manager] gatherFreeformContext failed:", err);
   }
