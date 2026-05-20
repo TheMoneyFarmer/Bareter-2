@@ -21,11 +21,17 @@ interface Props {
   category: string;
   condition?: string;
   declaredValue?: number;
+  /**
+   * Fires every time the AI returns a fresh valuation. Lets the parent
+   * form (e.g. create-listing) capture the result so it can be persisted
+   * onto the listing record at submit time.
+   */
+  onValuation?: (advice: ValuationAdvice) => void;
 }
 
 const HIGH_VALUE_THRESHOLD = 50000;
 
-export default function AiValuationPanel({ title, description, category, condition, declaredValue }: Props) {
+export default function AiValuationPanel({ title, description, category, condition, declaredValue, onValuation }: Props) {
   const [advice, setAdvice] = useState<ValuationAdvice | null>(null);
   const { toast } = useToast();
   const autoTriggered = useRef(false);
@@ -41,7 +47,10 @@ export default function AiValuationPanel({ title, description, category, conditi
       });
       return res.json();
     },
-    onSuccess: (data: ValuationAdvice) => setAdvice(data),
+    onSuccess: (data: ValuationAdvice) => {
+      setAdvice(data);
+      onValuation?.(data);
+    },
   });
 
   const canRequest = title.length >= 3 && description.length >= 10 && category;

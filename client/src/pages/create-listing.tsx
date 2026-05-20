@@ -76,6 +76,16 @@ export function CreateListingPage() {
   const [newItemPriority, setNewItemPriority] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [categoryDetails, setCategoryDetails] = useState<Record<string, string | number>>({});
+  // Holds the most recent AI valuation result so it gets persisted onto
+  // the listing record when the user submits. Set by AiValuationPanel's
+  // onValuation callback.
+  const [aiValuation, setAiValuation] = useState<{
+    estimatedRange: { min: number; max: number };
+    fairValue: number;
+    confidence: number;
+    reasoning: string;
+    marketComparison: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<CreateListingForm>({
@@ -103,6 +113,19 @@ export function CreateListingPage() {
         ...data,
         retailValue: data.retailValue,
         categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
+        // Persist the latest AI valuation snapshot onto the listing so
+        // downstream surfaces (listing card, match-score) don't have to
+        // re-call the LLM. Server validates + clamps these values.
+        valuation: aiValuation
+          ? {
+              minAed: Math.round(aiValuation.estimatedRange.min),
+              maxAed: Math.round(aiValuation.estimatedRange.max),
+              fairAed: Math.round(aiValuation.fairValue),
+              confidence: aiValuation.confidence,
+              reasoning: aiValuation.reasoning,
+              marketNote: aiValuation.marketComparison,
+            }
+          : undefined,
       });
       return res.json();
     },
@@ -878,6 +901,7 @@ export function CreateListingPage() {
                   title={titleWatch}
                   description={descriptionWatch}
                   category={selectedCategories[0] || ""}
+                  onValuation={setAiValuation}
                 />
               )}
 

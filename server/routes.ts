@@ -1444,8 +1444,44 @@ export async function registerRoutes(
       const highValueThreshold = hvtSetting ? parseFloat(hvtSetting) : 50000;
       const valueFlagged = isValueFlagged(retailVal, rawCategories) || (retailVal >= highValueThreshold);
 
+      // Map the optional AI valuation payload from the client into the
+      // listing columns. Server clamps the range to sane bounds so a
+      // bad AI response can't poison the marketplace with AED-50M
+      // toothbrushes. Currency defaults to AED. Timestamp is server-set.
+      type ClientValuation = {
+        minAed?: number; maxAed?: number; fairAed?: number;
+        confidence?: number; reasoning?: string; marketNote?: string;
+      };
+      const v: ClientValuation | undefined = req.body.valuation;
+      const valuationFields: Record<string, unknown> = {};
+      if (v && Number.isFinite(v.minAed) && Number.isFinite(v.maxAed)) {
+        const MAX_AED = 100_000_000; // 100M AED ceiling; anything above is hallucination
+        const clamp = (n: number) => Math.max(0, Math.min(MAX_AED, Math.round(n)));
+        const minA = clamp(v.minAed!);
+        const maxA = Math.max(minA, clamp(v.maxAed!));
+        const fairA = Number.isFinite(v.fairAed)
+          ? Math.max(minA, Math.min(maxA, clamp(v.fairAed!)))
+          : Math.round((minA + maxA) / 2);
+        const conf = Number.isFinite(v.confidence)
+          ? Math.max(0, Math.min(1, v.confidence!))
+          : null;
+        valuationFields.valuationMinAed = minA;
+        valuationFields.valuationMaxAed = maxA;
+        valuationFields.valuationFairAed = fairA;
+        valuationFields.valuationConfidence = conf !== null ? conf.toFixed(2) : null;
+        valuationFields.valuationReasoning = typeof v.reasoning === "string" ? v.reasoning.slice(0, 1000) : null;
+        valuationFields.valuationMarketNote = typeof v.marketNote === "string" ? v.marketNote.slice(0, 500) : null;
+        valuationFields.valuationCurrency = "AED";
+        valuationFields.valuationAt = new Date();
+      }
+
+      // The client-side `valuation` key is consumed above; strip it so
+      // insertListingSchema (built from the table schema) doesn't error.
+      const { valuation: _v, ...listingBody } = req.body;
+
       const data = insertListingSchema.parse({
-        ...req.body,
+        ...listingBody,
+        ...valuationFields,
         userId: req.session.userId,
         valueFlagged,
       });
@@ -6304,6 +6340,86 @@ export async function registerRoutes(
     } catch (error) {
       console.error("AI valuation error:", error);
       res.status(500).json({ message: "Valuation service unavailable" });
+    }
+  });
+
+  // ── Match compatibility score ─────────────────────────────────────────
+  // Given two listing IDs, compare their persisted AI valuations and
+  // return a 0–100 fairness score with a human label and a "balance
+  // this with N AED" suggestion. Cheap, deterministic, no LLM call —
+  // safe to expose on any authenticated surface.
+  //
+  // GET /api/listings/match-score?a=<listingId>&b=<listingId>
+  app.get("/api/listings/match-score", requireAuth, async (req, res) => {
+    try {
+      const aId = typeof req.query.a === "string" ? req.query.a : "";
+      const bId = typeof req.query.b === "string" ? req.query.b : "";
+      if (!aId || !bId) {
+        return res.status(400).json({ message: "Both ?a and ?b listing IDs are required" });
+      }
+      if (aId === bId) {
+        return res.status(400).json({ message: "Cannot compare a listing with itself" });
+      }
+      const [a, b] = await Promise.all([
+        storage.getListing(aId),
+        storage.getListing(bId),
+      ]);
+      if (!a || !b) {
+        return res.status(404).json({ message: "One or both listings not found" });
+      }
+      const aMin = a.valuationMinAed;
+      const aMax = a.valuationMaxAed;
+      const bMin = b.valuationMinAed;
+      const bMax = b.valuationMaxAed;
+      if (aMin == null || aMax == null || bMin == null || bMax == null) {
+        return res.status(409).json({
+          message: "One or both listings have no AI valuation yet",
+          missing: {
+            a: aMin == null || aMax == null,
+            b: bMin == null || bMax == null,
+          },
+        });
+      }
+      const avgA = (aMin + aMax) / 2;
+      const avgB = (bMin + bMax) / 2;
+      const higher = Math.max(avgA, avgB);
+      const lower = Math.min(avgA, avgB);
+      const pctDiff = higher > 0 ? ((higher - lower) / higher) * 100 : 0;
+      const score = Math.max(0, Math.min(100, Math.round(100 - pctDiff)));
+      const aedDifference = Math.round(higher - lower);
+
+      let label: "excellent" | "good" | "fair" | "poor";
+      let message: string;
+      let suggestion: string | null = null;
+      if (score >= 85) {
+        label = "excellent";
+        message = "These items are very closely matched in value. A fair exchange for both parties.";
+      } else if (score >= 70) {
+        label = "good";
+        message = "These items are well matched. A reasonable exchange.";
+      } else if (score >= 50) {
+        label = "fair";
+        message = "There is a noticeable value difference between these items.";
+        suggestion = `Consider adding an item worth approximately AED ${aedDifference.toLocaleString()} to balance this exchange.`;
+      } else {
+        label = "poor";
+        message = "These items have a significant value difference.";
+        suggestion = `The value gap is approximately AED ${aedDifference.toLocaleString()}. A direct exchange may not be fair for both parties.`;
+      }
+
+      return res.json({
+        score,
+        label,
+        message,
+        suggestion,
+        aedDifference,
+        currency: "AED",
+        a: { id: a.id, title: a.title, min: aMin, max: aMax, avg: Math.round(avgA) },
+        b: { id: b.id, title: b.title, min: bMin, max: bMax, avg: Math.round(avgB) },
+      });
+    } catch (error) {
+      console.error("Match score error:", error);
+      res.status(500).json({ message: "Match score unavailable" });
     }
   });
 

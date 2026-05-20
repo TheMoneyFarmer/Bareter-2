@@ -25,6 +25,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { RatingModal } from "@/components/RatingModal";
+import { MatchScoreCard } from "@/components/MatchScoreCard";
 import type { DealWithUsers, MessageWithSender, DealMilestone } from "@shared/schema";
 import {
   ArrowLeft,
@@ -372,6 +373,15 @@ export function DealDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {deal.seekerListingId && deal.providerListingId && (
+                <div className="mt-6 pt-6 border-t">
+                  <MatchScoreCard
+                    listingAId={deal.seekerListingId}
+                    listingBId={deal.providerListingId}
+                  />
+                </div>
+              )}
 
               {deal.timeline && (
                 <div className="mt-6 pt-6 border-t">
