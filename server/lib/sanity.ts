@@ -1,10 +1,26 @@
 import { createClient } from "@sanity/client";
 
-const projectId = process.env.SANITY_PROJECT_ID;
-const dataset = process.env.SANITY_DATASET;
-const token = process.env.SANITY_API_TOKEN;
+// Defensive sanitization: strip whitespace, surrounding quotes, and a stray
+// trailing comma/semicolon. Lets a small .env typo (e.g. `SANITY_DATASET=production,`)
+// degrade gracefully instead of failing the dataset-name validator silently.
+const cleanEnv = (v: string | undefined) =>
+  (v ?? "").trim().replace(/^['"]|['"]$/g, "").replace(/[,;]+$/, "");
+
+const projectId = cleanEnv(process.env.SANITY_PROJECT_ID);
+const dataset = cleanEnv(process.env.SANITY_DATASET);
+// Only use a token if explicitly configured. Public Sanity datasets serve
+// reads anonymously, and a stale personal token tied to a removed user
+// causes every fetch to fail. Reads stay anonymous unless the deployment
+// sets a deliberate SANITY_API_TOKEN.
+const token = cleanEnv(process.env.SANITY_API_TOKEN);
 
 const isConfigured = !!(projectId && dataset);
+
+if (process.env.NODE_ENV !== "production") {
+  console.log(
+    `[sanity] configured=${isConfigured} project=${projectId || "(missing)"} dataset=${dataset || "(missing)"} token=${token ? "set" : "anonymous"}`,
+  );
+}
 
 const sanityClient = isConfigured
   ? createClient({
