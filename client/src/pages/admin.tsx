@@ -72,6 +72,7 @@ import {
   ChevronRight,
   UserCheck,
   UserX,
+  UserPlus,
   Crown,
   Trash2,
   Star,
@@ -195,6 +196,9 @@ export function AdminPage() {
   });
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [createUserDialog, setCreateUserDialog] = useState<{
+    open: boolean; fullName: string; email: string; password: string; phone: string; role: string; accountType: string; isVerified: boolean;
+  }>({ open: false, fullName: "", email: "", password: "", phone: "", role: "user", accountType: "individual", isVerified: false });
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; user: User | null; subject: string; body: string }>({
     open: false, user: null, subject: "", body: "",
   });
@@ -296,6 +300,29 @@ export function AdminPage() {
   const { data: dealMessages } = useQuery<MessageWithSender[]>({
     queryKey: ["/api/admin/deals", selectedDeal?.id, "messages"],
     enabled: !!selectedDeal,
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: async (data: typeof createUserDialog) => {
+      const res = await apiRequest("POST", "/api/admin/users/create", {
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        phone: data.phone || undefined,
+        role: data.role,
+        accountType: data.accountType,
+        isVerified: data.isVerified,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setCreateUserDialog({ open: false, fullName: "", email: "", password: "", phone: "", role: "user", accountType: "individual", isVerified: false });
+      toast({ title: "User created", description: "New user account created successfully" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create user", description: err.message, variant: "destructive" });
+    },
   });
 
   const verifyUserMutation = useMutation({
@@ -1030,8 +1057,76 @@ export function AdminPage() {
             <Download className="h-4 w-4" />
             Export CSV
           </Button>
+          <Button size="sm" className="gap-2" onClick={() => setCreateUserDialog(d => ({ ...d, open: true }))} data-testid="button-create-user">
+            <UserPlus className="h-4 w-4" />
+            Create User
+          </Button>
         </div>
       </div>
+
+      {/* Create User Dialog */}
+      <Dialog open={createUserDialog.open} onOpenChange={(open) => setCreateUserDialog(d => ({ ...d, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>Manually create a user account. The user can log in immediately with these credentials.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Full Name *</Label>
+                <Input value={createUserDialog.fullName} onChange={e => setCreateUserDialog(d => ({ ...d, fullName: e.target.value }))} placeholder="Jane Doe" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Email *</Label>
+                <Input type="email" value={createUserDialog.email} onChange={e => setCreateUserDialog(d => ({ ...d, email: e.target.value }))} placeholder="jane@example.com" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Password *</Label>
+                <Input type="password" value={createUserDialog.password} onChange={e => setCreateUserDialog(d => ({ ...d, password: e.target.value }))} placeholder="Min 8 characters" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Phone (optional)</Label>
+                <Input value={createUserDialog.phone} onChange={e => setCreateUserDialog(d => ({ ...d, phone: e.target.value }))} placeholder="+971..." className="mt-1" />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Select value={createUserDialog.role} onValueChange={v => setCreateUserDialog(d => ({ ...d, role: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Account Type</Label>
+                <Select value={createUserDialog.accountType} onValueChange={v => setCreateUserDialog(d => ({ ...d, accountType: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 flex items-center gap-2">
+                <input type="checkbox" id="cu-verified" checked={createUserDialog.isVerified} onChange={e => setCreateUserDialog(d => ({ ...d, isVerified: e.target.checked }))} className="h-4 w-4" />
+                <Label htmlFor="cu-verified" className="font-normal cursor-pointer">Mark as verified immediately</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateUserDialog(d => ({ ...d, open: false }))}>Cancel</Button>
+            <Button
+              onClick={() => createUserMutation.mutate(createUserDialog)}
+              disabled={!createUserDialog.fullName || !createUserDialog.email || !createUserDialog.password || createUserMutation.isPending}
+            >
+              {createUserMutation.isPending ? "Creating..." : "Create User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardContent className="p-0">
@@ -1354,13 +1449,25 @@ export function AdminPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={
-                        l.moderationStatus === "approved" ? "default" :
-                        l.moderationStatus === "rejected" ? "destructive" :
-                        l.moderationStatus === "flagged" ? "outline" : "secondary"
-                      } className={l.moderationStatus === "flagged" ? "text-amber-600 border-amber-500/60" : ""}>
-                        {l.moderationStatus || "pending"}
-                      </Badge>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant={
+                              l.moderationStatus === "approved" ? "default" :
+                              l.moderationStatus === "rejected" ? "destructive" :
+                              l.moderationStatus === "flagged" ? "outline" : "secondary"
+                            } className={`cursor-default ${l.moderationStatus === "flagged" ? "text-amber-600 border-amber-500/60" : ""}`}>
+                              {l.moderationStatus || "pending"}
+                            </Badge>
+                          </TooltipTrigger>
+                          {(l as any).moderationReason && (
+                            <TooltipContent className="max-w-xs text-xs" side="top">
+                              <p className="font-medium mb-0.5">AI Moderation Reason:</p>
+                              <p>{(l as any).moderationReason}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{l.viewCount || 0}</TableCell>
                     <TableCell>

@@ -56,6 +56,7 @@ import {
 import type { PostWithUser, PostCategoryDetails, PostCommentWithUser } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
 import { ReportModal } from "@/components/report-modal";
+import { ValuationBadge } from "@/components/ValuationBadge";
 
 function timeAgo(date: Date | string | null | undefined): string {
   if (!date) return "";
@@ -588,6 +589,10 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
   const declaredValue = post.declaredValue ? parseFloat(post.declaredValue as string) : 0;
   const isHighValue = declaredValue > 100000;
+  const postValuation = (() => {
+    if (!post.marketValuation) return null;
+    try { return JSON.parse(post.marketValuation as string) as { minAed: number; maxAed: number; fairAed: number; confidence: number; reasoning: string }; } catch { return null; }
+  })();
   const caption = post.caption || "";
   const shouldTruncate = caption.length > 120;
   const displayCaption = expanded || !shouldTruncate ? caption : caption.slice(0, 120);
@@ -834,6 +839,19 @@ function FeedCard({ post }: { post: PostWithUser }) {
         <div className="px-3 pb-3 pt-1 space-y-2">
           {post.title && (
             <h3 className="font-semibold text-sm" data-testid={`text-title-${post.id}`}>{post.title}</h3>
+          )}
+
+          {postValuation && postValuation.minAed > 0 && (
+            <div data-testid={`row-valuation-${post.id}`}>
+              <ValuationBadge
+                minAed={postValuation.minAed}
+                maxAed={postValuation.maxAed}
+                fairAed={postValuation.fairAed}
+                confidence={postValuation.confidence}
+                reasoning={postValuation.reasoning}
+                size="sm"
+              />
+            </div>
           )}
 
           {caption && (

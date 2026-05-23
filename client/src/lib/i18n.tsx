@@ -668,6 +668,7 @@ const translations: Record<Language, Record<string, string>> = {
     "listingCard.reportListing": "Report listing",
     "listingCard.featured": "Featured",
     "listingCard.enhancedVerification": "Enhanced verification",
+    "listingCard.propose": "Propose",
 
     "nav.listABarter": "List a barter",
     "nav.saved": "Saved",
@@ -1554,6 +1555,7 @@ const translations: Record<Language, Record<string, string>> = {
     "listingCard.reportListing": "الإبلاغ عن الإعلان",
     "listingCard.featured": "مميز",
     "listingCard.enhancedVerification": "تحقق معزز",
+    "listingCard.propose": "اقتراح",
 
     "nav.listABarter": "أضف مقايضة",
     "nav.saved": "المحفوظات",

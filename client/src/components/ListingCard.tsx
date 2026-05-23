@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2 } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -139,6 +139,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
     : listing.description || null;
 
   return (
+    <>
     <Link
       href={`/listings/${listing.id}`}
       className={`group block ${className}`}
@@ -323,6 +324,25 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
             </button>
           </div>
 
+          {/* SOCIAL FOOTER */}
+          <div
+            className="flex items-center gap-3 border-t border-bareter-border dark:border-border pt-2.5"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
+            <span className="inline-flex items-center gap-1 text-[12px] text-bareter-muted dark:text-muted-foreground">
+              <Heart className="h-3.5 w-3.5" />
+              {listing.likeCount ?? 0}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[12px] text-bareter-muted dark:text-muted-foreground">
+              <MessageCircle className="h-3.5 w-3.5" />
+              {listing.commentCount ?? 0}
+            </span>
+            <span className="ms-auto inline-flex items-center gap-1 text-[11px] font-semibold text-bareter-teal bg-bareter-teal-muted px-2 py-0.5 rounded-full">
+              <ArrowLeftRight className="h-3 w-3" />
+              {t("listingCard.propose")}
+            </span>
+          </div>
+
           {/* SELLER */}
           <div className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2">
             <Avatar className="h-7 w-7">
@@ -343,13 +363,14 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
           </div>
         </div>
       </article>
-      <ReportModal
-        open={showReport}
-        onOpenChange={setShowReport}
-        targetType="listing"
-        targetId={listing.id}
-      />
     </Link>
+    <ReportModal
+      open={showReport}
+      onOpenChange={setShowReport}
+      targetType="listing"
+      targetId={listing.id}
+    />
+  </>
   );
 }
 

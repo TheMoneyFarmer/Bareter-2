@@ -472,6 +472,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Email already registered" });
       }
 
+      // Block duplicate phone numbers — same phone can't be used for multiple accounts
+      const regPhone: string | undefined = typeof req.body.phone === "string" ? req.body.phone : undefined;
+      if (regPhone) {
+        const phoneUser = await storage.getUserByPhone(regPhone);
+        if (phoneUser) {
+          return res.status(400).json({ message: "A account with this phone number already exists" });
+        }
+      }
+
       const isBanned = await storage.isBannedEmail(data.email);
       if (isBanned) {
         return res.status(403).json({ message: "This email address has been suspended from the platform" });
@@ -2879,6 +2888,42 @@ export async function registerRoutes(
   });
 
   // Admin routes
+  app.post("/api/admin/users/create", requireAdmin, async (req, res) => {
+    try {
+      const { fullName, email, password, phone, role, accountType, isVerified } = req.body;
+      if (!fullName || !email || !password) {
+        return res.status(400).json({ message: "fullName, email, and password are required" });
+      }
+      const existing = await storage.getUserByEmail(email);
+      if (existing) return res.status(400).json({ message: "Email already registered" });
+      if (phone) {
+        const phoneUser = await storage.getUserByPhone(phone);
+        if (phoneUser) return res.status(400).json({ message: "Phone number already in use" });
+      }
+      const { hashPassword } = await import("./auth");
+      const hashedPassword = await hashPassword(password);
+      let user = await storage.createUser({
+        fullName,
+        email,
+        password: hashedPassword,
+        phone: phone || null,
+        role: role || "user",
+        accountType: accountType || "individual",
+        verificationStatus: isVerified ? "verified" : "unverified",
+        kycStatus: isVerified ? "APPROVED" : null,
+        country: "AE",
+      });
+      if (isVerified) {
+        user = (await storage.updateUser(user.id, { isVerified: true })) ?? user;
+      }
+      const { password: _pw, ...safe } = user;
+      res.status(201).json(safe);
+    } catch (error) {
+      console.error("Admin create user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
@@ -2893,9 +2938,30 @@ export async function registerRoutes(
     try {
       const listings = await storage.getAllListingsAdmin();
       const commentCounts = await storage.getListingCommentCounts();
+      // Fetch latest moderation reason for flagged/rejected listings
+      const flaggedIds = listings
+        .filter(l => l.moderationStatus === "flagged" || l.moderationStatus === "rejected")
+        .map(l => l.id);
+      const reasonMap = new Map<string, string>();
+      if (flaggedIds.length > 0) {
+        const { db } = await import("./db");
+        const { moderationLogs } = await import("@shared/schema");
+        const { inArray, desc } = await import("drizzle-orm");
+        const logs = await db
+          .select()
+          .from(moderationLogs)
+          .where(inArray(moderationLogs.targetId, flaggedIds))
+          .orderBy(desc(moderationLogs.createdAt));
+        for (const log of logs) {
+          if (!reasonMap.has(log.targetId) && log.reason) {
+            reasonMap.set(log.targetId, log.reason);
+          }
+        }
+      }
       const enriched = listings.map(l => ({
         ...l,
         commentCount: commentCounts.get(l.id) || 0,
+        moderationReason: reasonMap.get(l.id) || null,
       }));
       res.json(enriched);
     } catch (error) {
@@ -4795,6 +4861,33 @@ export async function registerRoutes(
           categories: [post.feedCategory, post.subCategory].filter(Boolean) as string[],
         }, req.session.userId).catch(() => {});
       }).catch(() => {});
+
+      // Auto-run valuation agent if the post has a declared value
+      if (post.declaredValue && parseFloat(post.declaredValue as string) > 0) {
+        const sessionUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
+        import("./agents/valuationAgent").then(async ({ getValuation }) => {
+          try {
+            const advice = await getValuation(
+              post.title || post.caption.slice(0, 80),
+              post.caption,
+              post.feedCategory || undefined,
+              post.condition || undefined,
+              req.session.userId,
+              { country: sessionUser?.country, city: sessionUser?.city },
+            );
+            if (advice.estimatedRange.min > 0) {
+              const valJson = JSON.stringify({
+                minAed: Math.round(advice.estimatedRange.min),
+                maxAed: Math.round(advice.estimatedRange.max),
+                fairAed: Math.round(advice.fairValue),
+                confidence: advice.confidence,
+                reasoning: advice.reasoning,
+              });
+              await db.update(posts).set({ marketValuation: valJson }).where(eq(posts.id, post.id));
+            }
+          } catch { /* valuation is best-effort */ }
+        }).catch(() => {});
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid post data", errors: error.errors });

@@ -308,34 +308,82 @@ export function Header() {
                       )}
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80">
-                    <div className="flex items-center justify-between p-3 border-b">
-                      <span className="font-semibold">{t("nav.notifications")}</span>
+                  <DropdownMenuContent align="end" className="w-96 p-0">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-4 w-4" />
+                        <span className="font-semibold text-sm">{t("nav.notifications")}</span>
+                        {unreadCount > 0 && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{unreadCount}</Badge>
+                        )}
+                      </div>
                       {unreadCount > 0 && (
-                        <Badge variant="secondary">{unreadCount} {t("nav.new")}</Badge>
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline font-medium"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            apiRequest("PATCH", "/api/notifications/read-all").then(() =>
+                              queryClient.invalidateQueries({ queryKey: ["/api/notifications"] })
+                            );
+                          }}
+                        >
+                          Mark all read
+                        </button>
                       )}
                     </div>
-                    <div className="max-h-80 overflow-y-auto">
+                    {/* Notification list */}
+                    <div className="max-h-[420px] overflow-y-auto divide-y">
                       {notifications && notifications.length > 0 ? (
-                        notifications.slice(0, 5).map((notification) => (
-                          <DropdownMenuItem
-                            key={notification.id}
-                            className={`flex flex-col items-start gap-1 p-3 cursor-pointer ${
-                              !notification.isRead ? "bg-accent/50" : ""
-                            }`}
-                          >
-                            <span className="font-medium text-sm">{notification.title}</span>
-                            <span className="text-xs text-muted-foreground line-clamp-2">
-                              {notification.message}
-                            </span>
-                          </DropdownMenuItem>
-                        ))
+                        notifications.map((notification) => {
+                          const actionUrl = notification.relatedDealId
+                            ? `/deals/${notification.relatedDealId}`
+                            : null;
+                          return (
+                            <div
+                              key={notification.id}
+                              className={`flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors ${!notification.isRead ? "bg-accent/40" : ""}`}
+                              onClick={() => {
+                                if (!notification.isRead) {
+                                  apiRequest("PATCH", `/api/notifications/${notification.id}/read`).then(() =>
+                                    queryClient.invalidateQueries({ queryKey: ["/api/notifications"] })
+                                  );
+                                }
+                              }}
+                            >
+                              <div className={`mt-0.5 h-2 w-2 rounded-full flex-shrink-0 ${!notification.isRead ? "bg-primary" : "bg-transparent"}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium leading-tight">{notification.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
+                                {actionUrl && (
+                                  <Link
+                                    href={actionUrl}
+                                    className="inline-flex items-center gap-1 text-xs text-primary font-medium mt-1.5 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    View Deal →
+                                  </Link>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
                       ) : (
-                        <div className="p-6 text-center text-muted-foreground text-sm">
+                        <div className="py-10 text-center text-muted-foreground text-sm">
+                          <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
                           {t("nav.noNotifications")}
                         </div>
                       )}
                     </div>
+                    {/* Footer */}
+                    {notifications && notifications.length > 0 && (
+                      <div className="border-t px-4 py-2.5 bg-muted/20">
+                        <Link href="/profile" className="text-xs text-center block text-primary hover:underline font-medium">
+                          View all notifications
+                        </Link>
+                      </div>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
 

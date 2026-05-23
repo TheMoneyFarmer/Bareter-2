@@ -940,7 +940,7 @@ export function ListingDetailPage() {
                     </Button>
                   </Link>
                 )}
-                <Link href={`/users/${listing.userId}`}>
+                <Link href={`/inbox?userId=${listing.userId}`}>
                   <Button variant="bareter-outline" className="w-full h-11 gap-2">
                     <MessageSquare className="h-4 w-4" />
                     {t("listingDetail.messageSellerBtn")}
@@ -1155,7 +1155,7 @@ export function ListingDetailPage() {
         open={showReport}
         onOpenChange={setShowReport}
         targetType="listing"
-        targetId={listing?.id ?? 0}
+        targetId={listing?.id ?? ""}
       />
       </div>
 
