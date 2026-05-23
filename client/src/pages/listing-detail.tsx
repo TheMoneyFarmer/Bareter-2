@@ -56,6 +56,7 @@ import {
   Play,
   Info,
   Languages,
+  Search,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
@@ -540,7 +541,7 @@ export function ListingDetailPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 mb-6 flex-wrap">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className="text-3xl md:text-4xl font-bold text-bareter-teal" data-testid="text-listing-detail-price">
                 AED {parseFloat(listing.retailValue as string).toLocaleString()}
               </div>
@@ -552,13 +553,78 @@ export function ListingDetailPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-6">
-              {(listing.categories || []).map((category) => (
-                <Badge key={category} variant="secondary">
-                  {category}
-                </Badge>
-              ))}
+            {/* Feed-style offering + exchange chips */}
+            {(() => {
+              const exchangeItems = (listing as any).exchangeItems as ExchangeItem[] | undefined;
+              const wantedCategories = (listing as any).wantedCategories as string[] | undefined;
+              const primaryCategory = (listing.categories || [])[0];
+              const hasExchangeInfo = (exchangeItems && exchangeItems.length > 0) || (wantedCategories && wantedCategories.length > 0);
+              return (
+                <div className="rounded-lg bg-muted/40 border p-3 mb-4 space-y-2.5">
+                  {/* OFFERING chip */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Offering</p>
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold text-white"
+                      style={{ backgroundColor: primaryCategory ? ({"Real Estate":"#4A1D96","Automotive":"#1C2D4A","Electronics":"#1E40AF","Fashion":"#9D174D","Technology":"#1E40AF","Hospitality":"#7C2D12","Food":"#B45309","Events":"#A16207","Services":"#1A7272"}[primaryCategory] || "#136c68") : "#136c68" }}
+                    >
+                      <Package className="h-3.5 w-3.5" />
+                      {listing.title}
+                      <span className="opacity-80">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
+                    </span>
+                  </div>
+
+                  {/* WILLING TO BARTER FOR chips */}
+                  {hasExchangeInfo && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Willing to barter for</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {exchangeItems?.slice(0, 5).map((item: ExchangeItem) => (
+                          <span key={item.name} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border bg-background">
+                            <Search className="h-3 w-3 text-muted-foreground" />
+                            {item.name}
+                            {item.estimatedValue && item.estimatedValue > 0 && (
+                              <span className="text-muted-foreground">~AED {Number(item.estimatedValue).toLocaleString()}</span>
+                            )}
+                          </span>
+                        ))}
+                        {wantedCategories?.map((cat: string) => (
+                          <span key={cat} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border bg-background">
+                            <Search className="h-3 w-3 text-muted-foreground" />
+                            {cat}
+                          </span>
+                        ))}
+                        {(listing as any).openToOffers && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed bg-background text-muted-foreground">
+                            + Open to other offers
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(listing.categories || []).map((category) => {
+                const catColor: Record<string, string> = {"Real Estate":"#4A1D96","Automotive":"#1C2D4A","Electronics":"#1E40AF","Fashion":"#9D174D","Technology":"#1E40AF","Hospitality":"#7C2D12","Food":"#B45309","Events":"#A16207","Services":"#1A7272"};
+                return (
+                  <Badge key={category} style={{ backgroundColor: catColor[category] || "#374151", color: "white" }}>
+                    {category}
+                  </Badge>
+                );
+              })}
             </div>
+
+            {/* Hashtag-style tags */}
+            {(listing.tags || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {(listing.tags || []).map((tag) => (
+                  <span key={tag} className="text-xs text-primary font-medium">#{tag.replace(/^#/, "")}</span>
+                ))}
+              </div>
+            )}
 
             <Separator className="my-6" />
 
@@ -569,21 +635,6 @@ export function ListingDetailPage() {
               </p>
             </div>
 
-            {(listing.tags || []).length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <Tag className="h-4 w-4" />
-                  {t("listingDetail.tags")}
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {(listing.tags || []).map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Service tiers (Bronze / Silver / Gold) */}
             {(listing as any).serviceTiers && ((listing as any).serviceTiers as ServiceTier[]).length > 0 && (

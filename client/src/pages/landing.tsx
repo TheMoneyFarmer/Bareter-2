@@ -9,6 +9,7 @@ import { SuccessStoriesMarquee } from "@/components/SuccessStoriesMarquee";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { TrendingDetailedRow } from "@/components/TrendingDetailedRow";
 import { useReveal } from "@/hooks/use-reveal";
+import { useI18n } from "@/lib/i18n";
 import heroHandshakeImg from "@assets/generated_images/hero-handshake.png";
 import catCarsImg from "@assets/generated_images/cat-cars.png";
 import catRealEstateImg from "@assets/generated_images/cat-real-estate.png";
@@ -67,6 +68,7 @@ const DEFAULT_STEPS: HowItWorksStep[] = [
 
 export function LandingPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const { mode: waitlistMode, open: openWaitlist, gate: waitlistGate } = useWaitlist();
   const [, navigate] = useLocation();
 
@@ -190,7 +192,7 @@ export function LandingPage() {
                 type="search"
                 value={heroQuery}
                 onChange={(e) => setHeroQuery(e.target.value)}
-                placeholder="Search barters..."
+                placeholder={t("landing.searchBarters")}
                 className="flex-1 px-4 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
                 data-testid="input-hero-search"
               />
@@ -240,10 +242,10 @@ export function LandingPage() {
           <div className="flex items-end justify-between gap-4 mb-6">
             <div>
               <h2 className="text-section text-bareter-navy dark:text-foreground">
-                Trending barters now 🔥
+                {t("landing.trendingNow")}
               </h2>
               <p className="text-caption mt-1">
-                AI-curated deals based on your preferences
+                {t("landing.exploreCategories")}
               </p>
             </div>
             <Link
@@ -251,7 +253,7 @@ export function LandingPage() {
               className="inline-flex items-center gap-1 text-sm font-semibold text-bareter-teal hover:text-bareter-teal-light"
               data-testid="link-view-all-listings"
             >
-              View all listings <ArrowRight className="h-4 w-4" />
+              {t("landing.viewAllListings")} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
@@ -264,13 +266,13 @@ export function LandingPage() {
           ) : featured.length === 0 ? (
             <div className="rounded-bareter-card bg-white dark:bg-card border border-bareter-border dark:border-border p-10 text-center">
               <p className="text-card-title text-bareter-navy dark:text-foreground">
-                No barters yet — be the first to list something
+                {t("landing.noListingsYet")}
               </p>
               <p className="text-caption mt-1 mb-4">
-                Post your offer in minutes and get matched by our AI.
+                {t("landing.postOfferInMinutes")}
               </p>
               <Link href={user ? "/create-listing" : "/register"}>
-                <Button variant="bareter">Create the first listing</Button>
+                <Button variant="bareter">{t("landing.createFirstListing")}</Button>
               </Link>
             </div>
           ) : (() => {
@@ -297,7 +299,7 @@ export function LandingPage() {
                 {justListedRow.length > 0 && (
                   <div>
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
-                      Just listed ✨
+                      {t("landing.justListed")}
                     </h3>
                     <TrendingDetailedRow listings={justListedRow} max={10} />
                   </div>
@@ -305,7 +307,7 @@ export function LandingPage() {
                 {bigTicketRow.length > 0 && (
                   <div>
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
-                      Big-ticket deals 💎
+                      {t("landing.bigTicket")}
                     </h3>
                     <TrendingDetailedRow listings={bigTicketRow} max={10} />
                   </div>
@@ -320,7 +322,7 @@ export function LandingPage() {
       <section className="bg-white dark:bg-background" data-testid="section-categories">
         <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
           <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
-            Browse by category
+            {t("landing.browseByCategory")}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {CATEGORY_GRID.map((c) => (
@@ -351,9 +353,9 @@ export function LandingPage() {
       {/* ============================ HOW IT WORKS ============================ */}
       <section className="bg-bareter-navy text-white" data-testid="section-how">
         <div className="container mx-auto max-w-7xl px-4 py-16">
-          <h2 className="text-section text-white text-center mb-2">How it works</h2>
+          <h2 className="text-section text-white text-center mb-2">{t("landing.howItWorksSimple")}</h2>
           <p className="text-caption text-white/60 text-center mb-12">
-            Three simple steps from listing to closed deal
+            {t("landing.threeSteps")}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6 relative">
@@ -383,7 +385,7 @@ export function LandingPage() {
       <section className="bg-bareter-off-white dark:bg-background" data-testid="section-stories">
         <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
           <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
-            Real barters. Real value.
+            {t("landing.realBarters")}
           </h2>
         </div>
         <SuccessStoriesMarquee />
@@ -398,7 +400,7 @@ export function LandingPage() {
         >
           <div className="container relative z-10 mx-auto max-w-3xl px-4 py-16 text-center">
             <h2 className="text-section text-white">
-                          Join the waitlist
+              {t("landing.joinWaitlist")}
             </h2>
             <p className="mt-2 text-bareter-teal-light">United Arab Emirates</p>
 
@@ -430,11 +432,11 @@ export function LandingPage() {
                 className="h-12 px-6 rounded-full"
                 data-testid="button-waitlist-submit"
               >
-                {heroCta || "Get early access"}
+                {heroCta || t("landing.startBartering")}
               </Button>
             </form>
             <p className="mt-3 text-caption text-white/50">
-              No spam. Launch notification only.
+              {t("landing.noSpam")}
             </p>
           </div>
         </section>
@@ -452,14 +454,9 @@ type TrustStatItem = {
   suffix?: string;
 };
 
-const STATIC_TRUST_STATS: TrustStatItem[] = [
-  { icon: Cpu,           label: "AI-Matched Deals",  desc: "Smart barter engine" },
-  { icon: FileSignature, label: "Auto Contracts",    desc: "E-signed agreements" },
-  { icon: CheckCircle2,  label: "Zero Platform Fees", desc: "Always free to use" },
-];
-
 function TrustBar() {
   const { ref, isVisible } = useReveal<HTMLElement>();
+  const { t } = useI18n();
   const { data: counter, isLoading: countLoading } = useQuery<{ count: number }>({
     queryKey: ["/api/waitlist/count"],
     refetchInterval: 10_000,
@@ -467,8 +464,10 @@ function TrustBar() {
 
   const waitlistReady = !countLoading && counter?.count !== undefined;
   const stats: TrustStatItem[] = [
-    { icon: Users, label: "Waitlist Signups", desc: "Join the community", countTo: waitlistReady ? counter.count : undefined, suffix: "+" },
-    ...STATIC_TRUST_STATS,
+    { icon: Users, label: t("landing.waitlistSignups"), desc: t("landing.joinCommunity"), countTo: waitlistReady ? counter.count : undefined, suffix: "+" },
+    { icon: Cpu,           label: t("landing.aiMatchedDeals"),   desc: t("landing.smartBarterEngine") },
+    { icon: FileSignature, label: t("landing.autoContracts"),    desc: t("landing.eSignedAgreements") },
+    { icon: CheckCircle2,  label: t("landing.zeroPlatformFees"), desc: t("landing.alwaysFree") },
   ];
 
   return (
@@ -479,8 +478,8 @@ function TrustBar() {
     >
       <div className="container mx-auto max-w-7xl px-4 py-7">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 sm:gap-y-0 divide-y sm:divide-y-0 sm:divide-x divide-bareter-border dark:divide-border">
-          {stats.map((t, i) => (
-            <TrustStat key={i} stat={t} active={isVisible} />
+          {stats.map((s, i) => (
+            <TrustStat key={i} stat={s} active={isVisible} />
           ))}
         </div>
       </div>

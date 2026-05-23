@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
+import { useI18n } from "@/lib/i18n";
 import {
   Search,
   Filter,
@@ -82,6 +83,7 @@ type ExploreTab = "discover" | "search";
 export function BrowsePage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const searchString = useSearch();
   const [matchCat, paramsCat] = useRoute("/c/:category");
@@ -480,21 +482,21 @@ export function BrowsePage() {
   const FilterContent = () => (
     <div className="space-y-6">
       <div>
-        <h4 className="font-medium mb-3">Type</h4>
+        <h4 className="font-medium mb-3">{t("browse.type")}</h4>
         <div className="flex gap-2 flex-wrap">
-          <Button variant={selectedType === "all" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("all")} data-testid="filter-type-all">All</Button>
-          <Button variant={selectedType === "offer" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("offer")} className="gap-1" data-testid="filter-type-offer"><Package className="h-3 w-3" />Offers</Button>
-          <Button variant={selectedType === "request" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("request")} className="gap-1" data-testid="filter-type-request"><ShoppingCart className="h-3 w-3" />Requests</Button>
+          <Button variant={selectedType === "all" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("all")} data-testid="filter-type-all">{t("browse.all")}</Button>
+          <Button variant={selectedType === "offer" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("offer")} className="gap-1" data-testid="filter-type-offer"><Package className="h-3 w-3" />{t("browse.offers")}</Button>
+          <Button variant={selectedType === "request" ? "default" : "outline"} size="sm" onClick={() => setSelectedType("request")} className="gap-1" data-testid="filter-type-request"><ShoppingCart className="h-3 w-3" />{t("browse.requests")}</Button>
         </div>
       </div>
       <div>
-        <h4 className="font-medium mb-3">Condition</h4>
+        <h4 className="font-medium mb-3">{t("browse.condition")}</h4>
         <Select value={selectedCondition} onValueChange={setSelectedCondition}>
           <SelectTrigger data-testid="filter-condition">
-            <SelectValue placeholder="Any condition" />
+            <SelectValue placeholder={t("browse.anyCondition")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any Condition</SelectItem>
+            <SelectItem value="all">{t("browse.anyCondition")}</SelectItem>
             {ITEM_CONDITIONS.map((c) => (
               <SelectItem key={c} value={c}>{conditionLabel(c)}</SelectItem>
             ))}
@@ -502,7 +504,7 @@ export function BrowsePage() {
         </Select>
       </div>
       <div>
-        <h4 className="font-medium mb-3">Categories</h4>
+        <h4 className="font-medium mb-3">{t("browse.categories")}</h4>
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((category) => (
             <Badge key={category} variant={selectedCategories.includes(category) ? "default" : "outline"} className="cursor-pointer" onClick={() => toggleCategory(category)} data-testid={`filter-category-${category.toLowerCase()}`}>
@@ -512,19 +514,19 @@ export function BrowsePage() {
         </div>
       </div>
       <div>
-        <h4 className="font-medium mb-3">Location</h4>
+        <h4 className="font-medium mb-3">{t("listing.location")}</h4>
         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
           <SelectTrigger data-testid="filter-location">
-            <SelectValue placeholder="All locations" />
+            <SelectValue placeholder={t("browse.allLocations")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Locations</SelectItem>
+            <SelectItem value="all">{t("browse.allLocations")}</SelectItem>
             {LOCATIONS.map((location) => (<SelectItem key={location} value={location}>{location}</SelectItem>))}
           </SelectContent>
         </Select>
       </div>
       <div>
-        <h4 className="font-medium mb-3">Price Range (AED)</h4>
+        <h4 className="font-medium mb-3">{t("browse.priceRange")}</h4>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {PRICE_PRESETS.map((p) => {
             const active = valueRange[0] === p.range[0] && valueRange[1] === p.range[1];
@@ -599,9 +601,9 @@ export function BrowsePage() {
     <div className="bg-bareter-off-white dark:bg-background min-h-screen">
     <div className="container px-2 sm:px-4 py-4 sm:py-8 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-3 hidden sm:flex items-center gap-1.5">
-        <Link href="/" className="hover:text-bareter-teal">Home</Link>
+        <Link href="/" className="hover:text-bareter-teal">{t("nav.home")}</Link>
         <span>›</span>
-        <span className="text-bareter-navy dark:text-foreground">Browse</span>
+        <span className="text-bareter-navy dark:text-foreground">{t("browse.title")}</span>
       </nav>
       <div className="flex items-center gap-2 mb-6 overflow-x-auto scrollbar-hide">
         <Button
@@ -611,7 +613,7 @@ export function BrowsePage() {
           data-testid="tab-discover"
         >
           <Sparkles className="h-4 w-4" />
-          Discover
+          {t("browse.discover")}
         </Button>
         <Button
           variant={activeTab === "search" ? "bareter" : "bareter-outline"}
@@ -620,7 +622,7 @@ export function BrowsePage() {
           data-testid="tab-search"
         >
           <Search className="h-4 w-4" />
-          Search & Filter
+          {t("browse.searchFilter")}
         </Button>
       </div>
 
@@ -630,7 +632,7 @@ export function BrowsePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Crown className="h-5 w-5 text-bareter-gold" />
-                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-featured-title">Featured Listings</h2>
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-featured-title">{t("browse.featuredListings")}</h2>
               </div>
               <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-featured">
                 {featuredListings.slice(0, 3).map((listing) => (
@@ -646,10 +648,10 @@ export function BrowsePage() {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Package className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-categories-title">Browse by Category</h2>
+              <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-categories-title">{t("browse.browseByCategory")}</h2>
               <Link href="/map" className="ms-auto inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium" data-testid="link-map-view">
                 <MapPin className="h-3.5 w-3.5" />
-                Map view
+                {t("browse.mapView")}
               </Link>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -693,8 +695,8 @@ export function BrowsePage() {
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="h-5 w-5 text-bareter-gold" />
-                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-recommended-barters-title">Recommended Barters</h2>
-                <span className="text-xs text-muted-foreground ml-1">Based on your profile</span>
+                <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-recommended-barters-title">{t("browse.recommendedBarters")}</h2>
+                <span className="text-xs text-muted-foreground ml-1">{t("browse.basedOnProfile")}</span>
               </div>
               <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-recommended">
                 {recommendedListings.slice(0, 6).map((listing) => (
@@ -709,7 +711,7 @@ export function BrowsePage() {
               <div className="flex items-center gap-2 mb-4">
                 <MapPin className="h-5 w-5 text-primary" />
                 <h2 className="text-lg font-semibold text-bareter-navy dark:text-foreground" data-testid="text-nearby-title">
-                  Near You{userCity ? ` — ${userCity}` : ""}
+                  {t("browse.nearYou")}{userCity ? ` — ${userCity}` : ""}
                 </h2>
               </div>
               <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-nearby">
@@ -825,30 +827,30 @@ export function BrowsePage() {
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search listings..." value={search} onChange={(e) => setSearch(e.target.value)} className="ps-9" data-testid="input-search" />
+              <Input placeholder={t("browse.searchListings")} value={search} onChange={(e) => setSearch(e.target.value)} className="ps-9" data-testid="input-search" />
             </div>
             <div className="flex gap-2 flex-wrap">
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[180px]" data-testid="select-sort">
-                  <ArrowUpDown className="h-4 w-4 me-2" /><SelectValue placeholder="Sort by" />
+                  <ArrowUpDown className="h-4 w-4 me-2" /><SelectValue placeholder={t("browse.sortBy")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="newest">Newest First</SelectItem>
-                  <SelectItem value="oldest">Oldest First</SelectItem>
-                  <SelectItem value="value-high">Highest Value</SelectItem>
-                  <SelectItem value="value-low">Lowest Value</SelectItem>
-                  <SelectItem value="popular">Most Popular</SelectItem>
+                  <SelectItem value="newest">{t("browse.newestFirst")}</SelectItem>
+                  <SelectItem value="oldest">{t("browse.oldestFirst")}</SelectItem>
+                  <SelectItem value="value-high">{t("browse.highValue")}</SelectItem>
+                  <SelectItem value="value-low">{t("browse.lowValue")}</SelectItem>
+                  <SelectItem value="popular">{t("browse.mostPopular")}</SelectItem>
                 </SelectContent>
               </Select>
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="outline" className="md:hidden" data-testid="button-filters-mobile">
-                    <Filter className="h-4 w-4 me-2" />Filters
+                    <Filter className="h-4 w-4 me-2" />{t("browse.filters")}
                     {hasActiveFilters && <Badge variant="secondary" className="ms-2">{selectedCategories.length + (verifiedOnly ? 1 : 0)}</Badge>}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80">
-                  <SheetHeader className="mb-6"><SheetTitle>Filters</SheetTitle></SheetHeader>
+                  <SheetHeader className="mb-6"><SheetTitle>{t("browse.filters")}</SheetTitle></SheetHeader>
                   <FilterContent />
                 </SheetContent>
               </Sheet>
@@ -858,7 +860,7 @@ export function BrowsePage() {
           <div className="flex gap-8">
             <aside className="hidden md:block w-[280px] flex-shrink-0">
               <Card><CardContent className="p-4">
-                <h3 className="font-semibold mb-4 flex items-center gap-2"><Filter className="h-4 w-4" />Filters</h3>
+                <h3 className="font-semibold mb-4 flex items-center gap-2"><Filter className="h-4 w-4" />{t("browse.filters")}</h3>
                 <FilterContent />
               </CardContent></Card>
             </aside>
@@ -866,7 +868,7 @@ export function BrowsePage() {
             <div className="flex-1">
               <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
                 <p className="text-muted-foreground">
-                  {isLoading ? "Loading..." : <><span className="font-medium text-foreground">{sortedListings.length}</span> listings found</>}
+                  {isLoading ? t("browse.loading") : <><span className="font-medium text-foreground">{sortedListings.length}</span> {t("browse.listings")}</>}
                 </p>
                 <div className="flex items-center gap-2">
                   {user && hasActiveFilters && (
@@ -879,14 +881,14 @@ export function BrowsePage() {
                       data-testid="button-save-search"
                     >
                       <Star className="h-3.5 w-3.5" />
-                      Save Search
+                      {t("browse.saveSearch")}
                       {savedSearches && savedSearches.length > 0 && (
                         <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 ms-0.5">{savedSearches.length}</Badge>
                       )}
                     </Button>
                   )}
                   <Link href="/create-listing">
-                    <Button className="gap-2" data-testid="button-create-listing"><Sparkles className="h-4 w-4" />Create Listing</Button>
+                    <Button className="gap-2" data-testid="button-create-listing"><Sparkles className="h-4 w-4" />{t("browse.createListing")}</Button>
                   </Link>
                 </div>
               </div>
@@ -901,9 +903,9 @@ export function BrowsePage() {
                 <Card>
                   <CardContent className="py-16 text-center">
                     <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4"><Search className="h-8 w-8 text-muted-foreground" /></div>
-                    <h3 className="font-semibold text-lg mb-2">No listings found</h3>
-                    <p className="text-muted-foreground mb-4">Try adjusting your filters or search terms</p>
-                    <Button variant="outline" onClick={clearFilters}>Clear Filters</Button>
+                    <h3 className="font-semibold text-lg mb-2">{t("browse.noListings")}</h3>
+                    <p className="text-muted-foreground mb-4">{t("browse.noListingsDesc")}</p>
+                    <Button variant="outline" onClick={clearFilters}>{t("browse.clearFilters")}</Button>
                   </CardContent>
                 </Card>
               ) : (

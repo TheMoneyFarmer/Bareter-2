@@ -571,9 +571,9 @@ function FeedCard({ post }: { post: PostWithUser }) {
 
   const handleProposeBarter = () => {
     if (!gate()) return;
-    const kycApproved = user!.kycStatus === "APPROVED";
-    const kybApproved = user!.kybStatus === "APPROVED";
-    if (!kycApproved && !kybApproved) {
+    if (!user) { navigate("/login"); return; }
+    const isVerified = user.isVerified || user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED";
+    if (!isVerified) {
       toast({
         title: "Verification required",
         description: "Please verify your identity before proposing a barter.",
@@ -582,7 +582,8 @@ function FeedCard({ post }: { post: PostWithUser }) {
       navigate("/profile");
       return;
     }
-    navigate("/create-listing");
+    // Navigate to user profile so they can send a direct message / barter proposal
+    navigate(`/users/${post.userId}`);
   };
 
   const declaredValue = post.declaredValue ? parseFloat(post.declaredValue as string) : 0;

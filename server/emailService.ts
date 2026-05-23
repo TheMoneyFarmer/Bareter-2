@@ -961,8 +961,10 @@ export async function sendVerificationUnderReviewEmail(
 // CAN-SPAM/GDPR/UAE PDPL "marketing-style" rules.
 
 function buildAppBaseUrl(): string {
-  const explicit = process.env.APP_BASE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
+  // PUBLIC_APP_URL is the externally-reachable URL used in emails and links.
+  // APP_BASE_URL may point to localhost — never use it for email links.
+  const publicUrl = process.env.PUBLIC_APP_URL?.trim();
+  if (publicUrl) return publicUrl.replace(/\/$/, "");
   if (process.env.REPLIT_DOMAINS) {
     const host = process.env.REPLIT_DOMAINS.split(",")[0]?.trim();
     if (host) return `https://${host}`;
@@ -1141,4 +1143,145 @@ export async function sendEngagementReminderEmail(
   });
   const text = `${greeting}\n\n${copy.b(greeting, safeTitle)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
   return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+}
+
+// ─── Listing Published ────────────────────────────────────────────────────────
+
+export async function sendListingPublishedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; listingId: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Listing published email to ${toEmail} skipped`);
+    return false;
+  }
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const listingUrl = `${opts.baseUrl}/listings/${opts.listingId}`;
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Your listing is live! Congratulations!</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Congratulations! Your listing <strong>"${safeTitle}"</strong> is now published on ${APP_NAME} and visible to verified traders worldwide. You will be notified as soon as someone sends you a barter offer.
+    </p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; color: #166534; font-size: 13px; line-height: 1.5;">
+        Tip: Share your listing link with your network to get more visibility and faster offers.
+      </p>
+    </div>
+    <a href="${listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      View My Listing
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nCongratulations! Your listing "${opts.listingTitle}" is now live on ${APP_NAME}.\n\nView it here: ${listingUrl}\n\nYou will be notified when someone sends a barter offer.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" is live on ${APP_NAME}!`, html, text });
+}
+
+// ─── Deal Status Emails ───────────────────────────────────────────────────────
+
+export async function sendDealStatusEmail(
+  toEmail: string,
+  opts: {
+    recipientName?: string | null;
+    counterpartyName: string;
+    status: "proposed" | "accepted" | "cancelled";
+    dealId: string;
+    baseUrl: string;
+  },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Deal status (${opts.status}) email to ${toEmail} skipped`);
+    return false;
+  }
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const dealUrl = `${opts.baseUrl}/deals/${opts.dealId}`;
+
+  const configs = {
+    proposed: {
+      emoji: "🤝",
+      title: "New barter offer received!",
+      body: `<strong>${opts.counterpartyName}</strong> has sent you a barter offer on ${APP_NAME}. Review the details and accept or decline.`,
+      cta: "View Offer",
+      ctaUrl: dealUrl,
+      subject: `New barter offer from ${opts.counterpartyName} on ${APP_NAME}`,
+      color: "#136c68",
+    },
+    accepted: {
+      emoji: "✅",
+      title: "Your offer was accepted!",
+      body: `Great news! <strong>${opts.counterpartyName}</strong> has accepted your barter offer. Head over to the deal page to coordinate the exchange.`,
+      cta: "View Deal",
+      ctaUrl: dealUrl,
+      subject: `${opts.counterpartyName} accepted your barter offer on ${APP_NAME}`,
+      color: "#065f46",
+    },
+    cancelled: {
+      emoji: "❌",
+      title: "Barter deal cancelled",
+      body: `Your barter deal with <strong>${opts.counterpartyName}</strong> has been cancelled. You can browse other listings or create a new offer at any time.`,
+      cta: "Browse Listings",
+      ctaUrl: `${opts.baseUrl}/browse`,
+      subject: `Barter deal with ${opts.counterpartyName} was cancelled`,
+      color: "#991b1b",
+    },
+  };
+
+  const config = configs[opts.status];
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 20px; color: ${config.color}; margin-bottom: 8px; text-align: center;">${config.emoji} ${config.title}</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${config.body}</p>
+    <a href="${config.ctaUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      ${config.cta}
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${config.title}\n\n${config.body.replace(/<[^>]+>/g, "")}\n\n${config.cta}: ${config.ctaUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: config.subject, html, text });
+}
+
+// ─── Profile Updated ──────────────────────────────────────────────────────────
+
+export async function sendProfileUpdatedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Profile updated</h2>
+    <p style="color: #6b7280; font-size: 14px; line-height: 1.55;">${greeting} your ${APP_NAME} profile has been updated successfully.</p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; color: #166534; font-size: 13px;">Your profile changes have been saved and are now visible to other traders.</p>
+    </div>
+    <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">If you did not make this change, please <a href="mailto:hello@bareter.com" style="color: #136c68;">contact support</a> immediately.</p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour ${APP_NAME} profile has been updated successfully.\n\nIf you did not make this change, contact support at hello@bareter.com.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your ${APP_NAME} profile has been updated`, html, text });
 }

@@ -279,7 +279,7 @@ export async function registerRoutes(
         createTableIfMissing: true,
       }),
       cookie: {
-        secure: true, // Always secure since Replit serves over HTTPS
+        secure: process.env.NODE_ENV === "production",
         httpOnly: true,
         sameSite: "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -1071,6 +1071,13 @@ export async function registerRoutes(
       }
       const { password, ...userWithoutPassword } = updatedUser;
       res.json(await sanitizeAdminFlag(userWithoutPassword));
+
+      // Send profile updated confirmation email
+      if (updatedUser.email) {
+        import("./emailService").then(({ sendProfileUpdatedEmail }) => {
+          sendProfileUpdatedEmail(updatedUser.email!, { recipientName: updatedUser.fullName ?? undefined }).catch(() => {});
+        }).catch(() => {});
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -1487,6 +1494,20 @@ export async function registerRoutes(
       });
       const listing = await storage.createListing(data);
       res.json(listing);
+
+      // Send listing created congratulations email
+      storage.getUser(req.session.userId!).then((listingOwner) => {
+        if (listingOwner?.email) {
+          import("./emailService").then(({ sendListingPublishedEmail }) => {
+            sendListingPublishedEmail(listingOwner.email!, {
+              recipientName: listingOwner.fullName ?? undefined,
+              listingTitle: listing.title,
+              listingId: listing.id,
+              baseUrl: process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://bareter.com",
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      }).catch(() => {});
 
       import("./agents/moderationAgent").then(({ moderateAndLog }) => {
         moderateAndLog("listing", listing.id, {
@@ -2083,6 +2104,52 @@ export async function registerRoutes(
       if (data.state === "cancelled") stateTimestamps.cancelledAt = new Date();
 
       let updated = await storage.updateDeal(param(req.params.id), { ...data, ...stateTimestamps });
+
+      // Email on key deal state transitions
+      if (data.state && data.state !== deal.state) {
+        const appBaseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://bareter.com";
+        try {
+          const [seekerUser, providerUser] = await Promise.all([
+            storage.getUser(deal.seekerId),
+            storage.getUser(deal.providerId),
+          ]);
+          const { sendDealStatusEmail } = await import("./emailService");
+
+          if (data.state === "accepted" && seekerUser?.email) {
+            sendDealStatusEmail(seekerUser.email, {
+              recipientName: seekerUser.fullName ?? undefined,
+              counterpartyName: providerUser?.fullName || "the provider",
+              status: "accepted",
+              dealId: deal.id,
+              baseUrl: appBaseUrl,
+            }).catch(() => {});
+          }
+
+          if (data.state === "proposed" && providerUser?.email) {
+            sendDealStatusEmail(providerUser.email, {
+              recipientName: providerUser.fullName ?? undefined,
+              counterpartyName: seekerUser?.fullName || "a member",
+              status: "proposed",
+              dealId: deal.id,
+              baseUrl: appBaseUrl,
+            }).catch(() => {});
+          }
+
+          if (data.state === "cancelled") {
+            const cancellerName = isSeeker ? seekerUser?.fullName : providerUser?.fullName;
+            const otherUser = isSeeker ? providerUser : seekerUser;
+            if (otherUser?.email) {
+              sendDealStatusEmail(otherUser.email, {
+                recipientName: otherUser.fullName ?? undefined,
+                counterpartyName: cancellerName || "the other party",
+                status: "cancelled",
+                dealId: deal.id,
+                baseUrl: appBaseUrl,
+              }).catch(() => {});
+            }
+          }
+        } catch {}
+      }
 
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
@@ -2850,11 +2917,25 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/verify", requireAdmin, async (req, res) => {
     try {
       const { verified } = req.body;
-      const user = await storage.updateUser(param(req.params.id), { isVerified: verified });
+      const updateData: Record<string, unknown> = { isVerified: verified };
+      if (verified) {
+        updateData.verificationStatus = "verified";
+        updateData.kycStatus = "APPROVED";
+      }
+      const user = await storage.updateUser(param(req.params.id), updateData);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
       await logAdminAction(req, verified ? "user_verified" : "user_unverified", "user", user.id, { email: user.email });
+      // Send verification outcome email
+      if (user.email) {
+        const { sendVerificationApprovedEmail, sendVerificationDeclinedEmail } = await import("./emailService");
+        if (verified) {
+          sendVerificationApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        } else {
+          sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined, reason: "Your verification status was updated by the Bareter team." }).catch(() => {});
+        }
+      }
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
@@ -6326,20 +6407,35 @@ export async function registerRoutes(
   // Valuation advice
   app.post("/api/ai/valuation", requireAuth, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
     try {
-      const { title, description, category, condition } = req.body;
-      if (!title || !description || !category) {
-        return res.status(400).json({ message: "Title, description, and category are required" });
+      const { title, description, category, condition, imageUrls } = req.body;
+      if (!title || !description) {
+        return res.status(400).json({ message: "Title and description are required" });
       }
+      // Resolve image URLs — accept both absolute https:// URLs (production/GCS)
+      // and relative /uploads/... paths (local dev). Convert relative paths to
+      // absolute using the server's own base URL so the valuation agent can
+      // fetch them via HTTP and convert to base64 for OpenAI Vision.
+      const port = process.env.PORT || "5000";
+      const selfBase = process.env.APP_BASE_URL || `http://localhost:${port}`;
+      const sanitizedImageUrls = Array.isArray(imageUrls)
+        ? imageUrls
+            .filter((u: unknown) => typeof u === "string" && (u as string).length > 0)
+            .map((u: string) => u.startsWith("/") ? `${selfBase}${u}` : u)
+            .filter((u: string) => u.startsWith("http"))
+            .slice(0, 4)
+        : undefined;
       const { getValuation } = await import("./agents/valuationAgent");
       const sessionUser = req.session.userId ? await storage.getUser(req.session.userId) : null;
-      const advice = await getValuation(title, description, category, condition, req.session.userId, {
-        country: sessionUser?.country,
-        city: sessionUser?.city,
-      });
+      const advice = await getValuation(
+        title, description, category, condition,
+        req.session.userId,
+        { country: sessionUser?.country, city: sessionUser?.city },
+        sanitizedImageUrls,
+      );
       res.json(advice);
     } catch (error) {
-      console.error("AI valuation error:", error);
-      res.status(500).json({ message: "Valuation service unavailable" });
+      console.error("Bareter Value error:", error);
+      res.status(500).json({ message: "Bareter Value service unavailable" });
     }
   });
 

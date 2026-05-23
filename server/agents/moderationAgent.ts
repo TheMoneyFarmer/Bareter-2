@@ -133,8 +133,12 @@ export async function moderateAndLog(
 
   if (contentType === "listing") {
     try {
+      // Skip auto-deactivation if the listing owner is an admin
+      const listingOwner = userId ? await storage.getUser(userId) : null;
+      const isAdminUser = listingOwner?.role === "admin" || listingOwner?.role === "super_admin" || listingOwner?.isAdmin === true;
+
       await db.update(listings).set({ moderationStatus: result.action }).where(eq(listings.id, targetId));
-      if (result.action === "flagged" || result.action === "rejected") {
+      if (!isAdminUser && (result.action === "flagged" || result.action === "rejected")) {
         await db.update(listings).set({ isActive: false }).where(eq(listings.id, targetId));
         if (userId) {
           await storage.createNotification({
