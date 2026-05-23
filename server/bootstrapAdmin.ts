@@ -98,13 +98,20 @@ export async function bootstrapAdmin(): Promise<void> {
     }
 
     // Defensively demote any admin user whose email is NOT in the allowlist.
-    // ADMIN_EMAIL_ALLOWLIST is comma-separated; the bootstrap email is always
-    // included so it is never accidentally demoted either.
+    // Merge the env-var list WITH the DB-stored list so that admins created
+    // through the admin panel are never accidentally demoted on restart.
     const allowlistRaw = process.env.ADMIN_EMAIL_ALLOWLIST ?? "";
-    const allowedEmails = [
-      email,
-      ...allowlistRaw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
-    ];
+    const envEmails = allowlistRaw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+
+    // Also read the DB-stored allowlist so panel-created admins are protected.
+    let dbEmails: string[] = [];
+    try {
+      const { storage } = await import("./storage");
+      const dbRaw = await storage.getAppSetting("admin_email_allowlist");
+      if (dbRaw) dbEmails = dbRaw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+    } catch { /* non-fatal */ }
+
+    const allowedEmails = [email, ...envEmails, ...dbEmails];
     // Deduplicate
     const protectedEmails = [...new Set(allowedEmails)];
 

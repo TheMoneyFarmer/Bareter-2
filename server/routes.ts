@@ -597,9 +597,15 @@ export async function registerRoutes(
           passwordResetExpires: expires,
         });
 
-        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
-        const baseUrl = `${protocol}://${host}`;
+        // Always use the publicly reachable URL so the link works on any device.
+        // Falls back to APP_BASE_URL for local dev when PUBLIC_APP_URL is not set.
+        const baseUrl = (process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, ""))
+          || (process.env.APP_BASE_URL?.trim().replace(/\/+$/, ""))
+          || (() => {
+            const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+            const host = req.headers["x-forwarded-host"] || req.headers.host;
+            return `${protocol}://${host}`;
+          })();
 
         const { sendPasswordResetEmail } = await import("./emailService");
         await sendPasswordResetEmail(user.email, token, baseUrl);
@@ -2890,7 +2896,8 @@ export async function registerRoutes(
   // Admin routes
   app.post("/api/admin/users/create", requireAdmin, async (req, res) => {
     try {
-      const { fullName, email, password, phone, role, accountType, isVerified } = req.body;
+      const { fullName, password, phone, role, accountType, isVerified } = req.body;
+      const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
       if (!fullName || !email || !password) {
         return res.status(400).json({ message: "fullName, email, and password are required" });
       }
@@ -2900,7 +2907,6 @@ export async function registerRoutes(
         const phoneUser = await storage.getUserByPhone(phone);
         if (phoneUser) return res.status(400).json({ message: "Phone number already in use" });
       }
-      const { hashPassword } = await import("./auth");
       const hashedPassword = await hashPassword(password);
       let user = await storage.createUser({
         fullName,
