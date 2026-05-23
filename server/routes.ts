@@ -243,7 +243,8 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
     return res.status(401).json({ message: "Unauthorized" });
   }
   const user = await storage.getUser(req.session.userId);
-  if (!user?.isAdmin) {
+  const hasAdminRole = user?.isAdmin || user?.role === "super_admin" || user?.role === "admin";
+  if (!hasAdminRole) {
     return res.status(403).json({ message: "Forbidden" });
   }
   const allow = await getAdminEmailAllowlist();
