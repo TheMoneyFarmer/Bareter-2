@@ -2513,88 +2513,235 @@ export async function registerRoutes(
     }
   });
 
-  // Deal contract PDF download
+  // AI-powered deal contract — reads chat history and extracts agreed terms,
+  // deliverables, and timelines to produce a fully personalised PDF.
   app.get("/api/deals/:id/contract", requireAuth, async (req, res) => {
     try {
       const deal = await storage.getDealWithUsers(param(req.params.id));
-      if (!deal) {
-        return res.status(404).json({ message: "Deal not found" });
-      }
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
       if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      
-      // If contract already exists, redirect to it
-      if (deal.contractPdfUrl) {
-        return res.redirect(deal.contractPdfUrl);
+
+      // Fetch all chat messages for this deal
+      const chatMessages = await storage.getMessagesByDeal(deal.id);
+      const chatTranscript = chatMessages
+        .map((m) => `${m.sender?.fullName ?? "Unknown"}: ${m.content}`)
+        .join("\n");
+
+      // Build deal context for the AI
+      const seekerName = deal.seeker?.fullName || deal.seeker?.businessName || "Party A";
+      const providerName = deal.provider?.fullName || deal.provider?.businessName || "Party B";
+      const deliverablesText = Array.isArray(deal.deliverables) && deal.deliverables.length
+        ? deal.deliverables.map((d: any) => `- ${d.label}`).join("\n")
+        : "Not specified";
+
+      // AI extracts personalised terms from the conversation
+      interface ContractTerms {
+        summary: string;
+        partyADeliverables: string[];
+        partyBDeliverables: string[];
+        agreedTimeline: string;
+        specialConditions: string[];
+        terms: string[];
       }
-      
-      // Generate contract PDF using jsPDF
+
+      let contractTerms: ContractTerms = {
+        summary: `${seekerName} and ${providerName} agree to exchange their respective goods/services as described below.`,
+        partyADeliverables: [deal.seekerOffer],
+        partyBDeliverables: [deal.providerOffer],
+        agreedTimeline: deal.timeline || "To be mutually agreed",
+        specialConditions: [],
+        terms: [
+          "Both parties agree to exchange the goods/services described in this agreement.",
+          "Each party warrants they have full right and authority to exchange the items offered.",
+          "The exchange values stated are agreed estimates and do not constitute cash payment.",
+          "This agreement is governed by the laws of the United Arab Emirates.",
+          "Any disputes shall be resolved through arbitration in Dubai, UAE.",
+          "VAT (5%) may apply to certain barter transactions — consult a tax advisor.",
+        ],
+      };
+
+      // Use AI to enrich the contract when chat has substance
+      if (chatTranscript.trim().length > 50) {
+        try {
+          const { jsonCompletion } = await import("./agents/llm");
+          const result = await jsonCompletion<ContractTerms>(
+            [
+              {
+                role: "system",
+                content: `You are a UAE commercial lawyer drafting a barter agreement.
+Analyse the deal details and chat conversation to extract what was actually agreed.
+Return a JSON object with these fields:
+- summary: one paragraph describing the exchange in plain legal English
+- partyADeliverables: array of strings — what ${seekerName} will deliver (from chat + deal offer)
+- partyBDeliverables: array of strings — what ${providerName} will deliver (from chat + deal offer)
+- agreedTimeline: string — any timeline/deadline agreed in chat, or "As mutually agreed"
+- specialConditions: array of strings — any specific conditions, quality standards, or requirements mentioned in chat
+- terms: array of numbered strings (start with "1.") — 6-8 personalised legal terms based on the nature of this specific exchange
+
+Be specific and personalised. Extract actual agreed details from the conversation.
+Respond ONLY with valid JSON.`,
+              },
+              {
+                role: "user",
+                content: `DEAL REFERENCE: ${deal.dealNumber}
+DATE: ${new Date().toLocaleDateString("en-AE")}
+
+PARTY A (Seeker): ${seekerName}
+Offers: ${deal.seekerOffer}
+Estimated Value: AED ${Number(deal.seekerValue).toLocaleString()}
+
+PARTY B (Provider): ${providerName}
+Offers: ${deal.providerOffer}
+Estimated Value: AED ${Number(deal.providerValue).toLocaleString()}
+
+AGREED DELIVERABLES:
+${deliverablesText}
+
+TIMELINE: ${deal.timeline || "Not specified"}
+
+FULL CHAT TRANSCRIPT:
+${chatTranscript || "(No messages yet)"}`,
+              },
+            ],
+            {
+              agentName: "legal",
+              command: "generate_contract",
+              model: "gemini-2.0-flash",
+              maxTokens: 1500,
+              temperature: 0.3,
+              agentBudgetJsonFallback: contractTerms,
+            },
+          );
+          if (result.data) contractTerms = result.data;
+        } catch {
+          // Fall back to template terms — contract still generates
+        }
+      }
+
+      // Build the PDF
       const { jsPDF } = await import("jspdf");
       const doc = new jsPDF();
-      
-      // Header
-      doc.setFontSize(20);
-      doc.text("BARTER AGREEMENT CONTRACT", 105, 20, { align: "center" });
-      
-      // Contract number and date
-      doc.setFontSize(10);
-      doc.text(`Contract Reference: ${deal.dealNumber}`, 20, 35);
-      doc.text(`Date: ${new Date(deal.createdAt!).toLocaleDateString()}`, 20, 42);
-      
-      // Parties
-      doc.setFontSize(12);
-      doc.text("PARTIES TO THIS AGREEMENT", 20, 55);
-      doc.setFontSize(10);
-      doc.text(`Party A (Seeker): ${deal.seeker?.fullName || deal.seeker?.businessName || "N/A"}`, 25, 65);
-      doc.text(`Party B (Provider): ${deal.provider?.fullName || deal.provider?.businessName || "N/A"}`, 25, 72);
-      
-      // Exchange Details
-      doc.setFontSize(12);
-      doc.text("EXCHANGE DETAILS", 20, 90);
-      doc.setFontSize(10);
-      doc.text(`Party A Offers: ${deal.seekerOffer}`, 25, 100);
-      doc.text(`Estimated Value: AED ${Number(deal.seekerValue).toLocaleString()}`, 25, 107);
-      doc.text(`Party B Offers: ${deal.providerOffer}`, 25, 117);
-      doc.text(`Estimated Value: AED ${Number(deal.providerValue).toLocaleString()}`, 25, 124);
-      
-      // Terms
-      doc.setFontSize(12);
-      doc.text("TERMS AND CONDITIONS", 20, 142);
-      doc.setFontSize(10);
-      const terms = [
-        "1. Both parties agree to exchange the goods/services described above.",
-        "2. Each party warrants they have the right to exchange the items offered.",
-        "3. The exchange values are agreed estimates and do not constitute cash payment.",
-        "4. This agreement is governed by UAE law.",
-        "5. Any disputes shall be resolved through arbitration in Dubai.",
-      ];
-      let yPos = 152;
-      terms.forEach((term) => {
-        const lines = doc.splitTextToSize(term, 170);
-        doc.text(lines, 25, yPos);
-        yPos += lines.length * 6;
-      });
-      
-      // UAE VAT Notice
-      doc.setFontSize(10);
-      doc.text("VAT Notice: Standard UAE VAT (5%) may apply to certain barter transactions.", 20, 220);
-      doc.text("Consult a tax advisor for specific guidance.", 20, 227);
-      
-      // Signatures
-      doc.setFontSize(12);
-      doc.text("SIGNATURES", 20, 245);
-      doc.line(25, 265, 90, 265);
-      doc.line(120, 265, 185, 265);
-      doc.setFontSize(10);
-      doc.text("Party A Signature", 25, 272);
-      doc.text("Party B Signature", 120, 272);
-      
-      // Footer
-      doc.setFontSize(8);
-      doc.text("Generated by Bareter Marketplace | www.bareter.com", 105, 285, { align: "center" });
-      
-      // Send PDF
+      const pageW = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const contentW = pageW - margin * 2;
+      let y = 20;
+
+      const addText = (text: string, fontSize: number, bold = false, centerAlign = false) => {
+        doc.setFontSize(fontSize);
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        const lines = doc.splitTextToSize(text, contentW);
+        if (centerAlign) {
+          doc.text(lines, pageW / 2, y, { align: "center" });
+        } else {
+          doc.text(lines, margin, y);
+        }
+        y += lines.length * (fontSize * 0.4 + 1.5);
+      };
+
+      const addSection = (title: string) => {
+        y += 4;
+        addText(title, 11, true);
+        y += 1;
+        doc.setDrawColor(20, 83, 75);
+        doc.line(margin, y, pageW - margin, y);
+        y += 5;
+      };
+
+      const checkPage = () => {
+        if (y > 265) { doc.addPage(); y = 20; }
+      };
+
+      // ── Header ──
+      doc.setFillColor(20, 83, 75);
+      doc.rect(0, 0, pageW, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("BARTER AGREEMENT", pageW / 2, 12, { align: "center" });
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Bareter Marketplace — Powered by AI Contract Drafting", pageW / 2, 21, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+      y = 36;
+
+      // ── Reference block ──
+      addText(`Contract Reference: ${deal.dealNumber}`, 9);
+      addText(`Date: ${new Date().toLocaleDateString("en-AE", { day: "2-digit", month: "long", year: "numeric" })}`, 9);
+      addText(`Status: Pending Signature`, 9);
+      y += 4;
+
+      // ── Summary ──
+      addSection("AGREEMENT SUMMARY");
+      addText(contractTerms.summary, 10);
+
+      // ── Parties ──
+      checkPage();
+      addSection("PARTIES TO THIS AGREEMENT");
+      addText(`Party A — ${seekerName}`, 10, true);
+      if (deal.seeker?.email) addText(`Email: ${deal.seeker.email}`, 9);
+      if (deal.seeker?.city) addText(`Location: ${deal.seeker.city}`, 9);
+      y += 3;
+      addText(`Party B — ${providerName}`, 10, true);
+      if (deal.provider?.email) addText(`Email: ${deal.provider.email}`, 9);
+      if (deal.provider?.city) addText(`Location: ${deal.provider.city}`, 9);
+
+      // ── Exchange Details ──
+      checkPage();
+      addSection("EXCHANGE DETAILS");
+      addText(`Party A provides (value: AED ${Number(deal.seekerValue).toLocaleString()})`, 10, true);
+      contractTerms.partyADeliverables.forEach((d) => { checkPage(); addText(`  • ${d}`, 9); });
+      y += 3;
+      addText(`Party B provides (value: AED ${Number(deal.providerValue).toLocaleString()})`, 10, true);
+      contractTerms.partyBDeliverables.forEach((d) => { checkPage(); addText(`  • ${d}`, 9); });
+
+      // ── Timeline ──
+      checkPage();
+      addSection("AGREED TIMELINE");
+      addText(contractTerms.agreedTimeline, 10);
+
+      // ── Special Conditions ──
+      if (contractTerms.specialConditions?.length > 0) {
+        checkPage();
+        addSection("SPECIAL CONDITIONS & REQUIREMENTS");
+        contractTerms.specialConditions.forEach((c) => { checkPage(); addText(`  • ${c}`, 9); });
+      }
+
+      // ── Terms ──
+      checkPage();
+      addSection("TERMS AND CONDITIONS");
+      contractTerms.terms.forEach((term) => { checkPage(); addText(term, 9); y += 1; });
+
+      // ── Signatures ──
+      checkPage();
+      if (y > 220) { doc.addPage(); y = 20; }
+      y = Math.max(y + 10, 240);
+      addSection("SIGNATURES");
+      doc.setDrawColor(0, 0, 0);
+      doc.line(margin, y + 18, margin + 70, y + 18);
+      doc.line(pageW / 2 + 5, y + 18, pageW / 2 + 75, y + 18);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${seekerName} (Party A)`, margin, y + 23);
+      doc.text(`${providerName} (Party B)`, pageW / 2 + 5, y + 23);
+      doc.text("Signature & Date", margin, y + 28);
+      doc.text("Signature & Date", pageW / 2 + 5, y + 28);
+
+      // ── Footer ──
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(120, 120, 120);
+        doc.text(
+          `Bareter Marketplace | www.bareter.com | Page ${i} of ${totalPages} | ${deal.dealNumber}`,
+          pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" }
+        );
+        doc.setTextColor(0, 0, 0);
+      }
+
       const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="Contract_${deal.dealNumber}.pdf"`);
