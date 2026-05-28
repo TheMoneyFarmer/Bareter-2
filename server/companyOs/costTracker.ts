@@ -15,7 +15,7 @@ import { agentBudgets, companyOsLogs } from "@shared/schema";
 // `server/replit_integrations/chat/routes.ts`. If you change this, also
 // add a matching entry to MODEL_USD_PER_1K_TOKENS below or estimateCostAed
 // will fall back to the gpt-4o-mini blended rate.
-export const DEFAULT_MODEL = "gemini-1.5-flash";
+export const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
 // Thrown by `chatCompletion`/`jsonCompletion` when the *global* monthly
 // AED budget gate fires. Callers (moderation, valuation, etc.) catch
@@ -327,10 +327,22 @@ export function getAgentBudgetAed(agent: string): number {
 // conservative (round up) so the budget gate fires earlier rather than
 // later.
 const MODEL_USD_PER_1K_TOKENS: Record<string, number> = {
-  "gpt-4o-mini": 0.0006, // ~$0.15/M in + $0.60/M out, blended high
+  // Anthropic Claude
+  "claude-haiku-4-5-20251001": 0.0015, // $0.80/M in + $4/M out, blended conservatively
+  "claude-sonnet-4-6": 0.009,          // $3/M in + $15/M out, blended conservatively
+  "claude-opus-4-7": 0.045,            // $15/M in + $75/M out, blended conservatively
+  // Google Gemini (kept for backward compat with old log rows)
+  "gemini-2.0-flash": 0.0001,
+  "gemini-2.0-flash-lite": 0.00004,
+  "gemini-2.5-flash": 0.0002,
+  "models/gemini-2.0-flash": 0.0001,
+  "models/gemini-2.0-flash-lite": 0.00004,
+  "models/gemini-2.5-flash": 0.0002,
+  // OpenAI (kept for backward compat with old log rows)
+  "gpt-4o-mini": 0.0006,
   "gpt-4o": 0.0125,
   "gpt-4.1-mini": 0.0008,
-  "gpt-5.1": 0.005, // conservative placeholder until official pricing lands
+  "gpt-5.1": 0.005,
 };
 
 function getUsdToAed(): number {

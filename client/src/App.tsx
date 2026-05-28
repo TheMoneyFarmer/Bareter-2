@@ -46,6 +46,7 @@ import { SavedListingsPage } from "@/pages/saved-listings";
 import { MySearchesPage } from "@/pages/my-searches";
 import { ReferralsPage } from "@/pages/referrals";
 import { FeedPage } from "@/pages/feed";
+import { NotificationsPage } from "@/pages/notifications";
 import { CreatePostPage } from "@/pages/create-post";
 import { InboxPage } from "@/pages/inbox";
 import { ForgotPasswordPage } from "@/pages/forgot-password";
@@ -173,6 +174,7 @@ function Router() {
       <Route path="/my-searches" component={MySearchesPage} />
       <Route path="/referrals" component={ReferralsPage} />
       <Route path="/feed" component={FeedPage} />
+      <Route path="/notifications" component={NotificationsPage} />
       <Route path="/create-post" component={CreatePostPage} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />

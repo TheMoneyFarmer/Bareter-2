@@ -36,7 +36,12 @@ import {
   X,
   Zap,
   ChevronRight,
+  UserPlus,
+  UserMinus,
+  UserX,
+  Flag,
 } from "lucide-react";
+import { ReportModal } from "@/components/report-modal";
 import {
   Dialog,
   DialogContent,
@@ -125,6 +130,7 @@ export function UserProfilePage() {
   const [endorseSkill, setEndorseSkill] = useState("");
   const [showEndorseInput, setShowEndorseInput] = useState(false);
   const [showProposeDialog, setShowProposeDialog] = useState(false);
+  const [showReportUser, setShowReportUser] = useState(false);
 
   const { data: profileData, isLoading } = useQuery<PublicUserData>({
     queryKey: ["/api/users", id],
@@ -173,6 +179,57 @@ export function UserProfilePage() {
     onError: () => {
       toast({ title: "Already endorsed", description: "You've already endorsed this skill.", variant: "destructive" });
     },
+  });
+
+  const { data: followData, refetch: refetchFollow } = useQuery<{ isFollowing: boolean }>({
+    queryKey: ["/api/users", id, "is-following"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users/${id}/is-following`);
+      return res.json();
+    },
+    enabled: !!currentUser && !!id,
+  });
+
+  const { data: blockData, refetch: refetchBlock } = useQuery<{ isBlocked: boolean }>({
+    queryKey: ["/api/users", id, "is-blocked"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users/${id}/is-blocked`);
+      return res.json();
+    },
+    enabled: !!currentUser && !!id,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (followData?.isFollowing) {
+        await apiRequest("DELETE", `/api/users/${id}/follow`);
+      } else {
+        await apiRequest("POST", `/api/users/${id}/follow`);
+      }
+    },
+    onSuccess: () => {
+      refetchFollow();
+      const msg = followData?.isFollowing ? "Unfollowed" : "Following";
+      toast({ title: msg });
+    },
+    onError: () => toast({ title: "Action failed", variant: "destructive" }),
+  });
+
+  const blockMutation = useMutation({
+    mutationFn: async () => {
+      if (blockData?.isBlocked) {
+        await apiRequest("DELETE", `/api/users/${id}/block`);
+      } else {
+        await apiRequest("POST", `/api/users/${id}/block`);
+      }
+    },
+    onSuccess: () => {
+      refetchBlock();
+      refetchFollow();
+      const msg = blockData?.isBlocked ? "User unblocked" : "User blocked";
+      toast({ title: msg });
+    },
+    onError: () => toast({ title: "Action failed", variant: "destructive" }),
   });
 
   if (!currentUser) {
@@ -423,6 +480,43 @@ export function UserProfilePage() {
                         Send Message
                       </Button>
                     </Link>
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2"
+                      onClick={() => followMutation.mutate()}
+                      disabled={followMutation.isPending}
+                      data-testid="button-follow-user"
+                    >
+                      {followData?.isFollowing ? (
+                        <><UserMinus className="h-4 w-4" />Unfollow</>
+                      ) : (
+                        <><UserPlus className="h-4 w-4" />Follow</>
+                      )}
+                    </Button>
+                    <Separator className="my-1" />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 gap-1.5 text-muted-foreground hover:text-destructive"
+                        onClick={() => setShowReportUser(true)}
+                        data-testid="button-report-user"
+                      >
+                        <Flag className="h-3.5 w-3.5" />
+                        Report
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`flex-1 gap-1.5 ${blockData?.isBlocked ? "text-destructive hover:text-destructive/80" : "text-muted-foreground hover:text-destructive"}`}
+                        onClick={() => blockMutation.mutate()}
+                        disabled={blockMutation.isPending}
+                        data-testid="button-block-user"
+                      >
+                        <UserX className="h-3.5 w-3.5" />
+                        {blockData?.isBlocked ? "Unblock" : "Block"}
+                      </Button>
+                    </div>
                   </div>
                 </>
               )}
@@ -763,6 +857,13 @@ export function UserProfilePage() {
           )}
         </div>
       </div>
+
+      <ReportModal
+        open={showReportUser}
+        onOpenChange={setShowReportUser}
+        targetType="user"
+        targetId={profileData.id}
+      />
 
       {/* Propose a Barter — pick which of their listings to propose on */}
       <Dialog open={showProposeDialog} onOpenChange={setShowProposeDialog}>

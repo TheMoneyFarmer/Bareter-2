@@ -17,7 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile, type ListingDraft } from "@shared/schema";
+import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile, type ListingDraft, type DealWithUsers } from "@shared/schema";
 import { Link } from "wouter";
 import { FileText, Trash2 } from "lucide-react";
 import {
@@ -40,6 +40,8 @@ import {
   Users,
   Award,
   ThumbsUp,
+  Handshake,
+  ExternalLink,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -652,7 +654,7 @@ export function ProfilePage() {
       <Tabs defaultValue={(() => {
         if (typeof window === "undefined") return "profile";
         const t = new URLSearchParams(window.location.search).get("tab");
-        const allowed = ["profile", "offers", "needs", "endorsements", "portfolio", "drafts", "verification"];
+        const allowed = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"];
         return t && allowed.includes(t) ? t : "profile";
       })()} className="space-y-6">
         <TabsList className="flex w-full overflow-x-auto">
@@ -667,6 +669,10 @@ export function ProfilePage() {
           <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
             <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
             <span className="truncate">{t("profile.tabNeeds")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="deals" className="flex-1 min-w-0" data-testid="tab-deals">
+            <Handshake className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Deals</span>
           </TabsTrigger>
           <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
             <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
@@ -691,6 +697,10 @@ export function ProfilePage() {
             create-listing page from a deep link. */}
         <TabsContent value="drafts">
           <DraftsPanel />
+        </TabsContent>
+
+        <TabsContent value="deals">
+          <DealsPanel />
         </TabsContent>
 
         <TabsContent value="profile">
@@ -1097,6 +1107,116 @@ export function ProfilePage() {
 
 // ── Task #248: Drafts panel ──────────────────────────────────────────
 // Lists all saved drafts for the current user with a "continue" CTA
+const DEAL_STATE_COLORS: Record<string, string> = {
+  proposed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  accepted: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  in_progress: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  delivery: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  cancelled: "bg-muted text-muted-foreground",
+  disputed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+function DealsPanel() {
+  const { user } = useAuth();
+  const [dealFilter, setDealFilter] = useState<"all" | "active" | "completed">("all");
+
+  const { data: deals = [], isLoading } = useQuery<DealWithUsers[]>({
+    queryKey: ["/api/deals"],
+    enabled: !!user,
+  });
+
+  const filtered = deals.filter((d) => {
+    if (dealFilter === "active") return !["completed", "cancelled"].includes(d.state);
+    if (dealFilter === "completed") return d.state === "completed";
+    return true;
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2"><Handshake className="h-5 w-5" />My Deals</CardTitle>
+            <CardDescription className="mt-1">All your barter deals — active and completed</CardDescription>
+          </div>
+          <div className="flex gap-1.5">
+            {(["all", "active", "completed"] as const).map((f) => (
+              <Button
+                key={f}
+                variant={dealFilter === f ? "default" : "outline"}
+                size="sm"
+                className="capitalize h-8"
+                onClick={() => setDealFilter(f)}
+              >
+                {f}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-10">
+            <Handshake className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-30" />
+            <p className="font-semibold">
+              {dealFilter === "active" ? "No active deals" : dealFilter === "completed" ? "No completed deals" : "No deals yet"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {dealFilter === "all"
+                ? "Once you propose or accept a barter deal it will appear here."
+                : `Switch to "All" to see all your deals.`}
+            </p>
+            {dealFilter === "all" && (
+              <Link href="/browse">
+                <Button variant="bareter" size="sm" className="mt-4">Browse Listings</Button>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((deal) => {
+              const isSeeker = deal.seekerId === user?.id;
+              const counterpart = isSeeker ? deal.provider : deal.seeker;
+              return (
+                <Link key={deal.id} href={`/deals/${deal.id}`}>
+                  <div className="flex items-center gap-4 p-4 rounded-xl border hover:bg-muted/40 transition-colors group cursor-pointer">
+                    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-bold">
+                      {counterpart?.fullName?.charAt(0)?.toUpperCase() || "?"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="font-medium text-sm truncate">
+                          {isSeeker ? "You → " : "← "}{counterpart?.fullName || "Unknown"}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] px-1.5 h-4 shrink-0 ${DEAL_STATE_COLORS[deal.state] || ""}`}
+                        >
+                          {deal.state.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{deal.seekerOffer || "Barter deal"}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {new Date(deal.createdAt!).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // that round-trips through ?draft=<id>. Deleting is destructive but
 // scoped (storage layer enforces userId match) so the optimistic
 // invalidation here is safe.

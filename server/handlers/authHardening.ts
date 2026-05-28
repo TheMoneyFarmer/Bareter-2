@@ -112,3 +112,32 @@ export function makeClientErrorRateLimiter(overrides: Partial<Options> = {}) {
     ...overrides,
   });
 }
+
+// Password reset submit (POST /api/auth/reset-password). Tokens are
+// single-use and expire, but an unthrottled attacker could farm the same
+// token window across many IPs. Cap tightly — a legit user submits once.
+export function makeResetPasswordRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many password reset attempts. Please try again in 15 minutes." },
+    ...overrides,
+  });
+}
+
+// Support ticket creation is open to guests, so cap it per-IP to prevent
+// spam flooding the support inbox and DB.
+export function makeSupportTicketRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 10,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many support tickets from this IP. Please try again later." },
+    ...overrides,
+  });
+}

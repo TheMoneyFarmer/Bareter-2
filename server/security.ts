@@ -14,10 +14,31 @@ export const CSRF_EXEMPT_PATHS = new Set<string>([
 ]);
 
 export function securityHeaders(): RequestHandler {
+  const isProd = process.env.NODE_ENV === "production";
   return helmet({
-    contentSecurityPolicy: false,
+    // In dev, Vite injects inline scripts/HMR that a strict CSP blocks.
+    // In production, enforce a restrictive policy.
+    contentSecurityPolicy: isProd
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"], // inline needed for Vite bundle hashes; tighten with nonces later
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "blob:", "https:"],
+            connectSrc: ["'self'", "https:"],
+            fontSrc: ["'self'", "data:", "https:"],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"], // blocks clickjacking
+            upgradeInsecureRequests: [],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    // Strict HSTS in production — 1 year, include subdomains
+    hsts: isProd
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
   });
 }
 

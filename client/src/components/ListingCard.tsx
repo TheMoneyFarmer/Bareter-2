@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight, UserPlus, UserMinus } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ import { useWaitlist } from "@/lib/waitlist";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -62,11 +63,40 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
   const { user } = useAuth();
   const { t, language } = useI18n();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [showReport, setShowReport] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState<{ title: string; description: string } | null>(null);
   const [showTranslated, setShowTranslated] = useState(false);
+
+  const ownerId = listing.user?.id || listing.userId;
+  const isOwnListing = user?.id === ownerId;
+
+  const { data: followData } = useQuery<{ isFollowing: boolean }>({
+    queryKey: ["/api/users", ownerId, "is-following"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users/${ownerId}/is-following`);
+      return res.json();
+    },
+    enabled: !!user && !!ownerId && !isOwnListing,
+    staleTime: 60_000,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (followData?.isFollowing) {
+        await apiRequest("DELETE", `/api/users/${ownerId}/follow`);
+      } else {
+        await apiRequest("POST", `/api/users/${ownerId}/follow`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users", ownerId, "is-following"] });
+      toast({ title: followData?.isFollowing ? "Unfollowed" : "Following" });
+    },
+    onError: () => toast({ title: "Action failed", variant: "destructive" }),
+  });
 
   const { data: pubSettings } = useQuery<Record<string, string | null>>({
     queryKey: ["/api/public/settings"],
@@ -344,27 +374,56 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
           </div>
 
           {/* SELLER — clicking the name/avatar goes to their profile */}
-          <Link
-            href={listing.user?.id ? `/users/${listing.user.id}` : "#"}
-            onClick={(e: MouseEvent) => e.stopPropagation()}
-            className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2 group/seller"
+          <div
+            className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Avatar className="h-7 w-7">
-              <AvatarImage src={listing.user?.avatarUrl || undefined} alt={listing.user?.fullName} />
-              <AvatarFallback className="text-[10px] bg-bareter-teal-muted text-bareter-teal">
-                {listing.user?.fullName?.charAt(0)?.toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-[13px] font-medium text-bareter-navy dark:text-foreground truncate flex-1 group-hover/seller:underline group-hover/seller:text-bareter-teal transition-colors">
-              {listing.user?.fullName || "Member"}
-            </span>
-            {verified && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-bareter-teal-muted text-bareter-teal text-[10px] font-semibold">
-                <ShieldCheck className="h-3 w-3" />
-                {t("listingCard.verified")}
+            <Link
+              href={listing.user?.id ? `/users/${listing.user.id}` : "#"}
+              onClick={(e: MouseEvent) => e.stopPropagation()}
+              className="flex items-center gap-2 flex-1 min-w-0 group/seller"
+            >
+              <Avatar className="h-7 w-7 flex-shrink-0">
+                <AvatarImage src={listing.user?.avatarUrl || undefined} alt={listing.user?.fullName} />
+                <AvatarFallback className="text-[10px] bg-bareter-teal-muted text-bareter-teal">
+                  {listing.user?.fullName?.charAt(0)?.toUpperCase() || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-[13px] font-medium text-bareter-navy dark:text-foreground truncate group-hover/seller:underline group-hover/seller:text-bareter-teal transition-colors">
+                {listing.user?.fullName || "Member"}
               </span>
+              {verified && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-bareter-teal-muted text-bareter-teal text-[10px] font-semibold flex-shrink-0">
+                  <ShieldCheck className="h-3 w-3" />
+                  {t("listingCard.verified")}
+                </span>
+              )}
+            </Link>
+            {user && !isOwnListing && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!gate()) return;
+                  followMutation.mutate();
+                }}
+                disabled={followMutation.isPending}
+                className={`flex-shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full border transition-colors disabled:opacity-50 ${
+                  followData?.isFollowing
+                    ? "border-bareter-teal text-bareter-teal bg-bareter-teal-muted"
+                    : "border-bareter-border text-bareter-muted hover:border-bareter-teal hover:text-bareter-teal"
+                }`}
+                data-testid={`button-follow-card-${listing.id}`}
+              >
+                {followData?.isFollowing ? (
+                  <><UserMinus className="h-3 w-3" />Following</>
+                ) : (
+                  <><UserPlus className="h-3 w-3" />Follow</>
+                )}
+              </button>
             )}
-          </Link>
+          </div>
         </div>
       </article>
     </Link>

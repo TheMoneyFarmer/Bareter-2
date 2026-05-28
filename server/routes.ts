@@ -75,6 +75,8 @@ import {
   makeForgotPasswordRateLimiter,
   makeConsentRateLimiter,
   makeClientErrorRateLimiter,
+  makeResetPasswordRateLimiter,
+  makeSupportTicketRateLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -86,7 +88,7 @@ import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
-import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike } from "drizzle-orm";
+import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -102,6 +104,8 @@ const aiPerDayLimiter = makeAiPerDayLimiter();
 const loginLimiter = makeLoginRateLimiter();
 const registerLimiter = makeRegisterRateLimiter();
 const forgotPasswordLimiter = makeForgotPasswordRateLimiter();
+const resetPasswordLimiter = makeResetPasswordRateLimiter();
+const supportTicketLimiter = makeSupportTicketRateLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -634,7 +638,7 @@ export async function registerRoutes(
     res.json({ valid: true });
   });
 
-  app.post("/api/auth/reset-password", async (req, res) => {
+  app.post("/api/auth/reset-password", resetPasswordLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) {
@@ -1644,7 +1648,18 @@ export async function registerRoutes(
       if (listing.userId !== req.session.userId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const updated = await storage.updateListing(param(req.params.id), req.body);
+      // Allowlist: only permit fields a listing owner is allowed to edit.
+      // Prevents mass-assignment of privileged flags (isAdmin, isFeatured,
+      // isActive, userId, imageFlagged, etc.) via a crafted PATCH body.
+      const LISTING_OWNER_FIELDS = new Set([
+        "title", "description", "category", "subcategory", "condition",
+        "retailValue", "lookingFor", "location", "images", "tags",
+        "isNegotiable", "tradeRadius", "shippingAvailable",
+      ]);
+      const sanitized = Object.fromEntries(
+        Object.entries(req.body).filter(([k]) => LISTING_OWNER_FIELDS.has(k)),
+      );
+      const updated = await storage.updateListing(param(req.params.id), sanitized);
       res.json(updated);
     } catch (error) {
       console.error("Update listing error:", error);
@@ -2338,11 +2353,65 @@ export async function registerRoutes(
       // This removes a follower (someone following you)
       const followerId = param(req.params.id);
       const followingId = req.session.userId!;
-      
+
       await storage.unfollowUser(followerId, followingId);
       res.json({ message: "Follower removed successfully" });
     } catch (error) {
       console.error("Remove follower error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/users/:id/is-following", requireAuth, async (req, res) => {
+    try {
+      const followingId = param(req.params.id);
+      const followerId = req.session.userId!;
+      const isFollowing = await storage.isFollowing(followerId, followingId);
+      res.json({ isFollowing });
+    } catch (error) {
+      console.error("Is-following check error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/users/:id/block", requireAuth, async (req, res) => {
+    try {
+      const blockedId = param(req.params.id);
+      const blockerId = req.session.userId!;
+      if (blockerId === blockedId) {
+        return res.status(400).json({ message: "Cannot block yourself" });
+      }
+      await storage.blockUser(blockerId, blockedId);
+      // Also unfollow in both directions
+      await storage.unfollowUser(blockerId, blockedId).catch(() => {});
+      await storage.unfollowUser(blockedId, blockerId).catch(() => {});
+      res.json({ message: "User blocked" });
+    } catch (error) {
+      console.error("Block user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/users/:id/block", requireAuth, async (req, res) => {
+    try {
+      const blockedId = param(req.params.id);
+      const blockerId = req.session.userId!;
+      await storage.unblockUser(blockerId, blockedId);
+      res.json({ message: "User unblocked" });
+    } catch (error) {
+      console.error("Unblock user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/users/:id/is-blocked", requireAuth, async (req, res) => {
+    try {
+      const blockedId = param(req.params.id);
+      const blockerId = req.session.userId!;
+      const isBlocked = await storage.isBlocked(blockerId, blockedId);
+      res.json({ isBlocked });
+    } catch (error) {
+      console.error("Is-blocked check error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3018,6 +3087,30 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error("Mark all notifications read error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/notifications/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await db
+        .delete(notifications)
+        .where(and(eq(notifications.id, param(req.params.id)), eq(notifications.userId, userId)));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete notification error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await db.delete(notifications).where(eq(notifications.userId, userId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete all notifications error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3824,7 +3917,7 @@ export async function registerRoutes(
       res.json(draft);
     } catch (error) {
       console.error("AI email draft error:", error);
-      res.status(500).json({ message: "AI draft failed — check OpenAI configuration" });
+      res.status(500).json({ message: "AI draft failed — check Gemini API key and quota" });
     }
   });
 
@@ -6852,6 +6945,87 @@ export async function registerRoutes(
     }
   });
 
+  // "For You" — personalised feed combining liked categories, search history, followed users and wishlist signals
+  app.get("/api/listings/for-you", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = Math.min(Number(req.query.limit) || 24, 48);
+
+      // Gather signals in parallel
+      const [likedRows, searchRows, followingRows, wishlistRows] = await Promise.all([
+        db.select({ listingId: listingLikes.listingId }).from(listingLikes).where(eq(listingLikes.userId, userId)).limit(50),
+        db.select({ query: searchQueryHistory.query, category: searchQueryHistory.category })
+          .from(searchQueryHistory).where(eq(searchQueryHistory.userId, userId)).orderBy(desc(searchQueryHistory.createdAt)).limit(20),
+        db.select({ followingId: followers.followingId }).from(followers).where(eq(followers.followerId, userId)),
+        db.select({ listingId: wishlists.listingId }).from(wishlists).where(eq(wishlists.userId, userId)).limit(50),
+      ]);
+
+      // Collect liked listing categories as signal
+      const likedListingIds = likedRows.map(r => r.listingId).concat(wishlistRows.map(r => r.listingId));
+      let preferredCategories: string[] = [];
+      if (likedListingIds.length > 0) {
+        const catRows = await db
+          .select({ categories: listings.categories })
+          .from(listings)
+          .where(inArray(listings.id, likedListingIds.slice(0, 30)));
+        preferredCategories = catRows.flatMap(r => (r.categories as string[]) || []);
+      }
+
+      // Add search query categories
+      searchRows.forEach(r => { if (r.category) preferredCategories.push(r.category); });
+      const catFreq = new Map<string, number>();
+      preferredCategories.forEach(c => catFreq.set(c, (catFreq.get(c) || 0) + 1));
+      const topCats = [...catFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
+
+      const followedUserIds = followingRows.map(r => r.followingId);
+      const excludeIds = new Set([userId]);
+
+      // Build OR conditions: followed users' listings + matching categories + recent searches
+      const orConds: any[] = [];
+      if (followedUserIds.length > 0) orConds.push(inArray(listings.userId, followedUserIds));
+      if (topCats.length > 0) {
+        // Match any of the top categories (Postgres array overlap)
+        topCats.forEach(cat => orConds.push(sqlOperator`${listings.categories}::text ilike ${'%' + cat + '%'}`));
+      }
+      // Also bring in listings matching top search queries
+      const topQueries = Array.from(new Set(searchRows.map(r => r.query))).slice(0, 3);
+      topQueries.forEach(q => {
+        orConds.push(ilike(listings.title, `%${q}%`));
+        orConds.push(ilike(listings.description, `%${q}%`));
+      });
+
+      let forYouListings: any[] = [];
+      if (orConds.length > 0) {
+        forYouListings = await db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.isActive, true), not(inArray(listings.userId, [...excludeIds])), or(...orConds)))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit);
+      }
+
+      // Fill up to limit with recent active listings if not enough personalised results
+      if (forYouListings.length < limit) {
+        const existingIds = new Set(forYouListings.map((l: any) => l.id));
+        const filler = await db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.isActive, true), not(eq(listings.userId, userId))))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit - forYouListings.length + 10);
+        filler.forEach(l => { if (!existingIds.has(l.id)) forYouListings.push(l); });
+        forYouListings = forYouListings.slice(0, limit);
+      }
+
+      // Attach wishlist flag
+      const wishlistedSet = new Set(wishlistRows.map(r => r.listingId).concat(likedRows.map(r => r.listingId)));
+      res.json(forYouListings.map(l => ({ ...l, isWishlisted: wishlistedSet.has(l.id) })));
+    } catch (error) {
+      console.error("For-you listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/listings/nearby", async (req, res) => {
     try {
       const city = req.query.city as string;
@@ -7809,7 +7983,7 @@ export async function registerRoutes(
     return false;
   }
 
-  app.post("/api/support/tickets", async (req, res) => {
+  app.post("/api/support/tickets", supportTicketLimiter, async (req, res) => {
     try {
       const { subject, category, message, requesterName, requesterEmail } = req.body;
       if (!subject || !message) {

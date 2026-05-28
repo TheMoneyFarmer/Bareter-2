@@ -443,6 +443,7 @@ export async function draftBroadcastEmail(prompt: string): Promise<{ subject: st
     temperature: 0.75,
     maxTokens: 800,
   });
+  if (!data) throw new Error("AI budget blocked or no response from LLM");
   rememberInBackground({
     agentName: "marketing",
     memoryType: "pattern",

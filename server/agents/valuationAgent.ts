@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { logLlmCall, getBudgetVerdict, getAgentBudgetVerdict } from "../companyOs/costTracker";
 import { db } from "../db";
 import { agentInteractions } from "@shared/schema";
@@ -12,10 +12,11 @@ export interface ValuationAdvice {
   marketComparison: string;
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+const VALUATION_MODEL = "claude-haiku-4-5-20251001";
 
 const SYSTEM_PROMPT = `You are the Bareter Value engine — an expert appraiser for a worldwide B2B barter marketplace.
 Your job is to give an honest, accurate market valuation of ANY item category so barter trades are fair.
@@ -111,7 +112,6 @@ async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeTy
     const contentType = response.headers.get("content-type") || "image/jpeg";
     const mimeType = contentType.split(";")[0].trim();
 
-    // Only process actual images
     if (!mimeType.startsWith("image/")) return null;
 
     const buffer = await response.arrayBuffer();
@@ -141,15 +141,14 @@ export async function getValuation(
     marketComparison: "",
   };
 
-  // Budget gates
   const verdict = await getBudgetVerdict();
   if (!verdict.safe) {
-    await logLlmCall({ agentName: "valuation", command: null, inputPreview: title, model: "gpt-4o", tokensUsed: 0, status: "blocked_budget", errorMessage: "global_budget" });
+    await logLlmCall({ agentName: "valuation", command: null, inputPreview: title, model: VALUATION_MODEL, tokensUsed: 0, status: "blocked_budget", errorMessage: "global_budget" });
     return fallback;
   }
   const agentVerdict = await getAgentBudgetVerdict("valuation");
   if (!agentVerdict.safe) {
-    await logLlmCall({ agentName: "valuation", command: null, inputPreview: title, model: "gpt-4o", tokensUsed: 0, status: "blocked_budget", errorMessage: "agent_budget" });
+    await logLlmCall({ agentName: "valuation", command: null, inputPreview: title, model: VALUATION_MODEL, tokensUsed: 0, status: "blocked_budget", errorMessage: "agent_budget" });
     return fallback;
   }
 
@@ -168,8 +167,6 @@ export async function getValuation(
       : "No images provided — base valuation on text only and lower confidence accordingly.",
   ].filter(Boolean).join("\n");
 
-  // Fetch and convert images to base64 so OpenAI can always access them
-  // (works for both localhost /uploads/... and public HTTPS URLs)
   let base64Images: Array<{ base64: string; mimeType: string }> = [];
   if (imageUrls && imageUrls.length > 0) {
     const results = await Promise.all(imageUrls.slice(0, 4).map(fetchImageAsBase64));
@@ -180,56 +177,46 @@ export async function getValuation(
   const hasImages = base64Images.length > 0;
 
   try {
-    let response;
+    type AnthropicImageBlock = {
+      type: "image";
+      source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp"; data: string };
+    };
+    type AnthropicTextBlock = { type: "text"; text: string };
+    type AnthropicContentBlock = AnthropicImageBlock | AnthropicTextBlock;
 
-    if (hasImages) {
-      // Vision path — GPT-4o with base64 image data (guaranteed accessible)
-      const imageContent = base64Images.map(({ base64, mimeType }) => ({
-        type: "image_url" as const,
-        image_url: {
-          url: `data:${mimeType};base64,${base64}`,
-          detail: "high" as const, // "high" for better damage detection
-        },
-      }));
+    const userContent: AnthropicContentBlock[] = hasImages
+      ? [
+          { type: "text", text: "Analyse the images first for physical condition, then value this item:\n\n" + textPrompt },
+          ...base64Images.map(({ base64, mimeType }) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: (mimeType.startsWith("image/") ? mimeType : "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data: base64,
+            },
+          })),
+          { type: "text", text: "Respond ONLY with valid JSON matching the schema in the system prompt." },
+        ]
+      : [
+          { type: "text", text: textPrompt + "\n\nNo images available. Set confidence below 0.6. Respond ONLY with valid JSON." },
+        ];
 
-      response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Analyse the images first for physical condition, then value this item:\n\n" + textPrompt },
-              ...imageContent,
-              { type: "text", text: 'Respond ONLY with valid JSON matching the schema in the system prompt.' },
-            ],
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 600,
-      });
-    } else {
-      // Text-only path — lower confidence, no vision
-      response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: textPrompt },
-          { role: "user", content: 'No images available. Set confidence below 0.6. Respond ONLY with valid JSON.' },
-        ],
-        temperature: 0.3,
-        max_tokens: 512,
-      });
-    }
+    const response = await anthropic.messages.create({
+      model: VALUATION_MODEL,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userContent }],
+      temperature: hasImages ? 0.2 : 0.3,
+      max_tokens: 600,
+    });
 
-    const raw = response.choices[0]?.message?.content || "";
-    const tokensUsed = response.usage?.total_tokens || 0;
+    const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
+    const tokensUsed = (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0);
 
     await logLlmCall({
       agentName: "valuation",
       command: hasImages ? `vision(${base64Images.length}img)` : "text-only",
       inputPreview: title,
-      model: "gpt-4o",
+      model: VALUATION_MODEL,
       tokensUsed,
       status: "ok",
     });
@@ -261,7 +248,7 @@ export async function getValuation(
       agentName: "valuation",
       command: null,
       inputPreview: title,
-      model: "gpt-4o",
+      model: VALUATION_MODEL,
       tokensUsed: 0,
       status: "error",
       errorMessage: error instanceof Error ? error.message : String(error),

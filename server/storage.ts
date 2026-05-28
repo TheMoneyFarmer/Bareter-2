@@ -117,6 +117,8 @@ import {
   type Review,
   type ReviewWithReviewer,
   pushSubscriptions,
+  userBlocks,
+  type UserBlock,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -174,6 +176,11 @@ export interface IStorage {
   unfollowUser(followerId: string, followingId: string): Promise<void>;
   getFollowerCount(userId: string): Promise<number>;
   getFollowingCount(userId: string): Promise<number>;
+
+  // Blocks
+  blockUser(blockerId: string, blockedId: string): Promise<void>;
+  unblockUser(blockerId: string, blockedId: string): Promise<void>;
+  isBlocked(blockerId: string, blockedId: string): Promise<boolean>;
 
   // Referrals
   getReferralByUsers(referrerId: string, referredId: string): Promise<Referral | undefined>;
@@ -723,6 +730,27 @@ export class DatabaseStorage implements IStorage {
       .from(followers)
       .where(eq(followers.followerId, userId));
     return Number(result[0]?.count ?? 0);
+  }
+
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    await db
+      .insert(userBlocks)
+      .values({ blockerId, blockedId })
+      .onConflictDoNothing();
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await db
+      .delete(userBlocks)
+      .where(and(eq(userBlocks.blockerId, blockerId), eq(userBlocks.blockedId, blockedId)));
+  }
+
+  async isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
+    const [existing] = await db
+      .select({ id: userBlocks.id })
+      .from(userBlocks)
+      .where(and(eq(userBlocks.blockerId, blockerId), eq(userBlocks.blockedId, blockedId)));
+    return !!existing;
   }
 
   // Referrals

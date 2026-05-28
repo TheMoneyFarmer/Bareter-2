@@ -2192,6 +2192,21 @@ export type InsertReview = z.infer<typeof insertReviewSchema>;
 export type Review = typeof reviews.$inferSelect;
 export type ReviewWithReviewer = Review & { reviewer: Pick<User, "id" | "fullName" | "avatarUrl" | "isVerified"> };
 
+// User blocks — when a user blocks another, the blocked user's listings/profile
+// are hidden and the blocked user can no longer message the blocker.
+export const userBlocks = pgTable("user_blocks", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  blockerId: varchar("blocker_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: varchar("blocked_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqueBlock: uniqueIndex("user_blocks_unique").on(table.blockerId, table.blockedId),
+  blockerIdx: index("user_blocks_blocker_idx").on(table.blockerId),
+  blockedIdx: index("user_blocks_blocked_idx").on(table.blockedId),
+}));
+
+export type UserBlock = typeof userBlocks.$inferSelect;
+
 // ─── Push Subscriptions ───────────────────────────────────────────────────────
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

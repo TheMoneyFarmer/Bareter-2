@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   logLlmCall,
   getBudgetVerdict,
@@ -9,9 +9,8 @@ import {
 } from "../companyOs/costTracker";
 import { withRetry } from "../companyOs/retry";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export type AgentRole = "moderation" | "support" | "matching" | "valuation" | "engagement" | "admin";
@@ -56,6 +55,24 @@ function defaultAgentBudgetFallback(agent: string): string {
   return `_(AI budget for ${agent} reached, summary skipped)_`;
 }
 
+// Claude requires messages to alternate between user and assistant.
+// Merge consecutive same-role messages so the API never rejects the call.
+function toAnthropicMessages(
+  messages: ChatMessage[],
+): Array<{ role: "user" | "assistant"; content: string }> {
+  const filtered = messages.filter((m) => m.role !== "system");
+  const result: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const msg of filtered) {
+    const last = result[result.length - 1];
+    if (last && last.role === msg.role) {
+      last.content += "\n\n" + msg.content;
+    } else {
+      result.push({ role: msg.role as "user" | "assistant", content: msg.content });
+    }
+  }
+  return result;
+}
+
 export async function chatCompletion(
   messages: ChatMessage[],
   options: LlmCallOptions,
@@ -79,15 +96,11 @@ export async function chatCompletion(
     }
   }
 
-  // Per-agent cap — graceful: log + return a fallback string instead
-  // of throwing. A runaway agent should degrade quietly so the rest of
-  // the OS keeps responding to the founder over WhatsApp.
   if (!options.skipAgentBudgetCheck && options.agentName) {
     const agentVerdict = await getAgentBudgetVerdict(options.agentName);
     if (!agentVerdict.safe) {
       const fallback =
-        options.agentBudgetFallback ??
-        defaultAgentBudgetFallback(options.agentName);
+        options.agentBudgetFallback ?? defaultAgentBudgetFallback(options.agentName);
       await logLlmCall({
         agentName: options.agentName,
         command: options.command ?? null,
@@ -102,18 +115,22 @@ export async function chatCompletion(
     }
   }
 
+  const systemMessage = messages.find((m) => m.role === "system")?.content;
+  const chatMessages = toAnthropicMessages(messages);
+
   try {
     const { content, tokensUsed } = await withRetry(
       async () => {
-        const response = await openai.chat.completions.create({
+        const response = await anthropic.messages.create({
           model,
-          messages,
+          ...(systemMessage ? { system: systemMessage } : {}),
+          messages: chatMessages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 1024,
         });
         return {
-          content: response.choices[0]?.message?.content || "",
-          tokensUsed: response.usage?.total_tokens || 0,
+          content: response.content[0]?.type === "text" ? response.content[0].text : "",
+          tokensUsed: (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0),
         };
       },
       { agentName: options.agentName, opName: "llm.chat" },
@@ -147,32 +164,12 @@ export async function chatCompletion(
 }
 
 export interface JsonCompletionOptions<T> extends LlmCallOptions {
-  /**
-   * Typed fallback returned when the per-agent budget is breached.
-   * If omitted, the per-agent breach path returns `data: null` (typed
-   * as `T`) so callers must null-check on breach. Either way the
-   * function NEVER throws on per-agent breach — graceful degradation
-   * is the architectural rule. Global breach still throws
-   * `BudgetExceededError` (same as `chatCompletion`).
-   */
   agentBudgetJsonFallback?: T;
 }
 
-/**
- * The shape `jsonCompletion` always returns. `data` is the parsed
- * JSON on the happy path, the supplied `agentBudgetJsonFallback` on
- * per-agent breach (when one was given), or `null` on per-agent breach
- * with no fallback. Callers expecting strict `T` should either pass a
- * fallback or null-check `data`.
- */
 export interface JsonCompletionResult<T> {
   data: T | null;
   tokensUsed: number;
-  /**
-   * True when the per-agent budget was breached and the call short-
-   * circuited without hitting OpenAI. Lets callers distinguish
-   * "the LLM returned null" from "we never asked the LLM".
-   */
   budgetBlocked?: boolean;
 }
 
@@ -190,13 +187,6 @@ export async function jsonCompletion<T>(
   messages: ChatMessage[],
   options: JsonCompletionOptions<T>,
 ): Promise<JsonCompletionResult<T>> {
-  // Pre-check the per-agent cap ourselves so we can return a typed
-  // fallback instead of letting `chatCompletion` hand back its
-  // humanised "budget reached" string — which `JSON.parse` would
-  // then choke on, defeating the whole point of graceful degradation.
-  // Per the architectural rule we NEVER throw on a per-agent breach;
-  // we return the supplied typed fallback when present, otherwise
-  // `null` (typed as `T`) so the call still resolves cleanly.
   if (!options.skipAgentBudgetCheck && options.agentName) {
     const agentVerdict = await getAgentBudgetVerdict(options.agentName);
     if (!agentVerdict.safe) {
@@ -205,9 +195,7 @@ export async function jsonCompletion<T>(
         agentName: options.agentName,
         command: options.command ?? null,
         inputPreview: options.inputPreview ?? lastUserContent(messages),
-        outputPreview: hasFallback
-          ? "json_fallback_returned"
-          : "json_null_returned",
+        outputPreview: hasFallback ? "json_fallback_returned" : "json_null_returned",
         model: options.model ?? DEFAULT_MODEL,
         tokensUsed: 0,
         status: "blocked_budget",
@@ -221,18 +209,28 @@ export async function jsonCompletion<T>(
     }
   }
 
-  // We've already cleared the per-agent gate; tell `chatCompletion` not
-  // to re-check (and therefore never return its humanised fallback).
-  const response = await chatCompletion(
-    [
-      ...messages,
-      {
-        role: "user",
-        content: "Respond ONLY with valid JSON. No markdown, no code blocks, no explanation.",
-      },
-    ],
-    { ...options, skipAgentBudgetCheck: true },
-  );
+  // Append JSON instruction as part of the last user message to avoid
+  // consecutive user messages which Claude's API doesn't allow.
+  const messagesWithJson = [...messages];
+  const lastIdx = messagesWithJson.length - 1;
+  if (lastIdx >= 0 && messagesWithJson[lastIdx].role === "user") {
+    messagesWithJson[lastIdx] = {
+      ...messagesWithJson[lastIdx],
+      content:
+        messagesWithJson[lastIdx].content +
+        "\n\nRespond ONLY with valid JSON. No markdown, no code blocks, no explanation.",
+    };
+  } else {
+    messagesWithJson.push({
+      role: "user",
+      content: "Respond ONLY with valid JSON. No markdown, no code blocks, no explanation.",
+    });
+  }
+
+  const response = await chatCompletion(messagesWithJson, {
+    ...options,
+    skipAgentBudgetCheck: true,
+  });
 
   let parsed: T;
   try {
@@ -246,5 +244,4 @@ export async function jsonCompletion<T>(
 }
 
 // Re-export for callers that want to skip the broker-level pre-check
-// (e.g. the Manager Agent renders a friendlier WhatsApp-side refusal).
 export { isAgentBudgetSafe };

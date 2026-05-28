@@ -70,6 +70,9 @@ import {
   TrendingUp,
   Flame,
   BookmarkCheck,
+  Heart,
+  ThumbsUp,
+  RefreshCw,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -78,7 +81,84 @@ import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search";
+type ExploreTab = "discover" | "search" | "for-you";
+
+function ForYouTab({
+  wishlistedIds,
+  onWishlistToggle,
+}: {
+  wishlistedIds: Set<string>;
+  onWishlistToggle?: (id: string) => void;
+}) {
+  const { data: forYouListings = [], isLoading, refetch } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/for-you"],
+    staleTime: 60_000,
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-bareter-navy dark:text-foreground flex items-center gap-2">
+            <Heart className="h-5 w-5 text-red-500 fill-red-400" />
+            For You
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Personalised picks based on your interests, searches and activity
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(9)].map((_, i) => (
+            <Card key={i}><CardContent className="p-0"><Skeleton className="h-48 rounded-t-md" /><div className="p-4 space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div></CardContent></Card>
+          ))}
+        </div>
+      ) : forYouListings.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Heart className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
+            <h3 className="font-semibold text-lg mb-2">No personalised picks yet</h3>
+            <p className="text-muted-foreground mb-4 text-sm">
+              Like listings, save items and search for things you&apos;re interested in — your "For You" feed will learn what to show you.
+            </p>
+            <Link href="/browse?showCategories=true">
+              <Button variant="bareter" size="sm">Explore categories</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-for-you">
+            {forYouListings.map((listing) => (
+              <BrandListingCard
+                key={listing.id}
+                listing={listing}
+                isWishlisted={wishlistedIds.has(listing.id)}
+                onWishlistToggle={onWishlistToggle}
+              />
+            ))}
+          </StaggeredReveal>
+          <p className="text-xs text-center text-muted-foreground pt-2">
+            <ThumbsUp className="h-3.5 w-3.5 inline mr-1" />
+            Like and save listings to improve your recommendations
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function BrowsePage() {
   const { user } = useAuth();
@@ -410,6 +490,18 @@ export function BrowsePage() {
     return true;
   });
 
+  // Record search history whenever the user has an active search query and results are loaded
+  useEffect(() => {
+    if (!user || !search.trim() || search.trim().length < 2 || listings === undefined) return;
+    const resultCount = filteredListings?.length ?? 0;
+    const category = selectedCategories[0] || null;
+    const timer = setTimeout(() => {
+      apiRequest("POST", "/api/search-history", { query: search.trim(), category, resultCount }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, listings]);
+
   const sortedListings = [...(filteredListings || [])].sort((a, b) => {
     switch (sortBy) {
       case "newest":
@@ -648,9 +740,25 @@ export function BrowsePage() {
           <Search className="h-4 w-4" />
           {t("browse.searchFilter")}
         </Button>
+        {user && (
+          <Button
+            variant={activeTab === "for-you" ? "bareter" : "bareter-outline"}
+            onClick={() => setActiveTab("for-you")}
+            className="gap-2 flex-shrink-0"
+            data-testid="tab-for-you"
+          >
+            <Heart className="h-4 w-4" />
+            For You
+          </Button>
+        )}
       </div>
 
-      {activeTab === "discover" ? (
+      {activeTab === "for-you" ? (
+        <ForYouTab
+          wishlistedIds={currentWishlistedIds}
+          onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
+        />
+      ) : activeTab === "discover" ? (
         <div className="space-y-8">
           {featuredListings && featuredListings.length > 0 && (
             <section>

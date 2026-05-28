@@ -692,7 +692,7 @@ export function AdminPage() {
       toast({ title: "AI draft ready", description: "Subject and body have been filled in — review and edit before sending." });
     },
     onError: () => {
-      toast({ title: "AI draft failed", description: "Check that the OpenAI integration is configured.", variant: "destructive" });
+      toast({ title: "AI draft failed", description: "Gemini API quota exceeded or key invalid — check AI_INTEGRATIONS_OPENAI_API_KEY.", variant: "destructive" });
     },
   });
 
