@@ -101,7 +101,7 @@ export function deriveUserType(u: {
   signupType?: string | null;
 }): DerivedUserType {
   if ((u.accountType || "").toLowerCase() === "business") return "business";
-  if ((u.signupType || "").toLowerCase() === "creator") return "freelancer";
+  if ((u.signupType || "").toLowerCase() === "personal" || (u.signupType || "").toLowerCase() === "creator") return "freelancer";
   return "asset_owner";
 }
 

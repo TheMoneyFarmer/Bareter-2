@@ -21,7 +21,7 @@ import {
   Eye,
   EyeOff,
   CheckCircle,
-  Palette,
+  User,
   Building2,
   ArrowLeft,
   ArrowRight,
@@ -48,7 +48,7 @@ const extendedRegisterSchema = registerSchema.extend({
 
 type RegisterForm = z.infer<typeof extendedRegisterSchema>;
 
-type SignupType = "creator" | "brand";
+type SignupType = "personal" | "business";
 
 interface SocialFormState {
   instagram: { username: string; followerCount: string };
@@ -312,23 +312,23 @@ export function RegisterPage() {
           <button
             type="button"
             onClick={() => {
-              setSignupType("creator");
+              setSignupType("personal");
               setStep(2);
             }}
             className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
-              signupType === "creator"
+              signupType === "personal"
                 ? "border-primary bg-primary/5"
                 : "border-border"
             }`}
-            data-testid="card-signup-creator"
+            data-testid="card-signup-personal"
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Palette className="h-6 w-6 text-primary" />
+              <User className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="font-semibold">Creator</p>
+              <p className="font-semibold">Personal</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Content creators, freelancers, and service providers
+                Individuals, freelancers, and sole traders
               </p>
             </div>
           </button>
@@ -336,23 +336,23 @@ export function RegisterPage() {
           <button
             type="button"
             onClick={() => {
-              setSignupType("brand");
+              setSignupType("business");
               setStep(2);
             }}
             className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
-              signupType === "brand"
+              signupType === "business"
                 ? "border-primary bg-primary/5"
                 : "border-border"
             }`}
-            data-testid="card-signup-brand"
+            data-testid="card-signup-business"
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <Building2 className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="font-semibold">Brand</p>
+              <p className="font-semibold">Business</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Businesses, agencies, and organizations
+                Companies, agencies, and organizations
               </p>
             </div>
           </button>

@@ -569,7 +569,7 @@ export function ProfilePage() {
           )}
           {user.signupType && (
             <Badge variant="outline" className="mt-2">
-              {user.signupType === "creator" ? t("profile.signupCreator") : t("profile.signupBrand")}
+              {user.signupType === "personal" || user.signupType === "creator" ? t("profile.signupPersonal") : t("profile.signupBusiness")}
             </Badge>
           )}
           {user.socialProfiles && (user.socialProfiles as SocialProfile[]).length > 0 && (

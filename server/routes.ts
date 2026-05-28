@@ -513,7 +513,7 @@ export async function registerRoutes(
         city: data.city || null,
         location: data.city || null,
         phone: regPhone || null,
-        signupType: req.body.signupType || "creator",
+        signupType: req.body.signupType || "personal",
         socialProfiles: req.body.socialProfiles || [],
         founderBadge,
         founderBadgeAt: founderBadge ? new Date() : null,

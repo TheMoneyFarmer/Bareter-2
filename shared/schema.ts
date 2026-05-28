@@ -38,7 +38,7 @@ export const FEED_CATEGORIES = [
 ] as const;
 
 // Signup types
-export const SIGNUP_TYPES = ["creator", "brand"] as const;
+export const SIGNUP_TYPES = ["personal", "business"] as const;
 
 // Social platform types
 export type SocialProfile = {
@@ -462,7 +462,7 @@ export const users = pgTable("users", {
   referredBy: varchar("referred_by", { length: 36 }),
 
   // Signup & Social
-  signupType: text("signup_type").default("creator"),
+  signupType: text("signup_type").default("personal"),
   socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
 
   // Trust & Credibility
