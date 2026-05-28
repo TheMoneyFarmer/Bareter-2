@@ -76,6 +76,8 @@ export function DealDetailPage() {
   const [disputeDesc, setDisputeDesc] = useState("");
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showAddMilestone, setShowAddMilestone] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const proofInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const isInitialMessagesLoad = useRef(true);
@@ -230,6 +232,34 @@ export function DealDetailPage() {
     onError: (err: any) => toast({ title: "Failed to file dispute", description: err?.message, variant: "destructive" }),
   });
 
+  async function handleProofUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !deal) return;
+    setUploadingProof(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "proof");
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error(err.message || "Upload failed");
+      }
+      const { url } = await uploadRes.json();
+      const proofField = isSeeker ? { seekerProofUrl: url } : { providerProofUrl: url };
+      // Move to delivery_proof stage when uploading from in_progress
+      const stateUpdate = deal.state === "in_progress" ? { state: "delivery_proof" as const } : {};
+      await apiRequest("PATCH", `/api/deals/${id}`, { ...proofField, ...stateUpdate });
+      queryClient.invalidateQueries({ queryKey: [`/api/deals/${id}`] });
+      toast({ title: "Proof uploaded", description: "Your delivery proof has been saved. Both parties must confirm to complete the deal." });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setUploadingProof(false);
+      if (proofInputRef.current) proofInputRef.current.value = "";
+    }
+  }
+
   useEffect(() => {
     if (!messages) return;
     const viewport = chatScrollAreaRef.current?.querySelector(
@@ -303,7 +333,7 @@ export function DealDetailPage() {
 
   const canAccept = !isSeeker && deal.state === "proposed";
   const canMarkInProgress = deal.state === "accepted";
-  const canUploadProof = deal.state === "in_progress";
+  const canUploadProof = deal.state === "in_progress" || deal.state === "delivery_proof";
   const canMarkComplete = deal.state === "delivery_proof" && !myCompleted;
 
   return (
@@ -804,14 +834,30 @@ export function DealDetailPage() {
               )}
 
               {canUploadProof && (
-                <Button
-                  className="w-full gap-2"
-                  variant="outline"
-                  data-testid="button-upload-proof"
-                >
-                  <Upload className="h-4 w-4" />
-                  {t("dealDetail.uploadProof")}
-                </Button>
+                <>
+                  <input
+                    ref={proofInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    className="hidden"
+                    onChange={handleProofUpload}
+                  />
+                  <Button
+                    className="w-full gap-2"
+                    variant="outline"
+                    data-testid="button-upload-proof"
+                    disabled={uploadingProof}
+                    onClick={() => proofInputRef.current?.click()}
+                  >
+                    {uploadingProof ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {uploadingProof ? "Uploading…" : (isSeeker ? deal.seekerProofUrl : deal.providerProofUrl) ? "Replace Proof" : t("dealDetail.uploadProof")}
+                  </Button>
+                  {(isSeeker ? deal.seekerProofUrl : deal.providerProofUrl) && (
+                    <p className="text-xs text-green-600 text-center flex items-center justify-center gap-1">
+                      <CheckCircle className="h-3 w-3" /> Your proof uploaded
+                    </p>
+                  )}
+                </>
               )}
 
               {canMarkComplete && (
