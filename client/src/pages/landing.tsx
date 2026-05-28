@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import type { User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
@@ -24,7 +25,6 @@ import { useMousePosition } from "@/hooks/use-mouse-position";
 import type { ListingWithUser } from "@shared/schema";
 import {
   Search,
-  MapPin,
   ShieldCheck,
   Cpu,
   FileSignature,
@@ -32,17 +32,6 @@ import {
   CheckCircle2,
   Users,
 } from "lucide-react";
-
-const HERO_CATEGORY_PILLS: { emoji: string; label: string; href: string }[] = [
-  { emoji: "🚗", label: "Cars", href: "/c/automotive" },
-  { emoji: "🏢", label: "Real Estate", href: "/c/real-estate" },
-  { emoji: "💼", label: "Services", href: "/c/services" },
-  { emoji: "📱", label: "Electronics", href: "/c/technology" },
-  { emoji: "🍽", label: "Hospitality", href: "/c/hospitality" },
-  { emoji: "⛵", label: "Yachts", href: "/c/vehicles/yacht-boat" },
-  { emoji: "🏋", label: "Fitness", href: "/c/health-and-wellness" },
-  { emoji: "🏠", label: "Home", href: "/c/real-estate/house" },
-];
 
 const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
   { label: "Cars",        emoji: "🚗", image: catCarsImg,        href: "/c/automotive" },
@@ -82,6 +71,38 @@ export function LandingPage() {
   };
   const [heroQuery, setHeroQuery] = useState("");
   const [heroCity, setHeroCity] = useState("Dubai");
+  const [heroCategory, setHeroCategory] = useState("All");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Live search suggestions — listings + users
+  const { data: suggestionListings } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings", { search: heroQuery }],
+    queryFn: () =>
+      fetch(`/api/listings?search=${encodeURIComponent(heroQuery)}&limit=5`)
+        .then((r) => r.json()),
+    enabled: heroQuery.trim().length >= 2,
+    staleTime: 5000,
+  });
+  const { data: suggestionUsers } = useQuery<User[]>({
+    queryKey: ["/api/users/search", heroQuery],
+    queryFn: () =>
+      fetch(`/api/users/search?q=${encodeURIComponent(heroQuery)}&limit=3`)
+        .then((r) => r.json()),
+    enabled: heroQuery.trim().length >= 2,
+    staleTime: 5000,
+  });
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const headlineParallax = useMousePosition();
 
@@ -117,11 +138,35 @@ export function LandingPage() {
 
   const handleHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    const q = heroQuery.trim();
     const params = new URLSearchParams();
-    if (heroQuery.trim()) params.set("q", heroQuery.trim());
+    if (q) params.set("q", q);
     if (heroCity && heroCity !== "Worldwide") params.set("location", heroCity);
+    if (heroCategory && heroCategory !== "All") params.set("category", heroCategory);
+    // Save search to history (fire-and-forget, no auth check needed — backend guards)
+    if (q.length >= 2) {
+      fetch("/api/search-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          query: q,
+          category: heroCategory !== "All" ? heroCategory : null,
+        }),
+      }).catch(() => {});
+    }
     navigate(`/browse${params.toString() ? `?${params.toString()}` : ""}`);
   };
+
+  const SEARCH_CATEGORIES = [
+    { label: "All",         category: "All" },
+    { label: "Cars",        category: "Automotive" },
+    { label: "Real Estate", category: "Real Estate" },
+    { label: "Services",    category: "Services" },
+    { label: "Electronics", category: "Electronics" },
+    { label: "Hospitality", category: "Hospitality" },
+    { label: "Health",      category: "Health & Wellness" },
+  ];
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -164,64 +209,121 @@ export function LandingPage() {
               {heroTagline}
             </p>
 
-            {/* Hero search pill */}
-            <form
-              onSubmit={handleHeroSearch}
-              className="mt-8 w-full max-w-[560px] h-[52px] flex items-stretch bg-white rounded-full shadow-bareter-hover overflow-hidden"
-              role="search"
-              data-testid="form-hero-search"
-            >
-              <label className="flex items-center gap-1.5 px-4 text-sm font-medium text-bareter-navy border-e border-bareter-border">
-                <MapPin className="h-4 w-4 text-bareter-teal" aria-hidden="true" />
-                <select
-                  value={heroCity}
-                  onChange={(e) => setHeroCity(e.target.value)}
-                  className="bg-transparent focus:outline-none cursor-pointer"
-                  data-testid="select-hero-city"
-                >
-                  <option>Dubai</option>
-                  <option>Abu Dhabi</option>
-                  <option>Sharjah</option>
-                  <option>Ajman</option>
-                  <option>RAK</option>
-                  <option>Fujairah</option>
-                  <option>Worldwide</option>
-                </select>
-              </label>
-              <input
-                type="search"
-                value={heroQuery}
-                onChange={(e) => setHeroQuery(e.target.value)}
-                placeholder={t("landing.searchBarters")}
-                className="flex-1 px-4 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
-                data-testid="input-hero-search"
-              />
-              <button
-                type="submit"
-                className="px-5 bg-bareter-teal hover:bg-bareter-teal-light text-white inline-flex items-center justify-center transition-colors active:scale-[0.98]"
-                aria-label="Search"
-                data-testid="button-hero-search"
-              >
-                <Search className="h-5 w-5" />
-              </button>
-            </form>
-
-            {/* Hero category pills */}
-            <div className="mt-6 w-full overflow-x-auto scrollbar-hide -mx-4 px-4">
-              <div className="flex items-center gap-2 justify-start sm:justify-center min-w-min">
-                {HERO_CATEGORY_PILLS.map((p) => (
+            {/* Dubizzle-style search block */}
+            <div ref={searchRef} className="mt-8 w-full max-w-[760px] relative">
+              {/* "Searching in" category tabs */}
+              <div className="flex items-center gap-2 mb-3 overflow-x-auto scrollbar-hide pb-1">
+                <span className="text-white/80 text-sm font-medium whitespace-nowrap flex-shrink-0">
+                  Searching in
+                </span>
+                {SEARCH_CATEGORIES.map((cat) => (
                   <button
-                    key={p.label}
+                    key={cat.label}
                     type="button"
-                    onClick={(e) => handleCategoryClick(e, p.href)}
-                    className="bareter-pill-fill px-4 py-2 text-sm font-medium text-white bg-white/10 border border-white/30 rounded-full whitespace-nowrap"
-                    data-testid={`pill-hero-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => setHeroCategory(cat.category)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors flex-shrink-0 ${
+                      heroCategory === cat.category
+                        ? "bg-bareter-teal text-white shadow-md"
+                        : "bg-white/10 text-white border border-white/30 hover:bg-white/20"
+                    }`}
+                    data-testid={`tab-search-${cat.label.toLowerCase().replace(/\s+/g, "-")}`}
                   >
-                    <span className="me-1.5">{p.emoji}</span>
-                    {p.label}
+                    {cat.label}
                   </button>
                 ))}
               </div>
+
+              {/* Search bar */}
+              <form
+                onSubmit={(e) => { setShowSuggestions(false); handleHeroSearch(e); }}
+                className="flex items-stretch bg-white rounded-lg shadow-bareter-hover overflow-hidden h-14"
+                role="search"
+                data-testid="form-hero-search"
+              >
+                <input
+                  type="search"
+                  value={heroQuery}
+                  onChange={(e) => { setHeroQuery(e.target.value); setShowSuggestions(true); }}
+                  onFocus={() => heroQuery.length >= 2 && setShowSuggestions(true)}
+                  placeholder="Search for anything..."
+                  className="flex-1 px-5 bg-transparent text-bareter-navy placeholder:text-gray-400 text-base focus:outline-none"
+                  data-testid="input-hero-search"
+                  autoComplete="off"
+                />
+                <div className="flex items-center border-s border-gray-200 px-3">
+                  <Search className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                </div>
+                <button
+                  type="submit"
+                  className="px-8 bg-bareter-teal hover:bg-bareter-teal-light text-white font-bold text-base transition-colors active:scale-[0.98]"
+                  aria-label="Search"
+                  data-testid="button-hero-search"
+                >
+                  Search
+                </button>
+              </form>
+
+              {/* Live suggestions dropdown */}
+              {showSuggestions && heroQuery.trim().length >= 2 && (
+                <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-lg shadow-bareter-hover border border-bareter-border overflow-hidden z-50">
+                  {/* Listing suggestions */}
+                  {suggestionListings && suggestionListings.length > 0 && (
+                    <div>
+                      <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-bareter-muted">Listings</p>
+                      {suggestionListings.slice(0, 5).map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-bareter-teal-muted text-start transition-colors"
+                          onClick={() => { setShowSuggestions(false); navigate(`/listings/${l.id}`); }}
+                        >
+                          {(l.images as string[])?.[0] && (
+                            <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-md object-cover flex-shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-bareter-navy truncate">{l.title}</p>
+                            <p className="text-xs text-bareter-muted truncate">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* User suggestions */}
+                  {Array.isArray(suggestionUsers) && suggestionUsers.length > 0 && (
+                    <div className="border-t border-bareter-border">
+                      <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-bareter-muted">Members</p>
+                      {suggestionUsers.slice(0, 3).map((u: User) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-bareter-teal-muted text-start transition-colors"
+                          onClick={() => { setShowSuggestions(false); navigate(`/users/${u.id}`); }}
+                        >
+                          <div className="h-9 w-9 rounded-full bg-bareter-teal text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                            {u.fullName?.charAt(0)?.toUpperCase() || "U"}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-bareter-navy truncate">{u.fullName}</p>
+                            <p className="text-xs text-bareter-muted truncate">{u.businessName || u.location || "Member"}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* View all results */}
+                  <div className="border-t border-bareter-border px-4 py-3">
+                    <button
+                      type="button"
+                      className="w-full text-sm font-semibold text-bareter-teal hover:text-bareter-teal-light text-center"
+                      onClick={() => { setShowSuggestions(false); handleHeroSearch({ preventDefault: () => {} } as React.FormEvent); }}
+                    >
+                      Search all results for "{heroQuery}" →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

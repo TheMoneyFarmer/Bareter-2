@@ -100,7 +100,8 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
       return;
     }
 
-    const cacheKey = `${listing.id}-${language}`;
+    const targetLang = "ar";
+    const cacheKey = `${listing.id}-${targetLang}`;
     if (translationCache.has(cacheKey)) {
       setTranslation(translationCache.get(cacheKey)!);
       setShowTranslated(true);
@@ -109,7 +110,6 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
 
     setTranslating(true);
     try {
-      const targetLang = language;
       const textToTranslate = `TITLE: ${listing.title}\nDESCRIPTION: ${listing.description || ""}`;
       const res = await fetch("/api/translate", {
         method: "POST",

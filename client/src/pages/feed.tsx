@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
@@ -52,11 +54,18 @@ import {
   X,
   Flag,
   ShieldAlert,
+  Upload,
+  ImageIcon,
+  Loader2,
+  RotateCw,
 } from "lucide-react";
-import type { PostWithUser, PostCategoryDetails, PostCommentWithUser } from "@shared/schema";
+import type { PostWithUser, PostCategoryDetails, PostCommentWithUser, ListingWithUser } from "@shared/schema";
 import { FEED_CATEGORIES } from "@shared/schema";
 import { ReportModal } from "@/components/report-modal";
 import { ValuationBadge } from "@/components/ValuationBadge";
+import { ValueMatchBadge } from "@/components/ValueMatchBadge";
+import { ReviewModal } from "@/components/ReviewModal";
+import { ReputationBadge } from "@/components/ReputationBadge";
 
 function timeAgo(date: Date | string | null | undefined): string {
   if (!date) return "";
@@ -247,6 +256,33 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
   const [offerName, setOfferName] = useState("");
   const [offerValue, setOfferValue] = useState("");
   const [message, setMessage] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [offerImages, setOfferImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingImages(true);
+    try {
+      const urls = await Promise.all(Array.from(files).map(async (file) => {
+        if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
+        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("type", "listing");
+        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
+        return (await res.json()).url as string;
+      }));
+      setOfferImages(prev => [...prev, ...urls]);
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message || "Could not upload image", variant: "destructive" });
+    } finally {
+      setUploadingImages(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
 
   const { data: comments, isLoading } = useQuery<PostCommentWithUser[]>({
     queryKey: ["/api/posts", postId, "comments"],
@@ -258,7 +294,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
   });
 
   const addProposalMutation = useMutation({
-    mutationFn: async (data: { offerItemName: string; offerItemValue: string; content?: string }) => {
+    mutationFn: async (data: { offerItemName: string; offerItemValue: string; content?: string; offerDescription?: string; images: string[] }) => {
       const res = await apiRequest("POST", `/api/posts/${postId}/comments`, data);
       return res.json();
     },
@@ -266,6 +302,8 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
       setOfferName("");
       setOfferValue("");
       setMessage("");
+      setOfferDescription("");
+      setOfferImages([]);
       queryClient.invalidateQueries({ queryKey: ["/api/posts", postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       toast({ title: "Proposal sent", description: "Your barter proposal has been submitted" });
@@ -285,10 +323,16 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
       toast({ title: "Missing info", description: "Please enter the value of your offer", variant: "destructive" });
       return;
     }
+    if (offerImages.length < 2) {
+      toast({ title: "Images required", description: "Please upload at least 2 images of your offer", variant: "destructive" });
+      return;
+    }
     addProposalMutation.mutate({
       offerItemName: offerName.trim(),
       offerItemValue: offerValue,
       content: message.trim() || undefined,
+      offerDescription: offerDescription.trim() || undefined,
+      images: offerImages,
     });
   };
 
@@ -329,6 +373,22 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
                     </span>
                   )}
                 </div>
+                {(comment as any).offerDescription && (
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{(comment as any).offerDescription}</p>
+                )}
+                {(comment as any).images && ((comment as any).images as string[]).length > 0 && (
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {((comment as any).images as string[]).map((imgUrl: string, imgIdx: number) => (
+                      <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={imgUrl}
+                          alt={`Offer image ${imgIdx + 1}`}
+                          className="h-12 w-12 object-cover rounded border hover:opacity-90 transition-opacity"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {comment.content && (
                   <p className="text-sm text-muted-foreground mt-0.5">{comment.content}</p>
                 )}
@@ -341,8 +401,13 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
         <p className="text-sm text-muted-foreground">No proposals yet. Be the first to propose a barter!</p>
       )}
 
-      <div className="space-y-2 pt-1 border-t">
-        <p className="text-xs font-medium">Propose what you want to offer in exchange</p>
+      <div className="space-y-4 pt-2 border-t">
+        <p className="text-xs font-semibold flex items-center gap-1.5">
+          <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+          Propose what you want to offer in exchange
+        </p>
+
+        {/* Name + value */}
         <div className="flex items-center gap-2">
           <Input
             value={offerName}
@@ -364,6 +429,88 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
             />
           </div>
         </div>
+
+        {/* Description */}
+        <Textarea
+          value={offerDescription}
+          onChange={(e) => setOfferDescription(e.target.value)}
+          placeholder="Describe your offer — condition, brand, what's included..."
+          className="text-sm resize-none"
+          rows={2}
+          data-testid={`input-offer-description-${postId}`}
+        />
+
+        {/* Image upload — 2 required */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs font-medium flex items-center gap-1">
+              <ImageIcon className="h-3.5 w-3.5" />
+              Offer Images
+              <span className="text-destructive ml-0.5">*</span>
+              <span className="text-muted-foreground font-normal ml-1">({offerImages.length}/2 minimum)</span>
+            </Label>
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={uploadingImages}
+              className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+              data-testid={`button-upload-image-${postId}`}
+            >
+              {uploadingImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              Add photos
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => handleImageUpload(e.target.files)}
+            />
+          </div>
+
+          {offerImages.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={uploadingImages}
+              className="w-full border-2 border-dashed border-muted-foreground/30 rounded-lg p-5 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+              data-testid={`dropzone-images-${postId}`}
+            >
+              {uploadingImages ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+              <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
+              <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+            </button>
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5">
+              {offerImages.map((url, idx) => (
+                <div key={idx} className="relative aspect-square rounded-md overflow-hidden border bg-muted group">
+                  <img src={url} alt={`Offer ${idx + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setOfferImages(prev => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImages}
+                className="aspect-square rounded-md border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+              >
+                {uploadingImages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
+          {offerImages.length > 0 && offerImages.length < 2 && (
+            <p className="text-[11px] text-destructive mt-1">Add {2 - offerImages.length} more photo{2 - offerImages.length > 1 ? "s" : ""} to continue</p>
+          )}
+        </div>
+
+        {/* Optional message + submit */}
         <div className="flex items-center gap-2">
           <Input
             value={message}
@@ -376,11 +523,11 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
           <Button
             size="sm"
             onClick={handleSubmitProposal}
-            disabled={addProposalMutation.isPending || !offerName.trim() || !offerValue}
-            className="gap-1"
+            disabled={addProposalMutation.isPending || !offerName.trim() || !offerValue || offerImages.length < 2}
+            className="gap-1 shrink-0"
             data-testid={`button-submit-proposal-${postId}`}
           >
-            <Send className="h-3.5 w-3.5" />
+            {addProposalMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             Propose
           </Button>
         </div>
@@ -553,19 +700,21 @@ function FeedCard({ post }: { post: PostWithUser }) {
       if (poster?.phone && poster?.showPhone !== false) {
         window.open(`tel:${poster.phone}`, "_self");
       } else {
-        toast({ title: "Not available", description: "This member hasn't shared their phone number" });
+        toast({ title: "Phone not available", description: "Opening direct message instead." });
+        navigate(`/inbox?userId=${post.userId}`);
       }
     } else if (type === "email") {
       if (poster?.email && poster?.showEmail !== false) {
         window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${post.title || "Bareter"}`, "_self");
       } else {
-        toast({ title: "Not available", description: "This member hasn't shared their email address" });
+        toast({ title: "Email not public", description: "Opening direct message instead." });
+        navigate(`/inbox?userId=${post.userId}`);
       }
     } else if (type === "message") {
       if (poster?.allowDirectMessages === false) {
-        toast({ title: "Not available", description: "This member has disabled direct messages" });
+        toast({ title: "Messaging disabled", description: "This member has disabled direct messages.", variant: "destructive" });
       } else {
-        toast({ title: "Coming soon", description: "Direct messaging will be available soon" });
+        navigate(`/inbox?userId=${post.userId}`);
       }
     }
   };
@@ -1168,12 +1317,17 @@ function ContinueWhereLeftOff() {
           <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-engagement">
             <CardContent className="py-3 px-4 flex items-center gap-3">
               <div className="flex-1 min-w-0">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">
+                  {data.engagement.eventType === "message_started" ? "Deal in progress" : "Saved listing"}
+                </p>
                 <p className="text-sm font-semibold truncate" data-testid="text-continue-listing-title">
                   {data.engagement.listing.title}
                 </p>
               </div>
               <Link href={`/listings/${data.engagement.listing.id}`}>
-                <Button size="sm" data-testid="button-continue-listing">{t("feed.continueListing")}</Button>
+                <Button size="sm" data-testid="button-continue-listing">
+                  {data.engagement.eventType === "message_started" ? "Continue deal →" : "View listing →"}
+                </Button>
               </Link>
             </CardContent>
           </Card>
@@ -1183,10 +1337,792 @@ function ContinueWhereLeftOff() {
   );
 }
 
+// ── Inline Barter Proposals Section ────────────────────────────────
+type ProposalWithUser = {
+  id: string;
+  listingId: string;
+  userId: string;
+  offerItemName: string;
+  offerItemValue: string;
+  offerDescription?: string | null;
+  images?: string[];
+  valuationFairAed?: string | null;
+  valuationConfidence?: string | null;
+  content: string | null;
+  status: string | null;
+  counterOfferName?: string | null;
+  counterOfferValue?: string | null;
+  counterOfferDescription?: string | null;
+  counterOfferStatus?: string | null;
+  createdAt: string;
+  user: { id: string; fullName: string; avatarUrl: string | null };
+};
+
+function ListingProposalsSection({ listing, ownerId, showCompose = true }: { listing: ListingWithUser; ownerId: string; showCompose?: boolean }) {
+  const { user } = useAuth();
+  const { gate: waitlistGate } = useWaitlist();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
+  const [offerName, setOfferName] = useState("");
+  const [offerValue, setOfferValue] = useState("");
+  const [message, setMessage] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [offerImages, setOfferImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [counteringId, setCounteringId] = useState<string | null>(null);
+  const [counterName, setCounterName] = useState("");
+  const [counterValue, setCounterValue] = useState("");
+  const [counterDesc, setCounterDesc] = useState("");
+  const [reviewProposal, setReviewProposal] = useState<{ id: string; otherPartyName: string } | null>(null);
+
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingImages(true);
+    try {
+      const urls = await Promise.all(Array.from(files).map(async (file) => {
+        if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
+        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("type", "listing");
+        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
+        return (await res.json()).url as string;
+      }));
+      setOfferImages(prev => [...prev, ...urls]);
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message || "Could not upload image", variant: "destructive" });
+    } finally {
+      setUploadingImages(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
+  const { data: proposals, isLoading } = useQuery<ProposalWithUser[]>({
+    queryKey: ["/api/listings", listing.id, "comments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings/${listing.id}/comments`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch proposals");
+      return res.json();
+    },
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/comments`, {
+        offerItemName: offerName.trim(),
+        offerItemValue: offerValue,
+        content: message.trim() || undefined,
+        offerDescription: offerDescription.trim() || undefined,
+        images: offerImages,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setOfferName(""); setOfferValue(""); setMessage("");
+      setOfferDescription(""); setOfferImages([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listing.id, "comments"] });
+      toast({ title: "Proposal sent!", description: "The owner has been notified." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to send proposal", variant: "destructive" }),
+  });
+
+  const respondMutation = useMutation({
+    mutationFn: async ({ proposalId, status }: { proposalId: string; status: "accepted" | "rejected" }) => {
+      const res = await apiRequest("PATCH", `/api/listings/${listing.id}/proposals/${proposalId}`, { status });
+      return res.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listing.id, "comments"] });
+      if (vars.status === "accepted" && data?.dealId) {
+        toast({ title: "Proposal accepted!", description: "Both parties have been notified. Taking you to the deal…" });
+        setTimeout(() => navigate(`/deals/${data.dealId}`), 1200);
+      } else {
+        toast({ title: vars.status === "accepted" ? "Proposal accepted!" : "Proposal declined" });
+      }
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to respond", variant: "destructive" }),
+  });
+
+  const counterOfferMutation = useMutation({
+    mutationFn: async ({ proposalId, name, value, description }: { proposalId: string; name: string; value: string; description: string }) => {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/proposals/${proposalId}/counter`, { name, value, description, images: [] });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listing.id, "comments"] });
+      setCounteringId(null); setCounterName(""); setCounterValue(""); setCounterDesc("");
+      toast({ title: "Counter-offer sent!" });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to send counter-offer", variant: "destructive" }),
+  });
+
+  const counterRespondMutation = useMutation({
+    mutationFn: async ({ proposalId, response }: { proposalId: string; response: "accepted" | "rejected" }) => {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/proposals/${proposalId}/counter-respond`, { response });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listing.id, "comments"] });
+      toast({ title: vars.response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined" });
+      if (vars.response === "accepted") {
+        const p = proposals?.find(pr => pr.id === vars.proposalId);
+        if (p && user) setReviewProposal({ id: vars.proposalId, otherPartyName: user.id === p.userId ? listing.title : (p.user?.fullName || "Proposer") });
+      }
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to respond", variant: "destructive" }),
+  });
+
+  const isOwner = user?.id === ownerId;
+  const canPropose = !!user && !isOwner;
+
+  const statusBadge = (status: string | null) => {
+    if (status === "countered") return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+        ↔ Countered
+      </span>
+    );
+    if (status === "accepted") return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        ✓ Accepted
+      </span>
+    );
+    if (status === "rejected") return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+        ✕ Declined
+      </span>
+    );
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+        Pending
+      </span>
+    );
+  };
+
+  return (
+    <div className="border-t border-bareter-border px-4 py-3 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        Barter Proposals {proposals && proposals.length > 0 && `(${proposals.length})`}
+      </p>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+        </div>
+      ) : proposals && proposals.length > 0 ? (
+        <div className="space-y-2 max-h-72 overflow-y-auto">
+          {proposals.map((p) => (
+            <div
+              key={p.id}
+              className={`rounded-lg p-3 border ${
+                p.status === "accepted"
+                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20"
+                  : p.status === "rejected"
+                  ? "border-red-100 bg-red-50/50 dark:border-red-900 dark:bg-red-950/10 opacity-70"
+                  : "border-bareter-border bg-muted/20"
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">
+                  <AvatarImage src={p.user?.avatarUrl || undefined} />
+                  <AvatarFallback className="text-[10px] bg-bareter-teal text-white">
+                    {p.user?.fullName?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm font-semibold">{p.user?.fullName?.split(" ")[0]}</span>
+                    <span className="inline-flex items-center gap-1 bg-bareter-teal text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      <ArrowRightLeft className="h-2.5 w-2.5" />
+                      {p.offerItemName}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-medium">
+                      AED {Number(p.offerItemValue).toLocaleString()}
+                    </span>
+                    <ValueMatchBadge
+                      offerValue={p.offerItemValue}
+                      listingValue={listing.retailValue as string}
+                      aiFairValue={p.valuationFairAed}
+                      aiConfidence={p.valuationConfidence}
+                    />
+                    {statusBadge(p.status)}
+                  </div>
+                  {p.offerDescription && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.offerDescription}</p>
+                  )}
+                  {p.images && p.images.length > 0 && (
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {p.images.map((imgUrl, imgIdx) => (
+                        <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                          <img src={imgUrl} alt={`Offer ${imgIdx + 1}`} className="h-12 w-12 object-cover rounded border hover:opacity-90 transition-opacity" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {p.content && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{p.content}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Counter-offer received — proposer responds */}
+              {p.status === "countered" && user?.id === p.userId && p.counterOfferStatus === "pending" && (
+                <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 p-2.5 space-y-1">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Counter-offer: {p.counterOfferName} — AED {Number(p.counterOfferValue).toLocaleString()}</p>
+                  {p.counterOfferDescription && <p className="text-xs text-muted-foreground">{p.counterOfferDescription}</p>}
+                  <div className="flex gap-3 pt-1">
+                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "accepted" })} className="text-xs font-semibold text-green-700 hover:underline">Accept</button>
+                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "rejected" })} className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Owner actions: accept / decline / counter */}
+              {isOwner && (!p.status || p.status === "pending") && (
+                <div className="flex gap-2 mt-2.5 pt-2 border-t border-bareter-border">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white gap-1"
+                    onClick={() => respondMutation.mutate({ proposalId: p.id, status: "accepted" })}
+                    disabled={respondMutation.isPending}
+                  >
+                    ✓ Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-xs border-red-300 text-red-600 hover:bg-red-50 gap-1"
+                    onClick={() => respondMutation.mutate({ proposalId: p.id, status: "rejected" })}
+                    disabled={respondMutation.isPending}
+                  >
+                    ✕ Decline
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-blue-300 text-blue-600 hover:bg-blue-50 gap-1"
+                    onClick={() => { setCounteringId(p.id); setCounterName(""); setCounterValue(""); setCounterDesc(""); }}
+                  >
+                    ↔ Counter
+                  </Button>
+                </div>
+              )}
+
+              {/* Counter-offer form */}
+              {isOwner && counteringId === p.id && (
+                <div className="mt-2 p-2.5 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 space-y-2">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Propose different terms:</p>
+                  <div className="flex gap-2">
+                    <input value={counterName} onChange={e => setCounterName(e.target.value)} placeholder="What you offer" className="flex-1 text-xs h-7 px-2 rounded border border-bareter-border bg-white dark:bg-card" />
+                    <input type="number" value={counterValue} onChange={e => setCounterValue(e.target.value)} placeholder="AED value" className="w-24 text-xs h-7 px-2 rounded border border-bareter-border bg-white dark:bg-card" />
+                  </div>
+                  <textarea value={counterDesc} onChange={e => setCounterDesc(e.target.value)} placeholder="Details (optional)" className="w-full text-xs px-2 py-1.5 rounded border border-bareter-border bg-white dark:bg-card resize-none" rows={2} />
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" onClick={() => setCounteringId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                    <button type="button" disabled={!counterName || !counterValue || counterOfferMutation.isPending} onClick={() => counterOfferMutation.mutate({ proposalId: p.id, name: counterName, value: counterValue, description: counterDesc })} className="text-xs font-semibold text-blue-700 hover:underline disabled:opacity-50">Send</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Accepted proposal — link directly to the deal page */}
+              {p.status === "accepted" && (
+                <div className="mt-2.5 pt-2 border-t border-green-200 dark:border-green-800 flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white gap-1"
+                    onClick={() => (p as any).dealId ? navigate(`/deals/${(p as any).dealId}`) : navigate("/deals")}
+                  >
+                    🤝 View Deal & Progress
+                  </Button>
+                  {user && (user.id === p.userId || user.id === ownerId) && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setReviewProposal({ id: p.id, otherPartyName: user.id === p.userId ? listing.title : (p.user?.fullName || "Proposer") })}>
+                      ★ Review
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">No proposals yet. Be the first to propose a barter!</p>
+      )}
+
+      {/* Rejected proposal → Turn into listing nudge (always visible to proposer) */}
+      {user && proposals && proposals
+        .filter(p => p.userId === user.id && p.status === "rejected")
+        .map(p => (
+          <div key={`rejected-nudge-${p.id}`} className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 p-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Your offer "{p.offerItemName}" was declined.</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400">Turn it into a listing so other businesses can find it and propose a barter to you.</p>
+            <button
+              type="button"
+              className="text-xs font-semibold text-bareter-teal hover:underline flex items-center gap-1"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  prefill: "1",
+                  title: p.offerItemName,
+                  description: p.offerDescription || "",
+                  retailValue: p.offerItemValue,
+                  images: JSON.stringify(p.images || []),
+                });
+                window.location.href = `/create-listing?${params.toString()}`;
+              }}
+            >
+              Create a listing with this offer →
+            </button>
+          </div>
+        ))
+      }
+
+      {/* Propose form — non-owners only, shown when compose is toggled */}
+      {canPropose && showCompose && (
+        <div className="pt-2 border-t border-bareter-border space-y-3">
+          <p className="text-xs font-semibold text-bareter-navy dark:text-foreground flex items-center gap-1.5">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-bareter-teal" />
+            Propose a Barter
+          </p>
+
+          {/* Name + value */}
+          <div className="flex gap-2">
+            <Input
+              value={offerName}
+              onChange={(e) => setOfferName(e.target.value)}
+              placeholder="What are you offering?"
+              className="text-sm flex-1 h-9"
+            />
+            <div className="relative flex-shrink-0 w-28">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
+              <Input
+                type="number"
+                value={offerValue}
+                onChange={(e) => setOfferValue(e.target.value)}
+                placeholder="Value"
+                className="text-sm pl-10 h-9"
+                min="1"
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <Textarea
+            value={offerDescription}
+            onChange={(e) => setOfferDescription(e.target.value)}
+            placeholder="Describe your offer — condition, brand, what's included..."
+            className="text-sm resize-none"
+            rows={2}
+          />
+
+          {/* Image upload — 2 required */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <ImageIcon className="h-3.5 w-3.5" />
+                Offer Images <span className="text-destructive ml-0.5">*</span>
+                <span className="text-muted-foreground font-normal ml-1">({offerImages.length}/2 min)</span>
+              </Label>
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImages}
+                className="text-xs text-bareter-teal hover:underline flex items-center gap-1 disabled:opacity-50"
+              >
+                {uploadingImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                Add photos
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => handleImageUpload(e.target.files)}
+              />
+            </div>
+
+            {offerImages.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImages}
+                className="w-full border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:border-bareter-teal/50 hover:text-bareter-teal transition-colors disabled:opacity-50"
+              >
+                {uploadingImages ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
+                <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+              </button>
+            ) : (
+              <div className="grid grid-cols-4 gap-1.5">
+                {offerImages.map((url, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-md overflow-hidden border bg-muted group">
+                    <img src={url} alt={`Offer ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setOfferImages(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploadingImages}
+                  className="aspect-square rounded-md border-2 border-dashed border-muted-foreground/25 flex items-center justify-center text-muted-foreground hover:border-bareter-teal/50 hover:text-bareter-teal transition-colors disabled:opacity-50"
+                >
+                  {uploadingImages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+            {offerImages.length > 0 && offerImages.length < 2 && (
+              <p className="text-[11px] text-destructive mt-1">Add {2 - offerImages.length} more photo{2 - offerImages.length > 1 ? "s" : ""} to continue</p>
+            )}
+          </div>
+
+          {/* Message + submit */}
+          <div className="flex gap-2">
+            <Input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Add a message (optional)"
+              className="text-sm flex-1 h-9"
+              onKeyDown={(e) => e.key === "Enter" && offerImages.length >= 2 && (waitlistGate() && submitMutation.mutate())}
+            />
+            <Button
+              size="sm"
+              className="h-9 gap-1 bg-bareter-teal hover:bg-bareter-teal/90 text-white shrink-0"
+              onClick={() => {
+                if (!waitlistGate()) return;
+                if (offerImages.length < 2) {
+                  toast({ title: "Images required", description: "Please upload at least 2 images of your offer", variant: "destructive" });
+                  return;
+                }
+                submitMutation.mutate();
+              }}
+              disabled={submitMutation.isPending || !offerName.trim() || !offerValue || offerImages.length < 2}
+            >
+              {submitMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Propose
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!user && showCompose && (
+        <Link href="/login">
+          <Button variant="outline" size="sm" className="w-full text-xs">Log in to propose a barter</Button>
+        </Link>
+      )}
+
+      {/* Review modal */}
+      {reviewProposal && (
+        <ReviewModal
+          open={!!reviewProposal}
+          onClose={() => setReviewProposal(null)}
+          proposalId={reviewProposal.id}
+          revieweeName={reviewProposal.otherPartyName}
+          listingTitle={listing.title}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Instagram-style Listing Feed Card ──────────────────────────────
+function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
+  const { gate: waitlistGate } = useWaitlist();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
+  const [liked, setLiked] = useState(!!(listing as any).isLiked);
+  const [likeCount, setLikeCount] = useState(listing.likeCount ?? 0);
+  const [showAllWants, setShowAllWants] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showProposals, setShowProposals] = useState(false);
+
+  const images = listing.images as string[] | null;
+  const exchangeItems = (listing.exchangeItems as Array<{ name: string; isPriority: boolean }> | null) ?? [];
+  const wantedCategories = (listing.wantedCategories as string[] | null) ?? [];
+  const wants = [...exchangeItems.map((e) => e.name), ...wantedCategories];
+  const visibleWants = showAllWants ? wants : wants.slice(0, 3);
+  const retailValue = listing.retailValue ? Number(listing.retailValue) : 0;
+  const sellerName = (listing as any).user?.fullName || "Bareter Member";
+  const description = listing.description || "";
+  const shouldTruncate = description.length > 100;
+  const displayDesc = expanded || !shouldTruncate ? description : description.slice(0, 100);
+
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/like`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setLiked(data.liked);
+      setLikeCount(data.likeCount);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+    },
+    onError: () => toast({ title: "Failed to like", variant: "destructive" }),
+  });
+
+  const handleLike = () => {
+    if (!waitlistGate()) return;
+    likeMutation.mutate();
+  };
+
+  const handleContact = (type: "call" | "email" | "message") => {
+    if (!waitlistGate()) return;
+    const poster = (listing as any).user;
+    if (type === "call") {
+      if (poster?.phone && poster?.showPhone !== false) {
+        window.open(`tel:${poster.phone}`, "_self");
+      } else if (poster?.phone) {
+        toast({ title: "Phone hidden", description: "They haven't made their number public. Send them a message instead." });
+        navigate(`/inbox?userId=${listing.userId}`);
+      } else {
+        toast({ title: "No phone on file", description: "Opening direct message instead." });
+        navigate(`/inbox?userId=${listing.userId}`);
+      }
+    } else if (type === "email") {
+      if (poster?.email && poster?.showEmail !== false) {
+        window.open(`mailto:${poster.email}?subject=Barter Inquiry - ${listing.title}`, "_self");
+      } else {
+        toast({ title: "Email hidden", description: "Opening direct message instead." });
+        navigate(`/inbox?userId=${listing.userId}`);
+      }
+    } else {
+      if (poster?.allowDirectMessages === false) {
+        toast({ title: "Messaging disabled", description: "This member has disabled direct messages.", variant: "destructive" });
+      } else {
+        navigate(`/inbox?userId=${listing.userId}`);
+      }
+    }
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/listings/${listing.id}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: listing.title, url }); } catch { /* cancelled */ }
+    } else {
+      setShowShareMenu((p) => !p);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/listings/${listing.id}`);
+      toast({ title: "Link copied" });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy link", variant: "destructive" });
+    }
+    setShowShareMenu(false);
+  };
+
+  return (
+    <div className="bg-white dark:bg-card border border-bareter-border dark:border-border rounded-xl overflow-hidden shadow-sm">
+      {/* Header — seller info */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <Link href={`/users/${listing.userId}`}>
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={(listing as any).user?.avatarUrl || undefined} />
+            <AvatarFallback className="bg-bareter-teal text-white text-sm font-bold">
+              {sellerName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        </Link>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">{sellerName}</p>
+          <p className="text-xs text-bareter-muted">{listing.location || "UAE"}</p>
+        </div>
+        <Badge variant="outline" className="text-[10px] px-2 h-5 flex-shrink-0">
+          {(listing.categories as string[])?.[0] ?? listing.type}
+        </Badge>
+      </div>
+
+      {/* Full-width image with price overlay */}
+      <Link href={`/listings/${listing.id}`} className="relative block">
+        {images?.[0] ? (
+          <img
+            src={images[0]}
+            alt={listing.title}
+            className="w-full aspect-[4/3] object-cover hover:opacity-95 transition-opacity"
+          />
+        ) : (
+          <div className="w-full aspect-[4/3] bg-gradient-to-br from-bareter-teal/10 to-bareter-teal/5 flex items-center justify-center">
+            <ArrowRightLeft className="h-16 w-16 text-bareter-teal/30" />
+          </div>
+        )}
+        {retailValue > 0 && (
+          <div className="absolute bottom-3 right-3">
+            <span className="bg-black/60 backdrop-blur-sm text-white text-sm font-semibold px-3 py-1 rounded-lg">
+              AED {retailValue.toLocaleString()}
+            </span>
+          </div>
+        )}
+      </Link>
+
+      {/* Action row — left: like/comment/share | right: phone/email/dm/bookmark */}
+      <div className="px-4 pt-2.5 pb-1 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={handleLike} aria-label="Like">
+            <Heart className={`h-6 w-6 transition-colors ${liked ? "fill-red-500 text-red-500" : "text-foreground"}`} />
+          </button>
+          <button
+            type="button"
+            onClick={() => { if (!waitlistGate()) return; setShowProposals((p) => !p); }}
+            aria-label="Proposals"
+          >
+            <MessageCircle className={`h-6 w-6 transition-colors ${showProposals ? "text-bareter-teal" : "text-foreground"}`} />
+          </button>
+          <div className="relative">
+            <button type="button" onClick={handleShare} aria-label="Share">
+              <Share2 className="h-6 w-6 text-foreground" />
+            </button>
+            {showShareMenu && (
+              <div className="absolute top-8 left-0 z-50 bg-background border rounded-md shadow-lg p-1 min-w-[160px]">
+                <button onClick={handleCopyLink} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted rounded-sm">
+                  <Copy className="h-4 w-4" /> Copy Link
+                </button>
+                <button
+                  onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(`${listing.title} - ${window.location.origin}/listings/${listing.id}`)}`, "_blank"); setShowShareMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted rounded-sm"
+                >
+                  <ExternalLink className="h-4 w-4" /> WhatsApp
+                </button>
+                <button onClick={() => setShowShareMenu(false)} className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-muted rounded-sm text-muted-foreground">
+                  <X className="h-4 w-4" /> Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleContact("call")} aria-label="Call">
+            <Phone className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleContact("email")} aria-label="Email">
+            <Mail className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleContact("message")} aria-label="Message">
+            <Send className="h-4 w-4" />
+          </Button>
+          <button
+            type="button"
+            onClick={handleLike}
+            aria-label="Save to Favorites"
+          >
+            <Bookmark className={`h-6 w-6 ml-1 transition-colors ${liked ? "fill-bareter-teal text-bareter-teal" : "text-foreground"}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Like count + title + caption */}
+      <div className="px-4 pb-2 space-y-0.5">
+        {likeCount > 0 && (
+          <p className="text-sm font-semibold text-bareter-navy dark:text-foreground">
+            {likeCount.toLocaleString()} {likeCount === 1 ? "like" : "likes"}
+          </p>
+        )}
+        <Link href={`/listings/${listing.id}`}>
+          <p className="text-sm font-bold text-bareter-navy dark:text-foreground">{listing.title}</p>
+        </Link>
+        {description && (
+          <p className="text-sm text-foreground leading-snug">
+            <span className="font-semibold mr-1">{sellerName.split(" ")[0]}</span>
+            {displayDesc}
+            {shouldTruncate && !expanded && (
+              <button onClick={() => setExpanded(true)} className="text-muted-foreground ml-1">
+                ...more
+              </button>
+            )}
+          </p>
+        )}
+      </div>
+
+      {/* Offering + Willing to Barter For */}
+      {(retailValue > 0 || wants.length > 0) && (
+        <div className="mx-4 mb-4 mt-1.5 rounded-lg bg-muted/30 p-3 space-y-2.5">
+          {retailValue > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                Offering
+              </p>
+              <span className="inline-flex items-center gap-1.5 bg-green-600 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                <ArrowRightLeft className="h-3 w-3 flex-shrink-0" />
+                {listing.title.length > 28 ? listing.title.slice(0, 28) + "…" : listing.title}
+                <span className="opacity-80 ml-0.5">AED {retailValue.toLocaleString()}</span>
+              </span>
+            </div>
+          )}
+          {wants.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                Willing to barter for
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {visibleWants.map((item, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 border border-bareter-border rounded-full text-xs px-2.5 py-1 text-bareter-navy dark:text-foreground bg-white dark:bg-card"
+                  >
+                    <Search className="h-3 w-3 text-bareter-muted flex-shrink-0" />
+                    {item}
+                  </span>
+                ))}
+                {wants.length > 3 && !showAllWants && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllWants(true)}
+                    className="text-xs font-semibold text-bareter-teal"
+                  >
+                    +{wants.length - 3} more
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Proposals — inline, directly below "Willing to barter for" */}
+          <div className="-mx-3 -mb-3 mt-1">
+            <ListingProposalsSection listing={listing} ownerId={listing.userId} showCompose={showProposals} />
+          </div>
+        </div>
+      )}
+
+      {/* Propose a Different Barter CTA — below the box */}
+      {(retailValue > 0 || wants.length > 0) && (
+        <div className="px-4 pb-3">
+          <button
+            type="button"
+            onClick={() => { if (!waitlistGate()) return; setShowProposals((p) => !p); }}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-bareter-border text-xs font-semibold text-bareter-navy dark:text-foreground hover:bg-white dark:hover:bg-card transition-colors"
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5 text-bareter-teal" />
+            {showProposals ? "Hide Proposals" : "Propose a Different Barter"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function newFeedSeed() { return Math.floor(Math.random() * 2147483647); }
+
 export function FeedPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
+  const [feedSeed, setFeedSeed] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem("bareter_feed_seed");
+      return stored ? parseInt(stored, 10) : (() => { const s = newFeedSeed(); sessionStorage.setItem("bareter_feed_seed", String(s)); return s; })();
+    } catch { return newFeedSeed(); }
+  });
+  const [refreshedAt, setRefreshedAt] = useState<Date>(() => new Date());
 
   const activeLocation = useActiveLocation();
   const params = new URLSearchParams({ limit: "20", offset: "0" });
@@ -1208,6 +2144,36 @@ export function FeedPage() {
     queryFn: async () => {
       const res = await fetch(queryUrl, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch posts");
+      return res.json();
+    },
+  });
+
+  // Listings feed — Instagram-style listing cards
+  const listingsParams = new URLSearchParams({ limit: "20", sort: "newest", seed: String(feedSeed) });
+  Object.entries(locationParams(activeLocation)).forEach(([k, v]) => listingsParams.set(k, v));
+  if (activeCategory !== "All") listingsParams.set("category", activeCategory);
+
+  const { data: feedListings, isLoading: listingsLoading, refetch: refetchListings } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/feed", activeCategory, activeLocation.country, activeLocation.city, feedSeed],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings?${listingsParams.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch listings");
+      return res.json();
+    },
+  });
+
+  const handleRefreshFeed = () => {
+    const s = newFeedSeed();
+    try { sessionStorage.setItem("bareter_feed_seed", String(s)); } catch {}
+    setFeedSeed(s);
+    setRefreshedAt(new Date());
+  };
+
+  const { data: trendingListings } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/trending"],
+    queryFn: async () => {
+      const res = await fetch("/api/listings/trending?limit=10", { credentials: "include" });
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -1249,47 +2215,120 @@ export function FeedPage() {
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
           <ContinueWhereLeftOff />
+
+          {/* ── Trending / Hot listings strip ── */}
+          {trendingListings && trendingListings.length > 0 && (
+            <div className="mt-3 mb-1" data-testid="trending-strip">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1 px-4 sm:px-0">
+                <TrendingUp className="h-3.5 w-3.5 text-orange-500" />
+                🔥 Trending This Week
+              </p>
+              <div className="flex gap-3 overflow-x-auto pb-2 px-4 sm:px-0 snap-x scrollbar-hide">
+                {trendingListings.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/listings/${l.id}`}
+                    className="shrink-0 w-40 snap-start rounded-xl border border-bareter-border bg-white dark:bg-card overflow-hidden hover:shadow-bareter-hover transition-shadow"
+                  >
+                    {(l.images as string[])?.[0] ? (
+                      <img src={(l.images as string[])[0]} alt={l.title} className="w-full h-24 object-cover" />
+                    ) : (
+                      <div className="w-full h-24 bg-muted/30 flex items-center justify-center">
+                        <ArrowRightLeft className="h-5 w-5 text-muted-foreground/40" />
+                      </div>
+                    )}
+                    <div className="p-2">
+                      <p className="text-xs font-semibold line-clamp-2 text-bareter-navy dark:text-foreground">{l.title}</p>
+                      {l.retailValue && <p className="text-xs text-bareter-teal font-bold mt-0.5">AED {Number(l.retailValue).toLocaleString()}</p>}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           <SafetyBanner />
           <AiMatchCards />
           <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
-          <div className="mt-2 space-y-4 sm:space-y-6">
-            {isLoading ? (
-              <>
+          {/* ── Listings feed — Instagram-style ── */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-3 px-0.5">
+              <div>
+                <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
+                  Latest Listings
+                </h2>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Refreshed {refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefreshFeed}
+                  className="flex items-center gap-1 text-xs font-semibold text-bareter-teal hover:text-bareter-teal/80 transition-colors"
+                  title="Refresh listings"
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                  Refresh
+                </button>
+                <Link href="/browse" className="text-xs font-semibold text-bareter-teal hover:underline">
+                  Browse all →
+                </Link>
+              </div>
+            </div>
+            {listingsLoading ? (
+              <div className="space-y-4">
                 {[...Array(3)].map((_, i) => (
-                  <FeedCardSkeleton key={i} />
+                  <Skeleton key={i} className="h-80 rounded-xl" />
                 ))}
-              </>
-            ) : !posts || posts.length === 0 ? (
-              <Card>
-                <CardContent className="py-16 text-center">
-                  <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-                    <Plus className="h-8 w-8 text-muted-foreground" />
+              </div>
+            ) : feedListings && feedListings.length > 0 ? (
+              <div className="space-y-4">
+                {feedListings.slice(0, 10).map((listing, idx) => (
+                  <div key={listing.id}>
+                    <ListingFeedCard listing={listing} />
+                    {/* Inject a social post every 3 listings */}
+                    {posts && posts[Math.floor(idx / 3)] && idx % 3 === 2 && (
+                      <div className="mt-4">
+                        <FeedCard post={posts[Math.floor(idx / 3)]} />
+                      </div>
+                    )}
                   </div>
-                  <h3 className="font-semibold text-lg mb-2" data-testid="text-empty-title">No posts yet</h3>
-                  <p className="text-muted-foreground mb-4" data-testid="text-empty-description">
-                    Be the first to share what you have to barter
-                  </p>
-                  {user ? (
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Plus className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                  <p className="font-semibold mb-1">No listings yet</p>
+                  <p className="text-sm text-muted-foreground mb-4">Be the first to list something to barter</p>
+                  {user && (
                     <Link href="/create-listing">
-                      <Button data-testid="button-create-first-post">Create a Post</Button>
+                      <Button variant="bareter" size="sm">Create Listing</Button>
                     </Link>
-                  ) : (
-                    <div className="flex gap-3 justify-center">
-                      <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-login-cta">
-                        Sign In
-                      </Button>
-                      <Button onClick={() => navigate("/register")} data-testid="button-register-cta">
-                        Get Started
-                      </Button>
-                    </div>
                   )}
                 </CardContent>
               </Card>
-            ) : (
-              posts.map((post) => <FeedCard key={post.id} post={post} />)
             )}
           </div>
+
+          {/* ── Social Posts feed ── */}
+          {posts && posts.length > 0 && (
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-3 px-0.5">
+                <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
+                  Community Posts
+                </h2>
+              </div>
+              <div className="space-y-4 sm:space-y-6">
+                {isLoading ? (
+                  [...Array(3)].map((_, i) => <FeedCardSkeleton key={i} />)
+                ) : (
+                  posts.map((post) => <FeedCard key={post.id} post={post} />)
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="hidden lg:block w-72 xl:w-80 flex-shrink-0 pt-4 sticky top-16 z-50 self-start h-[calc(100vh-5rem)] overflow-y-auto" data-testid="feed-sidebar">

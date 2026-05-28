@@ -1186,7 +1186,101 @@ export async function sendListingPublishedEmail(
   return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" is live on ${APP_NAME}!`, html, text });
 }
 
+// ─── New Barter Proposal Notification ────────────────────────────────────────
+
+export async function sendNewProposalEmail(
+  toEmail: string,
+  opts: {
+    ownerName?: string | null;
+    proposerName: string;
+    listingTitle: string;
+    offerItemName: string;
+    offerItemValue: string;
+    listingUrl: string;
+  },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] New proposal email to ${toEmail} skipped (not configured)`);
+    return false;
+  }
+  const greeting = opts.ownerName ? `Hi ${opts.ownerName},` : "Hi there,";
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 20px; color: #136c68; margin-bottom: 8px; text-align: center;">🤝 New Barter Proposal!</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      <strong>${opts.proposerName}</strong> has proposed a barter on your listing <strong>"${opts.listingTitle}"</strong>.
+    </p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">They're offering:</p>
+      <p style="margin: 0; color: #166534; font-size: 16px; font-weight: 700;">${opts.offerItemName} — AED ${parseFloat(opts.offerItemValue).toLocaleString()}</p>
+    </div>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">Head to your listing to review the proposal and accept or decline.</p>
+    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+      View Proposal
+    </a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${opts.proposerName} proposed a barter on your listing "${opts.listingTitle}".\n\nThey're offering: ${opts.offerItemName} — AED ${parseFloat(opts.offerItemValue).toLocaleString()}\n\nView the proposal: ${opts.listingUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `${opts.proposerName} proposed a barter on "${opts.listingTitle}"`, html, text });
+}
+
 // ─── Deal Status Emails ───────────────────────────────────────────────────────
+
+export async function sendCounterOfferEmail(
+  toEmail: string,
+  opts: {
+    recipientName?: string | null;
+    counterpartyName: string;
+    listingTitle: string;
+    counterName: string;
+    counterValue: string;
+    listingUrl: string;
+    direction: "received" | "responded";
+    response?: "accepted" | "rejected";
+  },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const isReceived = opts.direction === "received";
+  const emoji = isReceived ? "↔️" : (opts.response === "accepted" ? "✅" : "❌");
+  const title = isReceived
+    ? "Counter-offer received"
+    : opts.response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined";
+  const body = isReceived
+    ? `<strong>${opts.counterpartyName}</strong> sent a counter-offer on <strong>"${opts.listingTitle}"</strong>: <strong>${opts.counterName}</strong> valued at AED ${parseFloat(opts.counterValue).toLocaleString()}. Head over to review and respond.`
+    : opts.response === "accepted"
+      ? `<strong>${opts.counterpartyName}</strong> accepted your counter-offer on <strong>"${opts.listingTitle}"</strong>. You can now proceed to finalise the deal.`
+      : `<strong>${opts.counterpartyName}</strong> declined your counter-offer on <strong>"${opts.listingTitle}"</strong>. You can send a new proposal or close the deal.`;
+  const color = isReceived ? "#7c3aed" : (opts.response === "accepted" ? "#065f46" : "#991b1b");
+  const subject = isReceived
+    ? `Counter-offer from ${opts.counterpartyName} on "${opts.listingTitle}"`
+    : opts.response === "accepted"
+      ? `${opts.counterpartyName} accepted your counter-offer`
+      : `${opts.counterpartyName} declined your counter-offer`;
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 20px; color: ${color}; margin-bottom: 8px; text-align: center;">${emoji} ${title}</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${body}</p>
+    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Listing</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${title}\n\n${body.replace(/<[^>]+>/g, "")}\n\nView listing: ${opts.listingUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject, html, text });
+}
 
 export async function sendDealStatusEmail(
   toEmail: string,

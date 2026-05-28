@@ -57,6 +57,9 @@ import {
   Info,
   Languages,
   Search,
+  Upload,
+  X,
+  ImageIcon,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
@@ -66,6 +69,10 @@ import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deli
 import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
 import { timeAgo, formatValue } from "@/lib/utils";
+import { ValueMatchBadge } from "@/components/ValueMatchBadge";
+import { ReviewModal } from "@/components/ReviewModal";
+import { ReputationBadge } from "@/components/ReputationBadge";
+import { StarRating } from "@/components/StarRating";
 
 const _listingTranslationCache = new Map<string, { title: string; description: string }>();
 
@@ -154,7 +161,8 @@ export function ListingDetailPage() {
   const handleTranslateListing = async () => {
     if (!listing) return;
     if (showTranslated) { setShowTranslated(false); return; }
-    const cacheKey = `${listing.id}-${language}`;
+    const targetLang = "ar";
+    const cacheKey = `${listing.id}-${targetLang}`;
     if (translationCacheRef.has(cacheKey)) {
       setTranslation(translationCacheRef.get(cacheKey)!);
       setShowTranslated(true);
@@ -162,7 +170,6 @@ export function ListingDetailPage() {
     }
     setTranslating(true);
     try {
-      const targetLang = language;
       const textToTranslate = `TITLE: ${listing.title}\nDESCRIPTION: ${listing.description || ""}`;
       const res = await fetch("/api/translate", {
         method: "POST",
@@ -170,7 +177,10 @@ export function ListingDetailPage() {
         credentials: "include",
         body: JSON.stringify({ text: textToTranslate, targetLang }),
       });
-      if (!res.ok) throw new Error("Translation failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Translation failed");
+      }
       const data = await res.json();
       const translated = {
         title: data.title || listing.title,
@@ -179,8 +189,8 @@ export function ListingDetailPage() {
       translationCacheRef.set(cacheKey, translated);
       setTranslation(translated);
       setShowTranslated(true);
-    } catch {
-      toast({ title: t("translate.error"), variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: e?.message || t("translate.error"), variant: "destructive" });
     } finally {
       setTranslating(false);
     }
@@ -222,6 +232,85 @@ export function ListingDetailPage() {
   const [commentOfferName, setCommentOfferName] = useState("");
   const [commentOfferValue, setCommentOfferValue] = useState("");
   const [commentMessage, setCommentMessage] = useState("");
+  const [commentDescription, setCommentDescription] = useState("");
+  const [commentImages, setCommentImages] = useState<string[]>([]);
+  const [uploadingCommentImages, setUploadingCommentImages] = useState(false);
+  const commentImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Counter-offer state (for proposal counter-offer flow)
+  const [counteringProposalId, setCounteringProposalId] = useState<string | null>(null);
+  const [ctrName, setCtrName] = useState("");
+  const [ctrValue, setCtrValue] = useState("");
+  const [ctrDesc, setCtrDesc] = useState("");
+
+  // Review modal state
+  const [reviewProposal, setReviewProposal] = useState<{ id: string; otherPartyName: string } | null>(null);
+
+  const { data: similarListings } = useQuery<any[]>({
+    queryKey: ["/api/listings", id, "similar"],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings/${id}/similar?limit=6`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: userReviews } = useQuery<{ avgRating: number; reviewCount: number; reviews: any[] }>({
+    queryKey: ["/api/users", listing?.userId, "reviews"],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/${listing!.userId}/reviews`, { credentials: "include" });
+      if (!res.ok) return { avgRating: 0, reviewCount: 0, reviews: [] };
+      return res.json();
+    },
+    enabled: !!listing?.userId,
+  });
+
+  const respondCommentMutation = useMutation({
+    mutationFn: async ({ commentId, status }: { commentId: string; status: "accepted" | "rejected" }) => {
+      const res = await apiRequest("PATCH", `/api/listings/${id}/proposals/${commentId}`, { status });
+      return res.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "comments"] });
+      toast({ title: vars.status === "accepted" ? "Proposal accepted!" : "Proposal declined" });
+      if (vars.status === "accepted") {
+        const comment = listingComments?.find(c => c.id === vars.commentId);
+        setReviewProposal({ id: vars.commentId, otherPartyName: comment?.user?.fullName || "Proposer" });
+      }
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to respond", variant: "destructive" }),
+  });
+
+  const counterOfferMutation = useMutation({
+    mutationFn: async ({ proposalId, name, value, description }: { proposalId: string; name: string; value: string; description: string }) => {
+      const res = await apiRequest("POST", `/api/listings/${id}/proposals/${proposalId}/counter`, { name, value, description, images: [] });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "comments"] });
+      setCounteringProposalId(null);
+      setCtrName(""); setCtrValue(""); setCtrDesc("");
+      toast({ title: "Counter-offer sent!", description: "The proposer has been notified." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to send counter-offer", variant: "destructive" }),
+  });
+
+  const counterRespondMutation = useMutation({
+    mutationFn: async ({ proposalId, response }: { proposalId: string; response: "accepted" | "rejected" }) => {
+      const res = await apiRequest("POST", `/api/listings/${id}/proposals/${proposalId}/counter-respond`, { response });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "comments"] });
+      toast({ title: vars.response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined" });
+      if (vars.response === "accepted") {
+        const comment = listingComments?.find(c => c.id === vars.proposalId);
+        if (comment) setReviewProposal({ id: vars.proposalId, otherPartyName: (listing as any)?.user?.fullName || "Listing owner" });
+      }
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to respond", variant: "destructive" }),
+  });
 
   const { data: listingComments } = useQuery<ListingCommentWithUser[]>({
     queryKey: ["/api/listings", id, "comments"],
@@ -255,7 +344,7 @@ export function ListingDetailPage() {
   });
 
   const createCommentMutation = useMutation({
-    mutationFn: async (data: { content: string | null; offerItemName: string; offerItemValue: string }) => {
+    mutationFn: async (data: { content: string | null; offerItemName: string; offerItemValue: string; offerDescription: string | null; images: string[] }) => {
       const res = await apiRequest("POST", `/api/listings/${id}/comments`, data);
       return res.json();
     },
@@ -264,6 +353,8 @@ export function ListingDetailPage() {
       setCommentOfferName("");
       setCommentOfferValue("");
       setCommentMessage("");
+      setCommentDescription("");
+      setCommentImages([]);
       toast({ title: t("listingDetail.proposalPosted"), description: t("listingDetail.proposalPostedDesc") });
     },
     onError: (error: any) => {
@@ -271,12 +362,45 @@ export function ListingDetailPage() {
     },
   });
 
+  const handleCommentImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingCommentImages(true);
+    try {
+      const urls = await Promise.all(Array.from(files).map(async (file) => {
+        if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
+        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("type", "listing");
+        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
+        return (await res.json()).url as string;
+      }));
+      setCommentImages(prev => [...prev, ...urls]);
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error.message || "Could not upload image", variant: "destructive" });
+    } finally {
+      setUploadingCommentImages(false);
+      if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+    }
+  };
+
+  const removeCommentImage = (index: number) => {
+    setCommentImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmitComment = () => {
     if (!commentOfferName || !commentOfferValue) return;
+    if (commentImages.length < 2) {
+      toast({ title: "Images required", description: "Please upload at least 2 images of your offer", variant: "destructive" });
+      return;
+    }
     createCommentMutation.mutate({
       content: commentMessage || null,
       offerItemName: commentOfferName,
       offerItemValue: commentOfferValue,
+      offerDescription: commentDescription || null,
+      images: commentImages,
     });
   };
 
@@ -753,38 +877,6 @@ export function ListingDetailPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 py-3 border-t border-b" data-testid="listing-engagement-bar">
-            {user && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                disabled={listingLikeMutation.isPending}
-                onClick={() => listingLikeMutation.mutate()}
-                data-testid="button-like-listing"
-              >
-                <Heart className={`h-4 w-4 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
-                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
-              </Button>
-            )}
-            {!user && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Heart className="h-4 w-4" />
-                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <MessageSquare className="h-4 w-4" />
-              <span>{listing.commentCount || 0} {t("listingDetail.proposals")}</span>
-            </div>
-            <ShareMenu
-              url={window.location.href}
-              title={listing.title}
-              showLabel
-              data-testid="button-share-listing"
-            />
-          </div>
-
           <Card id="comments" data-testid="listing-comments-section">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -817,11 +909,111 @@ export function ListingDetailPage() {
                           <span className="text-[11px] font-medium text-muted-foreground">
                             AED {formatValue(comment.offerItemValue)}
                           </span>
+                          <ValueMatchBadge
+                            offerValue={comment.offerItemValue}
+                            listingValue={listing.retailValue as string}
+                            aiFairValue={(comment as any).valuationFairAed}
+                            aiConfidence={(comment as any).valuationConfidence}
+                          />
                         </div>
+                        {(comment as any).offerDescription && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{(comment as any).offerDescription}</p>
+                        )}
+                        {(comment as any).images && ((comment as any).images as string[]).length > 0 && (
+                          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                            {((comment as any).images as string[]).map((imgUrl: string, imgIdx: number) => (
+                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={imgUrl}
+                                  alt={`Offer image ${imgIdx + 1}`}
+                                  className="h-14 w-14 object-cover rounded border hover:opacity-90 transition-opacity"
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {comment.content && (
                           <p className="text-sm text-muted-foreground mt-0.5">{comment.content}</p>
                         )}
                         <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
+                        {/* Status badge */}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          {comment.status === "accepted" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✓ Accepted</span>}
+                          {comment.status === "rejected" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">✕ Declined</span>}
+                          {comment.status === "countered" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">↔ Counter-offered</span>}
+                          {(!comment.status || comment.status === "pending") && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">Pending</span>}
+                        </div>
+
+                        {/* Counter-offer shown to proposer for response */}
+                        {comment.status === "countered" && user?.id === comment.userId && (comment as any).counterOfferStatus === "pending" && (
+                          <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 p-2.5 space-y-1.5">
+                            <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">Counter-offer from listing owner:</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">{(comment as any).counterOfferName} — AED {formatValue((comment as any).counterOfferValue)}</p>
+                            {(comment as any).counterOfferDescription && <p className="text-xs text-muted-foreground">{(comment as any).counterOfferDescription}</p>}
+                            <div className="flex gap-2 pt-1">
+                              <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: comment.id, response: "accepted" })} className="text-xs font-semibold text-green-700 hover:underline">Accept</button>
+                              <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: comment.id, response: "rejected" })} className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Owner actions: accept / decline / counter */}
+                        {isOwnListing && (!comment.status || comment.status === "pending") && (
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <button type="button" onClick={() => respondCommentMutation.mutate({ commentId: comment.id, status: "accepted" })} className="text-[11px] font-semibold text-green-700 dark:text-green-400 hover:underline">✓ Accept</button>
+                            <button type="button" onClick={() => respondCommentMutation.mutate({ commentId: comment.id, status: "rejected" })} className="text-[11px] font-semibold text-red-600 dark:text-red-400 hover:underline">✕ Decline</button>
+                            <button type="button" onClick={() => { setCounteringProposalId(comment.id); setCtrName(""); setCtrValue(""); setCtrDesc(""); }} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">↔ Counter</button>
+                          </div>
+                        )}
+
+                        {/* Counter-offer form (owner) */}
+                        {isOwnListing && counteringProposalId === comment.id && (
+                          <div className="mt-2 p-2.5 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 space-y-2">
+                            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Propose different terms:</p>
+                            <div className="flex gap-2">
+                              <Input value={ctrName} onChange={e => setCtrName(e.target.value)} placeholder="What you offer" className="text-xs h-8 flex-1" />
+                              <div className="relative w-28 flex-shrink-0">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">AED</span>
+                                <Input type="number" value={ctrValue} onChange={e => setCtrValue(e.target.value)} placeholder="Value" className="text-xs h-8 pl-9" />
+                              </div>
+                            </div>
+                            <Textarea value={ctrDesc} onChange={e => setCtrDesc(e.target.value)} placeholder="Details (optional)" className="text-xs resize-none" rows={2} />
+                            <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setCounteringProposalId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                              <button type="button" disabled={!ctrName || !ctrValue || counterOfferMutation.isPending} onClick={() => counterOfferMutation.mutate({ proposalId: comment.id, name: ctrName, value: ctrValue, description: ctrDesc })} className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline disabled:opacity-50">Send counter-offer</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Rejected nudge — only visible to the proposer */}
+                        {user && comment.userId === user.id && comment.status === "rejected" && (
+                          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 px-2.5 py-1.5 space-y-1">
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Your offer was declined. Turn it into a listing?</p>
+                            <button
+                              type="button"
+                              className="text-[11px] font-semibold text-primary hover:underline"
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  prefill: "1",
+                                  title: comment.offerItemName,
+                                  description: (comment as any).offerDescription || "",
+                                  retailValue: comment.offerItemValue,
+                                  images: JSON.stringify((comment as any).images || []),
+                                });
+                                window.location.href = `/create-listing?${params.toString()}`;
+                              }}
+                            >
+                              Create a listing with this offer →
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Leave a review — accepted proposals */}
+                        {comment.status === "accepted" && user && (user.id === comment.userId || user.id === listing.userId) && (
+                          <button type="button" onClick={() => setReviewProposal({ id: comment.id, otherPartyName: user.id === comment.userId ? ((listing as any).user?.fullName || "Owner") : (comment.user?.fullName || "Proposer") })} className="mt-1 text-[11px] font-semibold text-amber-600 hover:underline">
+                            ★ Leave a review
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -846,8 +1038,13 @@ export function ListingDetailPage() {
               )}
 
               {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED") && (
-                <div className="space-y-2 pt-2 border-t">
-                  <p className="text-xs font-medium">{t("listingDetail.proposeWhatYouOffer")}</p>
+                <div className="space-y-4 pt-3 border-t">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <ArrowRightLeft className="h-4 w-4 text-primary" />
+                    {t("listingDetail.proposeWhatYouOffer")}
+                  </p>
+
+                  {/* Offer name + value */}
                   <div className="flex items-center gap-2">
                     <Input
                       value={commentOfferName}
@@ -869,6 +1066,98 @@ export function ListingDetailPage() {
                       />
                     </div>
                   </div>
+
+                  {/* Offer description */}
+                  <div>
+                    <Textarea
+                      value={commentDescription}
+                      onChange={(e) => setCommentDescription(e.target.value)}
+                      placeholder="Describe your offer in detail — condition, brand, specifications, what's included..."
+                      className="text-sm resize-none"
+                      rows={3}
+                      data-testid="input-comment-description"
+                    />
+                  </div>
+
+                  {/* Image upload — 2 required */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-xs font-medium flex items-center gap-1">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        Offer Images
+                        <span className="text-destructive ml-0.5">*</span>
+                        <span className="text-muted-foreground font-normal ml-1">({commentImages.length}/2 minimum)</span>
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => commentImageInputRef.current?.click()}
+                        disabled={uploadingCommentImages}
+                        className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                        data-testid="button-upload-comment-image"
+                      >
+                        {uploadingCommentImages ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Upload className="h-3 w-3" />
+                        )}
+                        Add photos
+                      </button>
+                      <input
+                        ref={commentImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => handleCommentImageUpload(e.target.files)}
+                      />
+                    </div>
+
+                    {commentImages.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => commentImageInputRef.current?.click()}
+                        disabled={uploadingCommentImages}
+                        className="w-full border-2 border-dashed border-muted-foreground/30 rounded-lg p-6 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                        data-testid="dropzone-comment-images"
+                      >
+                        {uploadingCommentImages ? (
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                        ) : (
+                          <Upload className="h-6 w-6" />
+                        )}
+                        <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
+                        <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+                      </button>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {commentImages.map((url, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-md overflow-hidden border bg-muted group" data-testid={`comment-image-${idx}`}>
+                            <img src={url} alt={`Offer image ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removeCommentImage(idx)}
+                              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => commentImageInputRef.current?.click()}
+                          disabled={uploadingCommentImages}
+                          className="aspect-square rounded-md border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                        >
+                          {uploadingCommentImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    )}
+                    {commentImages.length > 0 && commentImages.length < 2 && (
+                      <p className="text-[11px] text-destructive mt-1">Add {2 - commentImages.length} more photo{2 - commentImages.length > 1 ? "s" : ""} to continue</p>
+                    )}
+                  </div>
+
+                  {/* Optional message */}
                   <div className="flex items-center gap-2">
                     <Input
                       value={commentMessage}
@@ -890,8 +1179,8 @@ export function ListingDetailPage() {
                     <Button
                       size="sm"
                       onClick={handleSubmitComment}
-                      disabled={createCommentMutation.isPending || !commentOfferName.trim() || !commentOfferValue}
-                      className="gap-1"
+                      disabled={createCommentMutation.isPending || !commentOfferName.trim() || !commentOfferValue || commentImages.length < 2}
+                      className="gap-1 shrink-0"
                       data-testid="button-submit-comment"
                     >
                       {createCommentMutation.isPending ? (
@@ -906,6 +1195,38 @@ export function ListingDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <div className="flex items-center gap-4 py-3 border-t border-b" data-testid="listing-engagement-bar">
+            {user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                disabled={listingLikeMutation.isPending}
+                onClick={() => listingLikeMutation.mutate()}
+                data-testid="button-like-listing"
+              >
+                <Heart className={`h-4 w-4 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
+                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
+              </Button>
+            )}
+            {!user && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Heart className="h-4 w-4" />
+                <span>{listing.likeCount || 0} {t("listingDetail.likes")}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <MessageSquare className="h-4 w-4" />
+              <span>{listing.commentCount || 0} {t("listingDetail.proposals")}</span>
+            </div>
+            <ShareMenu
+              url={window.location.href}
+              title={listing.title}
+              showLabel
+              data-testid="button-share-listing"
+            />
+          </div>
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
@@ -979,10 +1300,20 @@ export function ListingDetailPage() {
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap">
                     <span className="font-semibold">{listing.user?.fullName}</span>
                     <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
                     <FounderBadge show={!!listing.user?.founderBadge} />
+                    <ReputationBadge completedDeals={listing.user?.totalCompletedDeals ?? 0} avgRating={userReviews?.avgRating} />
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {userReviews && userReviews.reviewCount > 0 && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <StarRating value={Math.round(userReviews.avgRating)} readonly size="sm" />
+                        <span className="font-medium text-foreground">{userReviews.avgRating.toFixed(1)}</span>
+                        <span>({userReviews.reviewCount})</span>
+                      </span>
+                    )}
                   </div>
                   {listing.user?.businessName && (
                     <p className="text-sm text-muted-foreground">{listing.user.businessName}</p>
@@ -995,14 +1326,6 @@ export function ListingDetailPage() {
                   {listing.user.bio}
                 </p>
               )}
-
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center gap-1">
-                  <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                  <span className="font-medium">4.8</span>
-                </div>
-                <span className="text-sm text-muted-foreground">(24 {t("listingDetail.reviews")})</span>
-              </div>
 
               <Link href={`/users/${listing.userId}`}>
                 <Button variant="outline" className="w-full gap-2" data-testid="button-view-profile">
@@ -1151,12 +1474,50 @@ export function ListingDetailPage() {
         </div>
       </div>
 
+      {/* Similar listings */}
+      {similarListings && similarListings.length > 0 && (
+        <div className="mt-6 px-4 lg:px-0">
+          <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-bareter-teal" />
+            Similar Listings
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {similarListings.map((l: any) => (
+              <Link key={l.id} href={`/listings/${l.id}`} className="group block bg-white dark:bg-card border border-bareter-border rounded-xl overflow-hidden hover:shadow-bareter-hover transition-shadow">
+                {l.images?.[0] ? (
+                  <img src={l.images[0]} alt={l.title} className="w-full h-28 object-cover group-hover:scale-[1.02] transition-transform" />
+                ) : (
+                  <div className="w-full h-28 bg-muted/30 flex items-center justify-center">
+                    <ArrowRightLeft className="h-6 w-6 text-muted-foreground/40" />
+                  </div>
+                )}
+                <div className="p-2">
+                  <p className="text-xs font-semibold line-clamp-2 text-bareter-navy dark:text-foreground">{l.title}</p>
+                  {l.retailValue && <p className="text-xs text-bareter-teal font-bold mt-0.5">AED {Number(l.retailValue).toLocaleString()}</p>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <ReportModal
         open={showReport}
         onOpenChange={setShowReport}
         targetType="listing"
         targetId={listing?.id ?? ""}
       />
+
+      {/* Review modal */}
+      {reviewProposal && (
+        <ReviewModal
+          open={!!reviewProposal}
+          onClose={() => setReviewProposal(null)}
+          proposalId={reviewProposal.id}
+          revieweeName={reviewProposal.otherPartyName}
+          listingTitle={listing.title}
+        />
+      )}
       </div>
 
       {/* Mobile sticky bottom CTA — Propose a Barter */}

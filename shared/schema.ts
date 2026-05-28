@@ -679,10 +679,11 @@ export const ratings = pgTable("ratings", {
 export const notifications = pgTable("notifications", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
-  type: text("type").notNull(), // "deal_update", "message", "rating", etc.
+  type: text("type").notNull(), // "deal_update", "message", "rating", "new_proposal", etc.
   title: text("title").notNull(),
   message: text("message").notNull(),
   relatedDealId: varchar("related_deal_id", { length: 36 }).references(() => deals.id),
+  relatedListingId: varchar("related_listing_id", { length: 36 }).references(() => listings.id),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -764,6 +765,8 @@ export const postComments = pgTable("post_comments", {
   content: text("content"),
   offerItemName: varchar("offer_item_name", { length: 255 }).notNull(),
   offerItemValue: decimal("offer_item_value", { precision: 12, scale: 2 }).notNull(),
+  offerDescription: text("offer_description"),
+  images: jsonb("images").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -852,6 +855,20 @@ export const listingComments = pgTable("listing_comments", {
   content: text("content"),
   offerItemName: varchar("offer_item_name", { length: 255 }).notNull(),
   offerItemValue: decimal("offer_item_value", { precision: 12, scale: 2 }).notNull(),
+  offerDescription: text("offer_description"),
+  images: jsonb("images").$type<string[]>().default([]),
+  valuationMinAed: decimal("valuation_min_aed", { precision: 12, scale: 2 }),
+  valuationMaxAed: decimal("valuation_max_aed", { precision: 12, scale: 2 }),
+  valuationFairAed: decimal("valuation_fair_aed", { precision: 12, scale: 2 }),
+  valuationConfidence: decimal("valuation_confidence", { precision: 4, scale: 3 }),
+  status: text("status").default("pending"), // "pending" | "accepted" | "rejected" | "countered"
+  // Counter-offer — set by the listing owner when they want to propose modified terms
+  counterOfferName: varchar("counter_offer_name", { length: 255 }),
+  counterOfferValue: decimal("counter_offer_value", { precision: 12, scale: 2 }),
+  counterOfferDescription: text("counter_offer_description"),
+  counterOfferImages: jsonb("counter_offer_images").$type<string[]>().default([]),
+  counterOfferStatus: text("counter_offer_status"), // "pending" | "accepted" | "rejected"
+  counterOfferedAt: timestamp("counter_offered_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2134,3 +2151,56 @@ export const reminderLog = pgTable("reminder_log", {
 }));
 
 export type ReminderLogRow = typeof reminderLog.$inferSelect;
+
+// Search query history — lightweight per-user search memory
+export const searchQueryHistory = pgTable("search_query_history", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  query: text("query").notNull(),
+  category: text("category"),
+  resultCount: integer("result_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type SearchQueryHistory = typeof searchQueryHistory.$inferSelect;
+
+// ─── Reviews & Ratings ────────────────────────────────────────────────────────
+// Written by either party after a deal proposal is accepted.
+// reviewerId  → the person leaving the review
+// revieweeId  → the person being reviewed
+// listingCommentId → the accepted proposal that triggered the deal
+export const REVIEW_STATUSES = ["pending", "submitted"] as const;
+
+export const reviews = pgTable("reviews", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  reviewerId: varchar("reviewer_id", { length: 36 }).notNull().references(() => users.id),
+  revieweeId: varchar("reviewee_id", { length: 36 }).notNull().references(() => users.id),
+  listingCommentId: varchar("listing_comment_id", { length: 36 }).references(() => listingComments.id),
+  listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
+  rating: integer("rating").notNull(), // 1-5 stars
+  comment: text("comment"),
+  tags: jsonb("tags").$type<string[]>().default([]), // ["fast_communicator", "fair_value", "reliable"]
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  revieweeIdx: index("reviews_reviewee_idx").on(table.revieweeId),
+  reviewerIdx: index("reviews_reviewer_idx").on(table.reviewerId),
+  commentIdx: index("reviews_comment_idx").on(table.listingCommentId),
+}));
+
+export const insertReviewSchema = createInsertSchema(reviews).omit({ id: true, createdAt: true });
+export type InsertReview = z.infer<typeof insertReviewSchema>;
+export type Review = typeof reviews.$inferSelect;
+export type ReviewWithReviewer = Review & { reviewer: Pick<User, "id" | "fullName" | "avatarUrl" | "isVerified"> };
+
+// ─── Push Subscriptions ───────────────────────────────────────────────────────
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("push_subs_user_idx").on(table.userId),
+  endpointIdx: index("push_subs_endpoint_idx").on(table.endpoint),
+}));

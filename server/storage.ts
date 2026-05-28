@@ -113,6 +113,10 @@ import {
   type InsertSupportMessage,
   type SupportTicketWithUser,
   type SupportMessageWithSender,
+  reviews,
+  type Review,
+  type ReviewWithReviewer,
+  pushSubscriptions,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -196,7 +200,7 @@ export interface IStorage {
   // Post Comments
   getCommentsByPost(postId: string): Promise<PostCommentWithUser[]>;
   getCommentCount(postId: string): Promise<number>;
-  createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<PostComment>;
+  createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string, offerDescription?: string | null, images?: string[]): Promise<PostComment>;
   deleteComment(id: string, userId: string): Promise<void>;
 
   // Post Bookmarks
@@ -245,7 +249,19 @@ export interface IStorage {
   // Listing Comments
   getListingComments(listingId: string): Promise<ListingCommentWithUser[]>;
   getListingCommentCount(listingId: string): Promise<number>;
-  createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<ListingComment>;
+  createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string, offerDescription?: string | null, images?: string[]): Promise<ListingComment>;
+  updateListingCommentStatus(commentId: string, status: "accepted" | "rejected" | "countered"): Promise<ListingComment>;
+  updateListingCommentValuation(commentId: string, valuation: { min: number; max: number; fair: number; confidence: number }): Promise<void>;
+  getListingComment(commentId: string): Promise<ListingComment | undefined>;
+  submitCounterOffer(commentId: string, counter: { name: string; value: string; description?: string; images?: string[] }): Promise<ListingComment>;
+  respondToCounterOffer(commentId: string, response: "accepted" | "rejected"): Promise<ListingComment>;
+
+  // Reviews
+  createReview(data: { reviewerId: string; revieweeId: string; listingCommentId?: string; listingId?: string; dealId?: string; rating: number; comment?: string; tags?: string[] }): Promise<import("@shared/schema").Review>;
+  getReviewsForUser(userId: string): Promise<import("@shared/schema").ReviewWithReviewer[]>;
+  getUserAverageRating(userId: string): Promise<{ avg: number; count: number }>;
+  hasReviewedProposal(reviewerId: string, listingCommentId: string): Promise<boolean>;
+  hasReviewedDeal(reviewerId: string, dealId: string): Promise<boolean>;
 
   // Bulk engagement helpers
   getUserLikedListingIds(userId: string): Promise<Set<string>>;
@@ -259,6 +275,8 @@ export interface IStorage {
   // Trending/Featured
   getFeaturedListings(): Promise<ListingWithUser[]>;
   getTrendingPosts(): Promise<PostWithUser[]>;
+  getSimilarListings(listingId: string, limit?: number): Promise<ListingWithUser[]>;
+  getTrendingListings(limit?: number): Promise<ListingWithUser[]>;
   getRecentCompletedDeals(limit?: number): Promise<DealWithUsers[]>;
 
   // Waitlist
@@ -884,10 +902,10 @@ export class DatabaseStorage implements IStorage {
     return Number(result[0]?.count ?? 0);
   }
 
-  async createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<PostComment> {
+  async createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string, offerDescription?: string | null, images?: string[]): Promise<PostComment> {
     const [comment] = await db
       .insert(postComments)
-      .values({ postId, userId, content, offerItemName, offerItemValue })
+      .values({ postId, userId, content, offerItemName, offerItemValue, offerDescription: offerDescription || null, images: images || [] })
       .returning();
     return comment;
   }
@@ -1236,6 +1254,49 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Trending/Featured
+  async getSimilarListings(listingId: string, limit = 6): Promise<ListingWithUser[]> {
+    const [listing] = await db.select().from(listings).where(eq(listings.id, listingId));
+    if (!listing) return [];
+    const cats = (listing.categories as string[] | null) ?? [];
+    const value = Number(listing.retailValue ?? 0);
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(and(
+        eq(listings.isActive, true),
+        sql`${listings.id} != ${listingId}`,
+        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.raw(cats.map(c => `'${c.replace(/'/g, "''")}'`).join(","))}]` : sql`true`,
+      ))
+      .orderBy(
+        sql`abs(cast(${listings.retailValue} as numeric) - ${value})`,
+        desc(listings.createdAt)
+      )
+      .limit(limit);
+    return result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+  }
+
+  async getTrendingListings(limit = 10): Promise<ListingWithUser[]> {
+    // Listings ranked by proposal count in the last 7 days
+    const result = await db
+      .select({
+        listing: listings,
+        user: users,
+        proposalCount: sql<number>`count(${listingComments.id})`,
+      })
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .leftJoin(listingComments, and(
+        eq(listingComments.listingId, listings.id),
+        sql`${listingComments.createdAt} > now() - interval '7 days'`,
+      ))
+      .where(eq(listings.isActive, true))
+      .groupBy(listings.id, users.id)
+      .orderBy(desc(sql`count(${listingComments.id})`), desc(listings.createdAt))
+      .limit(limit);
+    return result.map(({ listing, user }) => ({ ...listing, user: user! }));
+  }
+
   async getFeaturedListings(): Promise<ListingWithUser[]> {
     const result = await db
       .select()
@@ -1341,12 +1402,133 @@ export class DatabaseStorage implements IStorage {
     return Number(result[0]?.count ?? 0);
   }
 
-  async createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string): Promise<ListingComment> {
+  async createListingComment(listingId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string, offerDescription?: string | null, images?: string[]): Promise<ListingComment> {
     const [comment] = await db
       .insert(listingComments)
-      .values({ listingId, userId, content, offerItemName, offerItemValue })
+      .values({ listingId, userId, content, offerItemName, offerItemValue, offerDescription: offerDescription || null, images: images || [] })
       .returning();
     return comment;
+  }
+
+  async updateListingCommentStatus(commentId: string, status: "accepted" | "rejected" | "countered"): Promise<ListingComment> {
+    const [updated] = await db
+      .update(listingComments)
+      .set({ status })
+      .where(eq(listingComments.id, commentId))
+      .returning();
+    return updated;
+  }
+
+  async getListingComment(commentId: string): Promise<ListingComment | undefined> {
+    const [row] = await db.select().from(listingComments).where(eq(listingComments.id, commentId));
+    return row;
+  }
+
+  async submitCounterOffer(commentId: string, counter: { name: string; value: string; description?: string; images?: string[] }): Promise<ListingComment> {
+    const [updated] = await db
+      .update(listingComments)
+      .set({
+        status: "countered",
+        counterOfferName: counter.name,
+        counterOfferValue: counter.value,
+        counterOfferDescription: counter.description ?? null,
+        counterOfferImages: counter.images ?? [],
+        counterOfferStatus: "pending",
+        counterOfferedAt: new Date(),
+      })
+      .where(eq(listingComments.id, commentId))
+      .returning();
+    return updated;
+  }
+
+  async respondToCounterOffer(commentId: string, response: "accepted" | "rejected"): Promise<ListingComment> {
+    const newStatus = response === "accepted" ? "accepted" : "rejected";
+    const [updated] = await db
+      .update(listingComments)
+      .set({ counterOfferStatus: response, status: newStatus })
+      .where(eq(listingComments.id, commentId))
+      .returning();
+    return updated;
+  }
+
+  async createReview(data: { reviewerId: string; revieweeId: string; listingCommentId?: string; listingId?: string; dealId?: string; rating: number; comment?: string; tags?: string[] }): Promise<Review> {
+    const [row] = await db
+      .insert(reviews)
+      .values({
+        reviewerId: data.reviewerId,
+        revieweeId: data.revieweeId,
+        listingCommentId: data.listingCommentId ?? null,
+        listingId: data.listingId ?? null,
+        rating: data.rating,
+        comment: data.comment ?? null,
+        tags: data.tags ?? [],
+      })
+      .returning();
+    // Update reviewee's credibility score
+    const allReviews = await this.getReviewsForUser(data.revieweeId);
+    if (allReviews.length > 0) {
+      const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
+      await db.update(users).set({ credibilityScore: Math.round(avg * 20) }).where(eq(users.id, data.revieweeId));
+    }
+    return row;
+  }
+
+  async getReviewsForUser(userId: string): Promise<ReviewWithReviewer[]> {
+    const rows = await db
+      .select({
+        review: reviews,
+        reviewer: {
+          id: users.id,
+          fullName: users.fullName,
+          avatarUrl: users.avatarUrl,
+          isVerified: users.isVerified,
+        },
+      })
+      .from(reviews)
+      .innerJoin(users, eq(reviews.reviewerId, users.id))
+      .where(eq(reviews.revieweeId, userId))
+      .orderBy(desc(reviews.createdAt));
+    return rows.map(r => ({ ...r.review, reviewer: r.reviewer }));
+  }
+
+  async getUserAverageRating(userId: string): Promise<{ avg: number; count: number }> {
+    const result = await db
+      .select({ avg: sql<number>`avg(rating)`, count: sql<number>`count(*)` })
+      .from(reviews)
+      .where(eq(reviews.revieweeId, userId));
+    return { avg: Number(result[0]?.avg ?? 0), count: Number(result[0]?.count ?? 0) };
+  }
+
+  async hasReviewedProposal(reviewerId: string, listingCommentId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: reviews.id })
+      .from(reviews)
+      .where(and(eq(reviews.reviewerId, reviewerId), eq(reviews.listingCommentId, listingCommentId)));
+    return !!row;
+  }
+
+  async hasReviewedDeal(reviewerId: string, dealId: string): Promise<boolean> {
+    const deal = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+    if (!deal[0]) return false;
+    const d = deal[0];
+    const otherUserId = d.seekerId === reviewerId ? d.providerId : d.seekerId;
+    const [row] = await db
+      .select({ id: reviews.id })
+      .from(reviews)
+      .where(and(eq(reviews.reviewerId, reviewerId), eq(reviews.revieweeId, otherUserId)));
+    return !!row;
+  }
+
+  async updateListingCommentValuation(commentId: string, valuation: { min: number; max: number; fair: number; confidence: number }): Promise<void> {
+    await db
+      .update(listingComments)
+      .set({
+        valuationMinAed: String(valuation.min),
+        valuationMaxAed: String(valuation.max),
+        valuationFairAed: String(valuation.fair),
+        valuationConfidence: String(valuation.confidence),
+      })
+      .where(eq(listingComments.id, commentId));
   }
 
   async getUserLikedListingIds(userId: string): Promise<Set<string>> {

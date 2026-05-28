@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSeo } from "@/hooks/use-seo";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,9 +35,18 @@ import {
   Plus,
   X,
   Zap,
+  ChevronRight,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
+import { ReputationBadge } from "@/components/ReputationBadge";
+import { StarRating } from "@/components/StarRating";
 import { SiInstagram, SiLinkedin, SiX } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -78,6 +87,21 @@ interface PortfolioItem {
   category?: string;
 }
 
+interface NewReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  tags: string[];
+  createdAt: string;
+  reviewer: { id: string; fullName: string; avatarUrl: string | null };
+}
+
+function ensureHttps(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
+
 function credibilityLabel(score: number) {
   if (score >= 80) return { label: "Excellent", color: "text-green-600 dark:text-green-400" };
   if (score >= 60) return { label: "Good", color: "text-blue-600 dark:text-blue-400" };
@@ -97,8 +121,10 @@ export function UserProfilePage() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [endorseSkill, setEndorseSkill] = useState("");
   const [showEndorseInput, setShowEndorseInput] = useState(false);
+  const [showProposeDialog, setShowProposeDialog] = useState(false);
 
   const { data: profileData, isLoading } = useQuery<PublicUserData>({
     queryKey: ["/api/users", id],
@@ -117,6 +143,11 @@ export function UserProfilePage() {
 
   const { data: portfolioItems } = useQuery<PortfolioItem[]>({
     queryKey: ["/api/portfolio", id],
+    enabled: !!id,
+  });
+
+  const { data: reviewsData } = useQuery<{ reviews: NewReview[]; avgRating: number; reviewCount: number }>({
+    queryKey: ["/api/users", id, "reviews"],
     enabled: !!id,
   });
 
@@ -239,6 +270,7 @@ export function UserProfilePage() {
                   <h1 className="text-xl font-bold" data-testid="text-profile-name">{profileData.fullName}</h1>
                   <VerifiedBadge isVerified={profileData.isVerified} kycStatus={profileData.kycStatus} kybStatus={profileData.kybStatus} accountType={profileData.accountType} size="md" />
                   <FounderBadge show={!!profileData.founderBadge} size="md" />
+                  <ReputationBadge completedDeals={credibility?.totalCompletedDeals ?? 0} avgRating={reviewsData?.avgRating ?? 0} />
                 </div>
                 {profileData.businessName && (
                   <p className="text-muted-foreground flex items-center gap-1" data-testid="text-business-name">
@@ -248,14 +280,12 @@ export function UserProfilePage() {
                 )}
               </div>
 
-              {profileData.avgRating > 0 && (
+              {(reviewsData?.avgRating ?? 0) > 0 && (
                 <div className="flex items-center justify-center gap-2 mb-4">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
-                    <span className="font-bold text-lg">{profileData.avgRating.toFixed(1)}</span>
-                  </div>
+                  <StarRating value={Math.round(reviewsData!.avgRating)} readonly size="sm" />
+                  <span className="font-bold">{reviewsData!.avgRating.toFixed(1)}</span>
                   <span className="text-sm text-muted-foreground">
-                    ({profileData.totalRatings} {profileData.totalRatings === 1 ? "review" : "reviews"})
+                    ({reviewsData!.reviewCount} {reviewsData!.reviewCount === 1 ? "review" : "reviews"})
                   </span>
                 </div>
               )}
@@ -353,17 +383,17 @@ export function UserProfilePage() {
                   <Separator className="my-4" />
                   <div className="flex items-center justify-center gap-3">
                     {socialLinks.instagram && (
-                      <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-instagram">
+                      <a href={ensureHttps(socialLinks.instagram)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-instagram">
                         <SiInstagram className="h-5 w-5" />
                       </a>
                     )}
                     {socialLinks.linkedin && (
-                      <a href={socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-linkedin">
+                      <a href={ensureHttps(socialLinks.linkedin)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-linkedin">
                         <SiLinkedin className="h-5 w-5" />
                       </a>
                     )}
                     {socialLinks.twitter && (
-                      <a href={socialLinks.twitter} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-twitter">
+                      <a href={ensureHttps(socialLinks.twitter)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-twitter">
                         <SiX className="h-5 w-5" />
                       </a>
                     )}
@@ -375,10 +405,18 @@ export function UserProfilePage() {
                 <>
                   <Separator className="my-4" />
                   <div className="space-y-2">
-                    <Button className="w-full gap-2" data-testid="button-propose-trade-profile">
+                    <Button
+                      className="w-full gap-2"
+                      onClick={() => setShowProposeDialog(true)}
+                      data-testid="button-propose-trade-profile"
+                      disabled={!profileData.listings || profileData.listings.length === 0}
+                    >
                       <Handshake className="h-4 w-4" />
                       Propose a Barter
                     </Button>
+                    {(!profileData.listings || profileData.listings.length === 0) && (
+                      <p className="text-xs text-center text-muted-foreground">This user has no active listings to propose on</p>
+                    )}
                     <Link href={`/inbox?userId=${profileData.id}`}>
                       <Button variant="outline" className="w-full gap-2" data-testid="button-message-user">
                         <MessageCircle className="h-4 w-4" />
@@ -600,42 +638,54 @@ export function UserProfilePage() {
           </Card>
 
           {/* Reviews */}
-          {profileData.ratings && profileData.ratings.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Star className="h-5 w-5" />
-                  Reviews ({profileData.totalRatings})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {profileData.ratings.map((rating) => (
-                  <div key={rating.id} className="border-b last:border-0 pb-4 last:pb-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex items-center gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < rating.score
-                                ? "text-yellow-500 fill-yellow-500"
-                                : "text-muted-foreground/30"
-                            }`}
-                          />
-                        ))}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Star className="h-5 w-5" />
+                Reviews {reviewsData?.reviewCount ? `(${reviewsData.reviewCount})` : ""}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!reviewsData || reviewsData.reviews.length === 0 ? (
+                <div className="text-center py-6">
+                  <Star className="h-10 w-10 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">No reviews yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviewsData.reviews.map((review) => (
+                    <div key={review.id} className="border-b last:border-0 pb-4 last:pb-0">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          <AvatarImage src={review.reviewer.avatarUrl ?? undefined} />
+                          <AvatarFallback className="text-xs">{review.reviewer.fullName.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-semibold">{review.reviewer.fullName}</span>
+                            <StarRating value={review.rating} readonly size="sm" />
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(review.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          {review.comment && (
+                            <p className="text-sm text-muted-foreground">{review.comment}</p>
+                          )}
+                          {review.tags?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {review.tags.map((tag) => (
+                                <Badge key={tag} variant="outline" className="text-[10px] px-1.5 h-4">{tag}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-sm text-muted-foreground">
-                        {rating.createdAt ? new Date(rating.createdAt).toLocaleDateString() : ""}
-                      </span>
                     </div>
-                    {rating.review && (
-                      <p className="text-sm text-muted-foreground">{rating.review}</p>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Portfolio gallery */}
           {hasPortfolio && (
@@ -713,6 +763,38 @@ export function UserProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Propose a Barter — pick which of their listings to propose on */}
+      <Dialog open={showProposeDialog} onOpenChange={setShowProposeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Propose a Barter</DialogTitle>
+            <p className="text-sm text-muted-foreground">Choose which listing of {profileData?.fullName?.split(" ")[0] || "theirs"} you'd like to barter on</p>
+          </DialogHeader>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {(profileData?.listings || []).map((listing) => (
+              <button
+                key={listing.id}
+                onClick={() => { setShowProposeDialog(false); navigate(`/listings/${listing.id}`); }}
+                className="w-full text-left flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+              >
+                {listing.images?.[0] ? (
+                  <img src={listing.images[0] as string} alt={listing.title} className="h-12 w-12 rounded-md object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                    <Package className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{listing.title}</p>
+                  <p className="text-xs text-muted-foreground">AED {parseFloat(listing.retailValue as string || "0").toLocaleString()}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

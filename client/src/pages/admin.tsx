@@ -117,6 +117,7 @@ import { AdminLegalSection } from "@/components/admin/legal-section";
 import { AdminPlatformSettings } from "@/components/admin/platform-settings";
 import { AdminSupportSection } from "@/components/admin/support-section";
 import { AdminIntegrationsSection } from "@/components/admin/integrations-section";
+import { AdminReviewsSection } from "@/components/admin/reviews-section";
 import { ScrollText } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -134,7 +135,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support" | "reviews";
 
 type WaitlistEntryRow = {
   id: number;
@@ -798,6 +799,7 @@ export function AdminPage() {
     { id: "legal" as const, label: "Legal", icon: ScrollText },
     { id: "email" as const, label: "Email", icon: Mail },
     { id: "support" as const, label: "Support", icon: MessageSquare },
+    { id: "reviews" as const, label: "Reviews", icon: Star },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -3087,6 +3089,12 @@ export function AdminPage() {
     </div>
   );
 
+  const renderReviews = () => {
+    return (
+      <AdminReviewsSection />
+    );
+  };
+
   const renderSupportSection = () => <AdminSupportSection />;
 
   const renderContent = () => {
@@ -3115,6 +3123,8 @@ export function AdminPage() {
         return renderEmail();
       case "support":
         return renderSupportSection();
+      case "reviews":
+        return renderReviews();
       case "analytics":
         return renderAnalytics();
       case "settings":

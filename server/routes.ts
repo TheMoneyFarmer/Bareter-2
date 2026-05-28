@@ -50,6 +50,7 @@ import {
   disputes,
   adminAuditLogs,
   failedLoginAttempts,
+  searchQueryHistory,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -84,7 +85,8 @@ import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
 import { registerWaitlistRoutes } from "./waitlistRoutes";
-import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or } from "drizzle-orm";
+import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
+import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -500,6 +502,7 @@ export async function registerRoutes(
         country: data.country || "AE",
         city: data.city || null,
         location: data.city || null,
+        phone: regPhone || null,
         signupType: req.body.signupType || "creator",
         socialProfiles: req.body.socialProfiles || [],
         founderBadge,
@@ -1113,6 +1116,7 @@ export async function registerRoutes(
         "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
         "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
         "preferredCategories", "tradingRadius", "minTradeValue", "maxTradeValue", "autoMatchEnabled",
+        "socialLinks",
       ];
       
       const data: Record<string, any> = {};
@@ -1253,6 +1257,32 @@ export async function registerRoutes(
     }
   });
 
+  // ── Web Push ─────────────────────────────────────────────────────────────────
+  app.get("/api/push/vapid-key", (_req, res) => {
+    res.json({ publicKey: getVapidPublicKey() });
+  });
+
+  app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+    try {
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ message: "Invalid subscription" });
+      await saveSubscription(req.session.userId!, { endpoint, keys });
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save subscription" });
+    }
+  });
+
+  app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (endpoint) await removeSubscription(endpoint);
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ message: "Failed to remove subscription" });
+    }
+  });
+
   // Listings routes with search/filter
   app.get("/api/listings", async (req, res) => {
     try {
@@ -1339,6 +1369,27 @@ export async function registerRoutes(
         isLiked: likedIds.has(l.id),
         commentCount: commentCounts.get(l.id) || 0,
       }));
+
+      // Rotate / shuffle feed order using a seeded mulberry32 PRNG so the same
+      // seed always produces the same order (stable during a session) but each
+      // new page-load seed shows a fresh arrangement.
+      const seedParam = req.query.seed ? parseInt(req.query.seed as string, 10) : 0;
+      if (seedParam && !search && !type && !category) {
+        const featured = enriched.filter(l => l.isFeatured);
+        const rest = enriched.filter(l => !l.isFeatured);
+        // mulberry32 — 32-bit seeded PRNG, avoids LCG overflow
+        let t = (seedParam | 0) + 0x6D2B79F5;
+        const rand = () => {
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 0x100000000;
+        };
+        for (let i = rest.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        return res.json([...featured, ...rest]);
+      }
 
       res.json(enriched);
     } catch (error) {
@@ -1598,12 +1649,92 @@ export async function registerRoutes(
     }
   });
 
-  // Listing Comments
+  // All incoming proposals on the current user's listings (all statuses)
+  app.get("/api/listings/my-pending-proposals", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userListings = await storage.getListingsByUser(userId);
+      if (!userListings.length) return res.json([]);
+
+      const allProposals = await Promise.all(
+        userListings.map(async (listing) => {
+          const comments = await storage.getListingComments(listing.id);
+          return comments.map((c) => ({ ...c, listing }));
+        })
+      );
+      const flat = allProposals.flat();
+
+      // Attach proposer user info
+      const withProposers = await Promise.all(
+        flat.map(async (p) => {
+          const proposer = await storage.getUser(p.userId);
+          return { ...p, proposer };
+        })
+      );
+
+      // Sort: pending first, then by date desc
+      withProposers.sort((a, b) => {
+        const order = (s: string | null) => (!s || s === "pending" ? 0 : s === "accepted" ? 1 : 2);
+        if (order(a.status) !== order(b.status)) return order(a.status) - order(b.status);
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+
+      res.json(withProposers);
+    } catch (error) {
+      console.error("Get incoming proposals error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // All outgoing proposals the current user has submitted on other listings
+  app.get("/api/listings/my-outgoing-proposals", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db
+        .select()
+        .from(listingComments)
+        .leftJoin(listings, eq(listingComments.listingId, listings.id))
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(eq(listingComments.userId, userId))
+        .orderBy(desc(listingComments.createdAt));
+
+      const result = rows.map((r) => ({
+        ...r.listing_comments,
+        listing: r.listings ? { ...r.listings, user: r.users } : null,
+      }));
+
+      res.json(result);
+    } catch (error) {
+      console.error("Get outgoing proposals error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Listing Comments (proposals)
   app.get("/api/listings/:id/comments", async (req, res) => {
     try {
       const listingId = param(req.params.id);
       const comments = await storage.getListingComments(listingId);
-      res.json(comments);
+
+      // Attach dealId to accepted proposals so the UI can link directly to the deal
+      const enriched = await Promise.all(
+        comments.map(async (c) => {
+          if (c.status !== "accepted") return c;
+          const [dealRow] = await db
+            .select({ id: deals.id })
+            .from(deals)
+            .where(
+              and(
+                eq(deals.seekerId, c.userId),
+                eq(deals.providerListingId, listingId)
+              )
+            )
+            .limit(1);
+          return { ...c, dealId: dealRow?.id ?? null };
+        })
+      );
+
+      res.json(enriched);
     } catch (error) {
       console.error("Get listing comments error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1620,17 +1751,413 @@ export async function registerRoutes(
       const schema = z.object({
         offerItemName: z.string().min(1, "Offer item name is required"),
         offerItemValue: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Value must be a positive number"),
+        offerDescription: z.string().nullable().optional(),
+        images: z.array(z.string().min(1)).min(2, "At least 2 images of your offer are required"),
         content: z.string().nullable().optional(),
       });
       const parsed = schema.parse(req.body);
-      const comment = await storage.createListingComment(listingId, userId, parsed.content || null, parsed.offerItemName, parsed.offerItemValue);
+      const comment = await storage.createListingComment(listingId, userId, parsed.content || null, parsed.offerItemName, parsed.offerItemValue, parsed.offerDescription || null, parsed.images);
       res.json(comment);
+
+      // In-app notification + email to listing owner — best-effort
+      Promise.all([
+        storage.getUser(userId),
+        storage.getUser(listing.userId),
+      ]).then(async ([proposer, owner]) => {
+        const proposerName = proposer?.fullName || "Someone";
+        // In-app bell notification for the listing owner
+        await storage.createNotification({
+          userId: listing.userId,
+          type: "new_proposal",
+          title: `New barter proposal from ${proposerName}`,
+          message: `${proposerName} offered "${parsed.offerItemName}" (AED ${Number(parsed.offerItemValue).toLocaleString()}) for your listing "${listing.title}". Tap to review and respond.`,
+          relatedListingId: listingId,
+        } as any);
+        // Email
+        if (!owner?.email) return;
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const { sendNewProposalEmail } = await import("./emailService");
+        sendNewProposalEmail(owner.email, {
+          ownerName: owner.fullName,
+          proposerName,
+          listingTitle: listing.title,
+          offerItemName: parsed.offerItemName,
+          offerItemValue: parsed.offerItemValue,
+          listingUrl: `${baseUrl}/listings/${listingId}`,
+        }).catch(() => {});
+        // Push notification
+        sendPushToUser(listing.userId, {
+          title: "New barter proposal!",
+          body: `${proposerName} wants to barter on "${listing.title}"`,
+          url: `/listings/${listingId}`,
+        }).catch(() => {});
+      }).catch(() => {});
+
+      // Async AI valuation on proposal images — best-effort, does not block response
+      if (parsed.images && parsed.images.length > 0) {
+        const proposalTitle = parsed.offerItemName;
+        const proposalDesc = parsed.offerDescription || "";
+        const absImages = parsed.images.map((u: string) =>
+          u.startsWith("http") ? u : `${process.env.PUBLIC_APP_URL || "http://localhost:5000"}${u}`
+        );
+        import("./agents/valuationAgent").then(async ({ getValuation }) => {
+          try {
+            const val = await getValuation(proposalTitle, proposalDesc, undefined, undefined, userId, undefined, absImages);
+            if (val.fairValue > 0) {
+              await storage.updateListingCommentValuation(comment.id, {
+                min: val.estimatedRange.min,
+                max: val.estimatedRange.max,
+                fair: val.fairValue,
+                confidence: val.confidence,
+              });
+            }
+          } catch { /* valuation is best-effort */ }
+        }).catch(() => {});
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
       }
       console.error("Create listing comment error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Accept or reject a barter proposal on a listing (owner only)
+  app.patch("/api/listings/:id/proposals/:proposalId", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const proposalId = param(req.params.proposalId);
+      const userId = req.session.userId!;
+
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== userId) return res.status(403).json({ message: "Only the listing owner can respond to proposals" });
+
+      const schema = z.object({ status: z.enum(["accepted", "rejected"]) });
+      const { status } = schema.parse(req.body);
+
+      const updated = await storage.updateListingCommentStatus(proposalId, status);
+
+      // Notify proposer on rejection
+      if (status === "rejected") {
+        await storage.createNotification({
+          userId: updated.userId,
+          type: "proposal_rejected",
+          title: "Proposal declined",
+          message: `Your barter proposal on "${listing.title}" was declined. Consider turning your offer into a listing!`,
+          relatedListingId: listingId,
+        });
+      }
+
+      // When accepted: create a deal (or reactivate an existing one) + send emails to both parties
+      if (status === "accepted") {
+        const [owner, proposer] = await Promise.all([
+          storage.getUser(userId),
+          storage.getUser(updated.userId),
+        ]);
+
+        // Check for an existing deal for this proposal to avoid duplicates on re-accept
+        const existingDeals = await storage.getDealsByUser(userId);
+        const existingDeal = existingDeals.find(
+          (d) => d.seekerId === updated.userId && d.providerListingId === listingId
+        );
+
+        let deal: Awaited<ReturnType<typeof storage.createDeal>>;
+        if (existingDeal) {
+          deal = await storage.updateDeal(existingDeal.id, { state: "accepted", acceptedAt: new Date() }) as any;
+          deal = { ...existingDeal, ...deal };
+        } else {
+          deal = await storage.createDeal({
+            seekerId: updated.userId,              // the proposer
+            providerId: userId,                    // the listing owner
+            providerListingId: listingId,
+            seekerOffer: updated.offerItemName,
+            seekerValue: updated.offerItemValue,
+            providerOffer: listing.title,
+            providerValue: String(listing.retailValue || "0"),
+            state: "accepted",
+          });
+          // Set timestamps on the created deal
+          await storage.updateDeal(deal.id, { acceptedAt: new Date(), proposedAt: new Date() });
+        }
+
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const { sendDealStatusEmail } = await import("./emailService");
+
+        // Email the proposer: their offer was accepted → take them to the deal inbox
+        if (proposer?.email) {
+          sendDealStatusEmail(proposer.email, {
+            recipientName: proposer.fullName,
+            counterpartyName: owner?.fullName || "the listing owner",
+            status: "accepted",
+            dealId: deal.id,
+            baseUrl,
+          }).catch(() => {});
+        }
+
+        // Email the owner: deal is live, go chat in the deal inbox
+        if (owner?.email) {
+          sendDealStatusEmail(owner.email, {
+            recipientName: owner.fullName,
+            counterpartyName: proposer?.fullName || "the proposer",
+            status: "accepted",
+            dealId: deal.id,
+            baseUrl,
+          }).catch(() => {});
+        }
+
+        // In-app notification for proposer
+        await storage.createNotification({
+          userId: updated.userId,
+          type: "proposal_accepted",
+          title: "Proposal accepted!",
+          message: `Your barter proposal on "${listing.title}" was accepted. Deal is now active!`,
+          relatedListingId: listingId,
+          relatedDealId: deal.id,
+        });
+
+        return res.json({ ...updated, dealId: deal.id });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Update proposal status error:", msg);
+      res.status(500).json({ message: msg });
+    }
+  });
+
+  // ── Counter-offer: listing owner proposes modified terms ──────────────────
+  app.post("/api/listings/:id/proposals/:proposalId/counter", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const proposalId = param(req.params.proposalId);
+      const userId = req.session.userId!;
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== userId) return res.status(403).json({ message: "Only the listing owner can counter-offer" });
+      const schema = z.object({
+        name: z.string().min(1, "Offer name required"),
+        value: z.string().min(1, "Offer value required"),
+        description: z.string().optional(),
+        images: z.array(z.string().min(1)).default([]),
+      });
+      const body = schema.parse(req.body);
+      const updated = await storage.submitCounterOffer(proposalId, body);
+      const proposal = await storage.getListingComment(proposalId);
+      if (proposal) {
+        const proposer = await storage.getUser(proposal.userId);
+        // In-app notification
+        await storage.createNotification({
+          userId: proposal.userId,
+          type: "counter_offer",
+          title: "Counter-offer received",
+          message: `${listing.title} owner sent a counter-offer: ${body.name} (AED ${body.value})`,
+          relatedListingId: listingId,
+        });
+        // Email notification
+        if (proposer?.email && proposer.emailNotifications) {
+          const { sendCounterOfferEmail } = await import("./emailService");
+          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const owner = await storage.getUser(userId);
+          sendCounterOfferEmail(proposer.email, {
+            recipientName: proposer.fullName,
+            counterpartyName: owner?.fullName || "Listing owner",
+            listingTitle: listing.title,
+            counterName: body.name,
+            counterValue: body.value,
+            listingUrl: `${baseUrl}/listings/${listingId}`,
+            direction: "received",
+          }).catch(() => {});
+          // Push
+          sendPushToUser(proposal.userId, {
+            title: "Counter-offer received",
+            body: `${owner?.fullName || "Listing owner"} sent a counter-offer on "${listing.title}"`,
+            url: `/listings/${listingId}`,
+          }).catch(() => {});
+        }
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      res.status(500).json({ message: "Failed to submit counter-offer" });
+    }
+  });
+
+  // ── Counter-offer response: proposer accepts or rejects the counter ────────
+  app.post("/api/listings/:id/proposals/:proposalId/counter-respond", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const proposalId = param(req.params.proposalId);
+      const userId = req.session.userId!;
+      const proposal = await storage.getListingComment(proposalId);
+      if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+      if (proposal.userId !== userId) return res.status(403).json({ message: "Only the proposer can respond to a counter-offer" });
+      const schema = z.object({ response: z.enum(["accepted", "rejected"]) });
+      const { response } = schema.parse(req.body);
+      const updated = await storage.respondToCounterOffer(proposalId, response);
+      const listing = await storage.getListing(listingId);
+      // Notify the listing owner of the response
+      if (listing) {
+        const proposer = await storage.getUser(userId);
+        const owner = await storage.getUser(listing.userId);
+        await storage.createNotification({
+          userId: listing.userId,
+          type: "counter_offer_response",
+          title: response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined",
+          message: response === "accepted"
+            ? `${proposer?.fullName || "Proposer"} accepted your counter-offer on "${listing.title}"`
+            : `${proposer?.fullName || "Proposer"} declined your counter-offer on "${listing.title}"`,
+          relatedListingId: listingId,
+        });
+        // Email the owner about the response
+        if (owner?.email && owner.emailNotifications) {
+          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const { sendCounterOfferEmail } = await import("./emailService");
+          sendCounterOfferEmail(owner.email, {
+            recipientName: owner.fullName,
+            counterpartyName: proposer?.fullName || "Proposer",
+            listingTitle: listing.title,
+            counterName: proposal.counterOfferName || "",
+            counterValue: proposal.counterOfferValue || "0",
+            listingUrl: `${baseUrl}/listings/${listingId}`,
+            direction: "responded",
+            response,
+          }).catch(() => {});
+          sendPushToUser(listing.userId, {
+            title: response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined",
+            body: `${proposer?.fullName || "Proposer"} ${response === "accepted" ? "accepted" : "declined"} your counter-offer on "${listing.title}"`,
+            url: `/listings/${listingId}`,
+          }).catch(() => {});
+        }
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      res.status(500).json({ message: "Failed to respond to counter-offer" });
+    }
+  });
+
+  // ── Reviews ───────────────────────────────────────────────────────────────
+  app.post("/api/proposals/:proposalId/review", requireAuth, async (req, res) => {
+    try {
+      const proposalId = param(req.params.proposalId);
+      const reviewerId = req.session.userId!;
+      const proposal = await storage.getListingComment(proposalId);
+      if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+      if (proposal.status !== "accepted") return res.status(400).json({ message: "Can only review accepted proposals" });
+      // Reviewer must be proposer OR listing owner
+      const listing = await storage.getListing(proposal.listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      const isProposer = proposal.userId === reviewerId;
+      const isOwner = listing.userId === reviewerId;
+      if (!isProposer && !isOwner) return res.status(403).json({ message: "Not a party to this deal" });
+      const revieweeId = isProposer ? listing.userId : proposal.userId;
+      // Prevent duplicate reviews
+      if (await storage.hasReviewedProposal(reviewerId, proposalId)) {
+        return res.status(409).json({ message: "You have already reviewed this deal" });
+      }
+      const schema = z.object({
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(1000).optional(),
+        tags: z.array(z.string()).default([]),
+      });
+      const body = schema.parse(req.body);
+      const review = await storage.createReview({
+        reviewerId,
+        revieweeId,
+        listingCommentId: proposalId,
+        listingId: proposal.listingId,
+        ...body,
+      });
+      // Notify reviewee
+      const reviewer = await storage.getUser(reviewerId);
+      await storage.createNotification({
+        userId: revieweeId,
+        type: "new_review",
+        title: "You received a review",
+        message: `${reviewer?.fullName || "Someone"} left you a ${body.rating}-star review`,
+        relatedListingId: proposal.listingId,
+      });
+      res.status(201).json(review);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      res.status(500).json({ message: "Failed to submit review" });
+    }
+  });
+
+  app.post("/api/deals/:dealId/review", requireAuth, async (req, res) => {
+    try {
+      const dealId = param(req.params.dealId);
+      const reviewerId = req.session.userId!;
+      const deal = await storage.getDeal(dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (deal.state !== "completed") return res.status(400).json({ message: "Can only review completed deals" });
+      if (deal.seekerId !== reviewerId && deal.providerId !== reviewerId) {
+        return res.status(403).json({ message: "Not a party to this deal" });
+      }
+      if (await storage.hasReviewedDeal(reviewerId, dealId)) {
+        return res.status(409).json({ message: "You have already reviewed this deal" });
+      }
+      const revieweeId = deal.seekerId === reviewerId ? deal.providerId : deal.seekerId;
+      const schema = z.object({
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(1000).optional(),
+        tags: z.array(z.string()).default([]),
+      });
+      const body = schema.parse(req.body);
+      const review = await storage.createReview({ reviewerId, revieweeId, dealId, ...body });
+      const reviewer = await storage.getUser(reviewerId);
+      await storage.createNotification({
+        userId: revieweeId,
+        type: "new_review",
+        title: "You received a review",
+        message: `${reviewer?.fullName || "Someone"} left you a ${body.rating}-star review`,
+      });
+      res.status(201).json(review);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      res.status(500).json({ message: "Failed to submit review" });
+    }
+  });
+
+  app.get("/api/users/:userId/reviews", async (req, res) => {
+    try {
+      const userId = param(req.params.userId);
+      const [reviews, stats] = await Promise.all([
+        storage.getReviewsForUser(userId),
+        storage.getUserAverageRating(userId),
+      ]);
+      res.json({ reviews, avgRating: stats.avg, reviewCount: stats.count });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch reviews" });
+    }
+  });
+
+  // ── Similar listings ──────────────────────────────────────────────────────
+  app.get("/api/listings/:id/similar", async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const limit = Math.min(Number(req.query.limit) || 6, 12);
+      const similar = await storage.getSimilarListings(listingId, limit);
+      res.json(similar);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch similar listings" });
+    }
+  });
+
+  // ── Trending listings (by proposal activity last 7d) ─────────────────────
+  app.get("/api/listings/trending", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 10, 20);
+      const trending = await storage.getTrendingListings(limit);
+      res.json(trending);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch trending listings" });
     }
   });
 
@@ -2240,6 +2767,58 @@ export async function registerRoutes(
       }
       console.error("Update deal error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Deal Dispute (user-facing) ────────────────────────────────────────────
+  app.post("/api/deals/:id/dispute", requireAuth, async (req, res) => {
+    try {
+      const dealId = param(req.params.id);
+      const userId = req.session.userId!;
+      const deal = await storage.getDeal(dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (deal.seekerId !== userId && deal.providerId !== userId) {
+        return res.status(403).json({ message: "Not a party to this deal" });
+      }
+      if (deal.state === "completed" || deal.state === "cancelled") {
+        return res.status(400).json({ message: "Cannot dispute a completed or cancelled deal" });
+      }
+      const schema = z.object({
+        subject: z.string().min(5).max(200),
+        description: z.string().min(10).max(2000),
+      });
+      const body = schema.parse(req.body);
+      const partyBId = deal.seekerId === userId ? deal.providerId : deal.seekerId;
+      const dispute = await storage.createDispute({
+        dealId,
+        partyAId: userId,
+        partyBId,
+        subject: body.subject,
+        description: body.description,
+        status: "open",
+      });
+      // Notify the other party
+      const filer = await storage.getUser(userId);
+      await storage.createNotification({
+        userId: partyBId,
+        type: "dispute_filed" as any,
+        title: "A dispute has been raised",
+        message: `${filer?.fullName || "Your barter partner"} raised a dispute on your deal. An admin will review shortly.`,
+      });
+      // Notify admin via email
+      import("./emailService").then(({ sendAdminEmail }) => {
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+        sendAdminEmail(`Dispute filed on Deal #${deal.dealNumber}`,
+          `<p><strong>${filer?.fullName}</strong> filed a dispute on deal <strong>#${deal.dealNumber}</strong>.</p>
+           <p><strong>Subject:</strong> ${body.subject}</p>
+           <p><strong>Description:</strong> ${body.description}</p>
+           <p><a href="${baseUrl}/admin">Review in Admin Panel</a></p>`
+        ).catch(() => {});
+      }).catch(() => {});
+      res.status(201).json(dispute);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      res.status(500).json({ message: "Failed to file dispute" });
     }
   });
 
@@ -4937,19 +5516,24 @@ export async function registerRoutes(
   // Add comment to a post
   app.post("/api/posts/:id/comments", requireAuth, async (req, res) => {
     try {
-      const { content, offerItemName, offerItemValue } = req.body;
+      const { content, offerItemName, offerItemValue, offerDescription, images } = req.body;
       if (!offerItemName || typeof offerItemName !== "string" || offerItemName.trim().length === 0) {
         return res.status(400).json({ message: "Please specify what you want to offer" });
       }
       if (!offerItemValue || isNaN(Number(offerItemValue)) || Number(offerItemValue) <= 0) {
         return res.status(400).json({ message: "Please provide a valid value for your offer" });
       }
+      if (!Array.isArray(images) || images.length < 2) {
+        return res.status(400).json({ message: "At least 2 images of your offer are required" });
+      }
       const comment = await storage.createComment(
         param(req.params.id),
         req.session.userId!,
         content?.trim() || null,
         offerItemName.trim(),
-        String(Number(offerItemValue).toFixed(2))
+        String(Number(offerItemValue).toFixed(2)),
+        offerDescription?.trim() || null,
+        images
       );
       const user = await storage.getUser(req.session.userId!);
       const { password, ...safeUser } = user!;
@@ -5002,6 +5586,40 @@ export async function registerRoutes(
   });
 
   // ========== End Posts API ==========
+
+  // User search (public — used for live suggestions)
+  app.get("/api/users/search", async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "").trim();
+      const limit = Math.min(parseInt(String(req.query.limit ?? "5")), 20);
+      if (q.length < 2) return res.json([]);
+
+      const results = await db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          businessName: users.businessName,
+          profileImageUrl: users.profileImageUrl,
+          location: users.location,
+          role: users.role,
+        })
+        .from(users)
+        .where(
+          and(
+            or(
+              ilike(users.fullName, `%${q}%`),
+              ilike(users.businessName, `%${q}%`),
+            ),
+            eq(users.isBanned, false),
+          ),
+        )
+        .limit(limit);
+
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ message: "Search failed" });
+    }
+  });
 
   // User profile by ID (public)
   app.get("/api/users/:id", requireAuth, async (req, res) => {
@@ -5865,6 +6483,123 @@ export async function registerRoutes(
     }
   });
 
+  // ── Search Query History ──────────────────────────────────────────
+  // Save a search query (called when user performs a search)
+  app.post("/api/search-history", requireAuth, async (req, res) => {
+    try {
+      const { query, category, resultCount } = req.body;
+      if (!query || typeof query !== "string" || query.trim().length < 2) {
+        return res.status(400).json({ message: "query required (min 2 chars)" });
+      }
+      const userId = req.session.userId!;
+      // Avoid duplicates in last 10 minutes for same query
+      const recent = await db
+        .select()
+        .from(searchQueryHistory)
+        .where(
+          and(
+            eq(searchQueryHistory.userId, userId),
+            eq(searchQueryHistory.query, query.trim()),
+            gte(searchQueryHistory.createdAt, new Date(Date.now() - 10 * 60 * 1000)),
+          ),
+        )
+        .limit(1);
+      if (recent.length === 0) {
+        await db.insert(searchQueryHistory).values({
+          userId,
+          query: query.trim(),
+          category: category || null,
+          resultCount: resultCount || 0,
+        });
+      }
+      res.json({ saved: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save search" });
+    }
+  });
+
+  // Get search history + recommendations
+  app.get("/api/search-history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const history = await db
+        .select()
+        .from(searchQueryHistory)
+        .where(eq(searchQueryHistory.userId, userId))
+        .orderBy(desc(searchQueryHistory.createdAt))
+        .limit(20);
+
+      // Build recommendations from the most recent unique queries
+      const recentQueries = Array.from(new Set(history.map((h) => h.query))).slice(0, 5);
+      let recommendations: typeof listings.$inferSelect[] = [];
+      if (recentQueries.length > 0) {
+        const conditions = recentQueries.map((q) =>
+          or(ilike(listings.title, `%${q}%`), ilike(listings.description, `%${q}%`))
+        );
+        const rows = await db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.isActive, true), or(...conditions)))
+          .orderBy(desc(listings.createdAt))
+          .limit(20);
+        recommendations = rows;
+      }
+
+      res.json({ history, recommendations });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch search history" });
+    }
+  });
+
+  // Delete a search history entry
+  app.delete("/api/search-history/:id", requireAuth, async (req, res) => {
+    try {
+      await db
+        .delete(searchQueryHistory)
+        .where(
+          and(
+            eq(searchQueryHistory.id, param(req.params.id)),
+            eq(searchQueryHistory.userId, req.session.userId!),
+          ),
+        );
+      res.json({ deleted: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete" });
+    }
+  });
+
+  // ── Liked Listings (Favorites) ────────────────────────────────────
+  app.get("/api/listings/liked", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db
+        .select({
+          id: listings.id,
+          title: listings.title,
+          description: listings.description,
+          categories: listings.categories,
+          type: listings.type,
+          images: listings.images,
+          retailValue: listings.retailValue,
+          location: listings.location,
+          condition: listings.condition,
+          isActive: listings.isActive,
+          likeCount: listings.likeCount,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          likedAt: listingLikes.createdAt,
+        })
+        .from(listingLikes)
+        .innerJoin(listings, eq(listingLikes.listingId, listings.id))
+        .where(and(eq(listingLikes.userId, userId), eq(listings.isActive, true)))
+        .orderBy(desc(listingLikes.createdAt));
+
+      res.json(rows.map((r) => ({ ...r, isLiked: true })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch liked listings" });
+    }
+  });
+
   // Deal Milestones routes
   app.get("/api/deals/:dealId/milestones", requireAuth, async (req, res) => {
     try {
@@ -6443,10 +7178,11 @@ export async function registerRoutes(
           agentName: "translate",
           maxTokens: 1024,
           temperature: 0.2,
+          skipBudgetCheck: true,
           skipAgentBudgetCheck: true,
         }
       );
-      const raw = result || "";
+      const raw = result?.content || "";
       const titleMatch = raw.match(/TITLE:\s*([\s\S]+?)(?:\nDESCRIPTION:|$)/);
       const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+)/);
       res.json({
@@ -6454,8 +7190,9 @@ export async function registerRoutes(
         description: descMatch?.[1]?.trim() ?? null,
       });
     } catch (error) {
-      console.error("Translation error:", error);
-      res.status(500).json({ message: "Translation service unavailable" });
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Translation error:", msg);
+      res.status(500).json({ message: `Translation failed: ${msg}` });
     }
   });
 
@@ -7439,6 +8176,54 @@ export async function registerRoutes(
   // ========== Admin Support Ticket Routes ==========
 
   // Get all tickets (admin)
+  // ── Admin: Reviews ────────────────────────────────────────────────────────
+  app.get("/api/admin/reviews", requireAdmin, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { reviews, users } = await import("@shared/schema");
+      const { desc, eq } = await import("drizzle-orm");
+      const rows = await db
+        .select({
+          id: reviews.id,
+          rating: reviews.rating,
+          comment: reviews.comment,
+          tags: reviews.tags,
+          createdAt: reviews.createdAt,
+          listingId: reviews.listingId,
+          reviewerId: reviews.reviewerId,
+          revieweeId: reviews.revieweeId,
+        })
+        .from(reviews)
+        .orderBy(desc(reviews.createdAt))
+        .limit(200);
+
+      // Attach reviewer + reviewee names
+      const userIds = [...new Set([...rows.map(r => r.reviewerId), ...rows.map(r => r.revieweeId)])];
+      const userMap = new Map<string, { id: string; fullName: string; avatarUrl: string | null }>();
+      if (userIds.length > 0) {
+        const { inArray } = await import("drizzle-orm");
+        const us = await db.select({ id: users.id, fullName: users.fullName, avatarUrl: users.avatarUrl }).from(users).where(inArray(users.id, userIds));
+        us.forEach(u => userMap.set(u.id, u));
+      }
+
+      const enriched = rows.map(r => ({
+        ...r,
+        reviewer: userMap.get(r.reviewerId) ?? { id: r.reviewerId, fullName: "Unknown", avatarUrl: null },
+        reviewee: userMap.get(r.revieweeId) ?? { id: r.revieweeId, fullName: "Unknown", avatarUrl: null },
+      }));
+
+      const total = rows.length;
+      const avgRating = total > 0 ? rows.reduce((s, r) => s + r.rating, 0) / total : 0;
+      const byRating: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      rows.forEach(r => { byRating[r.rating] = (byRating[r.rating] ?? 0) + 1; });
+
+      res.json({ reviews: enriched, stats: { total, avgRating, byRating } });
+    } catch (err) {
+      console.error("[admin/reviews]", err);
+      res.status(500).json({ message: "Failed to load reviews" });
+    }
+  });
+
   app.get("/api/admin/support/tickets", requireAdmin, async (req, res) => {
     try {
       const { status, priority } = req.query;
@@ -7977,9 +8762,9 @@ export async function registerRoutes(
         storage.getRecentEngagementForUser(userId, 20),
       ]);
       const latestDraft = drafts[0] ?? null;
-      // Continue strip surfaces any unfinished engagement: viewed (already
-      // gated client-side at 10s dwell), saved, or message_started.
-      const eligibleTypes = new Set(["viewed", "saved", "message_started"]);
+      // Continue strip surfaces unfinished deal actions only — NOT passive views.
+      // Only show when user started a message/proposal or saved the listing.
+      const eligibleTypes = new Set(["saved", "message_started"]);
       let engagement: { listing: { id: string; title: string }; eventType: string; at: Date | null } | null = null;
       for (const evt of recent) {
         if (!evt.listingId || !eligibleTypes.has(evt.eventType)) continue;

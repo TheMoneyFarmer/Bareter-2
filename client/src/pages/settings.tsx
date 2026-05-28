@@ -36,6 +36,9 @@ import {
   Trash2,
   Download,
   RefreshCw,
+  Instagram,
+  Linkedin,
+  Twitter,
 } from "lucide-react";
 import { z } from "zod";
 import { useMemo } from "react";
@@ -125,6 +128,10 @@ export function SettingsPage() {
   const [passwordChangeStep, setPasswordChangeStep] = useState<PasswordChangeStep>("form");
   const [pendingPasswordData, setPendingPasswordData] = useState<{ currentPassword: string; newPassword: string } | null>(null);
   const [otpValue, setOtpValue] = useState("");
+  const [socialLinks, setSocialLinks] = useState<{ instagram?: string; linkedin?: string; twitter?: string }>(() => {
+    const sl = user?.socialLinks as { instagram?: string; linkedin?: string; twitter?: string } | null;
+    return sl || {};
+  });
 
   const RADIUS_OPTIONS = [
     { value: 0, label: t("settings.radiusUnlimited") },
@@ -370,7 +377,7 @@ export function SettingsPage() {
   });
 
   const onAccountSubmit = (data: AccountSettingsForm) => {
-    updateSettingsMutation.mutate(data);
+    updateSettingsMutation.mutate({ ...data, socialLinks } as any);
   };
 
   const onNotificationSubmit = (data: NotificationSettingsForm) => {
@@ -517,6 +524,48 @@ export function SettingsPage() {
                         </FormItem>
                       )}
                     />
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <h4 className="font-medium">Social Media Links</h4>
+                    <p className="text-sm text-muted-foreground">Add your social profiles so others can connect with you.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="social-instagram" className="flex items-center gap-1.5"><Instagram className="h-4 w-4" /> Instagram</Label>
+                        <Input
+                          id="social-instagram"
+                          placeholder="https://instagram.com/yourhandle"
+                          value={socialLinks.instagram || ""}
+                          onChange={(e) => setSocialLinks(prev => ({ ...prev, instagram: e.target.value }))}
+                          data-testid="input-social-instagram"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="social-linkedin" className="flex items-center gap-1.5"><Linkedin className="h-4 w-4" /> LinkedIn</Label>
+                        <Input
+                          id="social-linkedin"
+                          placeholder="https://linkedin.com/in/yourprofile"
+                          value={socialLinks.linkedin || ""}
+                          onChange={(e) => setSocialLinks(prev => ({ ...prev, linkedin: e.target.value }))}
+                          data-testid="input-social-linkedin"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="social-twitter" className="flex items-center gap-1.5"><Twitter className="h-4 w-4" /> X / Twitter</Label>
+                        <Input
+                          id="social-twitter"
+                          placeholder="https://x.com/yourhandle"
+                          value={socialLinks.twitter || ""}
+                          onChange={(e) => setSocialLinks(prev => ({ ...prev, twitter: e.target.value }))}
+                          data-testid="input-social-twitter"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={accountForm.control}
                       name="country"
@@ -933,20 +982,25 @@ export function SettingsPage() {
                     control={privacyForm.control}
                     name="showPhone"
                     render={({ field }) => (
-                      <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">{t("settings.showPhone")}</FormLabel>
-                          <FormDescription>
-                            {t("settings.showPhoneDesc")}
-                          </FormDescription>
+                      <FormItem className="rounded-lg border p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base">{t("settings.showPhone")}</FormLabel>
+                            <FormDescription>
+                              Show your phone number publicly on your profile and listings so anyone can call you directly.
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              data-testid="switch-show-phone"
+                            />
+                          </FormControl>
                         </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            data-testid="switch-show-phone"
-                          />
-                        </FormControl>
+                        <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                          💬 Regardless of this setting, you can always share your number privately inside a deal chat using the "Share my phone" button.
+                        </p>
                       </FormItem>
                     )}
                   />

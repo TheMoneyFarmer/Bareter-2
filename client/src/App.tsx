@@ -41,6 +41,7 @@ import DashboardPage from "@/pages/dashboard";
 import { BrowsePublicPage } from "@/pages/browse-public";
 import { UserProfilePage } from "@/pages/user-profile";
 import { SavedListingsPage } from "@/pages/saved-listings";
+import { MySearchesPage } from "@/pages/my-searches";
 import { ReferralsPage } from "@/pages/referrals";
 import { FeedPage } from "@/pages/feed";
 import { CreatePostPage } from "@/pages/create-post";
@@ -135,6 +136,7 @@ function Router() {
       <Route path="/browse-public" component={BrowsePublicPage} />
       <Route path="/users/:id" component={UserProfilePage} />
       <Route path="/saved" component={SavedListingsPage} />
+      <Route path="/my-searches" component={MySearchesPage} />
       <Route path="/referrals" component={ReferralsPage} />
       <Route path="/feed" component={FeedPage} />
       <Route path="/create-post" component={CreatePostPage} />

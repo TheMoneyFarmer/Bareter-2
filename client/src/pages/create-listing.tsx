@@ -161,6 +161,26 @@ export function CreateListingPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const draftId = params.get("draft");
+
+    // Pre-fill from rejected proposal redirect (?prefill=1)
+    if (params.get("prefill") === "1") {
+      const title = params.get("title") || "";
+      const description = params.get("description") || "";
+      const retailValue = params.get("retailValue") || "";
+      let images: string[] = [];
+      try { images = JSON.parse(params.get("images") || "[]"); } catch { /* ignore */ }
+      form.reset({
+        ...form.getValues(),
+        title,
+        description,
+        retailValue,
+        images,
+        type: "offer",
+      });
+      setDraftLoaded(true);
+      return;
+    }
+
     type DraftRow = { id: string; data: Record<string, unknown>; title: string | null };
     apiRequest("GET", `/api/listing-drafts`).then(r => r.json()).then((rows: DraftRow[]) => {
       if (draftId) {

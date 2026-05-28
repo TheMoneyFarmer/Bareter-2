@@ -101,8 +101,9 @@ export function BrowsePage() {
   const initialCategory = routeCategory || initialParams.get("category") || "";
   const initialLocationParam = initialParams.get("location") || "";
 
+  const showCategoriesParam = initialParams.get("showCategories") === "true";
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover"
+    showCategoriesParam ? "discover" : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
   );
   const [search, setSearch] = useState(initialQ || routeSubcategory || "");
   const [selectedType, setSelectedType] = useState<string>("all");

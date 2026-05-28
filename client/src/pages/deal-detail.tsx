@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -48,11 +49,13 @@ import {
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
+import { ReviewModal } from "@/components/ReviewModal";
 
 const STATE_COLORS: Record<string, { color: string; step: number }> = {
   draft: { color: "bg-gray-500", step: 0 },
   proposed: { color: "bg-blue-500", step: 1 },
   accepted: { color: "bg-green-500", step: 2 },
+  active: { color: "bg-green-500", step: 2 },   // legacy alias
   in_progress: { color: "bg-yellow-500", step: 3 },
   delivery_proof: { color: "bg-orange-500", step: 4 },
   completed: { color: "bg-emerald-500", step: 5 },
@@ -67,6 +70,10 @@ export function DealDetailPage() {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeSubject, setDisputeSubject] = useState("");
+  const [disputeDesc, setDisputeDesc] = useState("");
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -191,6 +198,7 @@ export function DealDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       if (data?.state === "completed") {
         trackEvent("deal_completed", { deal_id: id });
+        setShowReviewModal(true);
       }
       toast({
         title: t("dealDetail.dealUpdated"),
@@ -204,6 +212,20 @@ export function DealDetailPage() {
         variant: "destructive",
       });
     },
+  });
+
+  const disputeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/deals/${id}/dispute`, { subject: disputeSubject, description: disputeDesc });
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowDisputeModal(false);
+      setDisputeSubject("");
+      setDisputeDesc("");
+      toast({ title: "Dispute filed", description: "An admin will review your dispute shortly." });
+    },
+    onError: (err: any) => toast({ title: "Failed to file dispute", description: err?.message, variant: "destructive" }),
   });
 
   useEffect(() => {
@@ -340,8 +362,161 @@ export function DealDetailPage() {
         </Card>
       )}
 
+      {/* Acceptance banner — shown when deal was just accepted */}
+      {(deal.state === "accepted" || deal.state === "active") && (
+        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-green-800 dark:text-green-300">Deal accepted! 🎉</p>
+            <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
+              Use the chat below to agree on exchange details, then mark it "In Progress" when you're both ready. Once delivery is confirmed by both sides, the deal completes.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* Chat / Inbox — shown FIRST so it feels like an inbox conversation */}
+          <Card className="flex flex-col h-[500px]">
+            <CardHeader className="border-b flex-shrink-0">
+              <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+                <span>{t("dealDetail.chatWith")} {otherParty?.fullName}</span>
+                <FounderBadge show={!!otherParty?.founderBadge} />
+              </CardTitle>
+              <CardDescription>
+                {t("dealDetail.discussDetails")} {otherParty?.fullName}
+              </CardDescription>
+            </CardHeader>
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {messagesLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-16" />
+                    ))}
+                  </div>
+                ) : messages && messages.length > 0 ? (
+                  messages.map((msg) => {
+                    const isMe = msg.senderId === user.id;
+                    const hasWarning = msg.isOffPlatform || !!msg.warning;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex flex-col ${isMe !== isRTL ? "items-end" : "items-start"}`}
+                      >
+                        <div className={`flex gap-2 max-w-[80%] ${isMe !== isRTL ? "flex-row-reverse" : ""}`}>
+                          <Avatar className="h-8 w-8 flex-shrink-0">
+                            <AvatarImage src={msg.sender?.avatarUrl || undefined} />
+                            <AvatarFallback className="text-xs">
+                              {msg.sender?.fullName?.charAt(0) || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div
+                            className={`rounded-lg px-4 py-2 ${
+                              isMe
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            }`}
+                          >
+                            <div className={`flex items-center gap-1 mb-0.5 text-xs font-semibold ${isMe ? "text-primary-foreground/90" : "text-foreground"}`}>
+                              <span>{isMe ? "You" : msg.sender?.fullName}</span>
+                              <FounderBadge show={!!msg.sender?.founderBadge} />
+                            </div>
+                            <p className="text-sm" data-testid={`text-message-content-${msg.id}`}>
+                              {translatedMsgIds.has(msg.id) && msgTranslations[msg.id]
+                                ? msgTranslations[msg.id]
+                                : msg.content}
+                            </p>
+                            <div className={`flex items-center justify-between mt-1 gap-2`}>
+                              <p className={`text-xs ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                                {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleTranslateMessage(msg.id, msg.content)}
+                                disabled={translatingMsgIds.has(msg.id)}
+                                className={`flex items-center gap-0.5 text-[10px] transition-opacity hover:opacity-100 ${
+                                  isMe
+                                    ? "text-primary-foreground/60 hover:text-primary-foreground/90"
+                                    : "text-muted-foreground hover:text-foreground"
+                                } disabled:opacity-40`}
+                                data-testid={`btn-translate-message-${msg.id}`}
+                              >
+                                {translatingMsgIds.has(msg.id) ? (
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                ) : (
+                                  <Languages className="h-2.5 w-2.5" />
+                                )}
+                                <span>
+                                  {translatingMsgIds.has(msg.id)
+                                    ? t("translate.loading")
+                                    : translatedMsgIds.has(msg.id)
+                                    ? t("translate.original")
+                                    : t("translate.button")}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {hasWarning && (
+                          <div
+                            className="flex items-start gap-1.5 mt-1 max-w-[80%] rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+                            data-testid={`warning-off-platform-${msg.id}`}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                            <span>{t("dealDetail.offPlatformSafety")}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>{t("dealDetail.noMessages")}</p>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+            <div className="border-t p-4 flex-shrink-0">
+              {user?.phone && (
+                <div className="mb-2">
+                  <button
+                    type="button"
+                    onClick={() => sendMessageMutation.mutate(`📞 My phone number: ${user.phone}`)}
+                    disabled={sendMessageMutation.isPending}
+                    className="text-xs text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1"
+                  >
+                    <Shield className="h-3 w-3" />
+                    Share my phone number privately
+                  </button>
+                </div>
+              )}
+              <form onSubmit={handleSendMessage} className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={t("dealDetail.typeMessage")}
+                  disabled={sendMessageMutation.isPending}
+                  data-testid="input-message"
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!message.trim() || sendMessageMutation.isPending}
+                  data-testid="button-send-message"
+                >
+                  {sendMessageMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </form>
+            </div>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">{t("dealDetail.dealDetails")}</CardTitle>
@@ -560,131 +735,6 @@ export function DealDetailPage() {
             </Card>
           )}
 
-          <Card className="flex flex-col h-[500px]">
-            <CardHeader className="border-b flex-shrink-0">
-              <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
-                <span>{t("dealDetail.chatWith")} {otherParty?.fullName}</span>
-                <FounderBadge show={!!otherParty?.founderBadge} />
-              </CardTitle>
-              <CardDescription>
-                {t("dealDetail.discussDetails")} {otherParty?.fullName}
-              </CardDescription>
-            </CardHeader>
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {messagesLoading ? (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => (
-                      <Skeleton key={i} className="h-16" />
-                    ))}
-                  </div>
-                ) : messages && messages.length > 0 ? (
-                  messages.map((msg) => {
-                    const isMe = msg.senderId === user.id;
-                    const hasWarning = msg.isOffPlatform || !!msg.warning;
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isMe !== isRTL ? "items-end" : "items-start"}`}
-                      >
-                        <div className={`flex gap-2 max-w-[80%] ${isMe !== isRTL ? "flex-row-reverse" : ""}`}>
-                          <Avatar className="h-8 w-8 flex-shrink-0">
-                            <AvatarImage src={msg.sender?.avatarUrl || undefined} />
-                            <AvatarFallback className="text-xs">
-                              {msg.sender?.fullName?.charAt(0) || "U"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div
-                            className={`rounded-lg px-4 py-2 ${
-                              isMe
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted"
-                            }`}
-                          >
-                            <div className={`flex items-center gap-1 mb-0.5 text-xs font-semibold ${isMe ? "text-primary-foreground/90" : "text-foreground"}`}>
-                              <span>{isMe ? "You" : msg.sender?.fullName}</span>
-                              <FounderBadge show={!!msg.sender?.founderBadge} />
-                            </div>
-                            <p className="text-sm" data-testid={`text-message-content-${msg.id}`}>
-                              {translatedMsgIds.has(msg.id) && msgTranslations[msg.id]
-                                ? msgTranslations[msg.id]
-                                : msg.content}
-                            </p>
-                            <div className={`flex items-center justify-between mt-1 gap-2`}>
-                              <p className={`text-xs ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                                {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => handleTranslateMessage(msg.id, msg.content)}
-                                disabled={translatingMsgIds.has(msg.id)}
-                                className={`flex items-center gap-0.5 text-[10px] transition-opacity hover:opacity-100 ${
-                                  isMe
-                                    ? "text-primary-foreground/60 hover:text-primary-foreground/90"
-                                    : "text-muted-foreground hover:text-foreground"
-                                } disabled:opacity-40`}
-                                data-testid={`btn-translate-message-${msg.id}`}
-                              >
-                                {translatingMsgIds.has(msg.id) ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                ) : (
-                                  <Languages className="h-2.5 w-2.5" />
-                                )}
-                                <span>
-                                  {translatingMsgIds.has(msg.id)
-                                    ? t("translate.loading")
-                                    : translatedMsgIds.has(msg.id)
-                                    ? t("translate.original")
-                                    : t("translate.button")}
-                                </span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        {hasWarning && (
-                          <div
-                            className="flex items-start gap-1.5 mt-1 max-w-[80%] rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
-                            data-testid={`warning-off-platform-${msg.id}`}
-                          >
-                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                            <span>{t("dealDetail.offPlatformSafety")}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>{t("dealDetail.noMessages")}</p>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-            <div className="border-t p-4 flex-shrink-0">
-              <form onSubmit={handleSendMessage} className="flex gap-2">
-                <Input
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder={t("dealDetail.typeMessage")}
-                  disabled={sendMessageMutation.isPending}
-                  data-testid="input-message"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!message.trim() || sendMessageMutation.isPending}
-                  data-testid="button-send-message"
-                >
-                  {sendMessageMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </form>
-            </div>
-          </Card>
         </div>
 
         <div className="space-y-4">
@@ -784,6 +834,18 @@ export function DealDetailPage() {
                 </Button>
               )}
 
+              {deal.state !== "completed" && deal.state !== "cancelled" && deal.state !== "proposed" && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 text-orange-600 border-orange-200 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-950/20"
+                  onClick={() => setShowDisputeModal(true)}
+                  data-testid="button-raise-dispute"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Raise a Dispute
+                </Button>
+              )}
+
               {deal.state !== "completed" && deal.state !== "cancelled" && (
                 <Dialog>
                   <DialogTrigger asChild>
@@ -867,6 +929,63 @@ export function DealDetailPage() {
           toUserName={otherParty.fullName}
         />
       )}
+
+      {otherParty && (
+        <ReviewModal
+          open={showReviewModal}
+          onClose={() => setShowReviewModal(false)}
+          dealId={deal.id}
+          revieweeName={otherParty.fullName}
+          listingTitle={`Deal #${deal.dealNumber}`}
+        />
+      )}
+
+      {/* Dispute Modal */}
+      <Dialog open={showDisputeModal} onOpenChange={setShowDisputeModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+              <AlertTriangle className="h-5 w-5" />
+              Raise a Dispute
+            </DialogTitle>
+            <DialogDescription>
+              Describe the issue. An admin will review your dispute and reach out to both parties within 48 hours.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Subject</label>
+              <Input
+                placeholder="e.g. Items not delivered as described"
+                value={disputeSubject}
+                onChange={(e) => setDisputeSubject(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description</label>
+              <Textarea
+                placeholder="Explain what happened, what was agreed, and what the issue is..."
+                value={disputeDesc}
+                onChange={(e) => setDisputeDesc(e.target.value)}
+                rows={4}
+                maxLength={2000}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDisputeModal(false)}>Cancel</Button>
+            <Button
+              variant="default"
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={() => disputeMutation.mutate()}
+              disabled={disputeSubject.trim().length < 5 || disputeDesc.trim().length < 10 || disputeMutation.isPending}
+            >
+              {disputeMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Filing…</> : "File Dispute"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
