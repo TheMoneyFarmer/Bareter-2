@@ -537,6 +537,22 @@ export function AdminPage() {
     enabled: activeSection === "settings",
   });
 
+  const { data: betaInviteData } = useQuery<{ code: string | null }>({
+    queryKey: ["/api/admin/beta-invite-code"],
+    enabled: activeSection === "settings",
+  });
+
+  const regenerateInviteCodeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/beta-invite-code/regenerate");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/beta-invite-code"] });
+      toast({ title: "New code generated", description: "Share the updated invite link with your beta testers." });
+    },
+  });
+
   const dealStateMutation = useMutation({
     mutationFn: async ({ dealId, state, reason }: { dealId: string; state: string; reason?: string }) => {
       await apiRequest("PATCH", `/api/admin/deals/${dealId}/state`, { state, reason });
@@ -2463,6 +2479,56 @@ export function AdminPage() {
               >
                 Download consent log (CSV)
               </a>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-bareter-teal" />
+                Beta Tester Invite
+              </CardTitle>
+              <CardDescription>
+                Share this link with friends to let them register without joining the waitlist. The code grants one-time registration access.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {betaInviteData?.code ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${window.location.origin}/register?invite=${betaInviteData.code}`}
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/register?invite=${betaInviteData.code}`);
+                        toast({ title: "Copied!", description: "Invite link copied to clipboard." });
+                      }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Code: <span className="font-mono font-semibold">{betaInviteData.code}</span>
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No invite code set yet. Generate one below.</p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => regenerateInviteCodeMutation.mutate()}
+                disabled={regenerateInviteCodeMutation.isPending}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {betaInviteData?.code ? "Regenerate Code" : "Generate Code"}
+              </Button>
             </CardContent>
           </Card>
 
