@@ -932,7 +932,8 @@ export async function registerRoutes(
 
       let fileUrl: string;
 
-      if (PRIVATE_UPLOAD_TYPES.has(uploadType)) {
+      const isOnReplit = !!process.env.REPL_ID;
+      if (PRIVATE_UPLOAD_TYPES.has(uploadType) && isOnReplit) {
         // Push to the private object-storage bucket. The object path is
         // `<PRIVATE_OBJECT_DIR>/private-docs/<userId>/<random>.<ext>`.
         const { objectStorageClient, ObjectStorageService } = await import(
@@ -963,11 +964,40 @@ export async function registerRoutes(
         // Public URL exposed by our app — actual download is gated.
         fileUrl = `/api/private-docs/${userId}/${random}.${detected.ext}`;
       } else {
-        // Public uploads — crypto-random unguessable name on local disk.
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        // Only use Replit object storage when actually running on Replit (REPL_ID is set).
+        // Locally, always write to disk even if PRIVATE_OBJECT_DIR is set in .env.local.
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          // Persistent object storage — survives redeploys.
+          const { objectStorageClient } = await import(
+            "./replit_integrations/object_storage/objectStorage"
+          );
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir
+            ? `${bucketSubDir}/public-uploads/${filename}`
+            : `public-uploads/${filename}`;
+          await objectStorageClient
+            .bucket(bucketName)
+            .file(objectName)
+            .save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: {
+                metadata: {
+                  "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }),
+                },
+              },
+            });
+          fileUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          // Local dev (or Replit without object storage) — write to disk.
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       // Update user profile based on upload type
@@ -993,8 +1023,9 @@ export async function registerRoutes(
 
       res.json({ url: fileUrl, type: uploadType });
     } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({ message: "Upload failed" });
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Upload error:", msg, error);
+      res.status(500).json({ message: `Upload failed: ${msg}` });
     }
   });
 
@@ -7009,26 +7040,72 @@ export async function registerRoutes(
         .where(sqlOperator`(${quickInquiries.fromUserId} = ${userId} OR ${quickInquiries.toUserId} = ${userId})`)
         .orderBy(desc(quickInquiries.createdAt));
 
-      // Group by conversation partner
-      const conversations: Record<string, typeof allInquiries[0] & { otherUserId: string; unreadCount: number }> = {};
+      type ConvShape = {
+        id: string; otherUserId: string; message: string;
+        createdAt: string; unreadCount: number; isRead: boolean;
+        fromUserId: string; toUserId: string;
+        dealId?: string | null; dealNumber?: string | null;
+      };
+      const conversations: Record<string, ConvShape> = {};
+
       for (const inq of allInquiries) {
         const otherUserId = inq.fromUserId === userId ? inq.toUserId : inq.fromUserId;
         if (!conversations[otherUserId]) {
           const unreadCount = allInquiries.filter(
             i => i.fromUserId === otherUserId && i.toUserId === userId && !i.isRead
           ).length;
-          conversations[otherUserId] = { ...inq, otherUserId, unreadCount };
+          conversations[otherUserId] = {
+            id: inq.id, otherUserId, message: inq.message,
+            createdAt: inq.createdAt instanceof Date ? inq.createdAt.toISOString() : String(inq.createdAt),
+            unreadCount, isRead: inq.isRead ?? false,
+            fromUserId: inq.fromUserId, toUserId: inq.toUserId,
+          };
         }
       }
 
-      // Enrich with user info
+      // Merge in deal conversations so all communications appear together
+      const userDeals = await db.select().from(deals)
+        .where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)))
+        .orderBy(desc(deals.updatedAt));
+
+      for (const deal of userDeals) {
+        const otherUserId = deal.seekerId === userId ? deal.providerId : deal.seekerId;
+        const [latestMsg] = await db.select().from(messages)
+          .where(eq(messages.dealId, deal.id))
+          .orderBy(desc(messages.createdAt))
+          .limit(1);
+        if (!latestMsg) continue;
+
+        const [unreadRow] = await db.select({ n: count() }).from(messages)
+          .where(and(eq(messages.dealId, deal.id), eq(messages.isRead, false)));
+        const dealUnread = Number(unreadRow?.n || 0);
+        const msgTime = new Date(latestMsg.createdAt as Date).getTime();
+        const existingTime = conversations[otherUserId]
+          ? new Date(conversations[otherUserId].createdAt).getTime() : 0;
+
+        if (!conversations[otherUserId] || msgTime > existingTime) {
+          conversations[otherUserId] = {
+            id: latestMsg.id, otherUserId,
+            message: latestMsg.content,
+            createdAt: latestMsg.createdAt instanceof Date ? latestMsg.createdAt.toISOString() : String(latestMsg.createdAt),
+            unreadCount: (conversations[otherUserId]?.unreadCount || 0) + dealUnread,
+            isRead: latestMsg.isRead ?? false,
+            fromUserId: latestMsg.senderId, toUserId: otherUserId,
+            dealId: deal.id, dealNumber: deal.dealNumber,
+          };
+        } else {
+          conversations[otherUserId].unreadCount += dealUnread;
+        }
+      }
+
+      // Enrich with user info and sort newest-first
       const enriched = await Promise.all(
         Object.values(conversations).map(async (conv) => {
           const otherUser = await storage.getUser(conv.otherUserId);
           return { ...conv, otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified, kycStatus: otherUser.kycStatus, kybStatus: otherUser.kybStatus, accountType: otherUser.accountType } : null };
         })
       );
-
+      enriched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       res.json(enriched);
     } catch (error) {
       console.error("Get inbox error:", error);
@@ -7041,22 +7118,71 @@ export async function registerRoutes(
       const myId = req.session.userId!;
       const otherId = param(req.params.userId);
 
-      const thread = await db.select().from(quickInquiries)
+      // Fetch DM messages
+      const dmThread = await db.select().from(quickInquiries)
         .where(sqlOperator`(
           (${quickInquiries.fromUserId} = ${myId} AND ${quickInquiries.toUserId} = ${otherId}) OR
           (${quickInquiries.fromUserId} = ${otherId} AND ${quickInquiries.toUserId} = ${myId})
         )`)
         .orderBy(quickInquiries.createdAt);
 
-      // Mark messages as read
       await db.update(quickInquiries)
         .set({ isRead: true })
         .where(and(eq(quickInquiries.fromUserId, otherId), eq(quickInquiries.toUserId, myId)));
 
+      // Fetch deal messages between these two users
+      const sharedDeals = await db.select().from(deals)
+        .where(or(
+          and(eq(deals.seekerId, myId), eq(deals.providerId, otherId)),
+          and(eq(deals.seekerId, otherId), eq(deals.providerId, myId))
+        ))
+        .orderBy(asc(deals.createdAt));
+
+      type NormalizedMsg = {
+        id: string; fromUserId: string; toUserId: string;
+        message: string; isRead: boolean; createdAt: string;
+        source: "dm" | "deal"; dealId?: string | null; dealNumber?: string | null;
+      };
+
+      const dealMsgs: NormalizedMsg[] = [];
+      const dealSummaries: { id: string; dealNumber: string; state: string; seekerOffer: string }[] = [];
+
+      for (const deal of sharedDeals) {
+        dealSummaries.push({ id: deal.id, dealNumber: deal.dealNumber, state: deal.state, seekerOffer: deal.seekerOffer });
+        const msgs = await db.select().from(messages)
+          .where(eq(messages.dealId, deal.id))
+          .orderBy(asc(messages.createdAt));
+        // Mark as read
+        await db.update(messages).set({ isRead: true })
+          .where(and(eq(messages.dealId, deal.id), eq(messages.isRead, false)));
+        for (const m of msgs) {
+          dealMsgs.push({
+            id: m.id,
+            fromUserId: m.senderId,
+            toUserId: m.senderId === deal.seekerId ? deal.providerId : deal.seekerId,
+            message: m.content,
+            isRead: m.isRead ?? false,
+            createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+            source: "deal", dealId: deal.id, dealNumber: deal.dealNumber,
+          });
+        }
+      }
+
+      const dmNormalized: NormalizedMsg[] = dmThread.map(m => ({
+        id: m.id, fromUserId: m.fromUserId, toUserId: m.toUserId,
+        message: m.message, isRead: m.isRead ?? false,
+        createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+        source: "dm",
+      }));
+
+      const allMessages = [...dmNormalized, ...dealMsgs]
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
       const otherUser = await storage.getUser(otherId);
-      res.json({ 
-        messages: thread, 
-        otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified, kycStatus: otherUser.kycStatus, kybStatus: otherUser.kybStatus, accountType: otherUser.accountType } : null
+      res.json({
+        messages: allMessages,
+        otherUser: otherUser ? { id: otherUser.id, fullName: otherUser.fullName, avatarUrl: otherUser.avatarUrl, isVerified: otherUser.isVerified, kycStatus: otherUser.kycStatus, kybStatus: otherUser.kybStatus, accountType: otherUser.accountType } : null,
+        deals: dealSummaries,
       });
     } catch (error) {
       console.error("Get thread error:", error);
@@ -7463,6 +7589,32 @@ export async function registerRoutes(
     } catch (error) {
       console.error("AI admin ask error:", error);
       res.status(500).json({ message: "Admin agent unavailable" });
+    }
+  });
+
+  // AI dispute resolution suggestion
+  app.post("/api/ai/admin/dispute-suggest", requireAdmin, aiPerMinuteLimiter, aiPerDayLimiter, async (req, res) => {
+    try {
+      const { disputeId } = req.body;
+      if (!disputeId) return res.status(400).json({ message: "disputeId is required" });
+      const dispute = await storage.getDispute(disputeId);
+      if (!dispute) return res.status(404).json({ message: "Dispute not found" });
+      const { getDisputeResolution } = await import("./agents/adminAgent");
+      const suggestion = await getDisputeResolution(
+        {
+          subject: dispute.subject,
+          description: dispute.description,
+          partyAName: dispute.partyA?.fullName || "Party A",
+          partyBName: dispute.partyB?.fullName || "Party B",
+          evidence: dispute.evidence || [],
+          status: dispute.status,
+        },
+        req.session.userId,
+      );
+      res.json(suggestion);
+    } catch (error) {
+      console.error("AI dispute suggest error:", error);
+      res.status(500).json({ message: "AI suggestion unavailable" });
     }
   });
 

@@ -115,7 +115,23 @@ export function BrowsePage() {
   );
   const [selectedCondition, setSelectedCondition] = useState<string>("all");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
-  const VALUE_MAX = 5_000_000;
+  const VALUE_MAX = 50_000_000;
+  const SLIDER_STEPS = 1000;
+
+  // Logarithmic slider helpers — maps 0..SLIDER_STEPS ↔ 0..VALUE_MAX
+  // so small values (1–500 AED) are just as reachable as millions.
+  const sliderToValue = (pos: number): number => {
+    if (pos <= 0) return 0;
+    if (pos >= SLIDER_STEPS) return VALUE_MAX;
+    const logMax = Math.log(VALUE_MAX);
+    return Math.round(Math.exp(logMax * (pos / SLIDER_STEPS)));
+  };
+  const valueToSlider = (val: number): number => {
+    if (val <= 0) return 0;
+    if (val >= VALUE_MAX) return SLIDER_STEPS;
+    return Math.round((Math.log(val) / Math.log(VALUE_MAX)) * SLIDER_STEPS);
+  };
+
   const [valueRange, setValueRange] = useState<[number, number]>([0, VALUE_MAX]);
 
   useEffect(() => {
@@ -439,11 +455,11 @@ export function BrowsePage() {
 
   const PRICE_PRESETS: { label: string; range: [number, number] }[] = [
     { label: "Any", range: [0, VALUE_MAX] },
-    { label: "Under 1k", range: [0, 1_000] },
-    { label: "1k–10k", range: [1_000, 10_000] },
-    { label: "10k–50k", range: [10_000, 50_000] },
-    { label: "50k–250k", range: [50_000, 250_000] },
-    { label: "250k+", range: [250_000, VALUE_MAX] },
+    { label: "Under 500", range: [0, 500] },
+    { label: "500–5k", range: [500, 5_000] },
+    { label: "5k–50k", range: [5_000, 50_000] },
+    { label: "50k–500k", range: [50_000, 500_000] },
+    { label: "500k+", range: [500_000, VALUE_MAX] },
   ];
 
   const conditionLabel = (c: string) => {
@@ -545,10 +561,17 @@ export function BrowsePage() {
           })}
         </div>
         <div className="px-2">
-          <Slider value={valueRange} onValueChange={(v) => setValueRange([v[0], v[1]] as [number, number])} max={VALUE_MAX} step={1000} className="mb-2" data-testid="filter-value-range" />
+          <Slider
+            value={[valueToSlider(valueRange[0]), valueToSlider(valueRange[1])]}
+            onValueChange={(v) => setValueRange([sliderToValue(v[0]), sliderToValue(v[1])])}
+            max={SLIDER_STEPS}
+            step={1}
+            className="mb-2"
+            data-testid="filter-value-range"
+          />
           <div className="flex justify-between text-sm text-muted-foreground">
-            <span>AED {valueRange[0].toLocaleString()}</span>
-            <span>AED {valueRange[1] >= VALUE_MAX ? `${(VALUE_MAX/1_000_000).toFixed(0)}M+` : valueRange[1].toLocaleString()}</span>
+            <span>AED {valueRange[0] <= 0 ? "0" : valueRange[0].toLocaleString()}</span>
+            <span>AED {valueRange[1] >= VALUE_MAX ? "50M+" : valueRange[1].toLocaleString()}</span>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-3">
@@ -574,7 +597,7 @@ export function BrowsePage() {
               type="number"
               min={0}
               value={valueRange[1] >= VALUE_MAX ? "" : valueRange[1]}
-              placeholder={`${VALUE_MAX.toLocaleString()}+`}
+              placeholder="50,000,000+"
               onChange={(e) => {
                 const raw = Number(e.target.value);
                 const v = !raw ? VALUE_MAX : Math.max(0, Math.min(VALUE_MAX, raw));
@@ -852,7 +875,7 @@ export function BrowsePage() {
                 </SheetTrigger>
                 <SheetContent side="left" className="w-80">
                   <SheetHeader className="mb-6"><SheetTitle>{t("browse.filters")}</SheetTitle></SheetHeader>
-                  <FilterContent />
+                  {FilterContent()}
                 </SheetContent>
               </Sheet>
             </div>
@@ -862,7 +885,7 @@ export function BrowsePage() {
             <aside className="hidden md:block w-[280px] flex-shrink-0">
               <Card><CardContent className="p-4">
                 <h3 className="font-semibold mb-4 flex items-center gap-2"><Filter className="h-4 w-4" />{t("browse.filters")}</h3>
-                <FilterContent />
+                {FilterContent()}
               </CardContent></Card>
             </aside>
 

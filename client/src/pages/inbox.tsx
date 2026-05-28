@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ShieldCheck, Send, MessageSquare, ArrowLeft } from "lucide-react";
+import { ShieldCheck, Send, MessageSquare, ArrowLeft, Handshake, ExternalLink } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -20,6 +21,8 @@ type ConversationEntry = {
   isRead: boolean;
   fromUserId: string;
   toUserId: string;
+  dealId?: string | null;
+  dealNumber?: string | null;
   otherUser: {
     id: string;
     fullName: string;
@@ -38,11 +41,21 @@ type ThreadMessage = {
   message: string;
   isRead: boolean;
   createdAt: string;
-  listingId?: string | null;
+  source: "dm" | "deal";
+  dealId?: string | null;
+  dealNumber?: string | null;
+};
+
+type DealSummary = {
+  id: string;
+  dealNumber: string;
+  state: string;
+  seekerOffer: string;
 };
 
 type ThreadData = {
   messages: ThreadMessage[];
+  deals: DealSummary[];
   otherUser: {
     id: string;
     fullName: string;
@@ -54,6 +67,16 @@ type ThreadData = {
   } | null;
 };
 
+const DEAL_STATE_LABEL: Record<string, string> = {
+  proposed: "Proposed",
+  accepted: "Accepted",
+  in_progress: "In Progress",
+  delivery: "Delivery",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  disputed: "Disputed",
+};
+
 export function InboxPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -62,7 +85,8 @@ export function InboxPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialUserId);
   const [newMessage, setNewMessage] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "thread">(initialUserId ? "thread" : "list");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+  const isInitialMessagesLoad = useRef(true);
 
   const { data: conversations = [], isLoading } = useQuery<ConversationEntry[]>({
     queryKey: ["/api/inbox"],
@@ -86,10 +110,18 @@ export function InboxPage() {
   });
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!thread?.messages) return;
+    const viewport = chatScrollAreaRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null;
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: isInitialMessagesLoad.current ? "auto" : "smooth" });
+    }
+    isInitialMessagesLoad.current = false;
   }, [thread?.messages]);
 
   const handleSelectConversation = (userId: string) => {
+    isInitialMessagesLoad.current = true;
     setSelectedUserId(userId);
     setMobileView("thread");
     queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
@@ -115,6 +147,8 @@ export function InboxPage() {
     );
   }
 
+  const activeDeals = thread?.deals?.filter(d => d.state !== "completed" && d.state !== "cancelled") ?? [];
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl">
       <div className="mb-6">
@@ -122,7 +156,7 @@ export function InboxPage() {
           <MessageSquare className="h-6 w-6" />
           Inbox
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Direct messages with other users</p>
+        <p className="text-sm text-muted-foreground mt-1">All messages — direct and deal chats in one place</p>
       </div>
 
       <div className="border rounded-xl overflow-hidden bg-card min-h-[600px] flex">
@@ -179,6 +213,12 @@ export function InboxPage() {
                       </span>
                       <VerifiedBadge isVerified={conv.otherUser?.isVerified} kycStatus={conv.otherUser?.kycStatus} kybStatus={conv.otherUser?.kybStatus} accountType={conv.otherUser?.accountType} size="xs" testId="badge-verified" />
                     </div>
+                    {conv.dealNumber && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-primary font-medium mb-0.5">
+                        <Handshake className="h-2.5 w-2.5" />
+                        Deal {conv.dealNumber}
+                      </span>
+                    )}
                     <p className={`text-xs truncate ${conv.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                       {conv.fromUserId === user.id ? "You: " : ""}{conv.message}
                     </p>
@@ -204,38 +244,56 @@ export function InboxPage() {
           ) : (
             <>
               {/* Thread Header */}
-              <div className="p-4 border-b flex items-center gap-3">
-                <button
-                  onClick={() => setMobileView("list")}
-                  className="md:hidden p-1"
-                  data-testid="button-back-inbox"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={thread?.otherUser?.avatarUrl || undefined} />
-                  <AvatarFallback>{thread?.otherUser?.fullName?.[0]?.toUpperCase() || "?"}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-semibold text-sm">{thread?.otherUser?.fullName || "Loading..."}</span>
-                    <VerifiedBadge isVerified={thread?.otherUser?.isVerified} kycStatus={thread?.otherUser?.kycStatus} kybStatus={thread?.otherUser?.kybStatus} accountType={thread?.otherUser?.accountType} size="xs" testId="badge-verified" />
+              <div className="p-4 border-b space-y-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setMobileView("list")}
+                    className="md:hidden p-1"
+                    data-testid="button-back-inbox"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={thread?.otherUser?.avatarUrl || undefined} />
+                    <AvatarFallback>{thread?.otherUser?.fullName?.[0]?.toUpperCase() || "?"}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold text-sm">{thread?.otherUser?.fullName || "Loading..."}</span>
+                      <VerifiedBadge isVerified={thread?.otherUser?.isVerified} kycStatus={thread?.otherUser?.kycStatus} kybStatus={thread?.otherUser?.kybStatus} accountType={thread?.otherUser?.accountType} size="xs" testId="badge-verified" />
+                    </div>
+                  </div>
+                  <div className="ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/users/${selectedUserId}`)}
+                      data-testid="button-view-profile"
+                    >
+                      View Profile
+                    </Button>
                   </div>
                 </div>
-                <div className="ml-auto">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/users/${selectedUserId}`)}
-                    data-testid="button-view-profile"
-                  >
-                    View Profile
-                  </Button>
-                </div>
+
+                {/* Active deal pills */}
+                {activeDeals.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {activeDeals.map(deal => (
+                      <Link key={deal.id} href={`/deals/${deal.id}`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer">
+                          <Handshake className="h-3 w-3" />
+                          Deal {deal.dealNumber}
+                          <span className="opacity-70">· {DEAL_STATE_LABEL[deal.state] || deal.state}</span>
+                          <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
+              <ScrollArea ref={chatScrollAreaRef} className="flex-1 p-4">
                 {!thread?.messages?.length ? (
                   <div className="text-center text-muted-foreground py-8">
                     <p className="text-sm">No messages yet. Say hello!</p>
@@ -245,27 +303,35 @@ export function InboxPage() {
                     {thread.messages.map((msg) => {
                       const isMe = msg.fromUserId === user.id;
                       return (
-                        <div
-                          key={msg.id}
-                          data-testid={`message-${msg.id}`}
-                          className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                        >
-                          <div
-                            className={`max-w-xs md:max-w-md rounded-2xl px-4 py-2 text-sm ${
-                              isMe
-                                ? "bg-primary text-primary-foreground rounded-br-sm"
-                                : "bg-muted rounded-bl-sm"
-                            }`}
-                          >
-                            <p>{msg.message}</p>
-                            <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                              {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                            </p>
+                        <div key={msg.id} data-testid={`message-${msg.id}`}>
+                          {msg.source === "deal" && msg.dealNumber && (
+                            <div className="flex justify-center mb-1">
+                              <Link href={`/deals/${msg.dealId}`}>
+                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+                                  <Handshake className="h-2.5 w-2.5" />
+                                  Deal chat · {msg.dealNumber}
+                                  <ExternalLink className="h-2 w-2" />
+                                </span>
+                              </Link>
+                            </div>
+                          )}
+                          <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                            <div
+                              className={`max-w-xs md:max-w-md rounded-2xl px-4 py-2 text-sm ${
+                                isMe
+                                  ? "bg-primary text-primary-foreground rounded-br-sm"
+                                  : "bg-muted rounded-bl-sm"
+                              } ${msg.source === "deal" ? "ring-1 ring-primary/20" : ""}`}
+                            >
+                              <p>{msg.message}</p>
+                              <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                                {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       );
                     })}
-                    <div ref={messagesEndRef} />
                   </div>
                 )}
               </ScrollArea>

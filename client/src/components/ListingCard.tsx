@@ -343,15 +343,19 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
             </span>
           </div>
 
-          {/* SELLER */}
-          <div className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2">
+          {/* SELLER — clicking the name/avatar goes to their profile */}
+          <Link
+            href={listing.user?.id ? `/users/${listing.user.id}` : "#"}
+            onClick={(e: MouseEvent) => e.stopPropagation()}
+            className="border-t border-bareter-border dark:border-border pt-2.5 mt-auto flex items-center gap-2 group/seller"
+          >
             <Avatar className="h-7 w-7">
               <AvatarImage src={listing.user?.avatarUrl || undefined} alt={listing.user?.fullName} />
               <AvatarFallback className="text-[10px] bg-bareter-teal-muted text-bareter-teal">
                 {listing.user?.fullName?.charAt(0)?.toUpperCase() || "U"}
               </AvatarFallback>
             </Avatar>
-            <span className="text-[13px] font-medium text-bareter-navy dark:text-foreground truncate flex-1">
+            <span className="text-[13px] font-medium text-bareter-navy dark:text-foreground truncate flex-1 group-hover/seller:underline group-hover/seller:text-bareter-teal transition-colors">
               {listing.user?.fullName || "Member"}
             </span>
             {verified && (
@@ -360,7 +364,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                 {t("listingCard.verified")}
               </span>
             )}
-          </div>
+          </Link>
         </div>
       </article>
     </Link>

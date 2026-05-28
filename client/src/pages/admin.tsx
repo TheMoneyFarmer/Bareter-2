@@ -224,6 +224,15 @@ export function AdminPage() {
   const [createDisputeDialog, setCreateDisputeDialog] = useState<{ open: boolean; partyAId: string; partyBId: string; subject: string; description: string; dealId: string }>({
     open: false, partyAId: "", partyBId: "", subject: "", description: "", dealId: "",
   });
+  const [disputeAiSuggestion, setDisputeAiSuggestion] = useState<{
+    loading: boolean;
+    analysis?: string;
+    suggestedOutcome?: string;
+    suggestedDecision?: string;
+    suggestedReasoning?: string;
+    confidence?: string;
+    error?: string;
+  }>({ loading: false });
   const [settingsTab, setSettingsTab] = useState<string>("platform");
   const [auditLogActionFilter, setAuditLogActionFilter] = useState<string>("all");
   const [auditLogAdminFilter, setAuditLogAdminFilter] = useState<string>("all");
@@ -571,6 +580,7 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
       setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" });
+      setDisputeAiSuggestion({ loading: false });
       setSelectedDispute(null);
       toast({ title: "Success", description: "Dispute resolved and parties notified" });
     },
@@ -4174,15 +4184,146 @@ export function AdminPage() {
       </Dialog>
 
       {/* Dispute Decision Dialog */}
-      <Dialog open={disputeDecisionDialog.open} onOpenChange={(open) => !open && setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" })}>
-        <DialogContent data-testid="dialog-dispute-decision">
+      <Dialog open={disputeDecisionDialog.open} onOpenChange={(open) => { if (!open) { setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" }); setDisputeAiSuggestion({ loading: false }); } }}>
+        <DialogContent className="max-w-lg" data-testid="dialog-dispute-decision">
           <DialogHeader>
-            <DialogTitle>Resolve Dispute</DialogTitle>
-            <DialogDescription>
-              Enter your decision for "{disputeDecisionDialog.dispute?.subject}". Both parties will be notified by email.
-            </DialogDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <DialogTitle>Resolve Dispute</DialogTitle>
+                <DialogDescription className="mt-1">
+                  Enter your decision for "{disputeDecisionDialog.dispute?.subject}". Both parties will be notified by email.
+                </DialogDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                disabled={disputeAiSuggestion.loading}
+                data-testid="button-ai-dispute-suggest"
+                onClick={async () => {
+                  if (!disputeDecisionDialog.dispute) return;
+                  setDisputeAiSuggestion({ loading: true });
+                  try {
+                    const res = await apiRequest("POST", "/api/ai/admin/dispute-suggest", { disputeId: disputeDecisionDialog.dispute.id });
+                    const data = await res.json();
+                    setDisputeAiSuggestion({ loading: false, ...data });
+                  } catch {
+                    setDisputeAiSuggestion({ loading: false, error: "AI suggestion failed. Please try again." });
+                  }
+                }}
+              >
+                {disputeAiSuggestion.loading ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {disputeAiSuggestion.loading ? "Analyzing…" : "AI Assist"}
+              </Button>
+            </div>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+
+          <div className="space-y-4 py-2">
+            {/* AI Suggestion Panel */}
+            {(disputeAiSuggestion.loading || disputeAiSuggestion.analysis || disputeAiSuggestion.error) && (
+              <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-3" data-testid="panel-ai-dispute-suggestion">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">AI Analysis</span>
+                  {disputeAiSuggestion.confidence && !disputeAiSuggestion.loading && (
+                    <Badge variant="outline" className="text-xs capitalize ml-auto">
+                      {disputeAiSuggestion.confidence} confidence
+                    </Badge>
+                  )}
+                </div>
+
+                {disputeAiSuggestion.loading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Analyzing dispute details and evidence…
+                  </div>
+                ) : disputeAiSuggestion.error ? (
+                  <p className="text-sm text-destructive">{disputeAiSuggestion.error}</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{disputeAiSuggestion.analysis}</p>
+
+                    <div className="space-y-2 pt-1">
+                      {/* Suggested outcome row */}
+                      <div className="flex items-center justify-between gap-3 rounded-md bg-background px-3 py-2 border">
+                        <div className="text-sm">
+                          <span className="text-xs text-muted-foreground block">Suggested outcome</span>
+                          <span className="font-medium">
+                            {disputeAiSuggestion.suggestedOutcome === "in_favor_party_a" && `In favor of ${disputeDecisionDialog.dispute?.partyA?.fullName || "Party A"}`}
+                            {disputeAiSuggestion.suggestedOutcome === "in_favor_party_b" && `In favor of ${disputeDecisionDialog.dispute?.partyB?.fullName || "Party B"}`}
+                            {disputeAiSuggestion.suggestedOutcome === "mutual" && "Mutual agreement"}
+                            {disputeAiSuggestion.suggestedOutcome === "dismissed" && "Dismissed"}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 h-7 text-xs"
+                          onClick={() => setDisputeDecisionDialog({ ...disputeDecisionDialog, outcome: disputeAiSuggestion.suggestedOutcome || "" })}
+                          data-testid="button-ai-apply-outcome"
+                        >Apply</Button>
+                      </div>
+
+                      {/* Suggested decision */}
+                      {disputeAiSuggestion.suggestedDecision && (
+                        <div className="rounded-md bg-background border px-3 py-2 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">Suggested decision</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => setDisputeDecisionDialog({ ...disputeDecisionDialog, decision: disputeAiSuggestion.suggestedDecision || "" })}
+                              data-testid="button-ai-apply-decision"
+                            >Apply</Button>
+                          </div>
+                          <p className="text-sm text-foreground/90">{disputeAiSuggestion.suggestedDecision}</p>
+                        </div>
+                      )}
+
+                      {/* Suggested reasoning */}
+                      {disputeAiSuggestion.suggestedReasoning && (
+                        <div className="rounded-md bg-background border px-3 py-2 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">Suggested reasoning</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => setDisputeDecisionDialog({ ...disputeDecisionDialog, reasoning: disputeAiSuggestion.suggestedReasoning || "" })}
+                              data-testid="button-ai-apply-reasoning"
+                            >Apply</Button>
+                          </div>
+                          <p className="text-sm text-foreground/90">{disputeAiSuggestion.suggestedReasoning}</p>
+                        </div>
+                      )}
+
+                      {/* Apply all */}
+                      <Button
+                        size="sm"
+                        className="w-full gap-1.5 h-8"
+                        onClick={() => setDisputeDecisionDialog({
+                          ...disputeDecisionDialog,
+                          outcome: disputeAiSuggestion.suggestedOutcome || disputeDecisionDialog.outcome,
+                          decision: disputeAiSuggestion.suggestedDecision || disputeDecisionDialog.decision,
+                          reasoning: disputeAiSuggestion.suggestedReasoning || disputeDecisionDialog.reasoning,
+                        })}
+                        data-testid="button-ai-apply-all"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Apply All Suggestions
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Outcome selector */}
             <div className="space-y-2">
               <Label>Outcome</Label>
               <Select value={disputeDecisionDialog.outcome} onValueChange={(v) => setDisputeDecisionDialog({ ...disputeDecisionDialog, outcome: v })}>
@@ -4190,25 +4331,33 @@ export function AdminPage() {
                   <SelectValue placeholder="Select outcome" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="in_favor_party_a">In favor of Party A</SelectItem>
-                  <SelectItem value="in_favor_party_b">In favor of Party B</SelectItem>
+                  <SelectItem value="in_favor_party_a">
+                    In favor of {disputeDecisionDialog.dispute?.partyA?.fullName || "Party A"}
+                  </SelectItem>
+                  <SelectItem value="in_favor_party_b">
+                    In favor of {disputeDecisionDialog.dispute?.partyB?.fullName || "Party B"}
+                  </SelectItem>
                   <SelectItem value="mutual">Mutual agreement</SelectItem>
                   <SelectItem value="dismissed">Dismissed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Decision textarea */}
             <div className="space-y-2">
               <Label>Decision</Label>
               <Textarea
                 placeholder="Enter your decision..."
                 value={disputeDecisionDialog.decision}
                 onChange={(e) => setDisputeDecisionDialog({ ...disputeDecisionDialog, decision: e.target.value })}
-                className="min-h-[100px]"
+                className="min-h-[90px]"
                 data-testid="input-dispute-decision"
               />
             </div>
+
+            {/* Reasoning textarea */}
             <div className="space-y-2">
-              <Label>Reasoning (optional)</Label>
+              <Label>Reasoning <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Textarea
                 placeholder="Provide reasoning for the decision..."
                 value={disputeDecisionDialog.reasoning}
@@ -4217,8 +4366,9 @@ export function AdminPage() {
               />
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" })}>
+            <Button variant="outline" onClick={() => { setDisputeDecisionDialog({ open: false, dispute: null, decision: "", reasoning: "", outcome: "" }); setDisputeAiSuggestion({ loading: false }); }}>
               Cancel
             </Button>
             <Button

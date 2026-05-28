@@ -1293,15 +1293,17 @@ export function ListingDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3 mb-4">
-                <Avatar className="h-14 w-14">
-                  <AvatarImage src={listing.user?.avatarUrl || undefined} />
-                  <AvatarFallback className="text-lg bg-primary text-primary-foreground">
-                    {listing.user?.fullName?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
+                <Link href={`/users/${listing.userId}`}>
+                  <Avatar className="h-14 w-14 cursor-pointer hover:ring-2 hover:ring-primary transition-all">
+                    <AvatarImage src={listing.user?.avatarUrl || undefined} />
+                    <AvatarFallback className="text-lg bg-primary text-primary-foreground">
+                      {listing.user?.fullName?.charAt(0) || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                </Link>
                 <div>
                   <div className="flex items-center gap-1 flex-wrap">
-                    <span className="font-semibold">{listing.user?.fullName}</span>
+                    <Link href={`/users/${listing.userId}`} className="font-semibold hover:underline hover:text-primary transition-colors">{listing.user?.fullName}</Link>
                     <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
                     <FounderBadge show={!!listing.user?.founderBadge} />
                     <ReputationBadge completedDeals={listing.user?.totalCompletedDeals ?? 0} avgRating={userReviews?.avgRating} />

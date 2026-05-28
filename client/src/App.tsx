@@ -3,6 +3,8 @@ import { Switch, Route, useLocation } from "wouter";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
@@ -60,6 +62,17 @@ import { ErrorBoundary } from "@/components/error-boundary";
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
 initPostHog();
 
+// Tell the browser not to auto-restore scroll position between SPA navigations —
+// we handle it ourselves in RouteTransition so pages always open at the top.
+if (typeof window !== "undefined") {
+  if ("scrollRestoration" in window.history) {
+    window.history.scrollRestoration = "manual";
+  }
+  // Force top on initial page load (guards against bfcache scroll restoration)
+  window.scrollTo(0, 0);
+  if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+}
+
 function RouteTransition({ children }: { children: React.ReactNode }) {
   const [loc] = useLocation();
   // Track whether the most recent navigation was a browser back/forward
@@ -76,12 +89,10 @@ function RouteTransition({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Reset scroll to the top of the page on every NEW (push) route change so
-  // users always start at the page header — but skip on back/forward so the
-  // browser's native scroll restoration works, and skip when the URL has a
-  // hash (e.g. /feed#post-123) so deep-link anchors keep default behavior.
-  // useLayoutEffect instead of useEffect so the scroll happens BEFORE the
-  // browser paints — prevents the footer from flashing into view first.
+  // Reset scroll to the top of the page on every NEW (push) route change.
+  // Runs synchronously (useLayoutEffect) to prevent the footer flashing into
+  // view before the browser paints the new page. We target all possible scroll
+  // containers because different browsers/OS combinations honor different ones.
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     if (popNavRef.current) {
@@ -89,7 +100,30 @@ function RouteTransition({ children }: { children: React.ReactNode }) {
       return;
     }
     if (window.location.hash) return;
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+  }, [loc]);
+
+  // Belt-and-suspenders: also reset after first paint (RAF) and after 100ms
+  // to catch async-rendered content that can shift the page after mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (popNavRef.current) return;
+    if (window.location.hash) return;
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+    };
+    const raf = requestAnimationFrame(reset);
+    const tid = setTimeout(reset, 100);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(tid);
+    };
   }, [loc]);
 
   useEffect(() => {
@@ -169,9 +203,31 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const persister = createSyncStoragePersister({
+  storage: window.localStorage,
+  key: "bareter-query-cache-v1",
+  throttleTime: 2000,
+});
+
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 1000 * 60 * 10, // 10 minutes — show cached content, refetch silently in background
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => {
+            const key = query.queryKey[0] as string;
+            // Only persist public listing/feed data — never persist auth-sensitive endpoints
+            return (
+              typeof key === "string" &&
+              (key.startsWith("/api/listings") || key === "/api/trending" || key === "/api/feed")
+            );
+          },
+        },
+      }}
+    >
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>
@@ -204,7 +260,7 @@ function App() {
           </AuthProvider>
         </I18nProvider>
       </ThemeProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
 

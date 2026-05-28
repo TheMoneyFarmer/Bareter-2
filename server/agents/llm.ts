@@ -103,19 +103,21 @@ export async function chatCompletion(
   }
 
   try {
-    const response = await withRetry(
-      () =>
-        openai.chat.completions.create({
+    const { content, tokensUsed } = await withRetry(
+      async () => {
+        const response = await openai.chat.completions.create({
           model,
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 1024,
-        }),
-      { agentName: options.agentName, opName: "openai.chat" },
+        });
+        return {
+          content: response.choices[0]?.message?.content || "",
+          tokensUsed: response.usage?.total_tokens || 0,
+        };
+      },
+      { agentName: options.agentName, opName: "llm.chat" },
     );
-
-    const content = response.choices[0]?.message?.content || "";
-    const tokensUsed = response.usage?.total_tokens || 0;
 
     await logLlmCall({
       agentName: options.agentName,

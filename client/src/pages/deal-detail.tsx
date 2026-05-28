@@ -77,6 +77,8 @@ export function DealDetailPage() {
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+  const isInitialMessagesLoad = useRef(true);
 
   // Per-message translation state. Cache is keyed `${msgId}-${language}` so
   // the same message doesn't cost an extra API call when the user toggles
@@ -229,7 +231,15 @@ export function DealDetailPage() {
   });
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!messages) return;
+    const viewport = chatScrollAreaRef.current?.querySelector(
+      "[data-radix-scroll-area-viewport]"
+    ) as HTMLElement | null;
+    if (viewport) {
+      // On initial load snap instantly; on new messages animate
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: isInitialMessagesLoad.current ? "auto" : "smooth" });
+    }
+    isInitialMessagesLoad.current = false;
   }, [messages]);
 
   const OFF_PLATFORM_RE = /whatsapp|telegram|phone|transfer|outside|signal|wechat|direct\s*pay/i;
@@ -388,7 +398,7 @@ export function DealDetailPage() {
                 {t("dealDetail.discussDetails")} {otherParty?.fullName}
               </CardDescription>
             </CardHeader>
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea ref={chatScrollAreaRef} className="flex-1 p-4">
               <div className="space-y-4">
                 {messagesLoading ? (
                   <div className="space-y-3">

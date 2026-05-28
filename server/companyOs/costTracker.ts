@@ -15,7 +15,7 @@ import { agentBudgets, companyOsLogs } from "@shared/schema";
 // `server/replit_integrations/chat/routes.ts`. If you change this, also
 // add a matching entry to MODEL_USD_PER_1K_TOKENS below or estimateCostAed
 // will fall back to the gpt-4o-mini blended rate.
-export const DEFAULT_MODEL = "gpt-4o-mini";
+export const DEFAULT_MODEL = "gemini-1.5-flash";
 
 // Thrown by `chatCompletion`/`jsonCompletion` when the *global* monthly
 // AED budget gate fires. Callers (moderation, valuation, etc.) catch

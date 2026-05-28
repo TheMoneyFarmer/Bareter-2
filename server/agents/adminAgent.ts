@@ -91,6 +91,101 @@ export async function getAdminInsights(
   }
 }
 
+export interface DisputeResolutionSuggestion {
+  analysis: string;
+  suggestedOutcome: "in_favor_party_a" | "in_favor_party_b" | "mutual" | "dismissed";
+  suggestedDecision: string;
+  suggestedReasoning: string;
+  confidence: "low" | "medium" | "high";
+}
+
+export async function getDisputeResolution(
+  dispute: {
+    subject: string;
+    description?: string | null;
+    partyAName: string;
+    partyBName: string;
+    evidence?: { submittedByName?: string; description: string }[];
+    status: string;
+  },
+  adminUserId?: string
+): Promise<DisputeResolutionSuggestion> {
+  const evidenceLines = dispute.evidence?.length
+    ? dispute.evidence.map((e, i) => `${i + 1}. ${e.submittedByName ? `[${e.submittedByName}] ` : ""}${e.description}`).join("\n")
+    : "No evidence submitted by either party.";
+
+  const userMessage = `You are an impartial arbiter on Bareter, a UAE B2B barter marketplace. Review this dispute and suggest a resolution.
+
+Subject: ${dispute.subject}
+Party A: ${dispute.partyAName}
+Party B: ${dispute.partyBName}
+Status: ${dispute.status}
+Description: ${dispute.description || "No description provided."}
+
+Evidence:
+${evidenceLines}
+
+Respond with JSON containing:
+- analysis: 2-3 sentence neutral summary of the dispute and key facts
+- suggestedOutcome: "in_favor_party_a", "in_favor_party_b", "mutual", or "dismissed"
+- suggestedDecision: 1-3 sentence formal decision text an admin would write (use party names, not "Party A/B")
+- suggestedReasoning: 2-4 sentence explanation of why this outcome is appropriate, referencing the evidence
+- confidence: "low" (insufficient evidence), "medium" (some evidence), or "high" (clear evidence)`;
+
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content: `${SYSTEM_PROMPT}
+
+You are acting as a dispute resolution assistant. Your suggestions help admins draft fair, professional decisions. Always base decisions on evidence. When evidence is insufficient, suggest "mutual" or "dismissed" and note the need for more information.`,
+    },
+    { role: "user", content: userMessage },
+  ];
+
+  try {
+    const { data, tokensUsed } = await jsonCompletion<DisputeResolutionSuggestion>(messages, {
+      agentName: "admin",
+      command: "dispute_resolve",
+      temperature: 0.2,
+      maxTokens: 600,
+      agentBudgetJsonFallback: {
+        analysis: "AI dispute analysis paused: monthly admin-agent budget reached.",
+        suggestedOutcome: "mutual",
+        suggestedDecision: "AI suggestions unavailable. Please review the evidence manually.",
+        suggestedReasoning: "",
+        confidence: "low",
+      },
+    });
+
+    if (adminUserId) {
+      db.insert(agentInteractions).values({
+        userId: adminUserId,
+        agentType: "admin",
+        userMessage: `Dispute resolution request: ${dispute.subject}`,
+        agentResponse: JSON.stringify(data),
+        tokensUsed,
+      }).catch((err) => console.error("Failed to log dispute resolution interaction:", err));
+    }
+
+    return {
+      analysis: data.analysis || "Unable to generate analysis.",
+      suggestedOutcome: (["in_favor_party_a", "in_favor_party_b", "mutual", "dismissed"].includes(data.suggestedOutcome) ? data.suggestedOutcome : "mutual") as DisputeResolutionSuggestion["suggestedOutcome"],
+      suggestedDecision: data.suggestedDecision || "",
+      suggestedReasoning: data.suggestedReasoning || "",
+      confidence: (["low", "medium", "high"].includes(data.confidence) ? data.confidence : "low") as DisputeResolutionSuggestion["confidence"],
+    };
+  } catch (error) {
+    console.error("Dispute resolution agent error:", error);
+    return {
+      analysis: "Unable to analyze dispute at this time.",
+      suggestedOutcome: "mutual",
+      suggestedDecision: "",
+      suggestedReasoning: "",
+      confidence: "low",
+    };
+  }
+}
+
 export async function askAdminAgent(
   question: string,
   context: string,
