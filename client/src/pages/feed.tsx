@@ -616,6 +616,32 @@ function FeedCard({ post }: { post: PostWithUser }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
+  const isOwnPost = user?.id === post.userId;
+  const { data: followData } = useQuery<{ isFollowing: boolean }>({
+    queryKey: ["/api/users", post.userId, "is-following"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users/${post.userId}/is-following`);
+      return res.json();
+    },
+    enabled: !!user && !isOwnPost,
+    staleTime: 60_000,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (followData?.isFollowing) {
+        await apiRequest("DELETE", `/api/users/${post.userId}/follow`);
+      } else {
+        await apiRequest("POST", `/api/users/${post.userId}/follow`);
+      }
+    },
+    onSuccess: () => {
+      queryClientHook.invalidateQueries({ queryKey: ["/api/users", post.userId, "is-following"] });
+      toast({ title: followData?.isFollowing ? "Unfollowed" : "Now following" });
+    },
+    onError: () => toast({ title: "Action failed", variant: "destructive" }),
+  });
+
   const likeMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", `/api/posts/${post.id}/like`);
@@ -799,6 +825,21 @@ function FeedCard({ post }: { post: PostWithUser }) {
             </div>
           </button>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {user && !isOwnPost && (
+              <button
+                type="button"
+                onClick={() => { if (!gate()) return; followMutation.mutate(); }}
+                disabled={followMutation.isPending}
+                className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors disabled:opacity-50 ${
+                  followData?.isFollowing
+                    ? "border-bareter-teal text-bareter-teal bg-bareter-teal-muted"
+                    : "border-bareter-border text-muted-foreground hover:border-bareter-teal hover:text-bareter-teal"
+                }`}
+                data-testid={`button-follow-post-${post.id}`}
+              >
+                {followData?.isFollowing ? "Following" : "+ Follow"}
+              </button>
+            )}
             <button
               onClick={() => { if (!gate()) return; setShowReport(true); }}
               className="p-1 text-muted-foreground hover:text-destructive transition-colors"
