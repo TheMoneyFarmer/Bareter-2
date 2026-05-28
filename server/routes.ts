@@ -466,8 +466,14 @@ export async function registerRoutes(
         if (waitlistEntry) {
           invited = true;
         } else if (inviteCode) {
-          const codeEntry = await storage.getWaitlistEntryByReferralCode(inviteCode).catch(() => null);
-          if (codeEntry) invited = true;
+          // Check beta invite code first (fastest path for testers)
+          const betaCode = await storage.getAppSetting("beta_invite_code").catch(() => null);
+          if (betaCode && inviteCode === betaCode) {
+            invited = true;
+          } else {
+            const codeEntry = await storage.getWaitlistEntryByReferralCode(inviteCode).catch(() => null);
+            if (codeEntry) invited = true;
+          }
         }
         if (!invited) {
           return res.status(403).json({ message: "Registration is by invitation only. Please join the waitlist or use a valid invite code." });
@@ -9301,6 +9307,27 @@ ${chatTranscript || "(No messages yet)"}`,
     } catch (err) {
       console.error("[reminders] unsubscribe failed:", err);
       res.status(500).send("Something went wrong");
+    }
+  });
+
+  // ── Beta invite code management ────────────────────────────────────────────
+  app.get("/api/admin/beta-invite-code", requireAdmin, async (_req, res) => {
+    try {
+      const code = await storage.getAppSetting("beta_invite_code");
+      res.json({ code: code || null });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/beta-invite-code/regenerate", requireAdmin, async (req, res) => {
+    try {
+      const newCode = Math.random().toString(36).substring(2, 8).toUpperCase() +
+                      Math.random().toString(36).substring(2, 8).toUpperCase();
+      await storage.setAppSetting("beta_invite_code", newCode, req.session.userId);
+      res.json({ code: newCode });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

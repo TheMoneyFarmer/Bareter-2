@@ -48,6 +48,7 @@ import {
   CheckCircle,
   ClipboardList,
   Heart,
+  Bookmark,
   Send,
   AlertTriangle,
   Flag,
@@ -104,6 +105,27 @@ export function ListingDetailPage() {
   const { data: myListings } = useQuery<Listing[]>({
     queryKey: ["/api/listings/user", user?.id],
     enabled: !!user,
+  });
+
+  const { data: wishlistCheck } = useQuery<{ isWishlisted: boolean }>({
+    queryKey: ["/api/wishlist/check", id],
+    enabled: !!user && !!id,
+  });
+
+  const toggleWishlistMutation = useMutation({
+    mutationFn: async () => {
+      if (wishlistCheck?.isWishlisted) {
+        await apiRequest("DELETE", `/api/wishlist/${id}`);
+      } else {
+        await apiRequest("POST", `/api/wishlist/${id}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist/check", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist"] });
+      toast({ title: wishlistCheck?.isWishlisted ? "Removed from saved" : "Saved to favourites" });
+    },
+    onError: () => toast({ title: "Failed to update saved listings", variant: "destructive" }),
   });
 
   useSeo({
@@ -340,6 +362,7 @@ export function ListingDetailPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
     },
   });
 
@@ -612,6 +635,17 @@ export function ListingDetailPage() {
                     data-testid="button-header-like"
                   >
                     <Heart className={`h-5 w-5 ${listing.isLiked ? "fill-destructive text-destructive" : ""}`} />
+                  </Button>
+                )}
+                {user && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={toggleWishlistMutation.isPending}
+                    onClick={() => toggleWishlistMutation.mutate()}
+                    data-testid="button-header-save"
+                  >
+                    <Bookmark className={`h-5 w-5 ${wishlistCheck?.isWishlisted ? "fill-bareter-teal text-bareter-teal" : ""}`} />
                   </Button>
                 )}
                 <ShareMenu

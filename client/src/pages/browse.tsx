@@ -450,6 +450,7 @@ export function BrowsePage() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
     },
   });
 

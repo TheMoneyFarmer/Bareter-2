@@ -1095,6 +1095,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
   const { user } = useAuth();
   const { gate } = useWaitlist();
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const guarded = (path: string) => () => { if (!gate()) return; navigate(path); };
 
   const trendingCategories = [
@@ -1145,17 +1146,17 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
               <ArrowRightLeft className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">Join Bareter</h3>
+              <h3 className="font-semibold text-sm" data-testid="sidebar-join-title">{t("feed.joinCta")}</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Start bartering goods & services with UAE businesses
+                {t("app.tagline")}
               </p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="flex-1" onClick={guarded("/login")} data-testid="sidebar-login">
-                Sign In
+                {t("nav.login")}
               </Button>
               <Button size="sm" className="flex-1" onClick={guarded("/register")} data-testid="sidebar-register">
-                Sign Up
+                {t("nav.register")}
               </Button>
             </div>
           </CardContent>
@@ -1164,7 +1165,7 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
 
       <Card>
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-trending-title">Trending Categories</h3>
+          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-trending-title">{t("feed.trendingCategories")}</h3>
           <div className="space-y-1">
             {trendingCategories.map((cat) => (
               <Link key={cat.name} href="/browse" data-testid={`sidebar-category-${cat.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
@@ -1182,9 +1183,9 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="font-semibold text-sm" data-testid="sidebar-suggested-title">Active Members</h3>
+              <h3 className="font-semibold text-sm" data-testid="sidebar-suggested-title">{t("feed.activeMembers")}</h3>
               <Link href="/browse" data-testid="sidebar-see-all">
-                <span className="text-xs text-primary font-medium underline">See All</span>
+                <span className="text-xs text-primary font-medium underline">{t("feed.seeAll")}</span>
               </Link>
             </div>
             <div className="space-y-3">
@@ -1217,23 +1218,23 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
 
       <Card>
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-stats-title">Platform Stats</h3>
+          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-stats-title">{t("feed.platformStats")}</h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-trades">850+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Completed Barters</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.completedBarters")}</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-users">2,500+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Active Users</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.activeUsers")}</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-value">AED 12M+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Deal Value</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.dealValue")}</p>
             </div>
             <div className="text-center p-2 rounded-md bg-muted/50">
               <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-satisfaction">98%</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Satisfaction</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.satisfaction")}</p>
             </div>
           </div>
         </CardContent>
@@ -1241,33 +1242,33 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
 
       <div className="px-1">
         <p className="text-[10px] text-muted-foreground leading-relaxed">
-          <Link href="/terms" data-testid="sidebar-link-terms"><span className="underline">Terms</span></Link>
+          <Link href="/terms" data-testid="sidebar-link-terms"><span className="underline">{t("nav.terms")}</span></Link>
           {" · "}
-          <Link href="/privacy" data-testid="sidebar-link-privacy"><span className="underline">Privacy</span></Link>
+          <Link href="/privacy" data-testid="sidebar-link-privacy"><span className="underline">{t("nav.privacy")}</span></Link>
           {" · "}
-          <Link href="/legal/barter-rules" data-testid="sidebar-link-barter-rules"><span className="underline">Barter Rules</span></Link>
+          <Link href="/legal/barter-rules" data-testid="sidebar-link-barter-rules"><span className="underline">{t("nav.barterRules")}</span></Link>
           {" · "}
-          <Link href="/legal/dispute-resolution" data-testid="sidebar-link-disputes"><span className="underline">Disputes</span></Link>
+          <Link href="/legal/dispute-resolution" data-testid="sidebar-link-disputes"><span className="underline">{t("nav.disputes")}</span></Link>
           {" · "}
           <Link href="/legal/vat" data-testid="sidebar-link-vat"><span className="underline">VAT</span></Link>
           {" · "}
-          <Link href="/legal/cookies" data-testid="sidebar-link-cookies"><span className="underline">Cookies</span></Link>
+          <Link href="/legal/cookies" data-testid="sidebar-link-cookies"><span className="underline">{t("nav.cookies")}</span></Link>
           {" · "}
-          <button type="button" onClick={openCookiePreferences} className="underline" data-testid="sidebar-button-cookie-prefs">Cookie preferences</button>
+          <button type="button" onClick={openCookiePreferences} className="underline" data-testid="sidebar-button-cookie-prefs">{t("nav.cookiePreferences")}</button>
           {" · "}
-          <Link href="/legal/acceptable-use" data-testid="sidebar-link-aup"><span className="underline">Acceptable Use</span></Link>
+          <Link href="/legal/acceptable-use" data-testid="sidebar-link-aup"><span className="underline">{t("nav.acceptableUse")}</span></Link>
           {" · "}
-          <Link href="/legal/community-standards" data-testid="sidebar-link-community"><span className="underline">Community</span></Link>
+          <Link href="/legal/community-standards" data-testid="sidebar-link-community"><span className="underline">{t("nav.communityStandards")}</span></Link>
           {" · "}
-          <Link href="/legal/customer-agreement" data-testid="sidebar-link-customer-agreement"><span className="underline">Customer Agreement</span></Link>
+          <Link href="/legal/customer-agreement" data-testid="sidebar-link-customer-agreement"><span className="underline">{t("nav.customerAgreement")}</span></Link>
           {" · "}
-          <Link href="/help" data-testid="sidebar-link-help"><span className="underline">Help</span></Link>
+          <Link href="/help" data-testid="sidebar-link-help"><span className="underline">{t("footer.help")}</span></Link>
           {" · "}
-          <Link href="/faq" data-testid="sidebar-link-faq"><span className="underline">FAQ</span></Link>
+          <Link href="/faq" data-testid="sidebar-link-faq"><span className="underline">{t("footer.faq")}</span></Link>
           {" · "}
-          <Link href="/how-it-works" data-testid="sidebar-link-how"><span className="underline">How It Works</span></Link>
+          <Link href="/how-it-works" data-testid="sidebar-link-how"><span className="underline">{t("nav.howItWorks")}</span></Link>
         </p>
-        <p className="text-[10px] text-muted-foreground mt-1">Bareter 2026</p>
+        <p className="text-[10px] text-muted-foreground mt-1">{t("app.name")} 2026</p>
       </div>
     </div>
   );
@@ -1277,6 +1278,7 @@ function SafetyBanner() {
   const [dismissed, setDismissed] = useState(() => {
     return localStorage.getItem("safety_banner_dismissed") === "true";
   });
+  const { t } = useI18n();
 
   if (dismissed) return null;
 
@@ -1285,11 +1287,11 @@ function SafetyBanner() {
       <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
         <ShieldAlert className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Barter safely on Bareter</p>
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">{t("feed.barterSafely")}</p>
           <ul className="mt-1 space-y-0.5 text-[11px] text-blue-700 dark:text-blue-400">
-            <li>• Always verify the business badge before any barter</li>
-            <li>• Keep all negotiations inside the platform</li>
-            <li>• Report suspicious listings or requests</li>
+            <li>• {t("feed.safetyTip1")}</li>
+            <li>• {t("feed.safetyTip2")}</li>
+            <li>• {t("feed.safetyTip3")}</li>
           </ul>
         </div>
         <button
@@ -1426,6 +1428,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
   const { user } = useAuth();
   const { gate: waitlistGate } = useWaitlist();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [offerName, setOfferName] = useState("");
@@ -1638,8 +1641,8 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                   <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Counter-offer: {p.counterOfferName} — AED {Number(p.counterOfferValue).toLocaleString()}</p>
                   {p.counterOfferDescription && <p className="text-xs text-muted-foreground">{p.counterOfferDescription}</p>}
                   <div className="flex gap-3 pt-1">
-                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "accepted" })} className="text-xs font-semibold text-green-700 hover:underline">Accept</button>
-                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "rejected" })} className="text-xs font-semibold text-red-600 hover:underline">Decline</button>
+                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "accepted" })} className="text-xs font-semibold text-green-700 hover:underline">{t("feed.counterAccept")}</button>
+                    <button type="button" onClick={() => counterRespondMutation.mutate({ proposalId: p.id, response: "rejected" })} className="text-xs font-semibold text-red-600 hover:underline">{t("feed.counterDecline")}</button>
                   </div>
                 </div>
               )}
@@ -1653,7 +1656,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                     onClick={() => respondMutation.mutate({ proposalId: p.id, status: "accepted" })}
                     disabled={respondMutation.isPending}
                   >
-                    ✓ Accept
+                    ✓ {t("feed.counterAccept")}
                   </Button>
                   <Button
                     size="sm"
@@ -1662,7 +1665,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                     onClick={() => respondMutation.mutate({ proposalId: p.id, status: "rejected" })}
                     disabled={respondMutation.isPending}
                   >
-                    ✕ Decline
+                    ✕ {t("feed.counterDecline")}
                   </Button>
                   <Button
                     size="sm"
@@ -1685,7 +1688,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                   </div>
                   <textarea value={counterDesc} onChange={e => setCounterDesc(e.target.value)} placeholder="Details (optional)" className="w-full text-xs px-2 py-1.5 rounded border border-bareter-border bg-white dark:bg-card resize-none" rows={2} />
                   <div className="flex gap-2 justify-end">
-                    <button type="button" onClick={() => setCounteringId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                    <button type="button" onClick={() => setCounteringId(null)} className="text-xs text-muted-foreground hover:underline">{t("feed.counterCancel")}</button>
                     <button type="button" disabled={!counterName || !counterValue || counterOfferMutation.isPending} onClick={() => counterOfferMutation.mutate({ proposalId: p.id, name: counterName, value: counterValue, description: counterDesc })} className="text-xs font-semibold text-blue-700 hover:underline disabled:opacity-50">Send</button>
                   </div>
                 </div>
@@ -1878,7 +1881,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
 
       {!user && showCompose && (
         <Link href="/login">
-          <Button variant="outline" size="sm" className="w-full text-xs">Log in to propose a barter</Button>
+          <Button variant="outline" size="sm" className="w-full text-xs">{t("feed.loginToPropose")}</Button>
         </Link>
       )}
 
@@ -1902,12 +1905,38 @@ function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [liked, setLiked] = useState(!!(listing as any).isLiked);
   const [likeCount, setLikeCount] = useState(listing.likeCount ?? 0);
   const [showAllWants, setShowAllWants] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showProposals, setShowProposals] = useState(false);
+
+  const isOwnListing = user?.id === listing.userId;
+  const { data: followData } = useQuery<{ isFollowing: boolean }>({
+    queryKey: ["/api/users", listing.userId, "is-following"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/users/${listing.userId}/is-following`);
+      return res.json();
+    },
+    enabled: !!user && !isOwnListing,
+    staleTime: 60_000,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      if (followData?.isFollowing) {
+        await apiRequest("DELETE", `/api/users/${listing.userId}/follow`);
+      } else {
+        await apiRequest("POST", `/api/users/${listing.userId}/follow`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users", listing.userId, "is-following"] });
+      toast({ title: followData?.isFollowing ? "Unfollowed" : "Now following" });
+    },
+  });
 
   const images = listing.images as string[] | null;
   const exchangeItems = (listing.exchangeItems as Array<{ name: string; isPriority: boolean }> | null) ?? [];
@@ -2002,9 +2031,25 @@ function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
           <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">{sellerName}</p>
           <p className="text-xs text-bareter-muted">{listing.location || "UAE"}</p>
         </div>
-        <Badge variant="outline" className="text-[10px] px-2 h-5 flex-shrink-0">
-          {(listing.categories as string[])?.[0] ?? listing.type}
-        </Badge>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {user && !isOwnListing && (
+            <button
+              type="button"
+              onClick={() => { if (!waitlistGate()) return; followMutation.mutate(); }}
+              disabled={followMutation.isPending}
+              className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors disabled:opacity-50 ${
+                followData?.isFollowing
+                  ? "border-bareter-teal text-bareter-teal bg-bareter-teal/10"
+                  : "border-bareter-border text-muted-foreground hover:border-bareter-teal hover:text-bareter-teal"
+              }`}
+            >
+              {followData?.isFollowing ? "Following" : "+ Follow"}
+            </button>
+          )}
+          <Badge variant="outline" className="text-[10px] px-2 h-5">
+            {(listing.categories as string[])?.[0] ?? listing.type}
+          </Badge>
+        </div>
       </div>
 
       {/* Full-width image with price overlay */}
@@ -2178,6 +2223,7 @@ function newFeedSeed() { return Math.floor(Math.random() * 2147483647); }
 
 export function FeedPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { t } = useI18n();
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState("All");
   const [feedSeed, setFeedSeed] = useState(() => {
@@ -2319,7 +2365,7 @@ export function FeedPage() {
             <div className="flex items-center justify-between mb-3 px-0.5">
               <div>
                 <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
-                  Latest Listings
+                  {t("feed.latestListings")}
                 </h2>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Refreshed {refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -2363,11 +2409,11 @@ export function FeedPage() {
               <Card>
                 <CardContent className="py-12 text-center">
                   <Plus className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-                  <p className="font-semibold mb-1">No listings yet</p>
-                  <p className="text-sm text-muted-foreground mb-4">Be the first to list something to barter</p>
+                  <p className="font-semibold mb-1">{t("feed.noListingsYet")}</p>
+                  <p className="text-sm text-muted-foreground mb-4">{t("feed.beFirst")}</p>
                   {user && (
                     <Link href="/create-listing">
-                      <Button variant="bareter" size="sm">Create Listing</Button>
+                      <Button variant="bareter" size="sm">{t("nav.createListing")}</Button>
                     </Link>
                   )}
                 </CardContent>
@@ -2380,7 +2426,7 @@ export function FeedPage() {
             <div className="mt-8">
               <div className="flex items-center justify-between mb-3 px-0.5">
                 <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
-                  Community Posts
+                  {t("feed.communityPosts")}
                 </h2>
               </div>
               <div className="space-y-4 sm:space-y-6">

@@ -133,11 +133,13 @@ export function SavedListingsPage() {
   const { data: wishlistItems = [], isLoading: wishlistLoading } = useQuery<WishlistEntry[]>({
     queryKey: ["/api/wishlist"],
     enabled: !!user,
+    staleTime: 0,
   });
 
   const { data: likedListings = [], isLoading: likedLoading } = useQuery<LikedListing[]>({
     queryKey: ["/api/listings/liked"],
     enabled: !!user,
+    staleTime: 0,
   });
 
   const removeWishlistMutation = useMutation({
