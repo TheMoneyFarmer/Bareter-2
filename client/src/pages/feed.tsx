@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { openCookiePreferences } from "@/lib/cookie-consent";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1263,13 +1263,17 @@ function SafetyBanner() {
   );
 }
 
-// ── Task #248: "Continue where you left off" strip ─────────────────
-// Surfaces all three resumable items the API returns (verification +
-// draft + engaged listing). Each is rendered as its own card in a
-// horizontally-scrolling row so mobile users can swipe between them.
+// ── "Continue where you left off" — floating reminder, once per session ──────
+// Shown as a small dismissible card in the bottom-right corner, with a 4-second
+// delay. Suppressed if the user has already dismissed it this session.
+const CONTINUE_SESSION_KEY = "bareter_continue_dismissed";
+
 function ContinueWhereLeftOff() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const [visible, setVisible] = useState(false);
+  const [item, setItem] = useState<{ label: string; sublabel?: string; href: string } | null>(null);
+
   const { data } = useQuery<{
     verification: { startedAt: string; accountType: string | null } | null;
     draft: { id: string; title: string | null; updatedAt: string | null } | null;
@@ -1277,62 +1281,81 @@ function ContinueWhereLeftOff() {
   }>({
     queryKey: ["/api/continue"],
     enabled: !!user,
+    staleTime: 5 * 60_000,
   });
-  if (!user || !data || (!data.verification && !data.draft && !data.engagement)) return null;
+
+  useEffect(() => {
+    if (!data) return;
+    if (sessionStorage.getItem(CONTINUE_SESSION_KEY)) return;
+
+    let resolved: { label: string; sublabel?: string; href: string } | null = null;
+    if (data.engagement) {
+      resolved = {
+        sublabel: data.engagement.eventType === "message_started" ? "Deal in progress" : "Saved listing",
+        label: data.engagement.listing.title,
+        href: `/listings/${data.engagement.listing.id}`,
+      };
+    } else if (data.draft) {
+      resolved = {
+        sublabel: "Unfinished listing",
+        label: data.draft.title || "Untitled draft",
+        href: `/create-listing?draft=${data.draft.id}`,
+      };
+    } else if (data.verification) {
+      resolved = {
+        label: "Complete your verification",
+        href: "/profile?tab=verification",
+      };
+    }
+
+    if (!resolved) return;
+    setItem(resolved);
+    const tid = setTimeout(() => setVisible(true), 4000);
+    return () => clearTimeout(tid);
+  }, [data]);
+
+  const dismiss = () => {
+    setVisible(false);
+    sessionStorage.setItem(CONTINUE_SESSION_KEY, "1");
+  };
+
+  if (!visible || !item) return null;
+
   return (
-    <div className="mt-3" data-testid="continue-strip">
-      <p className="text-xs font-medium text-primary uppercase tracking-wide mb-2 px-4 sm:px-0">
-        {t("feed.continueTitle")}
-      </p>
-      <div className="flex gap-3 overflow-x-auto pb-2 px-4 sm:px-0 snap-x">
-        {data.verification && (
-          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-verification">
-            <CardContent className="py-3 px-4 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" data-testid="text-continue-verification-label">
-                  {t("feed.continueVerificationLabel")}
-                </p>
-              </div>
-              <Link href="/profile?tab=verification">
-                <Button size="sm" data-testid="button-continue-verification">{t("feed.continueVerification")}</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-        {data.draft && (
-          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-draft">
-            <CardContent className="py-3 px-4 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" data-testid="text-continue-draft-title">
-                  {data.draft.title || t("profile.draftsUntitled")}
-                </p>
-              </div>
-              <Link href={`/create-listing?draft=${data.draft.id}`}>
-                <Button size="sm" data-testid="button-continue-draft">{t("feed.continueDraft")}</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-        {data.engagement && (
-          <Card className="border-primary/30 bg-primary/5 shrink-0 w-72 snap-start" data-testid="continue-card-engagement">
-            <CardContent className="py-3 px-4 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">
-                  {data.engagement.eventType === "message_started" ? "Deal in progress" : "Saved listing"}
-                </p>
-                <p className="text-sm font-semibold truncate" data-testid="text-continue-listing-title">
-                  {data.engagement.listing.title}
-                </p>
-              </div>
-              <Link href={`/listings/${data.engagement.listing.id}`}>
-                <Button size="sm" data-testid="button-continue-listing">
-                  {data.engagement.eventType === "message_started" ? "Continue deal →" : "View listing →"}
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+    <div
+      className="fixed bottom-6 right-4 sm:right-6 z-50 w-72 animate-in slide-in-from-bottom-4 fade-in duration-300"
+      data-testid="continue-popup"
+    >
+      <Card className="shadow-lg border border-bareter-border bg-white dark:bg-card">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-bareter-teal font-semibold mb-0.5">
+                {item.sublabel ?? "Continue where you left off"}
+              </p>
+              <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">
+                {item.label}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismiss}
+              className="flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Dismiss"
+              data-testid="button-continue-dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <Link href={item.href} className="flex-1" onClick={dismiss}>
+              <Button size="sm" variant="bareter" className="w-full text-xs" data-testid="button-continue-action">
+                Pick up where I left off →
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -2214,7 +2237,6 @@ export function FeedPage() {
       <div className="flex gap-8">
         <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
-          <ContinueWhereLeftOff />
 
           {/* ── Trending / Hot listings strip ── */}
           {trendingListings && trendingListings.length > 0 && (
@@ -2335,6 +2357,7 @@ export function FeedPage() {
           <FeedSidebar posts={posts} />
         </aside>
       </div>
+      <ContinueWhereLeftOff />
     </div>
   );
 }
