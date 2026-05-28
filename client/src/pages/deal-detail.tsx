@@ -358,17 +358,27 @@ export function DealDetailPage() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {deal.contractPdfUrl && (
-            <Button variant="outline" className="gap-2" data-testid="button-download-contract">
+            <Button
+              variant="outline"
+              className="gap-2"
+              data-testid="button-download-contract"
+              onClick={() => window.open(deal.contractPdfUrl!, "_blank")}
+            >
               <Download className="h-4 w-4" />
               {t("dealDetail.downloadContract")}
             </Button>
           )}
-          {deal.state === "accepted" && (
-            <Button variant="outline" className="gap-2" data-testid="button-generate-contract">
+          {["accepted", "in_progress", "delivery_proof"].includes(deal.state) && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              data-testid="button-generate-contract"
+              onClick={() => window.open(`/api/deals/${id}/contract`, "_blank")}
+            >
               <FileText className="h-4 w-4" />
-              {t("dealDetail.generateContract")}
+              {deal.contractPdfUrl ? t("dealDetail.downloadContract") : t("dealDetail.generateContract")}
             </Button>
           )}
         </div>
@@ -404,14 +414,36 @@ export function DealDetailPage() {
 
       {/* Acceptance banner — shown when deal was just accepted */}
       {(deal.state === "accepted" || deal.state === "active") && (
-        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
           <div className="flex-1">
-            <p className="font-semibold text-green-800 dark:text-green-300">Deal accepted! 🎉</p>
+            <p className="font-semibold text-green-800 dark:text-green-300">Deal accepted!</p>
             <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
-              Use the chat below to agree on exchange details, then mark it "In Progress" when you're both ready. Once delivery is confirmed by both sides, the deal completes.
+              Use the chat to finalize exchange details. When you're both ready, click "Start Exchange" to begin.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Contract banner — prompt both parties to generate + sign before starting */}
+      {(deal.state === "accepted" || deal.state === "active") && (
+        <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-blue-800 dark:text-blue-300">Sign your barter agreement before starting</p>
+            <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">
+              Download the auto-generated contract for this deal. Both parties should review and sign it to protect the exchange.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-blue-300 text-blue-700 hover:bg-blue-100 flex-shrink-0"
+            onClick={() => window.open(`/api/deals/${id}/contract`, "_blank")}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Download Contract
+          </Button>
         </div>
       )}
 
