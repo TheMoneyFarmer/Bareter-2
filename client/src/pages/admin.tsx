@@ -2734,7 +2734,16 @@ export function AdminPage() {
     },
   });
 
-  const renderReports = () => (
+  const renderReports = () => {
+    const getTargetUrl = (report: any) => {
+      if (report.targetType === "listing") return `/listings/${report.targetId}`;
+      if (report.targetType === "post") return `/posts/${report.targetId}`;
+      if (report.targetType === "user") return `/users/${report.targetId}`;
+      if (report.targetType === "deal") return `/deals/${report.targetId}`;
+      return null;
+    };
+
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -2750,76 +2759,88 @@ export function AdminPage() {
           </Button>
         </div>
       </div>
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reportsData.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No reports submitted yet
-                  </TableCell>
-                </TableRow>
-              ) : (
-                reportsData.map((report) => (
-                  <TableRow key={report.id} data-testid={`row-report-${report.id}`}>
-                    <TableCell>
-                      <Badge variant="outline">{report.targetType}</Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{report.reason.replace("_", " ")}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                      {report.notes || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={
-                        report.status === "pending" ? "secondary" :
-                        report.status === "actioned" ? "default" : "outline"
-                      }>
-                        {report.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => updateReportStatus.mutate({ id: report.id, status: "dismissed" })}
-                          data-testid={`button-dismiss-report-${report.id}`}
-                        >
-                          Dismiss
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => updateReportStatus.mutate({ id: report.id, status: "actioned" })}
-                          data-testid={`button-action-report-${report.id}`}
-                        >
-                          Action
-                        </Button>
+      <div className="space-y-3">
+        {reportsData.length === 0 ? (
+          <Card><CardContent className="py-12 text-center text-muted-foreground">No reports submitted yet</CardContent></Card>
+        ) : (
+          (reportsData as any[]).map((report) => {
+            const targetUrl = getTargetUrl(report);
+            return (
+              <Card key={report.id} className={report.status === "pending" ? "border-orange-200 dark:border-orange-900" : ""} data-testid={`row-report-${report.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      {/* Reported content */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="capitalize">{report.targetType}</Badge>
+                        <Badge variant={
+                          report.status === "pending" ? "secondary" :
+                          report.status === "actioned" ? "default" : "outline"
+                        } className="capitalize">{report.status}</Badge>
+                        <span className="text-xs text-muted-foreground">{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : ""}</span>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+
+                      {report.targetTitle && (
+                        <p className="font-semibold text-sm">
+                          {targetUrl ? (
+                            <a href={targetUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
+                              {report.targetTitle}
+                            </a>
+                          ) : report.targetTitle}
+                        </p>
+                      )}
+
+                      <p className="text-sm"><span className="font-medium">Reason:</span> <span className="text-muted-foreground capitalize">{report.reason.replace(/_/g, " ")}</span></p>
+
+                      {report.notes && (
+                        <p className="text-sm"><span className="font-medium">Notes:</span> <span className="text-muted-foreground">{report.notes}</span></p>
+                      )}
+
+                      {report.reporter && (
+                        <p className="text-xs text-muted-foreground">
+                          Reported by: <a href={`/users/${report.reporterId}`} target="_blank" rel="noopener noreferrer" className="hover:underline font-medium">{report.reporter.fullName}</a>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2 shrink-0">
+                      {targetUrl && (
+                        <a href={targetUrl} target="_blank" rel="noopener noreferrer">
+                          <Button size="sm" variant="outline" className="w-full gap-1.5">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            View {report.targetType}
+                          </Button>
+                        </a>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={report.status === "dismissed"}
+                        onClick={() => updateReportStatus.mutate({ id: report.id, status: "dismissed" })}
+                        data-testid={`button-dismiss-report-${report.id}`}
+                      >
+                        Dismiss
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={report.status === "actioned"}
+                        onClick={() => updateReportStatus.mutate({ id: report.id, status: "actioned" })}
+                        data-testid={`button-action-report-${report.id}`}
+                      >
+                        Mark Actioned
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
     </div>
-  );
+    );
+  };
 
   const renderFlags = () => (
     <div className="space-y-6">

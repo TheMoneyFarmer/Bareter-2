@@ -7230,7 +7230,35 @@ ${chatTranscript || "(No messages yet)"}`,
   app.get("/api/admin/reports", requireAuth, requireAdmin, async (req, res) => {
     try {
       const allReports = await db.select().from(reports).orderBy(desc(reports.createdAt));
-      res.json(allReports);
+      if (allReports.length === 0) return res.json([]);
+
+      // Batch-enrich: reporter users + target content titles in parallel
+      const reporterIds = [...new Set(allReports.map((r) => r.reporterId))];
+      const listingIds = allReports.filter((r) => r.targetType === "listing").map((r) => r.targetId);
+      const postIds = allReports.filter((r) => r.targetType === "post").map((r) => r.targetId);
+      const userIds = allReports.filter((r) => r.targetType === "user").map((r) => r.targetId);
+
+      const [reporterRows, listingRows, postRows, targetUserRows] = await Promise.all([
+        reporterIds.length ? db.select({ id: users.id, fullName: users.fullName, avatarUrl: users.avatarUrl }).from(users).where(inArray(users.id, reporterIds)) : [],
+        listingIds.length ? db.select({ id: listings.id, title: listings.title }).from(listings).where(inArray(listings.id, listingIds)) : [],
+        postIds.length ? db.select({ id: posts.id, caption: posts.caption }).from(posts).where(inArray(posts.id, postIds)) : [],
+        userIds.length ? db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, userIds)) : [],
+      ]);
+
+      const reporterMap = new Map(reporterRows.map((u) => [u.id, u]));
+      const listingMap = new Map(listingRows.map((l) => [l.id, l.title]));
+      const postMap = new Map(postRows.map((p) => [p.id, p.caption?.slice(0, 80)]));
+      const targetUserMap = new Map(targetUserRows.map((u) => [u.id, u.fullName]));
+
+      const enriched = allReports.map((r) => {
+        let targetTitle: string | null = null;
+        if (r.targetType === "listing") targetTitle = listingMap.get(r.targetId) ?? null;
+        else if (r.targetType === "post") targetTitle = postMap.get(r.targetId) ?? null;
+        else if (r.targetType === "user") targetTitle = targetUserMap.get(r.targetId) ?? null;
+        return { ...r, reporter: reporterMap.get(r.reporterId) ?? null, targetTitle };
+      });
+
+      res.json(enriched);
     } catch (error) {
       console.error("Get reports error:", error);
       res.status(500).json({ message: "Internal server error" });
