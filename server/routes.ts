@@ -9264,10 +9264,11 @@ ${chatTranscript || "(No messages yet)"}`,
   });
 
   // ── Beta invite code management ────────────────────────────────────────────
-  app.get("/api/admin/beta-invite-code", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/beta-invite-code", requireAdmin, async (req, res) => {
     try {
       const code = await storage.getAppSetting("beta_invite_code");
-      res.json({ code: code || null });
+      const baseUrl = process.env.PUBLIC_APP_URL?.trim() || `${req.protocol}://${req.get("host")}`;
+      res.json({ code: code || null, inviteUrl: code ? `${baseUrl}/register?invite=${code}` : null });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
@@ -9278,7 +9279,8 @@ ${chatTranscript || "(No messages yet)"}`,
       const newCode = Math.random().toString(36).substring(2, 8).toUpperCase() +
                       Math.random().toString(36).substring(2, 8).toUpperCase();
       await storage.setAppSetting("beta_invite_code", newCode, req.session.userId);
-      res.json({ code: newCode });
+      const baseUrl = process.env.PUBLIC_APP_URL?.trim() || `${req.protocol}://${req.get("host")}`;
+      res.json({ code: newCode, inviteUrl: `${baseUrl}/register?invite=${newCode}` });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
