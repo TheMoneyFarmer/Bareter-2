@@ -31,9 +31,11 @@ Return up to 5 best matches, sorted by score descending. Only include matches wi
 
 export async function findMatches(
   user: Pick<User, "id" | "whatIOffer" | "whatINeed" | "location" | "country" | "city" | "preferredCategories">,
-  listings: Pick<Listing, "id" | "title" | "description" | "categories" | "retailValue" | "location" | "country" | "city" | "type" | "wantedCategories">[]
+  listings: Pick<Listing, "id" | "title" | "description" | "categories" | "retailValue" | "location" | "country" | "city" | "type" | "wantedCategories" | "isCollab">[]
 ): Promise<MatchResult[]> {
-  if (listings.length === 0) return [];
+  // Collab listings use a separate application flow — exclude from standard AI matching
+  const barterListings = listings.filter((l) => !l.isCollab);
+  if (barterListings.length === 0) return [];
 
   const userLocationLabel = [user.city, user.country, user.location].filter(Boolean).join(", ") || "Not specified";
 
@@ -43,7 +45,7 @@ export async function findMatches(
 - Location: ${userLocationLabel}
 - Preferred categories: ${(user.preferredCategories || []).join(", ") || "Any"}`;
 
-  const listingSummaries = listings.slice(0, 20).map((l) => {
+  const listingSummaries = barterListings.slice(0, 20).map((l) => {
     const loc = [l.city, l.country, l.location].filter(Boolean).join(", ") || "N/A";
     return `ID:${l.id} | ${l.title} | ${l.type} | AED ${l.retailValue} | ${(l.categories || []).join(",")} | ${loc} | Wants: ${(l.wantedCategories || []).join(",") || "open"}`;
   }).join("\n");

@@ -409,6 +409,7 @@ export interface IStorage {
   getCollabApplication(id: string): Promise<CollabApplication | undefined>;
   updateCollabApplication(id: string, data: { status: string; brandNote?: string; dealId?: string }): Promise<CollabApplication | undefined>;
   withdrawCollabApplication(id: string, creatorId: string): Promise<void>;
+  getAllCollabApplications(filters: { status?: string; limit?: number; offset?: number }): Promise<(CollabApplication & { creator: Pick<User, "id"|"fullName"|"avatarUrl">; listing: Pick<Listing, "id"|"title"> })[]>;
 
   // Creator Discovery
   searchCreators(filters: { niche?: string; platform?: string; minFollowers?: number; maxFollowers?: number; openToCollabs?: boolean; limit?: number; offset?: number }): Promise<(User & { creatorProfile: NonNullable<User["creatorProfile"]> })[]>;
@@ -2733,6 +2734,29 @@ export class DatabaseStorage implements IStorage {
     await db.update(collabApplications)
       .set({ status: "withdrawn", updatedAt: new Date() })
       .where(and(eq(collabApplications.id, id), eq(collabApplications.creatorId, creatorId)));
+  }
+
+  async getAllCollabApplications(filters: { status?: string; limit?: number; offset?: number }): Promise<(CollabApplication & { creator: Pick<User, "id"|"fullName"|"avatarUrl">; listing: Pick<Listing, "id"|"title"> })[]> {
+    const rows = await db.select().from(collabApplications)
+      .where(filters.status ? eq(collabApplications.status, filters.status) : undefined)
+      .orderBy(desc(collabApplications.createdAt))
+      .limit(filters.limit ?? 50)
+      .offset(filters.offset ?? 0);
+    if (!rows.length) return [];
+
+    const creatorIds = [...new Set(rows.map(r => r.creatorId))];
+    const listingIds = [...new Set(rows.map(r => r.listingId))];
+    const [creatorRows, listingRows] = await Promise.all([
+      db.select({ id: users.id, fullName: users.fullName, avatarUrl: users.avatarUrl }).from(users).where(inArray(users.id, creatorIds)),
+      db.select({ id: listings.id, title: listings.title }).from(listings).where(inArray(listings.id, listingIds)),
+    ]);
+    const creatorMap = new Map(creatorRows.map(u => [u.id, u]));
+    const listingMap = new Map(listingRows.map(l => [l.id, l]));
+    return rows.map(r => ({
+      ...r,
+      creator: creatorMap.get(r.creatorId) ?? { id: r.creatorId, fullName: "Unknown", avatarUrl: null },
+      listing: listingMap.get(r.listingId) ?? { id: r.listingId, title: "Unknown listing" },
+    }));
   }
 
   // ── Creator Discovery ──────────────────────────────────────────────────

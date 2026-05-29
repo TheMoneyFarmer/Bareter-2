@@ -111,6 +111,11 @@ import {
   ExternalLink,
   RefreshCw,
   Database,
+  Camera,
+  Zap,
+  TrendingUp,
+  Instagram,
+  Globe,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -135,7 +140,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support" | "reviews";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -826,6 +831,8 @@ export function AdminPage() {
     { id: "email" as const, label: "Email", icon: Mail },
     { id: "support" as const, label: "Support", icon: MessageSquare },
     { id: "reviews" as const, label: "Reviews", icon: Star },
+    { id: "creators" as const, label: "Creators", icon: Camera },
+    { id: "collabs" as const, label: "Collabs", icon: Zap },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -3001,6 +3008,192 @@ export function AdminPage() {
 
   const renderWaitlist = () => <WaitlistAdminSection />;
 
+  // ── Creators section ──────────────────────────────────────────────────
+  const { data: adminCreators = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/creators"],
+    enabled: activeSection === "creators",
+  });
+
+  const renderCreators = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Creator Accounts</h2>
+        <p className="text-muted-foreground">All users registered as Content Creators, with their profile stats.</p>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Creator</TableHead>
+                <TableHead>Platform</TableHead>
+                <TableHead>Followers</TableHead>
+                <TableHead>Engagement</TableHead>
+                <TableHead>Niches</TableHead>
+                <TableHead>Open to Collabs</TableHead>
+                <TableHead>Verified</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adminCreators.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    No creator accounts yet.
+                  </TableCell>
+                </TableRow>
+              ) : adminCreators.map((c: any) => {
+                const cp = c.creatorProfile;
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={c.avatarUrl || undefined} />
+                          <AvatarFallback>{c.fullName?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium text-sm">{c.fullName}</p>
+                          <p className="text-xs text-muted-foreground">{c.city}, {c.country}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{cp?.primaryPlatform || "—"}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {cp?.followerCount ? Number(cp.followerCount).toLocaleString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {cp?.avgEngagementRate ? `${cp.avgEngagementRate}%` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(cp?.contentNiches || []).slice(0, 3).map((n: string) => (
+                          <Badge key={n} variant="secondary" className="text-[10px] py-0">{n}</Badge>
+                        ))}
+                        {(cp?.contentNiches || []).length > 3 && (
+                          <Badge variant="secondary" className="text-[10px] py-0">+{cp.contentNiches.length - 3}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {cp?.openToCollabs ? (
+                        <Badge className="bg-green-500/10 text-green-600 border-green-200">Yes</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">No</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <VerifiedBadge kycStatus={c.verificationStatus} kybStatus={null} accountType={c.signupType} size="sm" />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Collab Applications section ───────────────────────────────────────
+  const { data: adminCollabs = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/collab-applications"],
+    enabled: activeSection === "collabs",
+  });
+
+  const STATUS_COLORS: Record<string, string> = {
+    pending:  "bg-yellow-500/10 text-yellow-700 border-yellow-200",
+    accepted: "bg-green-500/10 text-green-600 border-green-200",
+    rejected: "bg-red-500/10 text-red-600 border-red-200",
+    withdrawn: "bg-gray-500/10 text-gray-600 border-gray-200",
+  };
+
+  const collabsByStatus = {
+    pending:   adminCollabs.filter((a: any) => a.status === "pending"),
+    accepted:  adminCollabs.filter((a: any) => a.status === "accepted"),
+    rejected:  adminCollabs.filter((a: any) => a.status === "rejected"),
+    withdrawn: adminCollabs.filter((a: any) => a.status === "withdrawn"),
+  };
+
+  const renderCollabs = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Brand Collab Applications</h2>
+        <p className="text-muted-foreground">All creator applications to brand collab listings.</p>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {(["pending", "accepted", "rejected", "withdrawn"] as const).map((s) => (
+          <Card key={s}>
+            <CardContent className="pt-5">
+              <p className="text-sm text-muted-foreground capitalize mb-1">{s}</p>
+              <p className="text-2xl font-bold">{collabsByStatus[s].length}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Creator</TableHead>
+                <TableHead>Listing</TableHead>
+                <TableHead>Followers</TableHead>
+                <TableHead>Engagement</TableHead>
+                <TableHead>Handle</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Applied</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adminCollabs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    No collab applications yet.
+                  </TableCell>
+                </TableRow>
+              ) : adminCollabs.map((a: any) => (
+                <TableRow key={a.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-7 w-7">
+                        <AvatarImage src={a.creator?.avatarUrl || undefined} />
+                        <AvatarFallback>{a.creator?.fullName?.[0]}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{a.creator?.fullName || "—"}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm max-w-[180px] truncate">{a.listing?.title || "—"}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {a.followerCount ? Number(a.followerCount).toLocaleString() : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {a.engagementRate ? `${a.engagementRate}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {a.socialHandle || "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`capitalize text-[11px] ${STATUS_COLORS[a.status] || ""}`}>
+                      {a.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(a.createdAt).toLocaleDateString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderAiLogs = () => (
     <div className="space-y-6">
       <div>
@@ -3223,6 +3416,10 @@ export function AdminPage() {
         return renderSupportSection();
       case "reviews":
         return renderReviews();
+      case "creators":
+        return renderCreators();
+      case "collabs":
+        return renderCollabs();
       case "analytics":
         return renderAnalytics();
       case "settings":

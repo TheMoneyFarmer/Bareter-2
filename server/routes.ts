@@ -9614,5 +9614,51 @@ ${chatTranscript || "(No messages yet)"}`,
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ADMIN — CREATORS & COLLAB APPLICATIONS
+  // ══════════════════════════════════════════════════════════════════════
+
+  // GET /api/admin/creators — all creator-type users with their profiles
+  app.get("/api/admin/creators", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { limit = "50", offset = "0", platform, niche } = req.query;
+      const creators = await storage.searchCreators({
+        platform: platform as string | undefined,
+        niche: niche as string | undefined,
+        limit: Math.min(Number(limit), 100),
+        offset: Number(offset),
+      });
+      res.json(creators);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/collab-applications — all collab applications across the platform
+  app.get("/api/admin/collab-applications", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status, limit = "50", offset = "0" } = req.query;
+      const apps = await storage.getAllCollabApplications({
+        status: status as string | undefined,
+        limit: Math.min(Number(limit), 100),
+        offset: Number(offset),
+      });
+      res.json(apps);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/admin/collab-applications/:id — admin can update status or add note
+  app.patch("/api/admin/collab-applications/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status, brandNote } = req.body;
+      const updated = await storage.updateCollabApplication(req.params.id, { status, brandNote });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

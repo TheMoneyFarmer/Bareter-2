@@ -27,13 +27,17 @@ export async function getAdminInsights(
     pendingReports: number;
     flaggedListings: number;
     recentSignups: number;
+    creatorCount?: number;
+    collabListings?: number;
+    pendingCollabApplications?: number;
   },
   adminUserId?: string
 ): Promise<AdminInsight> {
   const statsStr = `Platform stats:
-- Total users: ${stats.totalUsers} (${stats.recentSignups} new this week)
+- Total users: ${stats.totalUsers} (${stats.recentSignups} new this week, ${stats.creatorCount ?? 0} creators)
 - Active users: ${stats.activeUsers}
-- Total listings: ${stats.totalListings} (${stats.flaggedListings} flagged)
+- Total listings: ${stats.totalListings} (${stats.flaggedListings} flagged, ${stats.collabListings ?? 0} brand collab)
+- Pending collab applications awaiting brand decision: ${stats.pendingCollabApplications ?? 0}
 - Total deals: ${stats.totalDeals} (${stats.completedDeals} completed)
 - Completion rate: ${stats.totalDeals > 0 ? ((stats.completedDeals / stats.totalDeals) * 100).toFixed(1) : 0}%
 - Pending reports: ${stats.pendingReports}`;
