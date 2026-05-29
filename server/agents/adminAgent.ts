@@ -9,17 +9,13 @@ export interface AdminInsight {
 }
 
 const SYSTEM_PROMPT = `You are an admin intelligence assistant for Bareter, a UAE barter marketplace.
-Help admins understand platform health, identify issues, and make data-driven decisions.
-
-You can analyze:
-- User growth and activity patterns
-- Deal completion rates and bottlenecks
-- Content moderation trends
-- Revenue and fee collection
-- Safety and compliance metrics
-
-Provide actionable insights. Flag critical issues prominently.
-Keep responses data-focused and concise.`;
+Analyze platform metrics and respond with ONLY a JSON object matching this exact structure — no markdown, no explanation:
+{
+  "summary": "one sentence platform health summary",
+  "alerts": [{"level": "info|warning|critical", "message": "alert text"}],
+  "recommendations": ["action item 1", "action item 2"]
+}
+Keep the summary under 120 characters. Limit to max 3 alerts and 3 recommendations.`;
 
 export async function getAdminInsights(
   stats: {
@@ -52,7 +48,7 @@ export async function getAdminInsights(
       agentName: "admin",
       command: "insight",
       temperature: 0.3,
-      maxTokens: 512,
+      maxTokens: 1024,
       // Per-agent budget breach: degrade to an "unavailable" insight
       // rather than throwing — the caller still renders something.
       agentBudgetJsonFallback: {

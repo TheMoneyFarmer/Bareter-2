@@ -234,8 +234,19 @@ export async function jsonCompletion<T>(
 
   let parsed: T;
   try {
-    const cleaned = response.content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    parsed = JSON.parse(cleaned) as T;
+    // Strip markdown fences, then extract the outermost JSON object or array
+    const stripped = response.content
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .trim();
+    // Find the first { or [ and the matching last } or ]
+    const objStart = stripped.indexOf("{");
+    const arrStart = stripped.indexOf("[");
+    const isObj = objStart !== -1 && (arrStart === -1 || objStart < arrStart);
+    const start = isObj ? objStart : arrStart;
+    const end = isObj ? stripped.lastIndexOf("}") : stripped.lastIndexOf("]");
+    const jsonStr = start !== -1 && end !== -1 ? stripped.slice(start, end + 1) : stripped;
+    parsed = JSON.parse(jsonStr) as T;
   } catch {
     throw new Error(`Failed to parse LLM JSON response: ${response.content.substring(0, 200)}`);
   }
