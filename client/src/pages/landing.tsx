@@ -597,7 +597,7 @@ export function LandingPage() {
                   <div className="flex flex-col lg:flex-row gap-0">
                     {/* Left — headline + CTAs */}
                     <div className="flex-1 p-6 lg:p-8">
-                      <Badge className="mb-3 text-xs bg-bareter-teal/20 text-bareter-teal border-bareter-teal/30">For Creators</Badge>
+                      <Badge className="mb-3 text-xs bg-white/15 text-white border-white/30">For Creators</Badge>
                       <h3 className="text-xl font-bold text-white mb-2">
                         Get brand products & services — just for creating content.
                       </h3>
@@ -629,11 +629,11 @@ export function LandingPage() {
                           { n: "③", title: "Apply with your pitch", desc: "Send your handle and a short pitch. If the brand picks you — deal is locked in Bareter. You create, they deliver.", icon: <TrendingUp className="h-4 w-4" /> },
                         ].map(step => (
                           <div key={step.n} className="flex items-start gap-3 p-3 rounded-xl bg-white/8 border border-white/10">
-                            <div className="h-8 w-8 rounded-full bg-bareter-teal/20 flex items-center justify-center flex-shrink-0 text-bareter-teal mt-0.5">
+                            <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0 text-white mt-0.5">
                               {step.icon}
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-bareter-teal mb-0.5">{step.n}</p>
+                              <p className="text-[10px] font-bold text-white/60 mb-0.5">{step.n}</p>
                               <p className="text-xs font-semibold text-white mb-0.5">{step.title}</p>
                               <p className="text-[11px] text-white/50 leading-relaxed">{step.desc}</p>
                             </div>
