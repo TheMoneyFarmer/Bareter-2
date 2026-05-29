@@ -119,6 +119,9 @@ import {
   pushSubscriptions,
   userBlocks,
   type UserBlock,
+  collabApplications,
+  type CollabApplication,
+  type InsertCollabApplication,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -398,6 +401,17 @@ export interface IStorage {
   getSupportMessages(ticketId: string, includeInternal?: boolean): Promise<SupportMessageWithSender[]>;
   createSupportMessage(data: InsertSupportMessage): Promise<SupportMessage>;
   getSupportStats(): Promise<{ open: number; in_progress: number; waiting_user: number; resolved: number; closed: number; total: number }>;
+
+  // Collab Applications
+  applyToCollab(data: { listingId: string; creatorId: string; brandId: string; pitch: string; socialHandle?: string; followerCount?: number; engagementRate?: number; portfolioLink?: string }): Promise<CollabApplication>;
+  getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]>;
+  getCollabApplicationsByCreator(creatorId: string): Promise<(CollabApplication & { listing: Listing })[]>;
+  getCollabApplication(id: string): Promise<CollabApplication | undefined>;
+  updateCollabApplication(id: string, data: { status: string; brandNote?: string; dealId?: string }): Promise<CollabApplication | undefined>;
+  withdrawCollabApplication(id: string, creatorId: string): Promise<void>;
+
+  // Creator Discovery
+  searchCreators(filters: { niche?: string; platform?: string; minFollowers?: number; maxFollowers?: number; openToCollabs?: boolean; limit?: number; offset?: number }): Promise<(User & { creatorProfile: NonNullable<User["creatorProfile"]> })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2660,6 +2674,91 @@ export class DatabaseStorage implements IStorage {
   async getUserByUnsubscribeToken(token: string): Promise<User | undefined> {
     const [u] = await db.select().from(users).where(eq(users.unsubscribeToken, token));
     return u;
+  }
+
+  // ── Collab Applications ────────────────────────────────────────────────
+
+  async applyToCollab(data: {
+    listingId: string; creatorId: string; brandId: string; pitch: string;
+    socialHandle?: string; followerCount?: number; engagementRate?: number; portfolioLink?: string;
+  }): Promise<CollabApplication> {
+    const [app] = await db.insert(collabApplications).values({
+      listingId: data.listingId,
+      creatorId: data.creatorId,
+      brandId: data.brandId,
+      pitch: data.pitch,
+      socialHandle: data.socialHandle ?? null,
+      followerCount: data.followerCount ?? null,
+      engagementRate: data.engagementRate?.toString() ?? null,
+      portfolioLink: data.portfolioLink ?? null,
+      status: "pending",
+    }).returning();
+    return app;
+  }
+
+  async getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]> {
+    const rows = await db
+      .select({ app: collabApplications, creator: users })
+      .from(collabApplications)
+      .innerJoin(users, eq(collabApplications.creatorId, users.id))
+      .where(eq(collabApplications.listingId, listingId))
+      .orderBy(desc(collabApplications.createdAt));
+    return rows.map(r => ({ ...r.app, creator: r.creator }));
+  }
+
+  async getCollabApplicationsByCreator(creatorId: string): Promise<(CollabApplication & { listing: Listing })[]> {
+    const rows = await db
+      .select({ app: collabApplications, listing: listings })
+      .from(collabApplications)
+      .innerJoin(listings, eq(collabApplications.listingId, listings.id))
+      .where(eq(collabApplications.creatorId, creatorId))
+      .orderBy(desc(collabApplications.createdAt));
+    return rows.map(r => ({ ...r.app, listing: r.listing }));
+  }
+
+  async getCollabApplication(id: string): Promise<CollabApplication | undefined> {
+    const [app] = await db.select().from(collabApplications).where(eq(collabApplications.id, id));
+    return app;
+  }
+
+  async updateCollabApplication(id: string, data: { status: string; brandNote?: string; dealId?: string }): Promise<CollabApplication | undefined> {
+    const [app] = await db.update(collabApplications)
+      .set({ status: data.status, brandNote: data.brandNote ?? null, dealId: data.dealId ?? null, updatedAt: new Date() })
+      .where(eq(collabApplications.id, id))
+      .returning();
+    return app;
+  }
+
+  async withdrawCollabApplication(id: string, creatorId: string): Promise<void> {
+    await db.update(collabApplications)
+      .set({ status: "withdrawn", updatedAt: new Date() })
+      .where(and(eq(collabApplications.id, id), eq(collabApplications.creatorId, creatorId)));
+  }
+
+  // ── Creator Discovery ──────────────────────────────────────────────────
+
+  async searchCreators(filters: {
+    niche?: string; platform?: string; minFollowers?: number; maxFollowers?: number;
+    openToCollabs?: boolean; limit?: number; offset?: number;
+  }): Promise<(User & { creatorProfile: NonNullable<User["creatorProfile"]> })[]> {
+    const rows = await db.select().from(users).where(
+      and(
+        eq(users.signupType, "creator"),
+        isNotNull(users.creatorProfile),
+        eq(users.isBanned, false),
+      )
+    ).limit(filters.limit ?? 40).offset(filters.offset ?? 0);
+    return rows
+      .filter(u => u.creatorProfile != null)
+      .filter(u => {
+        const cp = u.creatorProfile!;
+        if (filters.openToCollabs && !cp.openToCollabs) return false;
+        if (filters.platform && cp.primaryPlatform !== filters.platform) return false;
+        if (filters.minFollowers && cp.followerCount < filters.minFollowers) return false;
+        if (filters.maxFollowers && cp.followerCount > filters.maxFollowers) return false;
+        if (filters.niche && !cp.contentNiches?.some(n => n.toLowerCase().includes(filters.niche!.toLowerCase()))) return false;
+        return true;
+      }) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
   }
 }
 

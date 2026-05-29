@@ -9286,5 +9286,207 @@ ${chatTranscript || "(No messages yet)"}`,
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════
+  // BRAND COLLAB & CREATOR DISCOVERY ROUTES
+  // ══════════════════════════════════════════════════════════════════════
+
+  // GET /api/creators — public creator discovery with filters
+  app.get("/api/creators", async (req, res) => {
+    try {
+      const { niche, platform, minFollowers, maxFollowers, limit, offset } = req.query;
+      const creators = await storage.searchCreators({
+        niche: niche as string | undefined,
+        platform: platform as string | undefined,
+        minFollowers: minFollowers ? Number(minFollowers) : undefined,
+        maxFollowers: maxFollowers ? Number(maxFollowers) : undefined,
+        openToCollabs: true,
+        limit: limit ? Math.min(Number(limit), 60) : 40,
+        offset: offset ? Number(offset) : 0,
+      });
+      res.json(creators.map(u => ({
+        id: u.id,
+        fullName: u.fullName,
+        avatarUrl: u.avatarUrl,
+        location: u.location,
+        city: u.city,
+        country: u.country,
+        isVerified: u.isVerified,
+        verificationStatus: u.verificationStatus,
+        founderBadge: u.founderBadge,
+        creatorProfile: u.creatorProfile,
+        signupType: u.signupType,
+        credibilityScore: u.credibilityScore,
+        totalCompletedDeals: u.totalCompletedDeals,
+      })));
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/listings/:id/collab/applications — brand sees all applications for their collab listing
+  app.get("/api/listings/:id/collab/applications", requireAuth, async (req, res) => {
+    try {
+      const listing = await storage.getListing(req.params.id);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
+      const apps = await storage.getCollabApplicationsByListing(req.params.id);
+      res.json(apps);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/listings/:id/collab/apply — creator applies to a brand collab listing
+  app.post("/api/listings/:id/collab/apply", requireAuth, async (req, res) => {
+    try {
+      const listing = await storage.getListing(req.params.id);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (!listing.isCollab) return res.status(400).json({ message: "Not a collab listing" });
+      if (listing.userId === req.session.userId) return res.status(400).json({ message: "Cannot apply to your own listing" });
+
+      const { pitch, socialHandle, followerCount, engagementRate, portfolioLink } = req.body;
+      if (!pitch || pitch.trim().length < 20) return res.status(400).json({ message: "Pitch must be at least 20 characters" });
+
+      const app = await storage.applyToCollab({
+        listingId: req.params.id,
+        creatorId: req.session.userId!,
+        brandId: listing.userId,
+        pitch: pitch.trim(),
+        socialHandle,
+        followerCount: followerCount ? Number(followerCount) : undefined,
+        engagementRate: engagementRate ? Number(engagementRate) : undefined,
+        portfolioLink,
+      });
+
+      // Notify the brand
+      await storage.createNotification({
+        userId: listing.userId,
+        type: "collab_application",
+        title: "New collab application",
+        message: `Someone applied to your collab listing: ${listing.title}`,
+        linkUrl: `/listings/${listing.id}?tab=applications`,
+        relatedId: app.id,
+      }).catch(() => {});
+
+      res.status(201).json(app);
+    } catch (error: any) {
+      if (error?.code === "23505") return res.status(409).json({ message: "You already applied to this listing" });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/listings/:id/collab/applications/:appId — brand accepts or rejects application
+  app.patch("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
+    try {
+      const listing = await storage.getListing(req.params.id);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
+
+      const { status, brandNote } = req.body;
+      if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+
+      const existingApp = await storage.getCollabApplication(req.params.appId);
+      if (!existingApp) return res.status(404).json({ message: "Application not found" });
+
+      let dealId: string | undefined;
+      if (status === "accepted") {
+        // Auto-create a deal so the two parties can manage milestones
+        const deal = await storage.createDeal({
+          seekerId: existingApp.creatorId,
+          providerId: listing.userId,
+          seekerListingId: null,
+          providerListingId: listing.id,
+          terms: `Brand Collab: ${listing.title}`,
+          status: "accepted",
+        } as any);
+        dealId = deal.id;
+
+        // Create default collab milestones
+        const details = listing.collabDetails as any;
+        const milestones = [
+          { title: "Content Brief Received", milestoneType: "delivery" },
+          { title: "Draft Submitted", milestoneType: "content_draft" },
+          { title: "Final Content Live", milestoneType: "content_live" },
+          { title: "Brand Confirms Delivery", milestoneType: "approval" },
+        ];
+        for (let i = 0; i < milestones.length; i++) {
+          await storage.createDealMilestone({
+            dealId: deal.id,
+            title: milestones[i].title,
+            milestoneType: milestones[i].milestoneType,
+            sortOrder: i,
+          } as any).catch(() => {});
+        }
+
+        // Notify creator
+        await storage.createNotification({
+          userId: existingApp.creatorId,
+          type: "collab_accepted",
+          title: "Collab application accepted! 🎉",
+          message: `${listing.title} — your application was accepted. Check your deals to get started.`,
+          linkUrl: `/deals/${deal.id}`,
+          relatedId: deal.id,
+        }).catch(() => {});
+      } else {
+        await storage.createNotification({
+          userId: existingApp.creatorId,
+          type: "collab_rejected",
+          title: "Collab application update",
+          message: `Your application to "${listing.title}" was not selected this time.`,
+          linkUrl: `/creators`,
+          relatedId: existingApp.id,
+        }).catch(() => {});
+      }
+
+      const updated = await storage.updateCollabApplication(req.params.appId, { status, brandNote, dealId });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/listings/:id/collab/applications/:appId — creator withdraws application
+  app.delete("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
+    try {
+      await storage.withdrawCollabApplication(req.params.appId, req.session.userId!);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/me/collab/applications — creator sees their own applications
+  app.get("/api/me/collab/applications", requireAuth, async (req, res) => {
+    try {
+      const apps = await storage.getCollabApplicationsByCreator(req.session.userId!);
+      res.json(apps);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/me/creator-profile — creator updates their profile stats
+  app.patch("/api/me/creator-profile", requireAuth, async (req, res) => {
+    try {
+      const { primaryPlatform, followerCount, avgEngagementRate, contentNiches, openToCollabs, portfolioLinks, instagramHandle, tiktokHandle, youtubeHandle } = req.body;
+      const updatedUser = await storage.updateUser(req.session.userId!, {
+        creatorProfile: {
+          primaryPlatform,
+          followerCount: Number(followerCount) || 0,
+          avgEngagementRate: Number(avgEngagementRate) || 0,
+          contentNiches: contentNiches || [],
+          openToCollabs: Boolean(openToCollabs),
+          portfolioLinks: portfolioLinks || [],
+          instagramHandle,
+          tiktokHandle,
+          youtubeHandle,
+        },
+      } as any);
+      res.json(updatedUser);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

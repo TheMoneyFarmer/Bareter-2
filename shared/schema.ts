@@ -38,7 +38,36 @@ export const FEED_CATEGORIES = [
 ] as const;
 
 // Signup types
-export const SIGNUP_TYPES = ["personal", "business"] as const;
+export const SIGNUP_TYPES = ["personal", "business", "creator"] as const;
+
+// Collab content types
+export const COLLAB_CONTENT_TYPES = ["reel", "tiktok", "post", "story", "youtube", "review", "photoshoot", "multiple"] as const;
+export type CollabContentType = typeof COLLAB_CONTENT_TYPES[number];
+
+// Creator profile — stored as jsonb on users
+export type CreatorProfile = {
+  primaryPlatform: "instagram" | "tiktok" | "youtube" | "twitter" | "linkedin" | "other";
+  followerCount: number;
+  avgEngagementRate: number; // percentage e.g. 4.5 = 4.5%
+  contentNiches: string[];   // e.g. ["Fashion", "Lifestyle", "Travel"]
+  openToCollabs: boolean;
+  portfolioLinks?: string[];
+  instagramHandle?: string;
+  tiktokHandle?: string;
+  youtubeHandle?: string;
+};
+
+// Collab details — stored as jsonb on listings
+export type CollabDetails = {
+  contentType: CollabContentType;
+  requiredFollowers: number;
+  requiredPlatforms: string[];
+  contentBrief: string;
+  deadline?: string;           // ISO date string
+  usageRights: "creator_only" | "brand_social" | "brand_unlimited";
+  deliverables: number;        // number of content pieces required
+  productValue: number;        // AED value of product/service offered
+};
 
 // Social platform types
 export type SocialProfile = {
@@ -464,6 +493,7 @@ export const users = pgTable("users", {
   // Signup & Social
   signupType: text("signup_type").default("personal"),
   socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
+  creatorProfile: jsonb("creator_profile").$type<CreatorProfile>(),
 
   // Trust & Credibility
   avgResponseTime: integer("avg_response_time").default(0),
@@ -610,6 +640,15 @@ export const listings = pgTable("listings", {
   valuationMarketNote: text("valuation_market_note"),
   valuationCurrency: text("valuation_currency").default("AED"),
   valuationAt: timestamp("valuation_at"),
+  // ── Brand Collab fields ────────────────────────────────────────────────
+  isCollab: boolean("is_collab").default(false),
+  collabDetails: jsonb("collab_details").$type<CollabDetails>(),
+  // ── B2B Bulk Deal fields ───────────────────────────────────────────────
+  isBulkDeal: boolean("is_bulk_deal").default(false),
+  bulkQuantity: integer("bulk_quantity"),
+  bulkUnit: text("bulk_unit"),              // "units" | "hours" | "sessions" | "pieces"
+  bulkMinOrder: integer("bulk_min_order"),  // minimum per trading partner
+  bulkMaxPartners: integer("bulk_max_partners"), // how many partners can share the batch
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -617,6 +656,8 @@ export const listings = pgTable("listings", {
   index("listings_is_active_idx").on(table.isActive),
   index("listings_moderation_status_idx").on(table.moderationStatus),
   index("listings_created_at_idx").on(table.createdAt),
+  index("listings_is_collab_idx").on(table.isCollab),
+  index("listings_is_bulk_idx").on(table.isBulkDeal),
 ]);
 
 // Banned emails table - prevents re-registration of banned users
@@ -842,6 +883,12 @@ export const dealMilestones = pgTable("deal_milestones", {
   isCompleted: boolean("is_completed").default(false),
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by", { length: 36 }).references(() => users.id),
+  // Content-collab milestone fields
+  milestoneType: text("milestone_type").default("delivery"), // "delivery" | "content_draft" | "content_live" | "approval" | "custom"
+  contentLink: text("content_link"),         // URL submitted by creator (IG post, TikTok, etc.)
+  contentApproved: boolean("content_approved"),
+  contentApprovedAt: timestamp("content_approved_at"),
+  revisionCount: integer("revision_count").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("deal_milestones_deal_id_idx").on(table.dealId),
@@ -861,6 +908,32 @@ export const portfolioItems = pgTable("portfolio_items", {
 }, (table) => [
   index("portfolio_items_user_id_idx").on(table.userId),
 ]);
+
+// Collab Applications — creators apply to brand collab listings
+export const collabApplications = pgTable("collab_applications", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id, { onDelete: "cascade" }),
+  creatorId: varchar("creator_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  brandId: varchar("brand_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  pitch: text("pitch").notNull(),              // creator's application message
+  socialHandle: text("social_handle"),
+  followerCount: integer("follower_count"),
+  engagementRate: decimal("engagement_rate", { precision: 5, scale: 2 }),
+  portfolioLink: text("portfolio_link"),
+  status: text("status").default("pending"),   // "pending" | "accepted" | "rejected" | "withdrawn"
+  brandNote: text("brand_note"),               // brand's response note
+  dealId: varchar("deal_id", { length: 36 }).references(() => deals.id), // populated on accept
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("collab_apps_listing_idx").on(table.listingId),
+  index("collab_apps_creator_idx").on(table.creatorId),
+  index("collab_apps_brand_idx").on(table.brandId),
+  uniqueIndex("collab_apps_unique").on(table.listingId, table.creatorId),
+]);
+
+export type CollabApplication = typeof collabApplications.$inferSelect;
+export type InsertCollabApplication = typeof collabApplications.$inferInsert;
 
 // Quick inquiries - "Is this still available?" messages
 export const quickInquiries = pgTable("quick_inquiries", {

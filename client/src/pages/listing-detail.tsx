@@ -61,6 +61,10 @@ import {
   Upload,
   X,
   ImageIcon,
+  Users,
+  Camera,
+  TrendingUp,
+  Clock,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
@@ -97,6 +101,13 @@ export function ListingDetailPage() {
   const [translation, setTranslation] = useState<{ title: string; description: string } | null>(null);
   const [showTranslated, setShowTranslated] = useState(false);
   const translationCacheRef = _listingTranslationCache;
+
+  // Collab apply state
+  const [collabApplyOpen, setCollabApplyOpen] = useState(false);
+  const [collabPitch, setCollabPitch] = useState("");
+  const [collabHandle, setCollabHandle] = useState("");
+  const [collabFollowers, setCollabFollowers] = useState("");
+  const [collabPortfolioLink, setCollabPortfolioLink] = useState("");
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
     queryKey: ["/api/listings", id],
@@ -337,6 +348,60 @@ export function ListingDetailPage() {
   const { data: listingComments } = useQuery<ListingCommentWithUser[]>({
     queryKey: ["/api/listings", id, "comments"],
     enabled: !!id,
+  });
+
+  // Collab applications — fetched only when owner of a collab listing
+  const { data: collabApplications = [] } = useQuery<any[]>({
+    queryKey: ["/api/listings", id, "collab-applications"],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings/${id}/collab/applications`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id && !!user && !!(listing as any)?.isCollab && user.id === listing?.userId,
+  });
+
+  // My application for this collab (creator)
+  const { data: myCollabApp } = useQuery<any>({
+    queryKey: ["/api/listings", id, "my-collab-app"],
+    queryFn: async () => {
+      const res = await fetch(`/api/me/collab/applications`, { credentials: "include" });
+      if (!res.ok) return null;
+      const all = await res.json();
+      return all.find((a: any) => a.listingId === id) ?? null;
+    },
+    enabled: !!id && !!user && !!(listing as any)?.isCollab && user.id !== listing?.userId,
+  });
+
+  const applyCollabMutation = useMutation({
+    mutationFn: async (data: { pitch: string; socialHandle: string; followerCount: string; portfolioLink: string }) => {
+      const res = await apiRequest("POST", `/api/listings/${id}/collab/apply`, {
+        pitch: data.pitch,
+        socialHandle: data.socialHandle || undefined,
+        followerCount: data.followerCount ? parseInt(data.followerCount) : undefined,
+        portfolioLink: data.portfolioLink || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "my-collab-app"] });
+      setCollabApplyOpen(false);
+      setCollabPitch(""); setCollabHandle(""); setCollabFollowers(""); setCollabPortfolioLink("");
+      toast({ title: "Application submitted!", description: "The brand will review your application and get back to you." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to submit application", variant: "destructive" }),
+  });
+
+  const respondCollabMutation = useMutation({
+    mutationFn: async ({ appId, status, note }: { appId: string; status: "accepted" | "rejected"; note?: string }) => {
+      const res = await apiRequest("PATCH", `/api/listings/${id}/collab/applications/${appId}`, { status, brandNote: note });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "collab-applications"] });
+      toast({ title: vars.status === "accepted" ? "Application accepted! A deal has been created." : "Application declined." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to update application", variant: "destructive" }),
   });
 
   const listingLikeMutation = useMutation({
@@ -910,6 +975,167 @@ export function ListingDetailPage() {
               </div>
             )}
           </div>
+
+          {/* ── Collab Details — shown for isCollab listings ── */}
+          {(listing as any).isCollab && (() => {
+            const cd = (listing as any).collabDetails as any;
+            if (!cd) return null;
+            const isCreator = user?.signupType === "creator";
+            const isOwnCollab = user?.id === listing.userId;
+            return (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Camera className="h-5 w-5 text-primary" />
+                    Brand Collab Opportunity
+                    <Badge className="ml-auto text-xs bg-primary/20 text-primary border-primary/30">Collab</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {cd.contentBrief && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Content Brief</p>
+                      <p className="text-sm text-foreground leading-relaxed">{cd.contentBrief}</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {cd.contentType && (
+                      <div className="rounded-lg bg-background border p-3 text-center">
+                        <Camera className="h-4 w-4 text-primary mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">Content Type</p>
+                        <p className="text-sm font-semibold capitalize">{cd.contentType.replace(/_/g, " ")}</p>
+                      </div>
+                    )}
+                    {cd.requiredFollowers > 0 && (
+                      <div className="rounded-lg bg-background border p-3 text-center">
+                        <Users className="h-4 w-4 text-primary mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">Min Followers</p>
+                        <p className="text-sm font-semibold">{cd.requiredFollowers >= 1000 ? `${(cd.requiredFollowers / 1000).toFixed(0)}K+` : cd.requiredFollowers}</p>
+                      </div>
+                    )}
+                    {cd.deliverables > 0 && (
+                      <div className="rounded-lg bg-background border p-3 text-center">
+                        <ClipboardList className="h-4 w-4 text-primary mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">Deliverables</p>
+                        <p className="text-sm font-semibold">{cd.deliverables} piece{cd.deliverables !== 1 ? "s" : ""}</p>
+                      </div>
+                    )}
+                    {cd.productValue > 0 && (
+                      <div className="rounded-lg bg-background border p-3 text-center">
+                        <TrendingUp className="h-4 w-4 text-primary mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">Product Value</p>
+                        <p className="text-sm font-semibold">AED {cd.productValue.toLocaleString()}</p>
+                      </div>
+                    )}
+                  </div>
+                  {cd.requiredPlatforms?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Platforms</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cd.requiredPlatforms.map((p: string) => (
+                          <Badge key={p} variant="secondary" className="capitalize">{p}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {cd.deadline && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      <span>Deadline: <strong className="text-foreground">{new Date(cd.deadline).toLocaleDateString()}</strong></span>
+                    </div>
+                  )}
+                  {cd.usageRights && (
+                    <div className="text-xs text-muted-foreground">
+                      Usage rights: {cd.usageRights === "creator_only" ? "Creator use only" : cd.usageRights === "brand_social" ? "Brand can use on social" : "Brand unlimited use"}
+                    </div>
+                  )}
+                  {!isOwnCollab && (
+                    <div className="pt-2 border-t">
+                      {isCreator ? (
+                        myCollabApp ? (
+                          <div className="flex items-center gap-2 text-sm">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <span className="font-medium">
+                              Application {myCollabApp.status === "accepted" ? "accepted ✓" : myCollabApp.status === "rejected" ? "declined" : "submitted — pending review"}
+                            </span>
+                          </div>
+                        ) : (
+                          <Button variant="bareter" className="w-full gap-2" onClick={() => setCollabApplyOpen(true)}>
+                            <Camera className="h-4 w-4" />
+                            Apply to This Collab
+                          </Button>
+                        )
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center">
+                          <Link href="/register" className="text-primary hover:underline">Create a creator account</Link> to apply to brand collab opportunities.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Collab Applications Panel — shown to brand owner ── */}
+          {(listing as any).isCollab && user?.id === listing.userId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Collab Applications
+                  {collabApplications.length > 0 && (
+                    <Badge variant="secondary" className="ml-auto">{collabApplications.length}</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {collabApplications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No applications yet. Share your listing to attract creators.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {collabApplications.map((app: any) => (
+                      <div key={app.id} className="p-3 rounded-lg border bg-muted/20 space-y-2">
+                        <div className="flex items-start gap-3">
+                          <Avatar className="h-9 w-9 flex-shrink-0">
+                            <AvatarImage src={app.creator?.avatarUrl ?? undefined} />
+                            <AvatarFallback>{app.creator?.fullName?.charAt(0) ?? "C"}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link href={`/users/${app.creatorId}`}>
+                                <span className="font-semibold text-sm hover:underline">{app.creator?.fullName}</span>
+                              </Link>
+                              <Badge variant={app.status === "accepted" ? "default" : app.status === "rejected" ? "destructive" : "secondary"} className="text-[10px] px-1.5 py-0">
+                                {app.status}
+                              </Badge>
+                            </div>
+                            {app.socialHandle && <p className="text-xs text-muted-foreground">{app.socialHandle} · {app.followerCount ? `${app.followerCount >= 1000 ? (app.followerCount/1000).toFixed(0)+"K" : app.followerCount} followers` : ""}</p>}
+                            <p className="text-sm mt-1">{app.pitch}</p>
+                            {app.portfolioLink && (
+                              <a href={app.portfolioLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline inline-flex items-center gap-0.5 mt-1">
+                                <ExternalLink className="h-3 w-3" />Portfolio
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        {app.status === "pending" && (
+                          <div className="flex gap-2 pt-1">
+                            <Button size="sm" className="h-7 text-xs gap-1" onClick={() => respondCollabMutation.mutate({ appId: app.id, status: "accepted" })} disabled={respondCollabMutation.isPending}>
+                              <CheckCircle className="h-3 w-3" />Accept
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30" onClick={() => respondCollabMutation.mutate({ appId: app.id, status: "rejected" })} disabled={respondCollabMutation.isPending}>
+                              <X className="h-3 w-3" />Decline
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card id="comments" data-testid="listing-comments-section">
             <CardHeader>

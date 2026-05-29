@@ -23,6 +23,7 @@ import {
   CheckCircle,
   User,
   Building2,
+  Camera,
   ArrowLeft,
   ArrowRight,
   SkipForward,
@@ -48,7 +49,7 @@ const extendedRegisterSchema = registerSchema.extend({
 
 type RegisterForm = z.infer<typeof extendedRegisterSchema>;
 
-type SignupType = "personal" | "business";
+type SignupType = "personal" | "business" | "creator";
 
 interface SocialFormState {
   instagram: { username: string; followerCount: string };
@@ -319,52 +320,49 @@ export function RegisterPage() {
       </CardHeader>
       <CardContent className="space-y-4">
         {renderStepIndicator()}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-3">
           <button
             type="button"
-            onClick={() => {
-              setSignupType("personal");
-              setStep(2);
-            }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
-              signupType === "personal"
-                ? "border-primary bg-primary/5"
-                : "border-border"
-            }`}
+            onClick={() => { setSignupType("personal"); setStep(2); }}
+            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "personal" ? "border-primary bg-primary/5" : "border-border"}`}
             data-testid="card-signup-personal"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <User className="h-6 w-6 text-primary" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+              <User className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="font-semibold">Personal</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Individuals, freelancers, and sole traders
-              </p>
+              <p className="font-semibold text-sm">Personal</p>
+              <p className="text-xs text-muted-foreground mt-1">Individuals & sole traders</p>
             </div>
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              setSignupType("business");
-              setStep(2);
-            }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-6 text-center transition-colors hover-elevate cursor-pointer ${
-              signupType === "business"
-                ? "border-primary bg-primary/5"
-                : "border-border"
-            }`}
+            onClick={() => { setSignupType("business"); setStep(2); }}
+            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "business" ? "border-primary bg-primary/5" : "border-border"}`}
             data-testid="card-signup-business"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Building2 className="h-6 w-6 text-primary" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+              <Building2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="font-semibold">Business</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Companies, agencies, and organizations
-              </p>
+              <p className="font-semibold text-sm">Business</p>
+              <p className="text-xs text-muted-foreground mt-1">Companies & agencies</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setSignupType("creator"); setStep(2); }}
+            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "creator" ? "border-primary bg-primary/5" : "border-border"}`}
+            data-testid="card-signup-creator"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+              <Camera className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Creator</p>
+              <p className="text-xs text-muted-foreground mt-1">Influencers & content creators</p>
             </div>
           </button>
         </div>

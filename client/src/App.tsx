@@ -53,6 +53,7 @@ const SavedListingsPage = lazy(() => import("@/pages/saved-listings").then((m) =
 const MySearchesPage = lazy(() => import("@/pages/my-searches").then((m) => ({ default: m.MySearchesPage })));
 const ReferralsPage = lazy(() => import("@/pages/referrals").then((m) => ({ default: m.ReferralsPage })));
 const FeedPage = lazy(() => import("@/pages/feed").then((m) => ({ default: m.FeedPage })));
+const CreatorsPage = lazy(() => import("@/pages/creators").then((m) => ({ default: m.CreatorsPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const CreatePostPage = lazy(() => import("@/pages/create-post").then((m) => ({ default: m.CreatePostPage })));
 const InboxPage = lazy(() => import("@/pages/inbox").then((m) => ({ default: m.InboxPage })));
@@ -322,6 +323,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/map" component={MapViewPage} />
       <Route path="/posts/:id" component={PostDetailPage} />
+      <Route path="/creators" component={CreatorsPage} />
       <Route component={NotFound} />
     </Switch>
   );

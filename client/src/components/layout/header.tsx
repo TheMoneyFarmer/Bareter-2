@@ -48,6 +48,7 @@ import {
   FileText,
   ChevronDown,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -328,6 +329,12 @@ export function Header() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              {/* Creators — discover content creators */}
+              <Link href="/creators" className={navItemClass} data-testid="button-nav-creators">
+                <Sparkles className="h-5 w-5" />
+                <span className={navLabelClass}>Creators</span>
+              </Link>
+
               {/* My Searches */}
               <Link href="/my-searches" className={navItemClass} data-testid="button-nav-searches">
                 <Bookmark className="h-5 w-5" />
@@ -562,6 +569,11 @@ export function Header() {
                       <Link href="/saved">
                         <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
                           <Heart className="h-4 w-4" />Favorites
+                        </Button>
+                      </Link>
+                      <Link href="/creators">
+                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
+                          <Sparkles className="h-4 w-4" />Creators
                         </Button>
                       </Link>
                       <Link href="/settings">

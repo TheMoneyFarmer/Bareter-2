@@ -81,7 +81,7 @@ import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search" | "for-you";
+type ExploreTab = "discover" | "search" | "for-you" | "collabs";
 
 function ForYouTab({
   wishlistedIds,
@@ -752,9 +752,84 @@ export function BrowsePage() {
             For You
           </Button>
         )}
+        <Button
+          variant={activeTab === "collabs" ? "bareter" : "bareter-outline"}
+          onClick={() => setActiveTab("collabs")}
+          className="gap-2 flex-shrink-0"
+          data-testid="tab-collabs"
+        >
+          <CameraIcon className="h-4 w-4" />
+          Brand Collabs
+        </Button>
       </div>
 
-      {activeTab === "for-you" ? (
+      {activeTab === "collabs" ? (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CameraIcon className="h-5 w-5 text-primary" />
+                Brand Collab Opportunities
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Brands offering products & services in exchange for content creation.
+              </p>
+            </div>
+            <Link href="/creators">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Users className="h-4 w-4" />
+                Browse Creators
+              </Button>
+            </Link>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}><CardContent className="p-0"><Skeleton className="h-48 rounded-t-md" /><div className="p-4 space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div></CardContent></Card>
+              ))}
+            </div>
+          ) : (() => {
+            const collabListings = (listings || []).filter((l) => (l as any).isCollab === true);
+            return collabListings.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
+                  <h3 className="font-semibold text-lg mb-2">No brand collab listings yet</h3>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Be the first to post a brand collab — offer your product or service in exchange for creator content.
+                  </p>
+                  <Link href="/create-listing">
+                    <Button variant="bareter" size="sm">Post a Brand Collab</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-collabs">
+                  {collabListings.map((listing) => (
+                    <BrandListingCard
+                      key={listing.id}
+                      listing={listing}
+                      isWishlisted={currentWishlistedIds.has(listing.id)}
+                      onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
+                    />
+                  ))}
+                </StaggeredReveal>
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 text-center">
+                  <Sparkles className="h-6 w-6 text-primary mx-auto mb-2" />
+                  <p className="font-semibold mb-1">Are you a content creator?</p>
+                  <p className="text-sm text-muted-foreground mb-3">Set up your creator profile and start receiving brand collab offers.</p>
+                  <Link href="/creators">
+                    <Button size="sm">Discover Creators</Button>
+                  </Link>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      ) : activeTab === "for-you" ? (
         <ForYouTab
           wishlistedIds={currentWishlistedIds}
           onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
