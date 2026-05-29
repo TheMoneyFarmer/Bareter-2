@@ -6,6 +6,8 @@ interface SubItem {
   label: string;
   category?: string;
   type?: string;
+  href?: string;
+  highlight?: boolean;
 }
 
 interface SubGroup {
@@ -17,6 +19,7 @@ interface NavCategory {
   label: string;
   emoji: string;
   category: string;
+  href?: string;
   groups: SubGroup[];
 }
 
@@ -169,11 +172,65 @@ const NAV_CATEGORIES: NavCategory[] = [
       },
     ],
   },
+  {
+    label: "Brand Collabs",
+    emoji: "📢",
+    category: "collabs",
+    href: "/browse?tab=collabs",
+    groups: [
+      {
+        heading: "By Niche",
+        items: [
+          { label: "Fashion & Style",    href: "/browse?tab=collabs" },
+          { label: "Beauty & Skincare",  href: "/browse?tab=collabs" },
+          { label: "Tech & Gadgets",     href: "/browse?tab=collabs" },
+          { label: "Food & Dining",      href: "/browse?tab=collabs" },
+          { label: "Fitness & Health",   href: "/browse?tab=collabs" },
+          { label: "Travel & Lifestyle", href: "/browse?tab=collabs" },
+        ],
+      },
+      {
+        heading: "For Brands",
+        items: [
+          { label: "How it works",          href: "/browse?tab=collabs" },
+          { label: "Browse all collabs",    href: "/browse?tab=collabs" },
+          { label: "✦ Post a Brand Collab", href: "/create-listing", highlight: true },
+        ],
+      },
+    ],
+  },
+  {
+    label: "Creators",
+    emoji: "🎥",
+    category: "creators",
+    href: "/creators",
+    groups: [
+      {
+        heading: "Browse by Niche",
+        items: [
+          { label: "Fashion Creators",    href: "/creators?niche=Fashion" },
+          { label: "Beauty Creators",     href: "/creators?niche=Beauty" },
+          { label: "Tech Creators",       href: "/creators?niche=Tech" },
+          { label: "Food Creators",       href: "/creators?niche=Food" },
+          { label: "Fitness Creators",    href: "/creators?niche=Fitness" },
+          { label: "Travel Creators",     href: "/creators?niche=Travel" },
+        ],
+      },
+      {
+        heading: "For Creators",
+        items: [
+          { label: "Browse brand deals",     href: "/browse?tab=collabs" },
+          { label: "Discover all creators",  href: "/creators" },
+          { label: "✦ Join as Creator",      href: "/register", highlight: true },
+        ],
+      },
+    ],
+  },
 ];
 
 interface DropdownProps {
   cat: NavCategory;
-  onNavigate: (params: { category?: string; type?: string }) => void;
+  onNavigate: (params: { category?: string; type?: string; href?: string }) => void;
 }
 
 function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
@@ -205,10 +262,10 @@ function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
             ? "border-bareter-teal bg-bareter-teal-muted text-bareter-teal shadow-sm"
             : "border-transparent text-bareter-navy dark:text-foreground hover:border-bareter-border hover:bg-gray-50 dark:hover:bg-muted hover:text-bareter-teal"
           }`}
-        onClick={() => onNavigate({ category: cat.category })}
+        onClick={() => onNavigate({ href: cat.href, category: cat.href ? undefined : cat.category })}
         aria-expanded={open}
       >
-        {cat.label}
+        {cat.emoji} {cat.label}
         <ChevronDown className={`h-3.5 w-3.5 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
 
@@ -229,10 +286,14 @@ function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
                   <li key={item.label}>
                     <button
                       type="button"
-                      className="w-full text-start px-2 py-1.5 text-sm text-bareter-navy dark:text-foreground hover:text-bareter-teal hover:bg-bareter-teal-muted rounded-sm transition-colors"
+                      className={`w-full text-start px-2 py-1.5 text-sm rounded-sm transition-colors ${
+                        item.highlight
+                          ? "text-bareter-teal font-semibold hover:bg-bareter-teal-muted"
+                          : "text-bareter-navy dark:text-foreground hover:text-bareter-teal hover:bg-bareter-teal-muted"
+                      }`}
                       onClick={() => {
                         setOpen(false);
-                        onNavigate({ category: item.category, type: item.type });
+                        onNavigate({ href: item.href, category: item.category, type: item.type });
                       }}
                     >
                       {item.label}
@@ -244,7 +305,7 @@ function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
                 <button
                   type="button"
                   className="mt-3 text-xs font-semibold text-bareter-teal hover:underline"
-                  onClick={() => { setOpen(false); onNavigate({ category: cat.category }); }}
+                  onClick={() => { setOpen(false); onNavigate({ href: cat.href, category: cat.href ? undefined : cat.category }); }}
                 >
                   View all {cat.label} →
                 </button>
@@ -260,7 +321,8 @@ function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
 export function CategoryNav() {
   const [, navigate] = useLocation();
 
-  const handleNavigate = ({ category, type }: { category?: string; type?: string }) => {
+  const handleNavigate = ({ category, type, href }: { category?: string; type?: string; href?: string }) => {
+    if (href) { navigate(href); return; }
     const params = new URLSearchParams();
     if (category) params.set("category", category);
     if (type) params.set("type", type);

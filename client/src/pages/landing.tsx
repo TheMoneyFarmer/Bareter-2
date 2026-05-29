@@ -661,38 +661,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ============================ CATEGORY GRID ============================ */}
-      <section className="bg-white dark:bg-background" data-testid="section-categories">
-        <div className="container mx-auto max-w-7xl px-4 py-8 sm:py-10">
-          <h2 className="text-section text-bareter-navy dark:text-foreground mb-4">
-            {t("landing.browseByCategory")}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-            {CATEGORY_GRID.map((c) => (
-              <a
-                key={c.label}
-                href={c.href}
-                onClick={(e) => handleCategoryClick(e, c.href)}
-                className="group relative h-32 sm:h-40 lg:h-52 rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep cursor-pointer"
-                data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <img
-                  src={c.image}
-                  alt={c.label}
-                  loading="lazy"
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-bareter-navy-deep/85 via-bareter-navy-deep/30 to-transparent transition-opacity group-hover:from-bareter-navy-deep/90" />
-                <div className="absolute bottom-3 start-3 text-white">
-                  <div className="text-xl mb-0.5 drop-shadow">{c.emoji}</div>
-                  <div className="text-sm font-bold text-white drop-shadow">{c.label}</div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ============================ HOW IT WORKS ============================ */}
       <section className="bg-bareter-navy text-white" data-testid="section-how">
         <div className="container mx-auto max-w-7xl px-4 py-16">
