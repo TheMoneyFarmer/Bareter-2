@@ -100,9 +100,25 @@ export function WaitlistProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const WAITLIST_FALLBACK: WaitlistContextType = {
+  mode: { enabled: false, count: 0 },
+  isLoading: false,
+  isOpen: false,
+  open: () => {},
+  openWith: () => {},
+  close: () => {},
+  gate: () => true,
+  referralCode: null,
+  defaults: {},
+  appUrl: typeof window !== "undefined" ? window.location.origin : "",
+};
+
 export function useWaitlist() {
   const ctx = useContext(WaitlistContext);
-  if (!ctx) throw new Error("useWaitlist must be used inside WaitlistProvider");
+  if (!ctx) {
+    if (import.meta.env.DEV) console.warn("useWaitlist used outside WaitlistProvider — returning fallback");
+    return WAITLIST_FALLBACK;
+  }
   return ctx;
 }
 
