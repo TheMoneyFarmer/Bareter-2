@@ -38,18 +38,28 @@ function makeCreateListingSchema(t: (key: string) => string) {
     type: z.enum(["offer", "request"]),
     title: z.string().min(5, t("create.validation.titleMin")),
     description: z.string().min(20, t("create.validation.descMin")),
-    categories: z.array(z.string()).min(1, t("create.validation.categoryMin")),
-    retailValue: z.string().refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
-      message: t("create.validation.valueInvalid"),
-    }),
+    categories: z.array(z.string()),
+    retailValue: z.string().optional(),
     location: z.string().min(1, t("create.validation.locationRequired")),
     country: z.string().length(2).optional(),
     city: z.string().optional(),
     tags: z.array(z.string()).optional(),
-    images: z.array(z.string()).min(3, t("create.validation.imagesMin")),
+    images: z.array(z.string()),
     wantedCategories: z.array(z.string()).optional(),
     exchangeItems: z.array(exchangeItemSchema).optional(),
     openToOffers: z.boolean().optional(),
+  }).superRefine((data, ctx) => {
+    if (data.type === "offer") {
+      if (data.images.length < 3) {
+        ctx.addIssue({ code: z.ZodIssueCode.too_small, type: "array", minimum: 3, inclusive: true, path: ["images"], message: t("create.validation.imagesMin") });
+      }
+      if (data.categories.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.too_small, type: "array", minimum: 1, inclusive: true, path: ["categories"], message: t("create.validation.categoryMin") });
+      }
+      if (!data.retailValue || isNaN(parseFloat(data.retailValue)) || parseFloat(data.retailValue) <= 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["retailValue"], message: t("create.validation.valueInvalid") });
+      }
+    }
   });
 }
 
@@ -393,8 +403,14 @@ export function CreateListingPage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold mb-2">{t("create.title")}</h1>
-          <p className="text-muted-foreground">{t("create.subtitle")}</p>
+          <h1 className="text-3xl font-bold mb-2">
+            {selectedType === "request" ? "Post What You're Looking For" : t("create.title")}
+          </h1>
+          <p className="text-muted-foreground">
+            {selectedType === "request"
+              ? "Describe what you need and what you can offer in return. No photos required."
+              : t("create.subtitle")}
+          </p>
         </div>
         {(draftSaving || draftSavedAt) && (
           <div className="text-xs text-muted-foreground flex items-center gap-1.5 shrink-0 pt-2" data-testid="autosave-status">
@@ -501,8 +517,8 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── 3. Item type + dynamic detail fields ────────────────────── */}
-          <Card>
+          {/* ── 3. Item type + dynamic detail fields (offer only) ──────── */}
+          {selectedType !== "request" && <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Settings2 className="h-5 w-5" />
@@ -542,17 +558,24 @@ export function CreateListingPage() {
                 />
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
-          {/* ── 4. Photos (moved up — needed for Bareter Value) ──────────── */}
+          {/* ── 4. Photos ────────────────────────────────────────────────── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ImagePlus className="h-5 w-5" />
-                {t("create.imagesSection")}
-                <Badge variant="destructive" className="text-xs ms-auto">{t("create.imagesRequired")}</Badge>
+                {selectedType === "request" ? "Inspiration Image" : t("create.imagesSection")}
+                {selectedType === "request"
+                  ? <Badge variant="outline" className="text-xs ms-auto text-muted-foreground">Optional</Badge>
+                  : <Badge variant="destructive" className="text-xs ms-auto">{t("create.imagesRequired")}</Badge>
+                }
               </CardTitle>
-              <CardDescription>{t("create.imagesDesc")}</CardDescription>
+              <CardDescription>
+                {selectedType === "request"
+                  ? "Optionally add one image to help describe what you're looking for."
+                  : t("create.imagesDesc")}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {images.length > 0 && (
@@ -580,31 +603,34 @@ export function CreateListingPage() {
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
-                        multiple
+                        multiple={selectedType !== "request"}
                         className="hidden"
                         onChange={(e) => handleImageUpload(e.target.files)}
                         data-testid="input-image-upload"
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full h-24 border-dashed gap-2"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingImages}
-                        data-testid="button-upload-images"
-                      >
-                        {uploadingImages ? (
-                          <><Loader2 className="h-5 w-5 animate-spin" />{t("create.uploading")}</>
-                        ) : (
-                          <><Upload className="h-5 w-5" />{t("create.addImages")}</>
-                        )}
-                      </Button>
+                      {(selectedType !== "request" || images.length === 0) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full h-24 border-dashed gap-2"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingImages}
+                          data-testid="button-upload-images"
+                        >
+                          {uploadingImages ? (
+                            <><Loader2 className="h-5 w-5 animate-spin" />{t("create.uploading")}</>
+                          ) : (
+                            <><Upload className="h-5 w-5" />
+                            {selectedType === "request" ? "Add inspiration image (optional)" : t("create.addImages")}</>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-              {images.length > 0 && images.length < 3 && (
+              {selectedType === "offer" && images.length > 0 && images.length < 3 && (
                 <p className="text-sm text-yellow-600 mt-2">
                   {images.length} {t("create.minImages")} — {3 - images.length}{" "}
                   {3 - images.length === 1 ? t("create.moreNeeded") : t("create.moreNeededPlural")}
@@ -618,12 +644,12 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <DollarSign className="h-5 w-5" />
-                Value & Location
+                {selectedType === "request" ? "Budget & Location" : "Value & Location"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Bareter Value panel — auto-triggers when title + description + images ready */}
-              {titleWatch && descriptionWatch && (
+              {/* AI Valuation — offer listings only */}
+              {selectedType !== "request" && titleWatch && descriptionWatch && (
                 <AiValuationPanel
                   title={titleWatch}
                   description={descriptionWatch}
@@ -637,11 +663,16 @@ export function CreateListingPage() {
 
               <FormField control={form.control} name="retailValue" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("create.retailValueLabel")}</FormLabel>
+                  <FormLabel>
+                    {selectedType === "request" ? "Budget / Estimated Value" : t("create.retailValueLabel")}
+                    {selectedType === "request" && <span className="text-muted-foreground font-normal text-xs ml-2">(optional)</span>}
+                  </FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="0" data-testid="input-retail-value" {...field} />
+                    <Input type="number" placeholder={selectedType === "request" ? "e.g. 5000 — leave blank if flexible" : "0"} data-testid="input-retail-value" {...field} />
                   </FormControl>
-                  <FormDescription>{t("create.approximateValue")}</FormDescription>
+                  <FormDescription>
+                    {selectedType === "request" ? "Approximate budget helps potential partners know what you can offer in return." : t("create.approximateValue")}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -691,14 +722,18 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── 6. What I want in exchange ───────────────────────────────── */}
+          {/* ── 6. Exchange section ─────────────────────────────────────── */}
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ArrowLeftRight className="h-5 w-5 text-primary" />
-                {t("create.whatIWantInExchange")}
+                {selectedType === "request" ? "What can you offer in return?" : t("create.whatIWantInExchange")}
               </CardTitle>
-              <CardDescription>{t("create.tellPartners")}</CardDescription>
+              <CardDescription>
+                {selectedType === "request"
+                  ? "Tell potential partners what you have to exchange for what you're looking for."
+                  : t("create.tellPartners")}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
@@ -787,15 +822,18 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── 7. Category tags (at the bottom for discovery) ───────────── */}
+          {/* ── 7. Category tags ────────────────────────────────────────── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Tag className="h-5 w-5" />
                 Category Tags
+                {selectedType === "request" && <Badge variant="outline" className="text-xs ms-auto text-muted-foreground">Optional</Badge>}
               </CardTitle>
               <CardDescription>
-                Select all categories that apply — these help others discover your listing.
+                {selectedType === "request"
+                  ? "Optionally tag your request — helps brands and members find what you're looking for."
+                  : "Select all categories that apply — these help others discover your listing."}
               </CardDescription>
             </CardHeader>
             <CardContent>
