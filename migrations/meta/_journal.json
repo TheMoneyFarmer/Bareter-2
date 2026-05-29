@@ -50,6 +50,13 @@
       "when": 1778322749630,
       "tag": "0006_parallel_lila_cheney",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780070034451,
+      "tag": "0007_previous_northstar",
+      "breakpoints": true
     }
   ]
 }
