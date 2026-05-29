@@ -3,7 +3,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase, backfillLocationFields, topUpTrendingListings } from "./seed";
+import { seedDatabase, backfillLocationFields, topUpTrendingListings, seedCreators } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -107,6 +107,13 @@ app.use((req, res, next) => {
     } catch (error) {
       console.error("Failed to seed database:", error);
     }
+  }
+
+  // Creator seed runs in all environments — idempotent, skips if already present.
+  try {
+    await seedCreators();
+  } catch (error) {
+    console.error("Failed to seed creators:", error);
   }
 
   if (!process.env.DIDIT_WEBHOOK_SECRET) {

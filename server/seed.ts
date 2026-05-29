@@ -2,6 +2,7 @@ import { db } from "./db";
 import { users, listings, deals, ratings, posts } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql, isNull, and } from "drizzle-orm";
+import type { CreatorProfile } from "@shared/schema";
 
 // One-time backfill: ensure existing rows have country/city populated so the
 // strict location filters and worldwide-toggle behavior treat them correctly.
@@ -1059,5 +1060,183 @@ async function seedAiModeration(testPosts: { id: string; title: string; caption:
     console.log("AI moderation seeding completed");
   } catch (err) {
     console.log("AI moderation seeding skipped (service unavailable)");
+  }
+}
+
+// ── Creator seed data ─────────────────────────────────────────────────────────
+// Idempotent: skips if creator accounts already exist.
+// Runs in all environments so the /creators page and landing panel are never empty.
+export async function seedCreators() {
+  try {
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.signupType, "creator")).limit(1);
+    if (existing.length > 0) return;
+
+    console.log("[seed] Inserting creator accounts...");
+    const hashedPassword = await bcrypt.hash("creator123", 10);
+
+    const CREATORS: Array<{
+      email: string; fullName: string; bio: string;
+      location: string; city: string; country: string;
+      isVerified: boolean;
+      creatorProfile: CreatorProfile;
+    }> = [
+      {
+        email: "mariam.creator@bareter.com",
+        fullName: "Mariam Hassan",
+        bio: "Dubai-based fashion & lifestyle creator. Sharing modest fashion inspiration, luxury hauls, and everyday style tips for the modern Gulf woman.",
+        location: "Dubai", city: "Dubai", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "instagram",
+          followerCount: 85000,
+          avgEngagementRate: 4.2,
+          contentNiches: ["Fashion", "Lifestyle", "Beauty"],
+          openToCollabs: true,
+          instagramHandle: "@mariamstyle.ae",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "khalid.creator@bareter.com",
+        fullName: "Khalid Al Ameri",
+        bio: "Tech reviewer and gaming content creator from Abu Dhabi. Honest gadget reviews, unboxings, and gameplay — all in Arabic and English.",
+        location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "tiktok",
+          followerCount: 220000,
+          avgEngagementRate: 7.1,
+          contentNiches: ["Tech", "Gaming", "Entertainment"],
+          openToCollabs: true,
+          tiktokHandle: "@khalid.tech",
+          instagramHandle: "@khalidtech.ae",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "layla.creator@bareter.com",
+        fullName: "Layla Nasser",
+        bio: "Food content creator and home cook based in Dubai. Arabic recipes, restaurant reviews, and Ramadan meal planning. Collabs with F&B brands welcome.",
+        location: "Dubai", city: "Dubai", country: "AE",
+        isVerified: false,
+        creatorProfile: {
+          primaryPlatform: "youtube",
+          followerCount: 45000,
+          avgEngagementRate: 3.8,
+          contentNiches: ["Food", "Lifestyle", "Travel"],
+          openToCollabs: true,
+          youtubeHandle: "@laylacooks",
+          instagramHandle: "@layla.cooks.ae",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "sara.creator@bareter.com",
+        fullName: "Sara Mansour",
+        bio: "Beauty and skincare creator from Sharjah. Honest product reviews, tutorials, and UAE-specific skincare advice for every skin tone.",
+        location: "Sharjah", city: "Sharjah", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "instagram",
+          followerCount: 120000,
+          avgEngagementRate: 5.5,
+          contentNiches: ["Beauty", "Lifestyle", "Fashion"],
+          openToCollabs: true,
+          instagramHandle: "@sarabeauty.uae",
+          tiktokHandle: "@sara.beauty",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "yousef.creator@bareter.com",
+        fullName: "Yousef Al Marzouqi",
+        bio: "Travel & adventure creator exploring the UAE and beyond. Hidden gems, road trips, and luxury hotel reviews from a local's perspective.",
+        location: "Dubai", city: "Dubai", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "instagram",
+          followerCount: 65000,
+          avgEngagementRate: 4.9,
+          contentNiches: ["Travel", "Lifestyle", "Food"],
+          openToCollabs: true,
+          instagramHandle: "@youseftravels",
+          youtubeHandle: "@youseftravels",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "nour.creator@bareter.com",
+        fullName: "Nour Khalil",
+        bio: "Fitness coach and wellness creator in Abu Dhabi. Workouts, healthy eating, and mental wellness for busy professionals in the Gulf.",
+        location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        isVerified: false,
+        creatorProfile: {
+          primaryPlatform: "instagram",
+          followerCount: 38000,
+          avgEngagementRate: 6.2,
+          contentNiches: ["Fitness", "Health & Wellness", "Lifestyle"],
+          openToCollabs: true,
+          instagramHandle: "@nour.fit.ae",
+          tiktokHandle: "@nourfit",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "faisal.creator@bareter.com",
+        fullName: "Faisal Ibrahim",
+        bio: "Business and finance content creator. Startup advice, investment tips, and entrepreneurship stories for the UAE business community.",
+        location: "Dubai", city: "Dubai", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "linkedin",
+          followerCount: 28000,
+          avgEngagementRate: 3.1,
+          contentNiches: ["Business", "Finance", "Education"],
+          openToCollabs: true,
+          instagramHandle: "@faisalbusiness",
+          portfolioLinks: [],
+        },
+      },
+      {
+        email: "hessa.creator@bareter.com",
+        fullName: "Hessa Al Falasi",
+        bio: "Dubai lifestyle creator covering luxury experiences, parenting, and the modern Emirati woman's life. Authentic content, zero filters.",
+        location: "Dubai", city: "Dubai", country: "AE",
+        isVerified: true,
+        creatorProfile: {
+          primaryPlatform: "instagram",
+          followerCount: 95000,
+          avgEngagementRate: 5.8,
+          contentNiches: ["Lifestyle", "Fashion", "Travel"],
+          openToCollabs: true,
+          instagramHandle: "@hessa.life",
+          tiktokHandle: "@hessalife",
+          portfolioLinks: [],
+        },
+      },
+    ];
+
+    await db.insert(users).values(
+      CREATORS.map(c => ({
+        email: c.email,
+        password: hashedPassword,
+        fullName: c.fullName,
+        bio: c.bio,
+        location: c.location,
+        city: c.city,
+        country: c.country,
+        isVerified: c.isVerified,
+        signupType: "creator" as const,
+        creatorProfile: c.creatorProfile as any,
+        accountType: "personal" as const,
+        profileCompleted: true,
+        credibilityScore: Math.floor(Math.random() * 40) + 60,
+        totalCompletedDeals: Math.floor(Math.random() * 8),
+      }))
+    );
+
+    console.log(`[seed] ✓ ${CREATORS.length} creator accounts inserted.`);
+  } catch (err) {
+    console.error("[seed] seedCreators error:", err);
   }
 }
