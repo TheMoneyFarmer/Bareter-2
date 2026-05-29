@@ -139,6 +139,7 @@ export interface IStorage {
   getListing(id: string): Promise<Listing | undefined>;
   getListingWithUser(id: string): Promise<ListingWithUser | undefined>;
   getListings(): Promise<ListingWithUser[]>;
+  getListingsFiltered(params: { search?: string; type?: string; category?: string; location?: string; country?: string; city?: string; verified?: boolean; minValue?: number; maxValue?: number; limit?: number; offset?: number }): Promise<ListingWithUser[]>;
   getListingsByUser(userId: string): Promise<Listing[]>;
   createListing(listing: InsertListing): Promise<Listing>;
   updateListing(id: string, data: Partial<Listing>): Promise<Listing | undefined>;
@@ -203,15 +204,18 @@ export interface IStorage {
   likePost(postId: string, userId: string): Promise<void>;
   unlikePost(postId: string, userId: string): Promise<void>;
   isPostLiked(postId: string, userId: string): Promise<boolean>;
+  getLikedPostIds(postIds: string[], userId: string): Promise<Set<string>>;
 
   // Post Comments
   getCommentsByPost(postId: string): Promise<PostCommentWithUser[]>;
   getCommentCount(postId: string): Promise<number>;
+  getCommentCounts(postIds: string[]): Promise<Map<string, number>>;
   createComment(postId: string, userId: string, content: string | null, offerItemName: string, offerItemValue: string, offerDescription?: string | null, images?: string[]): Promise<PostComment>;
   deleteComment(id: string, userId: string): Promise<void>;
 
   // Post Bookmarks
   isPostBookmarked(postId: string, userId: string): Promise<boolean>;
+  getBookmarkedPostIds(postIds: string[], userId: string): Promise<Set<string>>;
   bookmarkPost(postId: string, userId: string): Promise<PostBookmark>;
   unbookmarkPost(postId: string, userId: string): Promise<void>;
   getBookmarkedPosts(userId: string): Promise<PostWithUser[]>;
@@ -272,7 +276,7 @@ export interface IStorage {
 
   // Bulk engagement helpers
   getUserLikedListingIds(userId: string): Promise<Set<string>>;
-  getListingCommentCounts(): Promise<Map<string, number>>;
+  getListingCommentCounts(listingIds?: string[]): Promise<Map<string, number>>;
 
   // Recommendations
   getRecommendedUsers(userId: string): Promise<User[]>;
@@ -486,6 +490,63 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getListingsFiltered(params: {
+    search?: string;
+    type?: string;
+    category?: string;
+    location?: string;
+    country?: string;
+    city?: string;
+    verified?: boolean;
+    minValue?: number;
+    maxValue?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<ListingWithUser[]> {
+    const { search, type, category, location, country, city, verified, minValue, maxValue, limit = 50, offset = 0 } = params;
+
+    const conditions = [eq(listings.isActive, true)];
+
+    if (search) {
+      conditions.push(
+        or(
+          ilike(listings.title, `%${search}%`),
+          ilike(listings.description, `%${search}%`)
+        )!
+      );
+    }
+    if (type && type !== "all") conditions.push(eq(listings.type, type));
+    if (category) conditions.push(sql`${listings.categories} @> ${JSON.stringify([category])}::jsonb`);
+    if (location && location !== "all") conditions.push(eq(listings.location, location));
+    if (country && country !== "all") conditions.push(sql`UPPER(${listings.country}) = ${country.toUpperCase()}`);
+    if (city && city !== "all") conditions.push(eq(listings.city, city));
+    if (minValue !== undefined) conditions.push(sql`${listings.retailValue}::numeric >= ${minValue}`);
+    if (maxValue !== undefined) conditions.push(sql`${listings.retailValue}::numeric <= ${maxValue}`);
+    if (verified) {
+      conditions.push(
+        or(
+          eq(users.isVerified, true),
+          eq(sql`${users.kycStatus}`, "APPROVED"),
+          eq(sql`${users.kybStatus}`, "APPROVED")
+        )!
+      );
+    }
+
+    const result = await db
+      .select()
+      .from(listings)
+      .leftJoin(users, eq(listings.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(listings.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return result.map(({ listings: listing, users: user }) => ({
+      ...listing,
+      user: user!,
+    }));
+  }
+
   async getListingsByUser(userId: string): Promise<Listing[]> {
     return db
       .select()
@@ -543,29 +604,20 @@ export class DatabaseStorage implements IStorage {
       .where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)))
       .orderBy(desc(deals.createdAt));
 
-    const dealsWithUsers = await Promise.all(
-      result.map(async (deal) => {
-        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
-        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
-        return { ...deal, seeker, provider };
-      })
-    );
-
-    return dealsWithUsers;
+    return this._enrichDealsWithUsers(result);
   }
 
   async getAllDeals(): Promise<DealWithUsers[]> {
     const result = await db.select().from(deals).orderBy(desc(deals.createdAt));
+    return this._enrichDealsWithUsers(result);
+  }
 
-    const dealsWithUsers = await Promise.all(
-      result.map(async (deal) => {
-        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
-        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
-        return { ...deal, seeker, provider };
-      })
-    );
-
-    return dealsWithUsers;
+  private async _enrichDealsWithUsers(dealRows: typeof deals.$inferSelect[]): Promise<DealWithUsers[]> {
+    if (dealRows.length === 0) return [];
+    const uniqueUserIds = Array.from(new Set(dealRows.flatMap((d) => [d.seekerId, d.providerId])));
+    const allUsers = await db.select().from(users).where(inArray(users.id, uniqueUserIds));
+    const userMap = new Map(allUsers.map((u) => [u.id, u]));
+    return dealRows.map((deal) => ({ ...deal, seeker: userMap.get(deal.seekerId)!, provider: userMap.get(deal.providerId)! }));
   }
 
   async createDeal(insertDeal: InsertDeal): Promise<Deal> {
@@ -953,6 +1005,34 @@ export class DatabaseStorage implements IStorage {
     return !!existing;
   }
 
+  async getCommentCounts(postIds: string[]): Promise<Map<string, number>> {
+    if (postIds.length === 0) return new Map();
+    const result = await db
+      .select({ postId: postComments.postId, count: sql<number>`count(*)` })
+      .from(postComments)
+      .where(inArray(postComments.postId, postIds))
+      .groupBy(postComments.postId);
+    return new Map(result.map((r) => [r.postId, Number(r.count)]));
+  }
+
+  async getLikedPostIds(postIds: string[], userId: string): Promise<Set<string>> {
+    if (postIds.length === 0) return new Set();
+    const result = await db
+      .select({ postId: postLikes.postId })
+      .from(postLikes)
+      .where(and(inArray(postLikes.postId, postIds), eq(postLikes.userId, userId)));
+    return new Set(result.map((r) => r.postId));
+  }
+
+  async getBookmarkedPostIds(postIds: string[], userId: string): Promise<Set<string>> {
+    if (postIds.length === 0) return new Set();
+    const result = await db
+      .select({ postId: postBookmarks.postId })
+      .from(postBookmarks)
+      .where(and(inArray(postBookmarks.postId, postIds), eq(postBookmarks.userId, userId)));
+    return new Set(result.map((r) => r.postId));
+  }
+
   async bookmarkPost(postId: string, userId: string): Promise<PostBookmark> {
     const [bookmark] = await db
       .insert(postBookmarks)
@@ -1127,18 +1207,7 @@ export class DatabaseStorage implements IStorage {
       .from(quickInquiries)
       .where(eq(quickInquiries.fromUserId, userId))
       .orderBy(desc(quickInquiries.createdAt));
-
-    const inquiriesWithUsers = await Promise.all(
-      result.map(async (inquiry) => {
-        const [fromUser] = await db.select().from(users).where(eq(users.id, inquiry.fromUserId));
-        const [toUser] = await db.select().from(users).where(eq(users.id, inquiry.toUserId));
-        const { password: p1, ...safeFromUser } = fromUser!;
-        const { password: p2, ...safeToUser } = toUser!;
-        return { ...inquiry, fromUser: safeFromUser, toUser: safeToUser };
-      })
-    );
-
-    return inquiriesWithUsers;
+    return this._enrichInquiriesWithUsers(result);
   }
 
   async getInquiriesForUser(userId: string): Promise<QuickInquiryWithUsers[]> {
@@ -1147,18 +1216,19 @@ export class DatabaseStorage implements IStorage {
       .from(quickInquiries)
       .where(eq(quickInquiries.toUserId, userId))
       .orderBy(desc(quickInquiries.createdAt));
+    return this._enrichInquiriesWithUsers(result);
+  }
 
-    const inquiriesWithUsers = await Promise.all(
-      result.map(async (inquiry) => {
-        const [fromUser] = await db.select().from(users).where(eq(users.id, inquiry.fromUserId));
-        const [toUser] = await db.select().from(users).where(eq(users.id, inquiry.toUserId));
-        const { password: p1, ...safeFromUser } = fromUser!;
-        const { password: p2, ...safeToUser } = toUser!;
-        return { ...inquiry, fromUser: safeFromUser, toUser: safeToUser };
-      })
-    );
-
-    return inquiriesWithUsers;
+  private async _enrichInquiriesWithUsers(rows: typeof quickInquiries.$inferSelect[]): Promise<QuickInquiryWithUsers[]> {
+    if (rows.length === 0) return [];
+    const uniqueUserIds = Array.from(new Set(rows.flatMap((i) => [i.fromUserId, i.toUserId])));
+    const allUsers = await db.select().from(users).where(inArray(users.id, uniqueUserIds));
+    const userMap = new Map(allUsers.map((u) => { const { password, ...safe } = u; return [u.id, safe]; }));
+    return rows.map((inquiry) => ({
+      ...inquiry,
+      fromUser: userMap.get(inquiry.fromUserId)!,
+      toUser: userMap.get(inquiry.toUserId)!,
+    }));
   }
 
   async createInquiry(inquiry: InsertQuickInquiry): Promise<QuickInquiry> {
@@ -1354,15 +1424,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(deals.updatedAt))
       .limit(limit);
 
-    const dealsWithUsers = await Promise.all(
-      result.map(async (deal) => {
-        const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
-        const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
-        return { ...deal, seeker, provider };
-      })
-    );
-
-    return dealsWithUsers;
+    return this._enrichDealsWithUsers(result);
   }
 
   async getTrendingPosts(): Promise<PostWithUser[]> {
@@ -1567,11 +1629,14 @@ export class DatabaseStorage implements IStorage {
     return new Set(rows.map(r => r.listingId));
   }
 
-  async getListingCommentCounts(): Promise<Map<string, number>> {
-    const rows = await db
+  async getListingCommentCounts(listingIds?: string[]): Promise<Map<string, number>> {
+    const query = db
       .select({ listingId: listingComments.listingId, count: sql<number>`count(*)` })
       .from(listingComments)
       .groupBy(listingComments.listingId);
+    const rows = listingIds?.length
+      ? await query.where(inArray(listingComments.listingId, listingIds))
+      : await query;
     const map = new Map<string, number>();
     for (const r of rows) map.set(r.listingId, Number(r.count));
     return map;

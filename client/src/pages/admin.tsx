@@ -542,6 +542,11 @@ export function AdminPage() {
     enabled: activeSection === "settings",
   });
 
+  const { data: appConfig } = useQuery<{ appUrl: string | null }>({
+    queryKey: ["/api/config"],
+    staleTime: Infinity,
+  });
+
   const regenerateInviteCodeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/beta-invite-code/regenerate");
@@ -2498,14 +2503,14 @@ export function AdminPage() {
                   <div className="flex items-center gap-2">
                     <Input
                       readOnly
-                      value={`${window.location.origin}/register?invite=${betaInviteData.code}`}
+                      value={`${appConfig?.appUrl || window.location.origin}/register?invite=${betaInviteData.code}`}
                       className="font-mono text-sm"
                     />
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/register?invite=${betaInviteData.code}`);
+                        navigator.clipboard.writeText(`${appConfig?.appUrl || window.location.origin}/register?invite=${betaInviteData.code}`);
                         toast({ title: "Copied!", description: "Invite link copied to clipboard." });
                       }}
                     >

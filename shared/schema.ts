@@ -612,7 +612,12 @@ export const listings = pgTable("listings", {
   valuationAt: timestamp("valuation_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("listings_user_id_idx").on(table.userId),
+  index("listings_is_active_idx").on(table.isActive),
+  index("listings_moderation_status_idx").on(table.moderationStatus),
+  index("listings_created_at_idx").on(table.createdAt),
+]);
 
 // Banned emails table - prevents re-registration of banned users
 export const bannedEmails = pgTable("banned_emails", {
@@ -650,7 +655,11 @@ export const deals = pgTable("deals", {
   cancelledAt: timestamp("cancelled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("deals_seeker_id_idx").on(table.seekerId),
+  index("deals_provider_id_idx").on(table.providerId),
+  index("deals_state_idx").on(table.state),
+]);
 
 // Messages table for deal chat
 export const messages = pgTable("messages", {
@@ -662,7 +671,9 @@ export const messages = pgTable("messages", {
   isOffPlatform: boolean("is_off_platform").default(false),
   warning: text("warning"), // "off_platform" | "cash_price" | null — set by server-side regex
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("messages_deal_id_idx").on(table.dealId),
+]);
 
 // Ratings table
 export const ratings = pgTable("ratings", {
@@ -686,7 +697,10 @@ export const notifications = pgTable("notifications", {
   relatedListingId: varchar("related_listing_id", { length: 36 }).references(() => listings.id),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("notifications_user_id_idx").on(table.userId),
+  index("notifications_user_id_is_read_idx").on(table.userId, table.isRead),
+]);
 
 // Followers table for user following
 export const followers = pgTable("followers", {
@@ -694,7 +708,11 @@ export const followers = pgTable("followers", {
   followerId: varchar("follower_id", { length: 36 }).notNull().references(() => users.id),
   followingId: varchar("following_id", { length: 36 }).notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("followers_follower_id_idx").on(table.followerId),
+  index("followers_following_id_idx").on(table.followingId),
+  uniqueIndex("followers_pair_unique").on(table.followerId, table.followingId),
+]);
 
 // Referrals table
 export const referrals = pgTable("referrals", {
@@ -714,7 +732,10 @@ export const wishlists = pgTable("wishlists", {
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("wishlists_user_id_idx").on(table.userId),
+  uniqueIndex("wishlists_user_listing_unique").on(table.userId, table.listingId),
+]);
 
 // Posts table for Instagram-style feed
 export const posts = pgTable("posts", {
@@ -747,7 +768,11 @@ export const posts = pgTable("posts", {
   moderationStatus: text("moderation_status").default("pending"), // "pending", "approved", "flagged", "rejected"
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("posts_user_id_idx").on(table.userId),
+  index("posts_is_active_is_story_idx").on(table.isActive, table.isStory),
+  index("posts_created_at_idx").on(table.createdAt),
+]);
 
 // Post likes table
 export const postLikes = pgTable("post_likes", {
@@ -755,7 +780,9 @@ export const postLikes = pgTable("post_likes", {
   postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("post_likes_unique").on(table.postId, table.userId),
+]);
 
 // Post comments / barter proposals table
 export const postComments = pgTable("post_comments", {
@@ -768,7 +795,9 @@ export const postComments = pgTable("post_comments", {
   offerDescription: text("offer_description"),
   images: jsonb("images").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("post_comments_post_id_idx").on(table.postId),
+]);
 
 // Post bookmarks/saves table
 export const postBookmarks = pgTable("post_bookmarks", {
@@ -776,7 +805,9 @@ export const postBookmarks = pgTable("post_bookmarks", {
   postId: varchar("post_id", { length: 36 }).notNull().references(() => posts.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("post_bookmarks_unique").on(table.postId, table.userId),
+]);
 
 // Endorsements table - peer endorsements for skills/specialties
 export const endorsements = pgTable("endorsements", {
@@ -796,7 +827,9 @@ export const savedSearches = pgTable("saved_searches", {
   notifyEnabled: boolean("notify_enabled").default(true),
   lastNotifiedAt: timestamp("last_notified_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("saved_searches_user_id_idx").on(table.userId),
+]);
 
 // Deal milestones table - Fiverr-style order milestones
 export const dealMilestones = pgTable("deal_milestones", {
@@ -809,7 +842,9 @@ export const dealMilestones = pgTable("deal_milestones", {
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("deal_milestones_deal_id_idx").on(table.dealId),
+]);
 
 // Portfolio items table - showcase completed barters
 export const portfolioItems = pgTable("portfolio_items", {
@@ -822,7 +857,9 @@ export const portfolioItems = pgTable("portfolio_items", {
   category: text("category"),
   barterValue: decimal("barter_value", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("portfolio_items_user_id_idx").on(table.userId),
+]);
 
 // Quick inquiries - "Is this still available?" messages
 export const quickInquiries = pgTable("quick_inquiries", {
@@ -835,7 +872,10 @@ export const quickInquiries = pgTable("quick_inquiries", {
   reply: text("reply"),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("quick_inquiries_from_user_id_idx").on(table.fromUserId),
+  index("quick_inquiries_to_user_id_idx").on(table.toUserId),
+]);
 
 // Listing likes table
 export const listingLikes = pgTable("listing_likes", {
@@ -870,7 +910,10 @@ export const listingComments = pgTable("listing_comments", {
   counterOfferStatus: text("counter_offer_status"), // "pending" | "accepted" | "rejected"
   counterOfferedAt: timestamp("counter_offered_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("listing_comments_listing_id_idx").on(table.listingId),
+  index("listing_comments_user_id_idx").on(table.userId),
+]);
 
 // Reports table (scam/abuse reports)
 export const reports = pgTable("reports", {

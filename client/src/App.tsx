@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { Toaster } from "@/components/ui/toaster";
@@ -13,52 +13,54 @@ import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider, LanguageSync } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
-import { LandingPage } from "@/pages/landing";
-import { LoginPage } from "@/pages/login";
-import { RegisterPage } from "@/pages/register";
-import { ProfilePage } from "@/pages/profile";
-import { BrowsePage } from "@/pages/browse";
-import { CreateListingPage } from "@/pages/create-listing";
-import { ListingDetailPage } from "@/pages/listing-detail";
-import { DealsPage } from "@/pages/deals";
-import { DealDetailPage } from "@/pages/deal-detail";
-import { AdminPage } from "@/pages/admin";
-import CompanyOsDashboard from "@/pages/admin/CompanyOsDashboard";
-import MarketingDashboard from "@/pages/admin/MarketingDashboard";
-import SalesDashboard from "@/pages/admin/SalesDashboard";
-import { HowItWorksPage } from "@/pages/how-it-works";
-import { PricingPage } from "@/pages/pricing";
-import { HelpPage } from "@/pages/help";
-import { FAQPage } from "@/pages/faq";
-import { BlogPage } from "@/pages/blog";
-import { BlogPostPage } from "@/pages/blog-post";
-import { TermsPage } from "@/pages/terms";
-import { PrivacyPage } from "@/pages/privacy";
-import { LegalPage } from "@/pages/legal";
+import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { CookieConsent } from "@/components/cookie-consent";
 import { AnnouncementBanner } from "@/components/announcement-banner";
-import OnboardingPage from "@/pages/onboarding";
-import { SettingsPage } from "@/pages/settings";
-import DashboardPage from "@/pages/dashboard";
-import { BrowsePublicPage } from "@/pages/browse-public";
-import { UserProfilePage } from "@/pages/user-profile";
-import { SavedListingsPage } from "@/pages/saved-listings";
-import { MySearchesPage } from "@/pages/my-searches";
-import { ReferralsPage } from "@/pages/referrals";
-import { FeedPage } from "@/pages/feed";
-import { NotificationsPage } from "@/pages/notifications";
-import { CreatePostPage } from "@/pages/create-post";
-import { InboxPage } from "@/pages/inbox";
-import { ForgotPasswordPage } from "@/pages/forgot-password";
-import { ResetPasswordPage } from "@/pages/reset-password";
-import { MapViewPage } from "@/pages/map-view";
-import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import AiSupportChat from "@/components/ai-support-chat";
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
-import NotFound from "@/pages/not-found";
-import { MaintenancePage } from "@/pages/maintenance";
 import { ErrorBoundary } from "@/components/error-boundary";
+
+// Route-level code splitting — each page loads only when navigated to
+const LandingPage = lazy(() => import("@/pages/landing").then((m) => ({ default: m.LandingPage })));
+const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
+const RegisterPage = lazy(() => import("@/pages/register").then((m) => ({ default: m.RegisterPage })));
+const ProfilePage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.ProfilePage })));
+const BrowsePage = lazy(() => import("@/pages/browse").then((m) => ({ default: m.BrowsePage })));
+const CreateListingPage = lazy(() => import("@/pages/create-listing").then((m) => ({ default: m.CreateListingPage })));
+const ListingDetailPage = lazy(() => import("@/pages/listing-detail").then((m) => ({ default: m.ListingDetailPage })));
+const DealsPage = lazy(() => import("@/pages/deals").then((m) => ({ default: m.DealsPage })));
+const DealDetailPage = lazy(() => import("@/pages/deal-detail").then((m) => ({ default: m.DealDetailPage })));
+const AdminPage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminPage })));
+const CompanyOsDashboard = lazy(() => import("@/pages/admin/CompanyOsDashboard"));
+const MarketingDashboard = lazy(() => import("@/pages/admin/MarketingDashboard"));
+const SalesDashboard = lazy(() => import("@/pages/admin/SalesDashboard"));
+const HowItWorksPage = lazy(() => import("@/pages/how-it-works").then((m) => ({ default: m.HowItWorksPage })));
+const PricingPage = lazy(() => import("@/pages/pricing").then((m) => ({ default: m.PricingPage })));
+const HelpPage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpPage })));
+const FAQPage = lazy(() => import("@/pages/faq").then((m) => ({ default: m.FAQPage })));
+const BlogPage = lazy(() => import("@/pages/blog").then((m) => ({ default: m.BlogPage })));
+const BlogPostPage = lazy(() => import("@/pages/blog-post").then((m) => ({ default: m.BlogPostPage })));
+const TermsPage = lazy(() => import("@/pages/terms").then((m) => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import("@/pages/privacy").then((m) => ({ default: m.PrivacyPage })));
+const LegalPage = lazy(() => import("@/pages/legal").then((m) => ({ default: m.LegalPage })));
+const OnboardingPage = lazy(() => import("@/pages/onboarding"));
+const SettingsPage = lazy(() => import("@/pages/settings").then((m) => ({ default: m.SettingsPage })));
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const BrowsePublicPage = lazy(() => import("@/pages/browse-public").then((m) => ({ default: m.BrowsePublicPage })));
+const UserProfilePage = lazy(() => import("@/pages/user-profile").then((m) => ({ default: m.UserProfilePage })));
+const SavedListingsPage = lazy(() => import("@/pages/saved-listings").then((m) => ({ default: m.SavedListingsPage })));
+const MySearchesPage = lazy(() => import("@/pages/my-searches").then((m) => ({ default: m.MySearchesPage })));
+const ReferralsPage = lazy(() => import("@/pages/referrals").then((m) => ({ default: m.ReferralsPage })));
+const FeedPage = lazy(() => import("@/pages/feed").then((m) => ({ default: m.FeedPage })));
+const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
+const CreatePostPage = lazy(() => import("@/pages/create-post").then((m) => ({ default: m.CreatePostPage })));
+const InboxPage = lazy(() => import("@/pages/inbox").then((m) => ({ default: m.InboxPage })));
+const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m) => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
+const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default: m.MapViewPage })));
+const NotFound = lazy(() => import("@/pages/not-found"));
+const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
 
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
 initPostHog();
@@ -244,7 +246,9 @@ function App() {
                       <main className="flex-1 pb-20 md:pb-0">
                         <RouteTransition>
                           <GeoGate>
-                            <Router />
+                            <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh]"><div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" /></div>}>
+                              <Router />
+                            </Suspense>
                           </GeoGate>
                         </RouteTransition>
                       </main>

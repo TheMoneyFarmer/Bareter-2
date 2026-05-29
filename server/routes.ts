@@ -731,6 +731,7 @@ export async function registerRoutes(
       passwordResetEnabled,
       cookiePolicyVersion: COOKIE_POLICY_VERSION,
       maintenanceMode: maintenanceMode === "true",
+      appUrl: process.env.PUBLIC_APP_URL || null,
     });
   });
 
@@ -1328,97 +1329,48 @@ export async function registerRoutes(
   app.get("/api/listings", async (req, res) => {
     try {
       const { search, type, category, location, verified, minValue, maxValue } = req.query;
-      
-      let listings = await storage.getListings();
-
-      // Apply filters server-side
-      if (search && typeof search === "string") {
-        const searchLower = search.toLowerCase();
-        listings = listings.filter(
-          (l) =>
-            l.title.toLowerCase().includes(searchLower) ||
-            l.description.toLowerCase().includes(searchLower)
-        );
-      }
-
-      if (type && type !== "all" && typeof type === "string") {
-        listings = listings.filter((l) => l.type === type);
-      }
-
-      if (category && typeof category === "string") {
-        listings = listings.filter((l) => (l.categories || []).includes(category));
-      }
-
-      if (location && location !== "all" && typeof location === "string") {
-        listings = listings.filter((l) => l.location === location);
-      }
-
       const worldwide = req.query.worldwide === "true";
-      const sessionUser = req.session?.userId
-        ? await storage.getUser(req.session.userId)
-        : null;
+      const seedParam = req.query.seed ? parseInt(req.query.seed as string, 10) : 0;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const sessionUser = req.session?.userId ? await storage.getUser(req.session.userId) : null;
       const queryCountry = req.query.country as string | undefined;
       const queryCity = req.query.city as string | undefined;
-      const country = worldwide
-        ? undefined
-        : queryCountry || sessionUser?.country || undefined;
-      const city = worldwide
-        ? undefined
-        : queryCity || (queryCountry ? undefined : sessionUser?.city || undefined);
-      if (country && country !== "all") {
-        const code = country.toUpperCase();
-        listings = listings.filter((l) => {
-          const lc = (l.country || l.user?.country || "").toUpperCase();
-          return lc === code;
-        });
-      }
-      if (city && city !== "all") {
-        listings = listings.filter((l) => {
-          const lc = l.city || l.location || "";
-          return lc === city;
-        });
-      }
+      const country = worldwide ? undefined : queryCountry || sessionUser?.country || undefined;
+      const city = worldwide ? undefined : queryCity || (queryCountry ? undefined : sessionUser?.city || undefined);
 
-      if (verified === "true") {
-        listings = listings.filter((l) =>
-          l.user?.isVerified ||
-          l.user?.kycStatus === "APPROVED" ||
-          l.user?.kybStatus === "APPROVED"
-        );
-      }
-
-      if (minValue && typeof minValue === "string") {
-        const min = parseFloat(minValue);
-        if (!isNaN(min)) {
-          listings = listings.filter((l) => parseFloat(l.retailValue as string) >= min);
-        }
-      }
-
-      if (maxValue && typeof maxValue === "string") {
-        const max = parseFloat(maxValue);
-        if (!isNaN(max)) {
-          listings = listings.filter((l) => parseFloat(l.retailValue as string) <= max);
-        }
-      }
+      const listings = await storage.getListingsFiltered({
+        search: typeof search === "string" ? search : undefined,
+        type: typeof type === "string" ? type : undefined,
+        category: typeof category === "string" ? category : undefined,
+        location: typeof location === "string" ? location : undefined,
+        country: country && country !== "all" ? country : undefined,
+        city: city && city !== "all" ? city : undefined,
+        verified: verified === "true",
+        minValue: typeof minValue === "string" && !isNaN(parseFloat(minValue)) ? parseFloat(minValue) : undefined,
+        maxValue: typeof maxValue === "string" && !isNaN(parseFloat(maxValue)) ? parseFloat(maxValue) : undefined,
+        limit: seedParam ? limit * 3 : limit, // overfetch for shuffle
+        offset,
+      });
 
       const userId = req.session?.userId;
-      const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
-      const commentCounts = await storage.getListingCommentCounts();
+      const listingIds = listings.map((l) => l.id);
+      const [likedIds, commentCounts] = await Promise.all([
+        userId ? storage.getUserLikedListingIds(userId) : Promise.resolve(new Set<string>()),
+        storage.getListingCommentCounts(listingIds),
+      ]);
 
-      const enriched = listings.map(l => ({
+      const enriched = listings.map((l) => ({
         ...l,
         isLiked: likedIds.has(l.id),
         commentCount: commentCounts.get(l.id) || 0,
       }));
 
-      // Rotate / shuffle feed order using a seeded mulberry32 PRNG so the same
-      // seed always produces the same order (stable during a session) but each
-      // new page-load seed shows a fresh arrangement.
-      const seedParam = req.query.seed ? parseInt(req.query.seed as string, 10) : 0;
+      // Seeded shuffle for feed variety (only when no specific filters active)
       if (seedParam && !search && !type && !category) {
-        const featured = enriched.filter(l => l.isFeatured);
-        const rest = enriched.filter(l => !l.isFeatured);
-        // mulberry32 — 32-bit seeded PRNG, avoids LCG overflow
+        const featured = enriched.filter((l) => l.isFeatured);
+        const rest = enriched.filter((l) => !l.isFeatured);
         let t = (seedParam | 0) + 0x6D2B79F5;
         const rand = () => {
           t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -1429,7 +1381,7 @@ export async function registerRoutes(
           const j = Math.floor(rand() * (i + 1));
           [rest[i], rest[j]] = [rest[j], rest[i]];
         }
-        return res.json([...featured, ...rest]);
+        return res.json([...featured, ...rest].slice(0, limit));
       }
 
       res.json(enriched);
@@ -5649,18 +5601,19 @@ ${chatTranscript || "(No messages yet)"}`,
       });
       const postsData = filtered.slice(0, limit);
 
-      // Enrich posts with comment counts and user-specific state
-      const enrichedPosts = await Promise.all(
-        postsData.map(async (post) => {
-          const commentCount = await storage.getCommentCount(post.id);
-          if (req.session.userId) {
-            const liked = await storage.isPostLiked(post.id, req.session.userId!);
-            const bookmarked = await storage.isPostBookmarked(post.id, req.session.userId!);
-            return { ...post, liked, bookmarked, commentCount };
-          }
-          return { ...post, commentCount };
-        })
-      );
+      // Enrich posts with comment counts and user-specific state (3 batch queries total)
+      const postIds = postsData.map((p) => p.id);
+      const [commentCountMap, likedSet, bookmarkedSet] = await Promise.all([
+        storage.getCommentCounts(postIds),
+        req.session.userId ? storage.getLikedPostIds(postIds, req.session.userId) : Promise.resolve(new Set<string>()),
+        req.session.userId ? storage.getBookmarkedPostIds(postIds, req.session.userId) : Promise.resolve(new Set<string>()),
+      ]);
+      const enrichedPosts = postsData.map((post) => ({
+        ...post,
+        commentCount: commentCountMap.get(post.id) ?? 0,
+        liked: likedSet.has(post.id),
+        bookmarked: bookmarkedSet.has(post.id),
+      }));
       res.json(enrichedPosts);
     } catch (error) {
       console.error("Get posts error:", error);
