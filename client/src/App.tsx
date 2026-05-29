@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { Toaster } from "@/components/ui/toaster";
@@ -160,6 +160,74 @@ function AdminSubdomainRedirect() {
   );
 }
 
+// Minimal login form rendered on admin.bareter.com when not authenticated.
+function AdminLoginForm() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || "Invalid credentials");
+        return;
+      }
+      const userData = await res.json();
+      queryClient.setQueryData(["/api/auth/me"], userData);
+    } catch {
+      setError("Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="w-full max-w-sm p-8 bg-white rounded-xl shadow-sm border border-gray-200">
+        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-6 text-center">Admin Access</p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <input
+            type="email"
+            placeholder="Email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 bg-gray-900 text-white text-sm font-semibold rounded-md hover:bg-gray-800 disabled:opacity-50"
+          >
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Minimal app rendered when hostname === admin.bareter.com.
 // No header, footer, nav, cookie banner, or support chat — just the admin panel.
 function AdminApp() {
@@ -178,7 +246,13 @@ function AdminApp() {
     );
   }
 
-  if (!user || !isAdmin) {
+  // Not logged in → show admin login form (not a generic 404, so admin can authenticate here)
+  if (!user) {
+    return <AdminLoginForm />;
+  }
+
+  // Logged in but not admin → show 404 with no hints
+  if (!isAdmin) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
