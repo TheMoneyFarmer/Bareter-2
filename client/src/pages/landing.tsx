@@ -773,8 +773,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ============================ TRUST BAR ============================ */}
-      <TrustBar />
+      {/* TrustBar removed — will revisit when stats are real */}
 
       {/* ============================ SUCCESS STORIES ============================ */}
       <section className="bg-bareter-off-white dark:bg-background border-y border-bareter-border dark:border-border" data-testid="section-stories">
