@@ -38,6 +38,8 @@ import {
   Handshake,
   ArrowLeftRight,
   TrendingUp,
+  LayoutList,
+  MessageSquare,
 } from "lucide-react";
 
 const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
@@ -662,33 +664,112 @@ export function LandingPage() {
       </section>
 
       {/* ============================ HOW IT WORKS ============================ */}
-      <section className="bg-bareter-navy text-white" data-testid="section-how">
-        <div className="container mx-auto max-w-7xl px-4 py-16">
-          <h2 className="text-section text-white text-center mb-2">{t("landing.howItWorksSimple")}</h2>
-          <p className="text-caption text-white/60 text-center mb-12">
-            {t("landing.threeSteps")}
-          </p>
+      <section className="bg-bareter-navy overflow-hidden" data-testid="section-how">
+        <div className="container mx-auto max-w-6xl px-4 py-20">
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6 relative">
-            {howItWorksSteps.map((s, i, arr) => (
-              <div key={s.n} className="relative flex flex-col items-center text-center">
-                <div
-                  className="h-14 w-14 rounded-full bg-bareter-teal text-white text-xl font-bold flex items-center justify-center mb-4 shadow-bareter-hover"
-                  aria-hidden="true"
-                >
-                  {s.n}
+          {/* Header */}
+          <div className="text-center mb-16">
+            <p className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">
+              How it works
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              From listing to closed deal.
+            </h2>
+            <p className="text-white/55 max-w-lg mx-auto text-base leading-relaxed">
+              No cash changes hands. Just value for value — matched by AI and sealed with a contract.
+            </p>
+          </div>
+
+          {/* Steps grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 relative">
+
+            {/* Desktop connecting line */}
+            <div
+              className="absolute top-9 left-[13%] right-[13%] h-px hidden lg:block"
+              style={{ background: "linear-gradient(to right, transparent, rgba(34,160,160,0.35) 20%, rgba(34,160,160,0.35) 80%, transparent)" }}
+              aria-hidden="true"
+            />
+
+            {([
+              {
+                Icon: LayoutList,
+                title: "List what you have",
+                desc: "Upload photos, set a value, and describe what you're looking for in return. Done in 2 minutes.",
+                tag: "2 min to list",
+              },
+              {
+                Icon: Sparkles,
+                title: "AI finds your match",
+                desc: "Our engine scans the marketplace and surfaces the most compatible barter partners automatically.",
+                tag: "Instant matching",
+              },
+              {
+                Icon: MessageSquare,
+                title: "Negotiate in-app",
+                desc: "Chat directly, make counter-offers, and agree on terms — all inside Bareter, no back-and-forth emails.",
+                tag: "No lawyers needed",
+              },
+              {
+                Icon: FileSignature,
+                title: "Sign & exchange",
+                desc: "A barter contract is auto-generated for both parties. Sign it on-platform and complete the exchange.",
+                tag: "Legally binding",
+              },
+            ] as const).map((step, i) => (
+              <div
+                key={step.title}
+                className="relative flex flex-col items-center text-center group"
+              >
+                {/* Icon card */}
+                <div className="relative mb-5 z-10">
+                  <div className="h-[72px] w-[72px] rounded-2xl bg-white/5 border border-white/10 group-hover:border-bareter-teal/50 group-hover:bg-bareter-teal/10 transition-all duration-300 flex items-center justify-center shadow-lg">
+                    <step.Icon className="h-7 w-7 text-bareter-teal" aria-hidden="true" />
+                  </div>
+                  {/* Step number badge */}
+                  <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-bareter-teal text-white text-[11px] font-bold flex items-center justify-center shadow-md">
+                    {i + 1}
+                  </span>
                 </div>
-                <div className="text-2xl mb-2">{s.emoji}</div>
-                <h3 className="text-card-title text-white mb-2">{s.title}</h3>
-                <p className="text-caption text-white/60 max-w-xs">{s.desc}</p>
-                {i < arr.length - 1 && (
-                  <div className="hidden md:block absolute top-7 -end-3 w-6 text-white/30">
-                    <ArrowRight className="h-5 w-5" />
+
+                <h3 className="text-base font-bold text-white mb-2 leading-snug">{step.title}</h3>
+                <p className="text-sm text-white/55 leading-relaxed mb-4 max-w-[220px]">{step.desc}</p>
+
+                {/* Benefit pill */}
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-bareter-teal/15 text-bareter-teal border border-bareter-teal/25">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  {step.tag}
+                </span>
+
+                {/* Mobile connector arrow */}
+                {i < 3 && (
+                  <div className="lg:hidden mt-5 mb-1 text-white/25" aria-hidden="true">
+                    <ArrowRight className="h-4 w-4 mx-auto rotate-90 sm:rotate-0" />
                   </div>
                 )}
               </div>
             ))}
           </div>
+
+          {/* CTA */}
+          <div className="mt-14 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button
+              size="lg"
+              className="h-12 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-semibold gap-2 shadow-lg"
+              onClick={() => waitlistGate() && navigate("/create-listing")}
+            >
+              Start Bartering
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              size="lg"
+              variant="ghost"
+              className="h-12 px-6 text-white/70 hover:text-white hover:bg-white/10"
+              onClick={() => navigate("/browse")}
+            >
+              Browse listings
+            </Button>
+          </div>
+
         </div>
       </section>
 
