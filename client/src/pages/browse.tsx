@@ -182,8 +182,12 @@ export function BrowsePage() {
   const initialLocationParam = initialParams.get("location") || "";
 
   const showCategoriesParam = initialParams.get("showCategories") === "true";
+  const initialTab = initialParams.get("tab") as ExploreTab | null;
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    showCategoriesParam ? "discover" : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
+    initialTab && ["discover","search","for-you","collabs"].includes(initialTab)
+      ? initialTab
+      : showCategoriesParam ? "discover"
+      : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
   );
   const [search, setSearch] = useState(initialQ || routeSubcategory || "");
   const [selectedType, setSelectedType] = useState<string>("all");
@@ -319,8 +323,7 @@ export function BrowsePage() {
       if (!res.ok) return [];
       return res.json();
     },
-    staleTime: 30_000,
-    enabled: activeTab === "collabs",
+    staleTime: 60_000,
   });
 
   const { data: recommendedUsers } = useQuery<any[]>({
