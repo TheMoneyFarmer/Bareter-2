@@ -722,7 +722,7 @@ export function LandingPage() {
               >
                 {/* Icon card */}
                 <div className="relative mb-5 z-10">
-                  <div className="h-[72px] w-[72px] rounded-2xl bg-white/5 border border-white/15 group-hover:border-white/30 group-hover:bg-white/10 transition-all duration-300 flex items-center justify-center shadow-lg">
+                  <div className="h-[72px] w-[72px] rounded-2xl bg-bareter-teal group-hover:bg-bareter-teal/80 transition-all duration-300 flex items-center justify-center shadow-lg">
                     <step.Icon className="h-7 w-7 text-white" aria-hidden="true" />
                   </div>
                   {/* Step number badge */}
@@ -754,7 +754,7 @@ export function LandingPage() {
           <div className="mt-14 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
               size="lg"
-              className="h-12 px-8 bg-white text-bareter-navy hover:bg-white/90 font-semibold gap-2 shadow-lg"
+              className="h-12 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-semibold gap-2 shadow-lg"
               onClick={() => waitlistGate() && navigate("/create-listing")}
             >
               Start Bartering
