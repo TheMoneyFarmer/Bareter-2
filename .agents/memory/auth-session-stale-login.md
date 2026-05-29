@@ -31,3 +31,14 @@ site directly in Safari/Chrome.
 **How to apply:** any time you add a protected request path or a raw `fetch` that can
 401, route its failure through `handleAuthExpiry`; never assume a cached auth user is
 still valid for a write action.
+
+**Do NOT "fix" this by widening the session cookie domain.** The session cookie is
+intentionally host-only (no `cookie.domain`). The admin panel lives on a separate
+subdomain (`admin.bareter.com`) and relies on the apex cookie NOT being sent there for
+isolation; admins sign in directly on the admin host. Setting `cookie.domain=".bareter.com"`
+would leak the apex session to the admin subdomain and break that isolation. The server
+config (trust proxy 1, secure in prod, sameSite lax, httpOnly, PgSession) is correct and
+works for the general user base — confirmed when this symptom was investigated. When a
+specific user hits "login 200 then every request 401 for minutes", treat it as their
+browser blocking/not returning the first-party cookie (strict privacy / "block all
+cookies" / in-app webview), not a server bug.
