@@ -2498,14 +2498,15 @@ export function AdminPage() {
                   <div className="flex items-center gap-2">
                     <Input
                       readOnly
-                      value={betaInviteData.inviteUrl ?? ""}
+                      value={betaInviteData.inviteUrl || `${window.location.origin}/register?invite=${betaInviteData.code}`}
                       className="font-mono text-sm"
                     />
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        if (betaInviteData.inviteUrl) navigator.clipboard.writeText(betaInviteData.inviteUrl);
+                        const link = betaInviteData.inviteUrl || `${window.location.origin}/register?invite=${betaInviteData.code}`;
+                        navigator.clipboard.writeText(link);
                         toast({ title: "Copied!", description: "Invite link copied to clipboard." });
                       }}
                     >
