@@ -350,8 +350,86 @@ export function LandingPage() {
       {/* ============================ DEAL TICKER ============================ */}
       <DealTicker />
 
-      {/* ============================ TRUST BAR ============================ */}
-      <TrustBar />
+      {/* ============================ THREE WAYS ============================ */}
+      <section className="bg-white dark:bg-background" data-testid="section-three-ways">
+        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
+          <div className="text-center mb-10">
+            <h2 className="text-section text-bareter-navy dark:text-foreground">One platform. Three ways to swap value.</h2>
+            <p className="text-caption mt-2 max-w-xl mx-auto">Whether you're swapping a phone for software, running a brand, or creating content — Bareter has a place for you.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Card 1 — Personal Barter (teal accent, most prominent) */}
+            <div className="rounded-2xl border-2 border-bareter-teal/40 bg-gradient-to-br from-bareter-teal/8 to-transparent p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-bareter-teal/15 flex items-center justify-center mb-4 flex-shrink-0">
+                <ArrowLeftRight className="h-6 w-6 text-bareter-teal" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Barter Anything</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                Swap your goods, services or skills for exactly what you need. No cash, no fees, no middleman.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-6">
+                {["📱 Phone","🚲 Bike","🏢 Office Space","💻 Software","👔 Suit","👟 Shoes","📷 Camera","🚗 Car","🎨 Design","🍽️ Catering"].map(item => (
+                  <span key={item} className="text-xs px-2.5 py-1 rounded-full bg-bareter-teal/10 text-bareter-teal font-medium">{item}</span>
+                ))}
+              </div>
+              <Link href="/browse" className="mt-auto">
+                <Button variant="bareter" className="w-full gap-2">
+                  Browse Listings <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
+            {/* Card 2 — Brand Collabs */}
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 flex-shrink-0">
+                <Camera className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Brand Collabs</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                You're a brand. Offer your product or service. Get creator-made content back. No cash changes hands.
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
+                {["Post your collab listing free","Creators apply with stats + pitch","You choose, deal auto-managed"].map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/create-listing">
+                <Button variant="outline" className="w-full gap-2 border-primary text-primary hover:bg-primary/5">
+                  Post a Brand Collab <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
+            {/* Card 3 — Creator Deals */}
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mb-4 flex-shrink-0">
+                <Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Creator Deals</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                You have followers. Brands have products. Get real value in exchange for authentic content on your platform.
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
+                {["Any niche, any follower count","Instagram, TikTok, YouTube + more","Real products, not just exposure"].map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register">
+                <Button variant="outline" className="w-full gap-2 border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10">
+                  Join as Creator <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ============================ TRENDING (mixed posts + listings) ============================ */}
       <section
@@ -501,96 +579,18 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ============================ TRUST BAR ============================ */}
+      <TrustBar />
+
       {/* ============================ SUCCESS STORIES ============================ */}
-      <section className="bg-bareter-off-white dark:bg-background" data-testid="section-stories">
-        <div className="container mx-auto max-w-7xl px-4 py-8 sm:py-10">
-          <h2 className="text-section text-bareter-navy dark:text-foreground mb-4">
+      <section className="bg-bareter-off-white dark:bg-background border-y border-bareter-border dark:border-border" data-testid="section-stories">
+        <div className="container mx-auto max-w-7xl px-4 pt-5 pb-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-bareter-muted mb-3">
             {t("landing.realBarters")}
-          </h2>
+          </p>
         </div>
         <SuccessStoriesMarquee />
-        <div className="h-6 sm:h-8" aria-hidden="true" />
-      </section>
-
-      {/* ============================ THREE WAYS ============================ */}
-      <section className="bg-white dark:bg-background" data-testid="section-three-ways">
-        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
-          <div className="text-center mb-10">
-            <h2 className="text-section text-bareter-navy dark:text-foreground">One platform. Three ways to swap value.</h2>
-            <p className="text-caption mt-2 max-w-xl mx-auto">Whether you're swapping a phone for software, running a brand, or creating content — Bareter has a place for you.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Card 1 — Personal Barter (teal accent, most prominent) */}
-            <div className="rounded-2xl border-2 border-bareter-teal/40 bg-gradient-to-br from-bareter-teal/8 to-transparent p-6 flex flex-col">
-              <div className="h-12 w-12 rounded-xl bg-bareter-teal/15 flex items-center justify-center mb-4 flex-shrink-0">
-                <ArrowLeftRight className="h-6 w-6 text-bareter-teal" />
-              </div>
-              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Barter Anything</h3>
-              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                Swap your goods, services or skills for exactly what you need. No cash, no fees, no middleman.
-              </p>
-              <div className="flex flex-wrap gap-1.5 mb-6">
-                {["📱 Phone","🚲 Bike","🏢 Office Space","💻 Software","👔 Suit","👟 Shoes","📷 Camera","🚗 Car","🎨 Design","🍽️ Catering"].map(item => (
-                  <span key={item} className="text-xs px-2.5 py-1 rounded-full bg-bareter-teal/10 text-bareter-teal font-medium">{item}</span>
-                ))}
-              </div>
-              <Link href="/browse" className="mt-auto">
-                <Button variant="bareter" className="w-full gap-2">
-                  Browse Listings <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-
-            {/* Card 2 — Brand Collabs */}
-            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
-              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 flex-shrink-0">
-                <Camera className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Brand Collabs</h3>
-              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                You're a brand. Offer your product or service. Get creator-made content back. No cash changes hands.
-              </p>
-              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
-                {["Post your collab listing free","Creators apply with stats + pitch","You choose, deal auto-managed"].map(item => (
-                  <li key={item} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/create-listing">
-                <Button variant="outline" className="w-full gap-2 border-primary text-primary hover:bg-primary/5">
-                  Post a Brand Collab <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-
-            {/* Card 3 — Creator Deals */}
-            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
-              <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mb-4 flex-shrink-0">
-                <Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-              </div>
-              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Creator Deals</h3>
-              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                You have followers. Brands have products. Get real value in exchange for authentic content on your platform.
-              </p>
-              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
-                {["Any niche, any follower count","Instagram, TikTok, YouTube + more","Real products, not just exposure"].map(item => (
-                  <li key={item} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/register">
-                <Button variant="outline" className="w-full gap-2 border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10">
-                  Join as Creator <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
+        <div className="h-4" aria-hidden="true" />
       </section>
 
       {/* ============================ FOR BRANDS ============================ */}
