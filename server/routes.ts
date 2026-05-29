@@ -1429,7 +1429,7 @@ export async function registerRoutes(
         .leftJoin(users, eq(listings.userId, users.id))
         .where(
           and(
-            eq((listings as any).isCollab, true),
+            eq(listings.isCollab, true),
             eq(listings.isActive, true),
           )
         )

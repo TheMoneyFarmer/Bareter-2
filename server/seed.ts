@@ -1249,13 +1249,14 @@ export async function seedCreators() {
 }
 
 // ── Brand Collab listing seed data ────────────────────────────────────────────
-// Idempotent: skips if any isCollab listing already exists.
-// Runs in all environments so "Browse Brand Collabs" is never empty.
+// Runs in all environments. On each startup:
+//   - listings with matching title but isCollab=false/null → UPDATE to set isCollab=true
+//   - listings that don't exist at all → INSERT
 export async function seedCollabListings() {
   try {
-    // Check by title so we can insert any missing collab listings individually
-    const existingRows = await db.select({ title: listings.title }).from(listings);
-    const existingTitles = new Set(existingRows.map(r => r.title));
+    // Fetch existing listings with these titles + their isCollab status
+    const existingRows = await db.select({ title: listings.title, isCollab: listings.isCollab, id: listings.id }).from(listings);
+    const byTitle = new Map(existingRows.map(r => [r.title, r]));
 
     const allUsers = await db.select().from(users);
     if (allUsers.length === 0) return;
@@ -1435,27 +1436,43 @@ export async function seedCollabListings() {
       },
     ];
 
-    const toInsert = COLLAB_LISTINGS.filter(c => !existingTitles.has(c.title));
-    if (toInsert.length === 0) {
-      console.log("[seed] Brand collab listings already present.");
-      return;
-    }
-
     let inserted = 0;
-    for (const collab of toInsert) {
-      try {
-        await db.insert(listings).values({
-          ...collab,
-          moderationStatus: "APPROVED",
-          isCollab: true,
-        } as any);
-        inserted++;
-        console.log(`[seed]   + Inserted collab listing: ${collab.title}`);
-      } catch (insertErr) {
-        console.error(`[seed]   ! Failed to insert collab listing "${collab.title}":`, insertErr);
+    let updated = 0;
+
+    for (const collab of COLLAB_LISTINGS) {
+      const existing = byTitle.get(collab.title);
+      if (existing) {
+        // Listing exists — make sure isCollab is set to true
+        if (!existing.isCollab) {
+          try {
+            await db.update(listings).set({ isCollab: true, moderationStatus: "APPROVED" } as any).where(eq(listings.id, existing.id));
+            updated++;
+            console.log(`[seed]   ~ Updated isCollab=true for: ${collab.title}`);
+          } catch (updateErr) {
+            console.error(`[seed]   ! Failed to update "${collab.title}":`, updateErr);
+          }
+        }
+      } else {
+        // Listing doesn't exist — insert it
+        try {
+          await db.insert(listings).values({
+            ...collab,
+            moderationStatus: "APPROVED",
+            isCollab: true,
+          } as any);
+          inserted++;
+          console.log(`[seed]   + Inserted collab listing: ${collab.title}`);
+        } catch (insertErr) {
+          console.error(`[seed]   ! Failed to insert "${collab.title}":`, insertErr);
+        }
       }
     }
-    console.log(`[seed] ✓ ${inserted}/${toInsert.length} brand collab listings inserted.`);
+
+    if (inserted === 0 && updated === 0) {
+      console.log("[seed] Brand collab listings already correct.");
+    } else {
+      console.log(`[seed] ✓ Collabs: ${inserted} inserted, ${updated} updated.`);
+    }
   } catch (err) {
     console.error("[seed] seedCollabListings error:", err);
   }
