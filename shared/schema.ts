@@ -695,6 +695,7 @@ export const notifications = pgTable("notifications", {
   message: text("message").notNull(),
   relatedDealId: varchar("related_deal_id", { length: 36 }).references(() => deals.id),
   relatedListingId: varchar("related_listing_id", { length: 36 }).references(() => listings.id),
+  relatedPostId: varchar("related_post_id", { length: 36 }).references(() => posts.id),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

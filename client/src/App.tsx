@@ -59,6 +59,7 @@ const InboxPage = lazy(() => import("@/pages/inbox").then((m) => ({ default: m.I
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
 const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default: m.MapViewPage })));
+const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ default: m.PostDetailPage })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
 
@@ -246,6 +247,7 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/map" component={MapViewPage} />
+      <Route path="/posts/:id" component={PostDetailPage} />
       <Route component={NotFound} />
     </Switch>
   );

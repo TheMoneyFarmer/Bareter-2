@@ -45,6 +45,7 @@ function notifIcon(type: string) {
 function notifLink(n: Notification): string {
   if (n.relatedDealId) return `/deals/${n.relatedDealId}`;
   if (n.relatedListingId) return `/listings/${n.relatedListingId}`;
+  if ((n as any).relatedPostId) return `/posts/${(n as any).relatedPostId}`;
   return "#";
 }
 
@@ -263,7 +264,7 @@ export function NotificationsPage() {
                   <p className={`text-sm leading-snug ${!n.isRead ? "font-semibold" : "font-medium"}`}>
                     {n.title}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{n.message}</p>
                   <p className="text-[11px] text-muted-foreground mt-1">
                     {formatDistanceToNow(new Date(n.createdAt!), { addSuffix: true })}
                   </p>

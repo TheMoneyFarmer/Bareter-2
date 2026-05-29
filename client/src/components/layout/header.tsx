@@ -608,14 +608,26 @@ export function Header() {
                 </Sheet>
               </>
             ) : waitlistMode.enabled ? (
-              <Button
-                size="sm"
-                className="h-10 bg-white text-bareter-teal hover:bg-white/95 font-semibold shadow-sm"
-                onClick={openWaitlist}
-                data-testid="button-join-waitlist"
-              >
-                {t("nav.joinWaitlist")}
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Link href="/login" className="hidden sm:inline-flex">
+                  <Button
+                    variant="bareter-ghost"
+                    size="sm"
+                    className="h-10 text-white/80 hover:text-white hover:bg-white/10"
+                    data-testid="button-login"
+                  >
+                    {t("nav.login")}
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  className="h-10 bg-white text-bareter-teal hover:bg-white/95 font-semibold shadow-sm"
+                  onClick={openWaitlist}
+                  data-testid="button-join-waitlist"
+                >
+                  {t("nav.joinWaitlist")}
+                </Button>
+              </div>
             ) : (
               <div className="flex items-center gap-1.5">
                 <Link href="/login" className="hidden sm:inline-flex">

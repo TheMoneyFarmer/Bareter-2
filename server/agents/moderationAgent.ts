@@ -148,6 +148,7 @@ export async function moderateAndLog(
             message: result.action === "rejected"
               ? `Your listing has been rejected: ${result.reason}`
               : `Your listing has been flagged for review: ${result.reason}`,
+            relatedListingId: targetId,
           });
         }
         // Notify Slack for flagged/rejected listings (non-blocking).
@@ -181,6 +182,7 @@ export async function moderateAndLog(
             message: result.action === "rejected"
               ? `Your post has been rejected: ${result.reason}`
               : `Your post has been flagged for review: ${result.reason}`,
+            relatedPostId: targetId,
           });
         }
         // Notify Slack for flagged/rejected posts (non-blocking).
