@@ -1494,55 +1494,117 @@ export function ListingDetailPage() {
           {!isOwnListing && (
             <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
               <CardContent className="p-5 space-y-3">
-                <div className="text-3xl md:text-4xl font-bold text-bareter-teal">
-                  AED {parseFloat(listing.retailValue as string).toLocaleString()}
-                </div>
-                {listing.location && (
-                  <div className="inline-flex items-center gap-1 text-sm text-bareter-muted">
-                    <MapPin className="h-4 w-4 text-bareter-teal" />
-                    {listing.location}
-                  </div>
-                )}
-                {user ? (
-                  <Button
-                    variant="bareter"
-                    className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
-                    onClick={() => setProposeOpen(true)}
-                    data-testid="button-propose-trade-sticky"
-                  >
-                    <Handshake className="h-5 w-5" />
-                    {t("listingDetail.proposeBarter")}
-                  </Button>
+                {(listing as any).isCollab ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Camera className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-semibold text-primary">Brand Collab</span>
+                    </div>
+                    {(listing as any).collabDetails?.productValue > 0 && (
+                      <div className="text-3xl font-bold text-bareter-teal">
+                        AED {Number((listing as any).collabDetails.productValue).toLocaleString()}
+                        <span className="text-sm font-normal text-muted-foreground ml-2">product value</span>
+                      </div>
+                    )}
+                    {listing.location && (
+                      <div className="inline-flex items-center gap-1 text-sm text-bareter-muted">
+                        <MapPin className="h-4 w-4 text-bareter-teal" />
+                        {listing.location}
+                      </div>
+                    )}
+                    {user ? (
+                      user.signupType === "creator" ? (
+                        myCollabApp ? (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                              Application {myCollabApp.status === "accepted" ? "accepted!" : myCollabApp.status === "rejected" ? "declined" : "submitted"}
+                            </span>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="bareter"
+                            className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
+                            onClick={() => setCollabApplyOpen(true)}
+                            data-testid="button-apply-collab"
+                          >
+                            <Camera className="h-5 w-5" />
+                            Apply to Collab
+                          </Button>
+                        )
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground text-center">This is a creator collab listing.</p>
+                          <Link href={`/inbox?userId=${listing.userId}`}>
+                            <Button variant="bareter-outline" className="w-full h-11 gap-2">
+                              <MessageSquare className="h-4 w-4" />
+                              Message Brand
+                            </Button>
+                          </Link>
+                        </div>
+                      )
+                    ) : (
+                      <Link href="/login">
+                        <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
+                          <Camera className="h-5 w-5" />
+                          Sign In to Apply
+                        </Button>
+                      </Link>
+                    )}
+                  </>
                 ) : (
-                  <Link href="/login">
-                    <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
-                      <Handshake className="h-5 w-5" />
-                      {t("listingDetail.signInToBarter")}
+                  <>
+                    <div className="text-3xl md:text-4xl font-bold text-bareter-teal">
+                      AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                    </div>
+                    {listing.location && (
+                      <div className="inline-flex items-center gap-1 text-sm text-bareter-muted">
+                        <MapPin className="h-4 w-4 text-bareter-teal" />
+                        {listing.location}
+                      </div>
+                    )}
+                    {user ? (
+                      <Button
+                        variant="bareter"
+                        className="bareter-cta-pulse w-full h-[52px] gap-2 text-base"
+                        onClick={() => setProposeOpen(true)}
+                        data-testid="button-propose-trade-sticky"
+                      >
+                        <Handshake className="h-5 w-5" />
+                        {t("listingDetail.proposeBarter")}
+                      </Button>
+                    ) : (
+                      <Link href="/login">
+                        <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
+                          <Handshake className="h-5 w-5" />
+                          {t("listingDetail.signInToBarter")}
+                        </Button>
+                      </Link>
+                    )}
+                    <Link href={`/inbox?userId=${listing.userId}`}>
+                      <Button variant="bareter-outline" className="w-full h-11 gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        {t("listingDetail.messageSellerBtn")}
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="outline"
+                      className="w-full h-11 gap-2"
+                      onClick={() => quickInquiryMutation.mutate()}
+                      disabled={inquirySent || quickInquiryMutation.isPending}
+                      data-testid="button-quick-inquiry"
+                    >
+                      {quickInquiryMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : inquirySent ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Zap className="h-4 w-4" />
+                      )}
+                      {inquirySent ? t("listingDetail.inquirySent") : t("listingDetail.isStillAvailable")}
                     </Button>
-                  </Link>
+                  </>
                 )}
-                <Link href={`/inbox?userId=${listing.userId}`}>
-                  <Button variant="bareter-outline" className="w-full h-11 gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    {t("listingDetail.messageSellerBtn")}
-                  </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  className="w-full h-11 gap-2"
-                  onClick={() => quickInquiryMutation.mutate()}
-                  disabled={inquirySent || quickInquiryMutation.isPending}
-                  data-testid="button-quick-inquiry"
-                >
-                  {quickInquiryMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : inquirySent ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Zap className="h-4 w-4" />
-                  )}
-                  {inquirySent ? t("listingDetail.inquirySent") : t("listingDetail.isStillAvailable")}
-                </Button>
               </CardContent>
             </Card>
           )}
@@ -1770,6 +1832,88 @@ export function ListingDetailPage() {
         targetId={listing?.id ?? ""}
       />
 
+      {/* Collab Apply Dialog */}
+      <Dialog open={collabApplyOpen} onOpenChange={setCollabApplyOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-primary" />
+              Apply to Brand Collab
+            </DialogTitle>
+            <DialogDescription>
+              Tell {listing.user?.fullName || "the brand"} why you're the right creator for this opportunity.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="p-3 rounded-lg bg-muted/40 border">
+              <p className="text-xs text-muted-foreground mb-0.5">Collab opportunity</p>
+              <p className="font-medium text-sm">{listing.title}</p>
+              {(listing as any).collabDetails?.productValue > 0 && (
+                <p className="text-xs text-primary font-semibold mt-0.5">
+                  AED {Number((listing as any).collabDetails.productValue).toLocaleString()} product value
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="collab-pitch">Your pitch <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="collab-pitch"
+                placeholder="Introduce yourself and explain why you're a great fit — your niche, audience, and how you'll create content for this brand..."
+                value={collabPitch}
+                onChange={(e) => setCollabPitch(e.target.value)}
+                rows={4}
+                className="resize-none text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="collab-handle">Social handle</Label>
+                <Input
+                  id="collab-handle"
+                  placeholder="@yourusername"
+                  value={collabHandle}
+                  onChange={(e) => setCollabHandle(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="collab-followers">Follower count</Label>
+                <Input
+                  id="collab-followers"
+                  type="number"
+                  placeholder="e.g. 50000"
+                  value={collabFollowers}
+                  onChange={(e) => setCollabFollowers(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="collab-portfolio">Portfolio link <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                id="collab-portfolio"
+                placeholder="https://yourportfolio.com or link to past work"
+                value={collabPortfolioLink}
+                onChange={(e) => setCollabPortfolioLink(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCollabApplyOpen(false)}>Cancel</Button>
+            <Button
+              variant="bareter"
+              disabled={!collabPitch.trim() || applyCollabMutation.isPending}
+              onClick={() => applyCollabMutation.mutate({ pitch: collabPitch, socialHandle: collabHandle, followerCount: collabFollowers, portfolioLink: collabPortfolioLink })}
+              className="gap-2"
+            >
+              {applyCollabMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Submit Application
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Review modal */}
       {reviewProposal && (
         <ReviewModal
@@ -1782,26 +1926,58 @@ export function ListingDetailPage() {
       )}
       </div>
 
-      {/* Mobile sticky bottom CTA — Propose a Barter */}
+      {/* Mobile sticky bottom CTA */}
       {!isOwnListing && (
         <div className="lg:hidden fixed bottom-[60px] inset-x-0 z-40 bg-white dark:bg-card border-t border-bareter-border dark:border-border p-3 shadow-[0_-4px_12px_rgba(15,25,35,0.08)]">
-          {user ? (
-            <Button
-              variant="bareter"
-              className="w-full h-14 text-base gap-2"
-              onClick={() => setProposeOpen(true)}
-              data-testid="button-propose-trade-mobile"
-            >
-              <Handshake className="h-5 w-5" />
-              {t("listingDetail.proposeBarter")} · AED {parseFloat(listing.retailValue as string).toLocaleString()}
-            </Button>
+          {(listing as any).isCollab ? (
+            user ? (
+              user.signupType === "creator" ? (
+                myCollabApp ? (
+                  <div className="flex items-center justify-center gap-2 h-14 text-green-600 font-semibold">
+                    <CheckCircle className="h-5 w-5" />
+                    Application {myCollabApp.status === "accepted" ? "Accepted!" : myCollabApp.status === "rejected" ? "Declined" : "Submitted"}
+                  </div>
+                ) : (
+                  <Button variant="bareter" className="w-full h-14 text-base gap-2" onClick={() => setCollabApplyOpen(true)} data-testid="button-apply-collab-mobile">
+                    <Camera className="h-5 w-5" />
+                    Apply to Collab
+                  </Button>
+                )
+              ) : (
+                <Link href={`/inbox?userId=${listing.userId}`}>
+                  <Button variant="bareter-outline" className="w-full h-14 text-base gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    Message Brand
+                  </Button>
+                </Link>
+              )
+            ) : (
+              <Link href="/login">
+                <Button variant="bareter" className="w-full h-14 text-base gap-2">
+                  <Camera className="h-5 w-5" />
+                  Sign In to Apply
+                </Button>
+              </Link>
+            )
           ) : (
-            <Link href="/login">
-              <Button variant="bareter" className="w-full h-14 text-base gap-2">
+            user ? (
+              <Button
+                variant="bareter"
+                className="w-full h-14 text-base gap-2"
+                onClick={() => setProposeOpen(true)}
+                data-testid="button-propose-trade-mobile"
+              >
                 <Handshake className="h-5 w-5" />
-                {t("listingDetail.signInToBarter")}
+                {t("listingDetail.proposeBarter")} · AED {parseFloat(listing.retailValue as string).toLocaleString()}
               </Button>
-            </Link>
+            ) : (
+              <Link href="/login">
+                <Button variant="bareter" className="w-full h-14 text-base gap-2">
+                  <Handshake className="h-5 w-5" />
+                  {t("listingDetail.signInToBarter")}
+                </Button>
+              </Link>
+            )
           )}
         </div>
       )}

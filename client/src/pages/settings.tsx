@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +41,10 @@ import {
   Instagram,
   Linkedin,
   Twitter,
+  Camera,
+  TrendingUp,
+  Youtube,
+  Users,
 } from "lucide-react";
 import { z } from "zod";
 import { useMemo } from "react";
@@ -131,6 +137,40 @@ export function SettingsPage() {
   const [socialLinks, setSocialLinks] = useState<{ instagram?: string; linkedin?: string; twitter?: string }>(() => {
     const sl = user?.socialLinks as { instagram?: string; linkedin?: string; twitter?: string } | null;
     return sl || {};
+  });
+
+  // Creator profile state
+  const existingCp = (user as any)?.creatorProfile as Record<string, any> | null;
+  const [cpPlatform, setCpPlatform] = useState<string>(existingCp?.primaryPlatform ?? "instagram");
+  const [cpFollowers, setCpFollowers] = useState<string>(existingCp?.followerCount ? String(existingCp.followerCount) : "");
+  const [cpEngagement, setCpEngagement] = useState<string>(existingCp?.avgEngagementRate ? String(existingCp.avgEngagementRate) : "");
+  const [cpNiches, setCpNiches] = useState<string[]>(existingCp?.contentNiches ?? []);
+  const [cpOpenToCollabs, setCpOpenToCollabs] = useState<boolean>(existingCp?.openToCollabs ?? true);
+  const [cpInstagram, setCpInstagram] = useState<string>(existingCp?.instagramHandle ?? "");
+  const [cpTiktok, setCpTiktok] = useState<string>(existingCp?.tiktokHandle ?? "");
+  const [cpYoutube, setCpYoutube] = useState<string>(existingCp?.youtubeHandle ?? "");
+
+  const CREATOR_NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Business", "Finance", "Entertainment", "Gaming", "Education"];
+
+  const saveCreatorProfileMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/creator-profile", {
+        primaryPlatform: cpPlatform,
+        followerCount: cpFollowers ? parseInt(cpFollowers) : undefined,
+        avgEngagementRate: cpEngagement ? parseFloat(cpEngagement) : undefined,
+        contentNiches: cpNiches,
+        openToCollabs: cpOpenToCollabs,
+        instagramHandle: cpInstagram || undefined,
+        tiktokHandle: cpTiktok || undefined,
+        youtubeHandle: cpYoutube || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "Creator profile saved!", description: "Your profile is now visible to brands looking for creators." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to save creator profile", variant: "destructive" }),
   });
 
   const RADIUS_OPTIONS = [
@@ -426,7 +466,7 @@ export function SettingsPage() {
       </div>
 
       <Tabs defaultValue="account" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className={`grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
           <TabsTrigger value="account" data-testid="tab-account">
             <User className="h-4 w-4 mr-2" />
             {t("settings.account")}
@@ -447,6 +487,12 @@ export function SettingsPage() {
             <Lock className="h-4 w-4 mr-2" />
             {t("settings.security")}
           </TabsTrigger>
+          {user.signupType === "creator" && (
+            <TabsTrigger value="creator" data-testid="tab-creator">
+              <Camera className="h-4 w-4 mr-2" />
+              Creator
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="account">
@@ -1436,6 +1482,182 @@ export function SettingsPage() {
             </Card>
           </div>
         </TabsContent>
+
+        {user.signupType === "creator" && (
+          <TabsContent value="creator">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="h-5 w-5 text-primary" />
+                    Creator Profile
+                  </CardTitle>
+                  <CardDescription>
+                    Set up your creator profile so brands can discover you and send collab opportunities.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Platform + stats */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Primary Platform</Label>
+                      <Select value={cpPlatform} onValueChange={setCpPlatform}>
+                        <SelectTrigger data-testid="select-cp-platform">
+                          <SelectValue placeholder="Select platform" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="instagram">Instagram</SelectItem>
+                          <SelectItem value="tiktok">TikTok</SelectItem>
+                          <SelectItem value="youtube">YouTube</SelectItem>
+                          <SelectItem value="twitter">X / Twitter</SelectItem>
+                          <SelectItem value="linkedin">LinkedIn</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cp-followers">Follower Count</Label>
+                      <Input
+                        id="cp-followers"
+                        type="number"
+                        placeholder="e.g. 50000"
+                        value={cpFollowers}
+                        onChange={(e) => setCpFollowers(e.target.value)}
+                        data-testid="input-cp-followers"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cp-engagement">Avg Engagement Rate (%)</Label>
+                      <Input
+                        id="cp-engagement"
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 3.5"
+                        value={cpEngagement}
+                        onChange={(e) => setCpEngagement(e.target.value)}
+                        data-testid="input-cp-engagement"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Social handles */}
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Social Handles
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cp-instagram" className="flex items-center gap-1.5">
+                          <Instagram className="h-3.5 w-3.5" />Instagram
+                        </Label>
+                        <Input id="cp-instagram" placeholder="@handle" value={cpInstagram} onChange={(e) => setCpInstagram(e.target.value)} data-testid="input-cp-instagram" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cp-tiktok" className="flex items-center gap-1.5">
+                          <Camera className="h-3.5 w-3.5" />TikTok
+                        </Label>
+                        <Input id="cp-tiktok" placeholder="@handle" value={cpTiktok} onChange={(e) => setCpTiktok(e.target.value)} data-testid="input-cp-tiktok" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cp-youtube" className="flex items-center gap-1.5">
+                          <Youtube className="h-3.5 w-3.5" />YouTube
+                        </Label>
+                        <Input id="cp-youtube" placeholder="@channel" value={cpYoutube} onChange={(e) => setCpYoutube(e.target.value)} data-testid="input-cp-youtube" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Content niches */}
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Content Niches
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {CREATOR_NICHES.map((niche) => (
+                        <Badge
+                          key={niche}
+                          variant={cpNiches.includes(niche) ? "default" : "outline"}
+                          className="cursor-pointer select-none"
+                          onClick={() => setCpNiches(prev => prev.includes(niche) ? prev.filter(n => n !== niche) : [...prev, niche])}
+                          data-testid={`niche-${niche.toLowerCase()}`}
+                        >
+                          {niche}
+                        </Badge>
+                      ))}
+                    </div>
+                    {cpNiches.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-2">Select your content niches so brands can find you.</p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Open to collabs toggle */}
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Open to Brand Collabs</p>
+                      <p className="text-sm text-muted-foreground">Brands can find and contact you for collab opportunities.</p>
+                    </div>
+                    <Switch
+                      checked={cpOpenToCollabs}
+                      onCheckedChange={setCpOpenToCollabs}
+                      data-testid="switch-open-to-collabs"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={() => saveCreatorProfileMutation.mutate()}
+                    disabled={saveCreatorProfileMutation.isPending}
+                    data-testid="button-save-creator-profile"
+                  >
+                    {saveCreatorProfileMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Save Creator Profile
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Creator stats preview */}
+              {cpFollowers && (
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-primary" />
+                      Your Creator Profile Preview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-xl font-bold text-primary">
+                          {parseInt(cpFollowers) >= 1000000 ? `${(parseInt(cpFollowers)/1000000).toFixed(1)}M` : parseInt(cpFollowers) >= 1000 ? `${(parseInt(cpFollowers)/1000).toFixed(0)}K` : cpFollowers}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Followers</p>
+                      </div>
+                      <div>
+                        <p className="text-xl font-bold text-primary">{cpEngagement || "—"}%</p>
+                        <p className="text-xs text-muted-foreground">Engagement</p>
+                      </div>
+                      <div>
+                        <p className="text-xl font-bold text-primary capitalize">{cpPlatform}</p>
+                        <p className="text-xs text-muted-foreground">Platform</p>
+                      </div>
+                    </div>
+                    {cpNiches.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-3 justify-center">
+                        {cpNiches.map(n => <Badge key={n} variant="secondary" className="text-[10px] px-1.5 py-0">{n}</Badge>)}
+                      </div>
+                    )}
+                    <p className="text-xs text-center text-muted-foreground mt-3">
+                      This is how brands will see you in <a href="/creators" className="text-primary hover:underline">Creator Discovery</a>.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
