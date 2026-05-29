@@ -24,6 +24,7 @@ import {
   Package, ShoppingCart, Loader2, X, Plus, ImagePlus,
   Tag, MapPin, DollarSign, FileText, ArrowLeftRight, Star,
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
+  Camera, Users, Sparkles,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -85,6 +86,18 @@ export function CreateListingPage() {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Brand Collab mode
+  const [isCollab, setIsCollab] = useState(false);
+  const [collabContentType, setCollabContentType] = useState("instagram_post");
+  const [collabRequiredFollowers, setCollabRequiredFollowers] = useState("");
+  const [collabBrief, setCollabBrief] = useState("");
+  const [collabPlatforms, setCollabPlatforms] = useState<string[]>(["instagram"]);
+  const [collabDeliverables, setCollabDeliverables] = useState("1");
+  const [collabProductValue, setCollabProductValue] = useState("");
+  const [collabDeadline, setCollabDeadline] = useState("");
+  const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
+  const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
+
   const form = useForm<CreateListingForm>({
     resolver: zodResolver(makeCreateListingSchema(t)),
     defaultValues: {
@@ -110,6 +123,17 @@ export function CreateListingPage() {
         ...data,
         retailValue: data.retailValue,
         categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
+        isCollab,
+        collabDetails: isCollab ? {
+          contentType: collabContentType,
+          requiredFollowers: collabRequiredFollowers ? parseInt(collabRequiredFollowers) : 0,
+          requiredPlatforms: collabPlatforms,
+          contentBrief: collabBrief,
+          deadline: collabDeadline || undefined,
+          usageRights: collabUsageRights,
+          deliverables: parseInt(collabDeliverables) || 1,
+          productValue: collabProductValue ? parseFloat(collabProductValue) : 0,
+        } : undefined,
         valuation: aiValuation
           ? {
               minAed: Math.round(aiValuation.estimatedRange.min),
@@ -778,6 +802,147 @@ export function CreateListingPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+            </CardContent>
+          </Card>
+
+          {/* ── Brand Collab Toggle ──────────────────────────────────────── */}
+          <Card className={`border-2 transition-colors ${isCollab ? "border-primary bg-primary/5" : "border-dashed border-muted-foreground/30"}`}>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${isCollab ? "bg-primary text-white" : "bg-muted"}`}>
+                    <Camera className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Brand Collab Listing</p>
+                    <p className="text-xs text-muted-foreground">Offer your product/service in exchange for creator content</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCollab(!isCollab)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${isCollab ? "bg-primary" : "bg-muted-foreground/30"}`}
+                  data-testid="toggle-is-collab"
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCollab ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
+              </div>
+
+              {isCollab && (
+                <div className="mt-5 space-y-4 border-t pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Content Type</label>
+                      <select
+                        value={collabContentType}
+                        onChange={(e) => setCollabContentType(e.target.value)}
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="select-collab-content-type"
+                      >
+                        <option value="instagram_post">Instagram Post</option>
+                        <option value="instagram_story">Instagram Story</option>
+                        <option value="instagram_reel">Instagram Reel</option>
+                        <option value="tiktok_video">TikTok Video</option>
+                        <option value="youtube_video">YouTube Video</option>
+                        <option value="youtube_short">YouTube Short</option>
+                        <option value="twitter_post">X / Twitter Post</option>
+                        <option value="blog_post">Blog Post</option>
+                        <option value="multiple">Multiple Formats</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Min Follower Count</label>
+                      <input
+                        type="number"
+                        value={collabRequiredFollowers}
+                        onChange={(e) => setCollabRequiredFollowers(e.target.value)}
+                        placeholder="e.g. 10000"
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="input-collab-followers"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Content Brief <span className="text-destructive">*</span></label>
+                    <textarea
+                      value={collabBrief}
+                      onChange={(e) => setCollabBrief(e.target.value)}
+                      placeholder="Describe what content you want — style, tone, key messages, dos and don'ts..."
+                      rows={3}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                      data-testid="textarea-collab-brief"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Product Value (AED)</label>
+                      <input
+                        type="number"
+                        value={collabProductValue}
+                        onChange={(e) => setCollabProductValue(e.target.value)}
+                        placeholder="e.g. 500"
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="input-collab-product-value"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Deliverables</label>
+                      <input
+                        type="number"
+                        value={collabDeliverables}
+                        onChange={(e) => setCollabDeliverables(e.target.value)}
+                        min="1"
+                        placeholder="1"
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="input-collab-deliverables"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Deadline (optional)</label>
+                      <input
+                        type="date"
+                        value={collabDeadline}
+                        onChange={(e) => setCollabDeadline(e.target.value)}
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="input-collab-deadline"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Usage Rights</label>
+                      <select
+                        value={collabUsageRights}
+                        onChange={(e) => setCollabUsageRights(e.target.value)}
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        data-testid="select-collab-usage-rights"
+                      >
+                        <option value="creator_only">Creator use only</option>
+                        <option value="brand_social">Brand can repost on social</option>
+                        <option value="brand_unlimited">Brand unlimited use</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Required Platforms</label>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {COLLAB_PLATFORMS.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setCollabPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${collabPlatforms.includes(p) ? "bg-primary text-white border-primary" : "bg-background border-muted-foreground/30 text-muted-foreground"}`}
+                          >
+                            {p === "twitter" ? "X/Twitter" : p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
