@@ -83,6 +83,7 @@ import {
   makeAiPerDayLimiter,
 } from "./handlers/aiRateLimit";
 import { db, pool } from "./db";
+import { seedCreators, seedCollabListings } from "./seed";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
@@ -3784,6 +3785,17 @@ ${chatTranscript || "(No messages yet)"}`,
     } catch (error) {
       console.error("Admin get users error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/seed/collabs — manually re-run collab + creator seed
+  app.post("/api/admin/seed/collabs", requireAdmin, async (req, res) => {
+    try {
+      await seedCreators();
+      await seedCollabListings();
+      res.json({ ok: true, message: "Seed re-run complete." });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Seed failed" });
     }
   });
 

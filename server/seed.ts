@@ -1253,8 +1253,9 @@ export async function seedCreators() {
 // Runs in all environments so "Browse Brand Collabs" is never empty.
 export async function seedCollabListings() {
   try {
-    const existing = await db.select({ id: listings.id }).from(listings).where(eq((listings as any).isCollab, true)).limit(1);
-    if (existing.length > 0) return;
+    // Check by title so we can insert any missing collab listings individually
+    const existingRows = await db.select({ title: listings.title }).from(listings);
+    const existingTitles = new Set(existingRows.map(r => r.title));
 
     const allUsers = await db.select().from(users);
     if (allUsers.length === 0) return;
@@ -1434,16 +1435,27 @@ export async function seedCollabListings() {
       },
     ];
 
+    const toInsert = COLLAB_LISTINGS.filter(c => !existingTitles.has(c.title));
+    if (toInsert.length === 0) {
+      console.log("[seed] Brand collab listings already present.");
+      return;
+    }
+
     let inserted = 0;
-    for (const collab of COLLAB_LISTINGS) {
+    for (const collab of toInsert) {
       try {
-        await db.insert(listings).values({ ...collab, moderationStatus: "APPROVED" } as any);
+        await db.insert(listings).values({
+          ...collab,
+          moderationStatus: "APPROVED",
+          isCollab: true,
+        } as any);
         inserted++;
-      } catch {
-        // already exists, skip
+        console.log(`[seed]   + Inserted collab listing: ${collab.title}`);
+      } catch (insertErr) {
+        console.error(`[seed]   ! Failed to insert collab listing "${collab.title}":`, insertErr);
       }
     }
-    console.log(`[seed] ✓ ${inserted} brand collab listings inserted.`);
+    console.log(`[seed] ✓ ${inserted}/${toInsert.length} brand collab listings inserted.`);
   } catch (err) {
     console.error("[seed] seedCollabListings error:", err);
   }
