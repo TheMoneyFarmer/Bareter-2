@@ -1088,7 +1088,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "instagram",
-          followerCount: 85000,
+          followerCount: 92000,
           avgEngagementRate: 4.2,
           contentNiches: ["Fashion", "Lifestyle", "Beauty"],
           openToCollabs: true,
@@ -1104,7 +1104,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "tiktok",
-          followerCount: 220000,
+          followerCount: 78000,
           avgEngagementRate: 7.1,
           contentNiches: ["Tech", "Gaming", "Entertainment"],
           openToCollabs: true,
@@ -1121,7 +1121,7 @@ export async function seedCreators() {
         isVerified: false,
         creatorProfile: {
           primaryPlatform: "youtube",
-          followerCount: 45000,
+          followerCount: 11200,
           avgEngagementRate: 3.8,
           contentNiches: ["Food", "Lifestyle", "Travel"],
           openToCollabs: true,
@@ -1138,7 +1138,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "instagram",
-          followerCount: 120000,
+          followerCount: 54000,
           avgEngagementRate: 5.5,
           contentNiches: ["Beauty", "Lifestyle", "Fashion"],
           openToCollabs: true,
@@ -1155,7 +1155,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "instagram",
-          followerCount: 65000,
+          followerCount: 23500,
           avgEngagementRate: 4.9,
           contentNiches: ["Travel", "Lifestyle", "Food"],
           openToCollabs: true,
@@ -1172,7 +1172,7 @@ export async function seedCreators() {
         isVerified: false,
         creatorProfile: {
           primaryPlatform: "instagram",
-          followerCount: 38000,
+          followerCount: 4800,
           avgEngagementRate: 6.2,
           contentNiches: ["Fitness", "Health & Wellness", "Lifestyle"],
           openToCollabs: true,
@@ -1189,7 +1189,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "linkedin",
-          followerCount: 28000,
+          followerCount: 2400,
           avgEngagementRate: 3.1,
           contentNiches: ["Business", "Finance", "Education"],
           openToCollabs: true,
@@ -1205,7 +1205,7 @@ export async function seedCreators() {
         isVerified: true,
         creatorProfile: {
           primaryPlatform: "instagram",
-          followerCount: 95000,
+          followerCount: 100000,
           avgEngagementRate: 5.8,
           contentNiches: ["Lifestyle", "Fashion", "Travel"],
           openToCollabs: true,

@@ -1516,15 +1516,19 @@ export function SettingsPage() {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="cp-followers">Follower Count</Label>
+                      <Label htmlFor="cp-followers">Follower Count <span className="text-xs text-muted-foreground font-normal">(min 2,000)</span></Label>
                       <Input
                         id="cp-followers"
                         type="number"
-                        placeholder="e.g. 50000"
+                        min="2000"
+                        placeholder="e.g. 5000"
                         value={cpFollowers}
                         onChange={(e) => setCpFollowers(e.target.value)}
                         data-testid="input-cp-followers"
                       />
+                      {cpFollowers && parseInt(cpFollowers) < 2000 && (
+                        <p className="text-xs text-destructive">Minimum 2,000 followers required to create a creator profile.</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cp-engagement">Avg Engagement Rate (%)</Label>
@@ -1609,7 +1613,7 @@ export function SettingsPage() {
 
                   <Button
                     onClick={() => saveCreatorProfileMutation.mutate()}
-                    disabled={saveCreatorProfileMutation.isPending}
+                    disabled={saveCreatorProfileMutation.isPending || (!!cpFollowers && parseInt(cpFollowers) < 2000)}
                     data-testid="button-save-creator-profile"
                   >
                     {saveCreatorProfileMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}

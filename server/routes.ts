@@ -9497,10 +9497,14 @@ ${chatTranscript || "(No messages yet)"}`,
   app.patch("/api/me/creator-profile", requireAuth, async (req, res) => {
     try {
       const { primaryPlatform, followerCount, avgEngagementRate, contentNiches, openToCollabs, portfolioLinks, instagramHandle, tiktokHandle, youtubeHandle } = req.body;
+      const count = Number(followerCount) || 0;
+      if (count < 2000) {
+        return res.status(400).json({ message: "A minimum of 2,000 followers is required to set up a creator profile." });
+      }
       const updatedUser = await storage.updateUser(req.session.userId!, {
         creatorProfile: {
           primaryPlatform,
-          followerCount: Number(followerCount) || 0,
+          followerCount: count,
           avgEngagementRate: Number(avgEngagementRate) || 0,
           contentNiches: contentNiches || [],
           openToCollabs: Boolean(openToCollabs),

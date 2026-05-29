@@ -589,6 +589,64 @@ export function LandingPage() {
                     <TrendingDetailedRow listings={justListedRow} max={10} />
                   </div>
                 )}
+
+                {/* ── For Creators inline panel ── */}
+                <div className="rounded-2xl bg-bareter-navy dark:bg-bareter-navy overflow-hidden">
+                  <div className="flex flex-col lg:flex-row gap-0">
+                    {/* Left — headline + CTAs */}
+                    <div className="flex-1 p-6 lg:p-8">
+                      <Badge className="mb-3 text-xs bg-bareter-teal/20 text-bareter-teal border-bareter-teal/30">For Creators</Badge>
+                      <h3 className="text-xl font-bold text-white mb-2">
+                        Get brand products & services — just for creating content.
+                      </h3>
+                      <p className="text-sm text-white/60 mb-6 leading-relaxed max-w-lg">
+                        No more chasing brand deals via DMs. Set up your creator profile once, browse collab opportunities from real brands, apply, and get products or services in return for your content.
+                      </p>
+                      <p className="text-xs text-white/40 mb-5">Open to creators with 2,000+ followers on any platform.</p>
+                      <div className="flex flex-wrap gap-3">
+                        <Link href="/register">
+                          <Button variant="bareter" className="gap-2 h-10">
+                            <Sparkles className="h-4 w-4" />
+                            Join as Creator — Free
+                          </Button>
+                        </Link>
+                        <Link href="/browse">
+                          <Button variant="outline" className="gap-2 h-10 border-white/30 text-white hover:bg-white/10">
+                            <Camera className="h-4 w-4" />
+                            Browse Brand Collabs
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                    {/* Right — 3 steps */}
+                    <div className="w-full lg:w-[420px] flex-shrink-0 p-6 lg:p-8 border-t lg:border-t-0 lg:border-l border-white/10">
+                      <div className="space-y-3">
+                        {[
+                          { n: "①", title: "Set up your creator profile", desc: "Add your platform, follower count, engagement rate and content niches. Takes 2 minutes.", icon: <Users className="h-4 w-4" /> },
+                          { n: "②", title: "Browse brand collab listings", desc: "Filter by niche, product value and platform. See exactly what the brand wants from you.", icon: <Camera className="h-4 w-4" /> },
+                          { n: "③", title: "Apply with your pitch", desc: "Send your handle and a short pitch. If the brand picks you — deal is locked in Bareter. You create, they deliver.", icon: <TrendingUp className="h-4 w-4" /> },
+                        ].map(step => (
+                          <div key={step.n} className="flex items-start gap-3 p-3 rounded-xl bg-white/8 border border-white/10">
+                            <div className="h-8 w-8 rounded-full bg-bareter-teal/20 flex items-center justify-center flex-shrink-0 text-bareter-teal mt-0.5">
+                              {step.icon}
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-bareter-teal mb-0.5">{step.n}</p>
+                              <p className="text-xs font-semibold text-white mb-0.5">{step.title}</p>
+                              <p className="text-[11px] text-white/50 leading-relaxed">{step.desc}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-4">
+                        {["Fashion","Beauty","Tech","Food","Travel","Fitness","Business","Gaming","Education","Lifestyle"].map(n => (
+                          <span key={n} className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-white/60">{n}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {bigTicketRow.length > 0 && (
                   <div>
                     <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-3">
@@ -678,68 +736,6 @@ export function LandingPage() {
         </div>
         <SuccessStoriesMarquee />
         <div className="h-4" aria-hidden="true" />
-      </section>
-
-      {/* ============================ FOR CREATORS ============================ */}
-      <section className="bg-bareter-navy text-white" data-testid="section-for-creators">
-        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
-          <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-center">
-
-            {/* Left — steps */}
-            <div className="flex-1 min-w-0">
-              <Badge className="mb-3 text-xs bg-bareter-teal/20 text-bareter-teal-light border-bareter-teal/30">For Creators</Badge>
-              <h2 className="text-section text-white mb-3">
-                Get brand products & services — just for creating content.
-              </h2>
-              <p className="text-sm text-white/60 mb-8 leading-relaxed max-w-lg">
-                No more chasing brand deals via DMs. Set up your creator profile once, browse collab opportunities from real brands, apply, and get products or services in return for your content.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/register">
-                  <Button variant="bareter" className="gap-2 h-11">
-                    <Sparkles className="h-4 w-4" />
-                    Join as Creator — Free
-                  </Button>
-                </Link>
-                <Link href="/browse?tab=collabs">
-                  <Button variant="outline" className="gap-2 h-11 border-white/30 text-white hover:bg-white/10">
-                    <Camera className="h-4 w-4" />
-                    Browse Brand Collabs
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Right — 3 steps */}
-            <div className="w-full lg:w-96 flex-shrink-0">
-              <div className="space-y-3">
-                {[
-                  { n: "①", title: "Set up your creator profile", desc: "Add your platform, follower count, engagement rate and content niches. Takes 2 minutes.", icon: <Users className="h-5 w-5" /> },
-                  { n: "②", title: "Browse brand collab listings", desc: "Filter by niche, product value and platform. See exactly what the brand wants from you.", icon: <Camera className="h-5 w-5" /> },
-                  { n: "③", title: "Apply with your pitch", desc: "Send your handle and a short pitch. If the brand picks you — deal is locked in Bareter. You create, they deliver.", icon: <TrendingUp className="h-5 w-5" /> },
-                ].map(step => (
-                  <div key={step.n} className="flex items-start gap-4 p-4 rounded-xl bg-white/8 border border-white/10">
-                    <div className="h-10 w-10 rounded-full bg-bareter-teal/20 flex items-center justify-center flex-shrink-0 text-bareter-teal">
-                      {step.icon}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-bareter-teal mb-0.5">{step.n}</p>
-                      <p className="text-sm font-semibold text-white mb-1">{step.title}</p>
-                      <p className="text-xs text-white/60 leading-relaxed">{step.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Niche tags */}
-              <div className="flex flex-wrap gap-1.5 mt-4">
-                {["Fashion","Beauty","Tech","Food","Travel","Fitness","Business","Gaming","Education","Lifestyle"].map(n => (
-                  <span key={n} className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70">{n}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* ============================ WAITLIST CTA ============================ */}
