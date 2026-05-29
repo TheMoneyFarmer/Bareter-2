@@ -1240,3 +1240,200 @@ export async function seedCreators() {
     console.error("[seed] seedCreators error:", err);
   }
 }
+
+// ── Brand Collab listing seed data ────────────────────────────────────────────
+// Idempotent: skips if any isCollab listing already exists.
+// Runs in all environments so "Browse Brand Collabs" is never empty.
+export async function seedCollabListings() {
+  try {
+    const existing = await db.select({ id: listings.id }).from(listings).where(eq((listings as any).isCollab, true)).limit(1);
+    if (existing.length > 0) return;
+
+    const allUsers = await db.select().from(users);
+    if (allUsers.length === 0) return;
+
+    const pickUser = (emails: string[]) => {
+      for (const e of emails) { const u = allUsers.find(x => x.email === e); if (u) return u; }
+      return allUsers.find(u => u.accountType === "business") ?? allUsers[0];
+    };
+
+    const sarah  = pickUser(["sarah@luxuryhotels.ae",  "sarah@bareter.com"]);
+    const omar   = pickUser(["omar@techflow.ae",        "omar@bareter.com"]);
+    const fatima = pickUser(["fatima@maisonfatima.ae",  "fatima@bareter.com"]);
+    const ahmed  = pickUser(["ahmed@eventspro.ae",      "ahmed@bareter.com"]);
+    const admin  = pickUser(["admin@bareter.com"]);
+
+    const COLLAB_LISTINGS = [
+      {
+        userId: sarah.id,
+        title: "Luxury Hotel Stay — Dubai Marina (2 nights)",
+        description: "We're offering a 2-night stay in our signature suite at our Dubai Marina property in exchange for authentic Instagram or TikTok content. Looking for creators in the travel, lifestyle or luxury space. Content must showcase the suite, rooftop pool and breakfast experience.",
+        categories: ["Hospitality"],
+        retailValue: "1800.00",
+        location: "Dubai", city: "Dubai", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "instagram_reel",
+          requiredFollowers: 10000,
+          requiredPlatforms: ["instagram", "tiktok"],
+          contentBrief: "2 Reels showcasing the suite, pool and breakfast. Positive tone, tag our handle, use #BareterCollab. No competitor hotel mentions.",
+          deadline: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 2,
+          productValue: 1800,
+        },
+        tags: ["hotel", "luxury", "dubai", "travel", "collab"],
+        images: ["/images/seed/cat-hospitality.jpg"],
+        isActive: true, likeCount: 24, viewCount: 310,
+      },
+      {
+        userId: omar.id,
+        title: "12-Month TechFlow Pro SaaS License (AED 2,400 value)",
+        description: "TechFlow is looking for a B2B or tech content creator to review our workflow automation platform. In exchange for an honest review video/post, we'll provide a full-year Pro license worth AED 2,400. Great for creators in the business, tech or startup niche.",
+        categories: ["Technology", "SaaS"],
+        retailValue: "2400.00",
+        location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "youtube_video",
+          requiredFollowers: 5000,
+          requiredPlatforms: ["youtube", "linkedin"],
+          contentBrief: "Honest walkthrough and review of TechFlow Pro. Show at least 3 core features. Disclosure required. Can include comparison to alternatives.",
+          deadline: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 1,
+          productValue: 2400,
+        },
+        tags: ["saas", "tech", "review", "software", "collab"],
+        images: ["/images/seed/cat-services.jpg"],
+        isActive: true, likeCount: 18, viewCount: 245,
+      },
+      {
+        userId: fatima.id,
+        title: "Luxury Abaya + Styling Session — Maison Fatima",
+        description: "Maison Fatima is offering one custom abaya (your choice of fabric from our new collection) plus a 1-hour personal styling session in exchange for Instagram content. We're looking for modest fashion, lifestyle or beauty creators based in the UAE.",
+        categories: ["Fashion"],
+        retailValue: "1200.00",
+        location: "Sharjah", city: "Sharjah", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "instagram_post",
+          requiredFollowers: 3000,
+          requiredPlatforms: ["instagram"],
+          contentBrief: "2 feed posts + 3 stories wearing the abaya. Natural lighting preferred. Tag @maisonfatima and use #MaisonFatimaCollab. Must be posted within 2 weeks of receiving the product.",
+          deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_unlimited",
+          deliverables: 2,
+          productValue: 1200,
+        },
+        tags: ["fashion", "abaya", "modest", "uae", "collab"],
+        images: ["/images/seed/avatar-fatima.jpg"],
+        isActive: true, likeCount: 31, viewCount: 420,
+      },
+      {
+        userId: ahmed.id,
+        title: "Corporate Event Photography Package — AED 3,500 value",
+        description: "Events Pro UAE is offering a full-day corporate event photography and videography package in exchange for content creation. Perfect for photographers, videographers or business creators who want to showcase the package to their audience.",
+        categories: ["Events", "Services"],
+        retailValue: "3500.00",
+        location: "Dubai", city: "Dubai", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "instagram_reel",
+          requiredFollowers: 8000,
+          requiredPlatforms: ["instagram", "tiktok", "youtube"],
+          contentBrief: "Behind-the-scenes Reel of the event production. Show venue setup, team coordination and final result. Tag @eventsprouae.",
+          deadline: new Date(Date.now() + 50 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 1,
+          productValue: 3500,
+        },
+        tags: ["events", "photography", "dubai", "business", "collab"],
+        images: ["/images/seed/cat-services.jpg"],
+        isActive: true, likeCount: 14, viewCount: 195,
+      },
+      {
+        userId: admin.id,
+        title: "Premium Fitness Membership — 3 Months (Dubai)",
+        description: "Looking for fitness and wellness creators to review our premium gym membership. Includes full access to all equipment, classes, sauna and nutrition consultation. Based in Dubai. Open to micro and macro creators — we value authentic content over follower count.",
+        categories: ["Health & Wellness", "Fitness"],
+        retailValue: "900.00",
+        location: "Dubai", city: "Dubai", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "instagram_story",
+          requiredFollowers: 2000,
+          requiredPlatforms: ["instagram", "tiktok"],
+          contentBrief: "Weekly story updates over 4 weeks showing your progress and experience. 1 final Reel summarising the 3-month journey. Authentic only — share real results.",
+          deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 5,
+          productValue: 900,
+        },
+        tags: ["fitness", "gym", "wellness", "dubai", "collab"],
+        images: ["/images/seed/cat-fitness.jpg"],
+        isActive: true, likeCount: 42, viewCount: 580,
+      },
+      {
+        userId: sarah.id,
+        title: "Fine Dining Experience for Two — AED 800 F&B Credit",
+        description: "Our award-winning restaurant is offering an AED 800 F&B credit for two in exchange for food and lifestyle content. We want genuine reactions and honest reviews. Looking for food bloggers, couples content, or lifestyle creators.",
+        categories: ["Hospitality", "Food"],
+        retailValue: "800.00",
+        location: "Dubai", city: "Dubai", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "instagram_reel",
+          requiredFollowers: 2500,
+          requiredPlatforms: ["instagram", "tiktok"],
+          contentBrief: "1 Reel or TikTok of the dining experience — food presentation, ambiance, and your honest reaction. Tag our handle. No scripted promo lines, keep it natural.",
+          deadline: new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 1,
+          productValue: 800,
+        },
+        tags: ["food", "restaurant", "dining", "dubai", "collab"],
+        images: ["/images/seed/cat-hospitality.jpg"],
+        isActive: true, likeCount: 55, viewCount: 720,
+      },
+      {
+        userId: omar.id,
+        title: "Smart Home Tech Bundle — AED 1,500 worth of devices",
+        description: "We're sending a smart home starter kit (smart speaker, LED strips, smart plugs + hub) to a tech or home decor creator. In return, we want a setup walkthrough and honest review. Open to creators of all sizes — authenticity matters most.",
+        categories: ["Technology", "Electronics"],
+        retailValue: "1500.00",
+        location: "Dubai", city: "Dubai", country: "AE",
+        condition: "new",
+        isCollab: true,
+        collabDetails: {
+          contentType: "youtube_video",
+          requiredFollowers: 2000,
+          requiredPlatforms: ["youtube", "instagram", "tiktok"],
+          contentBrief: "Unboxing + setup walkthrough video. Show all devices working together. Include pros and cons. Link in bio to our site required.",
+          deadline: new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          usageRights: "brand_social",
+          deliverables: 2,
+          productValue: 1500,
+        },
+        tags: ["tech", "smarthome", "gadgets", "review", "collab"],
+        images: ["/images/seed/cat-services.jpg"],
+        isActive: true, likeCount: 29, viewCount: 395,
+      },
+    ];
+
+    let inserted = 0;
+    for (const collab of COLLAB_LISTINGS) {
+      await db.insert(listings).values(collab as any).onConflictDoNothing();
+      inserted++;
+    }
+    console.log(`[seed] ✓ ${inserted} brand collab listings inserted.`);
+  } catch (err) {
+    console.error("[seed] seedCollabListings error:", err);
+  }
+}

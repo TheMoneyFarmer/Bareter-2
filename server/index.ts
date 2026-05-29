@@ -3,7 +3,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase, backfillLocationFields, topUpTrendingListings, seedCreators } from "./seed";
+import { seedDatabase, backfillLocationFields, topUpTrendingListings, seedCreators, seedCollabListings } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -109,11 +109,12 @@ app.use((req, res, next) => {
     }
   }
 
-  // Creator seed runs in all environments — idempotent, skips if already present.
+  // Creator + collab seeds run in all environments — idempotent, skip if already present.
   try {
     await seedCreators();
+    await seedCollabListings();
   } catch (error) {
-    console.error("Failed to seed creators:", error);
+    console.error("Failed to seed creators/collabs:", error);
   }
 
   if (!process.env.DIDIT_WEBHOOK_SECRET) {
