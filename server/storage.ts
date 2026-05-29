@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray, isNotNull, isNull } from "drizzle-orm";
 import {
   users,
   listings,
@@ -2745,7 +2745,7 @@ export class DatabaseStorage implements IStorage {
       and(
         eq(users.signupType, "creator"),
         isNotNull(users.creatorProfile),
-        eq(users.isBanned, false),
+        or(eq(users.isBanned, false), isNull(users.isBanned)),
       )
     ).limit(filters.limit ?? 40).offset(filters.offset ?? 0);
     return rows

@@ -265,7 +265,7 @@ function CategoryDropdown({ cat, onNavigate }: DropdownProps) {
         onClick={() => onNavigate({ href: cat.href, category: cat.href ? undefined : cat.category })}
         aria-expanded={open}
       >
-        {cat.emoji} {cat.label}
+        {cat.label}
         <ChevronDown className={`h-3.5 w-3.5 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
 
