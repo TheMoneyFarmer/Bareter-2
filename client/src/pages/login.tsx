@@ -18,14 +18,22 @@ import { z } from "zod";
 type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { login, user } = useAuth();
+  const { login, user, refetch } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [cookieBlocked, setCookieBlocked] = useState(false);
   const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
   const passwordResetEnabled = config?.passwordResetEnabled ?? false;
+
+  // Read query params once (wouter's useLocation only exposes the path).
+  const params = (() => {
+    try { return new URLSearchParams(window.location.search); } catch { return new URLSearchParams(); }
+  })();
+  const sessionExpired = params.get("expired") === "1";
+  const redirectTo = params.get("redirect") || "/browse";
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -37,14 +45,31 @@ export function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
+    setCookieBlocked(false);
     try {
       await login(data.email, data.password);
+      // Verify the session cookie actually persisted. Some in-app browsers
+      // (WhatsApp/Instagram webviews) accept the login response but silently
+      // block the session cookie, so /api/auth/me comes back empty. If so,
+      // keep the user here with guidance instead of entering a broken app.
+      const verified = await refetch();
+      const verifiedUser = (verified as { data?: unknown } | undefined)?.data;
+      if (!verifiedUser) {
+        setCookieBlocked(true);
+        toast({
+          title: "Couldn't keep you signed in",
+          description:
+            "Your browser blocked the session. Please open bareter.com in Safari or Chrome.",
+          variant: "destructive",
+        });
+        return;
+      }
       trackEvent("login");
       toast({
         title: t("auth.welcomeBack") + "!",
         description: t("auth.signInToContinue"),
       });
-      navigate("/browse");
+      navigate(redirectTo.startsWith("/") ? redirectTo : "/browse");
     } catch (error: any) {
       toast({
         title: t("auth.loginFailed"),
@@ -79,6 +104,16 @@ export function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {(sessionExpired || cookieBlocked) && (
+              <div
+                className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                data-testid="notice-session-expired"
+              >
+                Your session ended, so please sign in again to continue. If this
+                keeps happening, open <strong>bareter.com</strong> directly in
+                Safari or Chrome rather than inside another app's browser.
+              </div>
+            )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField

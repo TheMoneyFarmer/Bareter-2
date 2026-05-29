@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, handleAuthExpiry } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";
@@ -310,7 +310,11 @@ export function CreateListingPage() {
         fd.append("file", file);
         fd.append("type", "listing");
         const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
+        if (!res.ok) {
+          if (res.status === 401) handleAuthExpiry(401);
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || "Upload failed");
+        }
         return (await res.json()).url as string;
       }));
       form.setValue("images", [...currentImages, ...urls], { shouldValidate: true });

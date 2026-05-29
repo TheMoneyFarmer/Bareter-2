@@ -33,6 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ["/api/auth/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
     retry: false,
+    // The global default is staleTime: Infinity, which means a dead session
+    // would never be re-detected and the UI would keep looking logged in.
+    // Re-verify the session periodically and when the tab regains focus so
+    // stale auth state self-heals before the user hits a protected action.
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const loginMutation = useMutation({

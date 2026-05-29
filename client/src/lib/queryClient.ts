@@ -1,7 +1,32 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// When the app believes the user is signed in (the cached /api/auth/me is a
+// real user) but the server starts rejecting requests with 401, the session
+// has expired or was never persisted (e.g. cookies blocked in an in-app
+// browser). Without this, the SPA keeps showing a logged-in UI and every
+// action fails with a raw "Unauthorized" toast. Instead, clear the stale auth
+// state and send the user to sign in again so they get a clear path forward.
+let redirectingForAuth = false;
+export function handleAuthExpiry(status: number) {
+  if (status !== 401) return;
+  // Only react when we *thought* we were logged in. Public browsing where a
+  // background authed query 401s for a logged-out visitor must NOT redirect.
+  const cachedUser = queryClient.getQueryData(["/api/auth/me"]);
+  if (!cachedUser) return;
+
+  queryClient.setQueryData(["/api/auth/me"], null);
+
+  if (redirectingForAuth) return;
+  redirectingForAuth = true;
+  const current = window.location.pathname + window.location.search;
+  if (!current.startsWith("/login")) {
+    window.location.href = `/login?expired=1&redirect=${encodeURIComponent(current)}`;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
+    handleAuthExpiry(res.status);
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
@@ -33,8 +58,11 @@ export const getQueryFn: <T>(options: {
       credentials: "include",
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      handleAuthExpiry(res.status);
+      if (unauthorizedBehavior === "returnNull") {
+        return null;
+      }
     }
 
     await throwIfResNotOk(res);
