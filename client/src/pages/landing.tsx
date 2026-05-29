@@ -23,6 +23,8 @@ import catHomeImg from "@assets/generated_images/cat-home.png";
 import { useCountUp } from "@/hooks/use-count-up";
 import { useMousePosition } from "@/hooks/use-mouse-position";
 import type { ListingWithUser } from "@shared/schema";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Search,
   ShieldCheck,
@@ -31,6 +33,11 @@ import {
   ArrowRight,
   CheckCircle2,
   Users,
+  Camera,
+  Sparkles,
+  Handshake,
+  ArrowLeftRight,
+  TrendingUp,
 } from "lucide-react";
 
 const CATEGORY_GRID: { label: string; emoji: string; image: string; href: string }[] = [
@@ -125,6 +132,17 @@ export function LandingPage() {
 
   const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/featured"],
+  });
+
+  const { data: featuredCreators = [] } = useQuery<any[]>({
+    queryKey: ["/api/creators", "landing"],
+    queryFn: async () => {
+      const res = await fetch("/api/creators");
+      if (!res.ok) return [];
+      const all = await res.json();
+      return all.slice(0, 4);
+    },
+    staleTime: 120_000,
   });
   const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings"],
@@ -340,8 +358,8 @@ export function LandingPage() {
         className="bg-bareter-off-white dark:bg-background"
         data-testid="section-featured"
       >
-        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
-          <div className="flex items-end justify-between gap-4 mb-6">
+        <div className="container mx-auto max-w-7xl px-4 py-8 sm:py-10">
+          <div className="flex items-end justify-between gap-4 mb-4">
             <div>
               <h2 className="text-section text-bareter-navy dark:text-foreground">
                 {t("landing.trendingNow")}
@@ -422,17 +440,17 @@ export function LandingPage() {
 
       {/* ============================ CATEGORY GRID ============================ */}
       <section className="bg-white dark:bg-background" data-testid="section-categories">
-        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
-          <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
+        <div className="container mx-auto max-w-7xl px-4 py-8 sm:py-10">
+          <h2 className="text-section text-bareter-navy dark:text-foreground mb-4">
             {t("landing.browseByCategory")}
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
             {CATEGORY_GRID.map((c) => (
               <a
                 key={c.label}
                 href={c.href}
                 onClick={(e) => handleCategoryClick(e, c.href)}
-                className="group relative h-44 sm:h-56 lg:h-[280px] rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep cursor-pointer"
+                className="group relative h-32 sm:h-40 lg:h-52 rounded-bareter-card overflow-hidden bareter-card-hover border border-bareter-border dark:border-border bg-bareter-navy-deep cursor-pointer"
                 data-testid={`card-category-${c.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 <img
@@ -442,9 +460,9 @@ export function LandingPage() {
                   className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-bareter-navy-deep/85 via-bareter-navy-deep/30 to-transparent transition-opacity group-hover:from-bareter-navy-deep/90" />
-                <div className="absolute bottom-4 start-4 text-white">
-                  <div className="text-3xl mb-1 drop-shadow">{c.emoji}</div>
-                  <div className="text-card-title text-white drop-shadow">{c.label}</div>
+                <div className="absolute bottom-3 start-3 text-white">
+                  <div className="text-xl mb-0.5 drop-shadow">{c.emoji}</div>
+                  <div className="text-sm font-bold text-white drop-shadow">{c.label}</div>
                 </div>
               </a>
             ))}
@@ -485,13 +503,249 @@ export function LandingPage() {
 
       {/* ============================ SUCCESS STORIES ============================ */}
       <section className="bg-bareter-off-white dark:bg-background" data-testid="section-stories">
-        <div className="container mx-auto max-w-7xl px-4 py-14 sm:py-16">
-          <h2 className="text-section text-bareter-navy dark:text-foreground mb-6">
+        <div className="container mx-auto max-w-7xl px-4 py-8 sm:py-10">
+          <h2 className="text-section text-bareter-navy dark:text-foreground mb-4">
             {t("landing.realBarters")}
           </h2>
         </div>
         <SuccessStoriesMarquee />
-        <div className="h-14 sm:h-16" aria-hidden="true" />
+        <div className="h-6 sm:h-8" aria-hidden="true" />
+      </section>
+
+      {/* ============================ THREE WAYS ============================ */}
+      <section className="bg-white dark:bg-background" data-testid="section-three-ways">
+        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
+          <div className="text-center mb-10">
+            <h2 className="text-section text-bareter-navy dark:text-foreground">One platform. Three ways to swap value.</h2>
+            <p className="text-caption mt-2 max-w-xl mx-auto">Whether you're swapping a phone for software, running a brand, or creating content — Bareter has a place for you.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Card 1 — Personal Barter (teal accent, most prominent) */}
+            <div className="rounded-2xl border-2 border-bareter-teal/40 bg-gradient-to-br from-bareter-teal/8 to-transparent p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-bareter-teal/15 flex items-center justify-center mb-4 flex-shrink-0">
+                <ArrowLeftRight className="h-6 w-6 text-bareter-teal" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Barter Anything</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                Swap your goods, services or skills for exactly what you need. No cash, no fees, no middleman.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-6">
+                {["📱 Phone","🚲 Bike","🏢 Office Space","💻 Software","👔 Suit","👟 Shoes","📷 Camera","🚗 Car","🎨 Design","🍽️ Catering"].map(item => (
+                  <span key={item} className="text-xs px-2.5 py-1 rounded-full bg-bareter-teal/10 text-bareter-teal font-medium">{item}</span>
+                ))}
+              </div>
+              <Link href="/browse" className="mt-auto">
+                <Button variant="bareter" className="w-full gap-2">
+                  Browse Listings <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
+            {/* Card 2 — Brand Collabs */}
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 flex-shrink-0">
+                <Camera className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Brand Collabs</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                You're a brand. Offer your product or service. Get creator-made content back. No cash changes hands.
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
+                {["Post your collab listing free","Creators apply with stats + pitch","You choose, deal auto-managed"].map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/create-listing">
+                <Button variant="outline" className="w-full gap-2 border-primary text-primary hover:bg-primary/5">
+                  Post a Brand Collab <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
+            {/* Card 3 — Creator Deals */}
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mb-4 flex-shrink-0">
+                <Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Creator Deals</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                You have followers. Brands have products. Get real value in exchange for authentic content on your platform.
+              </p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">
+                {["Any niche, any follower count","Instagram, TikTok, YouTube + more","Real products, not just exposure"].map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/register">
+                <Button variant="outline" className="w-full gap-2 border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10">
+                  Join as Creator <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================ FOR BRANDS ============================ */}
+      <section className="bg-bareter-off-white dark:bg-background" data-testid="section-for-brands">
+        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
+          <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-start">
+
+            {/* Left — explainer */}
+            <div className="flex-1 min-w-0">
+              <Badge variant="outline" className="mb-3 text-xs border-primary/40 text-primary bg-primary/5">For Brands</Badge>
+              <h2 className="text-section text-bareter-navy dark:text-foreground mb-3">
+                Turn your product into content — without paying cash.
+              </h2>
+              <p className="text-sm text-muted-foreground mb-8 leading-relaxed max-w-lg">
+                Stop paying influencer agencies thousands per campaign. Post a collab listing, let creators come to you, pick the best fit, and receive content for your brand — all managed inside Bareter.
+              </p>
+
+              {/* 4-step flow */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { n: "01", icon: <Camera className="h-5 w-5" />, title: "Post your collab", desc: "Add product + content brief" },
+                  { n: "02", icon: <Users className="h-5 w-5" />, title: "Creators apply", desc: "See pitches + follower stats" },
+                  { n: "03", icon: <Handshake className="h-5 w-5" />, title: "You choose", desc: "Pick the best creator" },
+                  { n: "04", icon: <TrendingUp className="h-5 w-5" />, title: "Content live", desc: "Deal closed in Bareter" },
+                ].map(step => (
+                  <div key={step.n} className="rounded-xl bg-white dark:bg-card border border-bareter-border dark:border-border p-3 text-center">
+                    <div className="h-9 w-9 rounded-full bg-bareter-teal/10 flex items-center justify-center mx-auto mb-2 text-bareter-teal">
+                      {step.icon}
+                    </div>
+                    <p className="text-[10px] font-bold text-bareter-teal mb-0.5">{step.n}</p>
+                    <p className="text-xs font-semibold text-bareter-navy dark:text-foreground">{step.title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{step.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Link href="/create-listing" className="inline-block mt-6">
+                <Button variant="bareter" className="gap-2">
+                  Post a Brand Collab — Free <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
+            {/* Right — live creator cards */}
+            <div className="w-full lg:w-80 flex-shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-semibold text-bareter-navy dark:text-foreground">Creators available now</p>
+                <Link href="/creators" className="text-xs text-bareter-teal hover:underline font-medium">See all →</Link>
+              </div>
+              {featuredCreators.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-bareter-border p-6 text-center">
+                  <Sparkles className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Creators joining daily</p>
+                  <Link href="/creators" className="text-xs text-primary hover:underline mt-1 inline-block">Browse creators →</Link>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {featuredCreators.map((c: any) => {
+                    const cp = c.creatorProfile;
+                    const followers = cp?.followerCount >= 1_000_000
+                      ? `${(cp.followerCount / 1_000_000).toFixed(1)}M`
+                      : cp?.followerCount >= 1_000
+                      ? `${(cp.followerCount / 1_000).toFixed(0)}K`
+                      : cp?.followerCount ?? "—";
+                    return (
+                      <Link key={c.id} href={`/users/${c.id}`}>
+                        <div className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-card border border-bareter-border dark:border-border hover:border-bareter-teal/40 transition-colors cursor-pointer">
+                          <Avatar className="h-10 w-10 flex-shrink-0">
+                            <AvatarImage src={c.avatarUrl ?? undefined} />
+                            <AvatarFallback className="bg-bareter-teal text-white text-sm font-semibold">{c.fullName?.charAt(0) ?? "C"}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">{c.fullName}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{cp?.primaryPlatform} · {followers} followers</p>
+                          </div>
+                          {cp?.contentNiches?.[0] && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex-shrink-0">{cp.contentNiches[0]}</Badge>
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                  <Link href="/creators">
+                    <div className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-dashed border-bareter-teal/40 text-bareter-teal text-sm font-medium hover:bg-bareter-teal/5 transition-colors cursor-pointer">
+                      <Users className="h-4 w-4" />
+                      View all creators
+                    </div>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================ FOR CREATORS ============================ */}
+      <section className="bg-bareter-navy text-white" data-testid="section-for-creators">
+        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
+          <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-center">
+
+            {/* Left — steps */}
+            <div className="flex-1 min-w-0">
+              <Badge className="mb-3 text-xs bg-bareter-teal/20 text-bareter-teal-light border-bareter-teal/30">For Creators</Badge>
+              <h2 className="text-section text-white mb-3">
+                Get brand products & services — just for creating content.
+              </h2>
+              <p className="text-sm text-white/60 mb-8 leading-relaxed max-w-lg">
+                No more chasing brand deals via DMs. Set up your creator profile once, browse collab opportunities from real brands, apply, and get products or services in return for your content.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/register">
+                  <Button variant="bareter" className="gap-2 h-11">
+                    <Sparkles className="h-4 w-4" />
+                    Join as Creator — Free
+                  </Button>
+                </Link>
+                <Link href="/browse?tab=collabs">
+                  <Button variant="outline" className="gap-2 h-11 border-white/30 text-white hover:bg-white/10">
+                    <Camera className="h-4 w-4" />
+                    Browse Brand Collabs
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Right — 3 steps */}
+            <div className="w-full lg:w-96 flex-shrink-0">
+              <div className="space-y-3">
+                {[
+                  { n: "①", title: "Set up your creator profile", desc: "Add your platform, follower count, engagement rate and content niches. Takes 2 minutes.", icon: <Users className="h-5 w-5" /> },
+                  { n: "②", title: "Browse brand collab listings", desc: "Filter by niche, product value and platform. See exactly what the brand wants from you.", icon: <Camera className="h-5 w-5" /> },
+                  { n: "③", title: "Apply with your pitch", desc: "Send your handle and a short pitch. If the brand picks you — deal is locked in Bareter. You create, they deliver.", icon: <TrendingUp className="h-5 w-5" /> },
+                ].map(step => (
+                  <div key={step.n} className="flex items-start gap-4 p-4 rounded-xl bg-white/8 border border-white/10">
+                    <div className="h-10 w-10 rounded-full bg-bareter-teal/20 flex items-center justify-center flex-shrink-0 text-bareter-teal">
+                      {step.icon}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-bareter-teal mb-0.5">{step.n}</p>
+                      <p className="text-sm font-semibold text-white mb-1">{step.title}</p>
+                      <p className="text-xs text-white/60 leading-relaxed">{step.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Niche tags */}
+              <div className="flex flex-wrap gap-1.5 mt-4">
+                {["Fashion","Beauty","Tech","Food","Travel","Fitness","Business","Gaming","Education","Lifestyle"].map(n => (
+                  <span key={n} className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/70">{n}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ============================ WAITLIST CTA ============================ */}
