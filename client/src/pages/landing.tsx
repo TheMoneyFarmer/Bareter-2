@@ -669,7 +669,7 @@ export function LandingPage() {
 
           {/* Header */}
           <div className="text-center mb-16">
-            <p className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-3">
               How it works
             </p>
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
@@ -686,7 +686,7 @@ export function LandingPage() {
             {/* Desktop connecting line */}
             <div
               className="absolute top-9 left-[13%] right-[13%] h-px hidden lg:block"
-              style={{ background: "linear-gradient(to right, transparent, rgba(34,160,160,0.35) 20%, rgba(34,160,160,0.35) 80%, transparent)" }}
+              style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.15) 80%, transparent)" }}
               aria-hidden="true"
             />
 
@@ -722,11 +722,11 @@ export function LandingPage() {
               >
                 {/* Icon card */}
                 <div className="relative mb-5 z-10">
-                  <div className="h-[72px] w-[72px] rounded-2xl bg-white/5 border border-white/10 group-hover:border-bareter-teal/50 group-hover:bg-bareter-teal/10 transition-all duration-300 flex items-center justify-center shadow-lg">
-                    <step.Icon className="h-7 w-7 text-bareter-teal" aria-hidden="true" />
+                  <div className="h-[72px] w-[72px] rounded-2xl bg-white/5 border border-white/15 group-hover:border-white/30 group-hover:bg-white/10 transition-all duration-300 flex items-center justify-center shadow-lg">
+                    <step.Icon className="h-7 w-7 text-white" aria-hidden="true" />
                   </div>
                   {/* Step number badge */}
-                  <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-bareter-teal text-white text-[11px] font-bold flex items-center justify-center shadow-md">
+                  <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white text-bareter-navy text-[11px] font-bold flex items-center justify-center shadow-md">
                     {i + 1}
                   </span>
                 </div>
@@ -735,7 +735,7 @@ export function LandingPage() {
                 <p className="text-sm text-white/55 leading-relaxed mb-4 max-w-[220px]">{step.desc}</p>
 
                 {/* Benefit pill */}
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-bareter-teal/20 text-white border border-bareter-teal/40">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-white/10 text-white border border-white/25">
                   <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                   {step.tag}
                 </span>
@@ -754,7 +754,7 @@ export function LandingPage() {
           <div className="mt-14 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
               size="lg"
-              className="h-12 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-semibold gap-2 shadow-lg"
+              className="h-12 px-8 bg-white text-bareter-navy hover:bg-white/90 font-semibold gap-2 shadow-lg"
               onClick={() => waitlistGate() && navigate("/create-listing")}
             >
               Start Bartering
