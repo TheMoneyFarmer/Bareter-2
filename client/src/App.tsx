@@ -65,6 +65,10 @@ const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ 
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
 initPostHog();
 
+const ADMIN_DOMAIN = "admin.bareter.com";
+const isAdminSubdomain =
+  typeof window !== "undefined" && window.location.hostname === ADMIN_DOMAIN;
+
 // Tell the browser not to auto-restore scroll position between SPA navigations —
 // we handle it ourselves in RouteTransition so pages always open at the top.
 if (typeof window !== "undefined") {
@@ -140,6 +144,65 @@ function RouteTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Redirects /admin/* to the admin subdomain when accessed from the main domain.
+// In local dev this is a no-op (hostname is localhost, not the admin domain).
+function AdminSubdomainRedirect() {
+  useEffect(() => {
+    if (window.location.hostname !== ADMIN_DOMAIN) {
+      window.location.replace(`https://${ADMIN_DOMAIN}/admin`);
+    }
+  }, []);
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
+// Minimal app rendered when hostname === admin.bareter.com.
+// No header, footer, nav, cookie banner, or support chat — just the admin panel.
+function AdminApp() {
+  const { data: user, isLoading } = useQuery<{ role?: string; isAdmin?: boolean } | null>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+  });
+
+  const isAdmin = user?.isAdmin === true || user?.role === "admin" || user?.role === "super_admin";
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user || !isAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <p className="text-sm font-semibold tracking-widest text-gray-400 uppercase mb-2">404</p>
+          <h1 className="text-xl font-semibold text-gray-900 mb-2">Page not found</h1>
+          <p className="text-sm text-gray-500">The page you requested could not be found.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" /></div>}>
+      <Switch>
+        <Route path="/" component={AdminPage} />
+        <Route path="/admin" component={AdminPage} />
+        <Route path="/admin/company-os" component={CompanyOsDashboard} />
+        <Route path="/admin/marketing" component={MarketingDashboard} />
+        <Route path="/admin/sales" component={SalesDashboard} />
+        <Route component={AdminPage} />
+      </Switch>
+    </Suspense>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -154,10 +217,11 @@ function Router() {
       <Route path="/listings/:id" component={ListingDetailPage} />
       <Route path="/deals" component={DealsPage} />
       <Route path="/deals/:id" component={DealDetailPage} />
-      <Route path="/admin" component={AdminPage} />
-      <Route path="/admin/company-os" component={CompanyOsDashboard} />
-      <Route path="/admin/marketing" component={MarketingDashboard} />
-      <Route path="/admin/sales" component={SalesDashboard} />
+      {/* Admin routes redirect to admin.bareter.com on main domain */}
+      <Route path="/admin" component={AdminSubdomainRedirect} />
+      <Route path="/admin/company-os" component={AdminSubdomainRedirect} />
+      <Route path="/admin/marketing" component={AdminSubdomainRedirect} />
+      <Route path="/admin/sales" component={AdminSubdomainRedirect} />
       <Route path="/how-it-works" component={HowItWorksPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route path="/help" component={HelpPage} />
@@ -219,11 +283,10 @@ function App() {
       client={queryClient}
       persistOptions={{
         persister,
-        maxAge: 1000 * 60 * 10, // 10 minutes — show cached content, refetch silently in background
+        maxAge: 1000 * 60 * 10,
         dehydrateOptions: {
           shouldDehydrateQuery: (query) => {
             const key = query.queryKey[0] as string;
-            // Only persist public listing/feed data — never persist auth-sensitive endpoints
             return (
               typeof key === "string" &&
               (key.startsWith("/api/listings") || key === "/api/trending" || key === "/api/feed")
@@ -237,31 +300,40 @@ function App() {
           <AuthProvider>
             <LanguageSync />
             <TooltipProvider>
-              <WaitlistProvider>
+              {/* Admin subdomain — stripped-down shell, no public UI chrome */}
+              {isAdminSubdomain ? (
                 <ErrorBoundary>
-                  <MaintenanceGate>
-                    <div className="min-h-screen flex flex-col bg-background">
-                      <AnnouncementBanner />
-                      <Header />
-                      <main className="flex-1 pb-20 md:pb-0">
-                        <RouteTransition>
-                          <GeoGate>
-                            <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh]"><div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" /></div>}>
-                              <Router />
-                            </Suspense>
-                          </GeoGate>
-                        </RouteTransition>
-                      </main>
-                      <Footer />
-                      <MobileBottomNav />
-                    </div>
-                    <Toaster />
-                    <AiSupportChat />
-                    <LocationMismatchBanner />
-                    <CookieConsent />
-                  </MaintenanceGate>
+                  <AdminApp />
+                  <Toaster />
                 </ErrorBoundary>
-              </WaitlistProvider>
+              ) : (
+                /* Main site */
+                <WaitlistProvider>
+                  <ErrorBoundary>
+                    <MaintenanceGate>
+                      <div className="min-h-screen flex flex-col bg-background">
+                        <AnnouncementBanner />
+                        <Header />
+                        <main className="flex-1 pb-20 md:pb-0">
+                          <RouteTransition>
+                            <GeoGate>
+                              <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh]"><div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" /></div>}>
+                                <Router />
+                              </Suspense>
+                            </GeoGate>
+                          </RouteTransition>
+                        </main>
+                        <Footer />
+                        <MobileBottomNav />
+                      </div>
+                      <Toaster />
+                      <AiSupportChat />
+                      <LocationMismatchBanner />
+                      <CookieConsent />
+                    </MaintenanceGate>
+                  </ErrorBoundary>
+                </WaitlistProvider>
+              )}
             </TooltipProvider>
           </AuthProvider>
         </I18nProvider>

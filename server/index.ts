@@ -196,6 +196,80 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
+  // ── Admin subdomain security ────────────────────────────────────────────────
+  // These two middleware functions must be registered AFTER registerRoutes
+  // (so the session middleware is already in the pipeline) and BEFORE
+  // serveStatic (so they intercept HTML requests before index.html is served).
+
+  const ADMIN_DOMAIN = process.env.ADMIN_DOMAIN || "admin.bareter.com";
+
+  // Plain HTML served to anyone who hits admin.bareter.com without a valid
+  // admin session. Deliberately bare — no Bareter branding, no clues.
+  const ADMIN_404_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>404 Not Found</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f9fafb}
+    h1{font-size:1.125rem;font-weight:600;color:#111827;margin-bottom:.375rem}
+    p{font-size:.875rem;color:#6b7280}
+  </style>
+</head>
+<body>
+  <div style="text-align:center">
+    <h1>404 Not Found</h1>
+    <p>The page you requested could not be found.</p>
+  </div>
+</body>
+</html>`;
+
+  // Guard: any request to admin.bareter.com that is NOT an API call or a
+  // static asset must come from a verified admin session — otherwise we
+  // return the generic 404 above so the React app never loads.
+  app.use(async (req: Request, res: Response, next: NextFunction) => {
+    if (req.hostname !== ADMIN_DOMAIN) return next();
+    // API calls are gated by requireAdmin individually — pass through.
+    if (req.path.startsWith("/api/")) return next();
+    // Static assets (JS bundles, CSS, fonts, images) — pass through.
+    if (/\.(js|css|png|jpe?g|gif|webp|ico|svg|woff2?|ttf|otf|map|webmanifest|json)$/i.test(req.path)) {
+      return next();
+    }
+    // All other requests (HTML page loads) — verify admin session.
+    const userId = (req.session as any)?.userId as string | undefined;
+    if (!userId) return res.status(404).send(ADMIN_404_HTML);
+    try {
+      const { storage } = await import("./storage");
+      const user = await storage.getUser(userId);
+      const allowlist = new Set(
+        (process.env.ADMIN_EMAIL_ALLOWLIST || "")
+          .split(",")
+          .map((e: string) => e.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      const emailOk = allowlist.size === 0 || allowlist.has((user?.email ?? "").toLowerCase());
+      const roleOk = user?.isAdmin || user?.role === "admin" || user?.role === "super_admin";
+      if (!user || !roleOk || !emailOk) return res.status(404).send(ADMIN_404_HTML);
+    } catch {
+      return res.status(404).send(ADMIN_404_HTML);
+    }
+    next();
+  });
+
+  // Redirect: bareter.com/admin/* → admin.bareter.com/admin/* (production only).
+  // In dev both /admin routes work as normal so you can test without the subdomain.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV !== "production") return next();
+    if (req.hostname === ADMIN_DOMAIN) return next();
+    if (req.path === "/admin" || req.path.startsWith("/admin/")) {
+      return res.redirect(301, `https://${ADMIN_DOMAIN}${req.path}`);
+    }
+    next();
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
