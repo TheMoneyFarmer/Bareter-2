@@ -24,7 +24,7 @@ import {
   Package, ShoppingCart, Loader2, X, Plus, ImagePlus,
   Tag, MapPin, DollarSign, FileText, ArrowLeftRight, Star,
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
-  Camera, Users, Sparkles,
+  Camera, Users, Sparkles, Check,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -97,6 +97,21 @@ export function CreateListingPage() {
   const [collabDeadline, setCollabDeadline] = useState("");
   const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
   const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
+
+  // Custom "Other" category
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
+
+  const addCustomCategory = () => {
+    const val = customCategoryInput.trim();
+    if (!val) return;
+    const current = form.getValues("categories");
+    if (!current.includes(val)) {
+      form.setValue("categories", [...current, val], { shouldValidate: true });
+    }
+    setCustomCategoryInput("");
+    setShowCustomCategory(false);
+  };
 
   const form = useForm<CreateListingForm>({
     resolver: zodResolver(makeCreateListingSchema(t)),
@@ -798,7 +813,69 @@ export function CreateListingPage() {
                         {category}
                       </Badge>
                     ))}
+
+                    {/* Custom categories the user already added */}
+                    {selectedCategories
+                      .filter((c) => !(CATEGORIES as readonly string[]).includes(c))
+                      .map((custom) => (
+                        <Badge
+                          key={custom}
+                          variant="default"
+                          className="cursor-pointer text-sm py-1.5 px-3 gap-1.5 bg-bareter-teal"
+                          onClick={() => toggleCategory(custom)}
+                        >
+                          {custom}
+                          <X className="h-3 w-3" />
+                        </Badge>
+                      ))}
+
+                    {/* "Other" trigger badge */}
+                    <Badge
+                      variant="outline"
+                      className="cursor-pointer text-sm py-1.5 px-3 gap-1 border-dashed border-bareter-teal text-bareter-teal hover:bg-bareter-teal/10"
+                      onClick={() => setShowCustomCategory((v) => !v)}
+                      data-testid="badge-category-other"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Other
+                    </Badge>
                   </div>
+
+                  {/* Inline custom category input */}
+                  {showCustomCategory && (
+                    <div className="mt-3 flex items-center gap-2 max-w-xs">
+                      <Input
+                        autoFocus
+                        placeholder="e.g. Antiques, Crypto, Art…"
+                        value={customCategoryInput}
+                        onChange={(e) => setCustomCategoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); }
+                          if (e.key === "Escape") { setShowCustomCategory(false); setCustomCategoryInput(""); }
+                        }}
+                        className="h-9 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 px-3"
+                        onClick={addCustomCategory}
+                        disabled={!customCategoryInput.trim()}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-9 px-3"
+                        onClick={() => { setShowCustomCategory(false); setCustomCategoryInput(""); }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+
                   <FormMessage />
                 </FormItem>
               )} />

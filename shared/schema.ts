@@ -24,6 +24,12 @@ export const CATEGORIES = [
   "Consulting",
   "Design",
   "Entertainment",
+  "Electronics",
+  "Jewelry & Watches",
+  "Sports & Fitness",
+  "Kids & Baby",
+  "Classified",
+  "Miscellaneous",
 ] as const;
 
 // Feed category tabs for the home feed
