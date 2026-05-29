@@ -735,7 +735,7 @@ export function LandingPage() {
                 <p className="text-sm text-white/55 leading-relaxed mb-4 max-w-[220px]">{step.desc}</p>
 
                 {/* Benefit pill */}
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-bareter-teal/15 text-bareter-teal border border-bareter-teal/25">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-bareter-teal/20 text-white border border-bareter-teal/40">
                   <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                   {step.tag}
                 </span>
