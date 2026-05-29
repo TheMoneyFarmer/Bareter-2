@@ -103,22 +103,33 @@ export function RegisterPage() {
   const { t } = useI18n();
   const [, navigate] = useLocation();
 
+  const [inviteCode, setInviteCode] = useState(() => {
+    try {
+      const url = new URL(window.location.href);
+      // Accept either ?invite=CODE (admin beta-invite link) or
+      // ?ref=CODE (waitlist referral link) — both are valid invite
+      // codes the server accepts during invite-only registration.
+      // Normalize to match how codes are stored (uppercase, ≤16 chars)
+      // so a lowercased link doesn't get rejected on submit.
+      const raw = url.searchParams.get("invite") || url.searchParams.get("ref") || "";
+      return raw.trim().toUpperCase().slice(0, 16);
+    } catch { return ""; }
+  });
+
+  // Only bounce visitors to the waitlist when they DON'T have an invite
+  // code. Friends who open an invite link must be able to reach the
+  // registration form even while waitlist mode is on — the server still
+  // validates the code on submit.
   useEffect(() => {
-    if (waitlistMode.enabled && !user) {
+    if (waitlistMode.enabled && !user && !inviteCode) {
       openWaitlist();
       navigate("/");
     }
-  }, [waitlistMode.enabled, user, openWaitlist, navigate]);
+  }, [waitlistMode.enabled, user, inviteCode, openWaitlist, navigate]);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [signupType, setSignupType] = useState<SignupType | null>(null);
-  const [inviteCode, setInviteCode] = useState(() => {
-    try {
-      const url = new URL(window.location.href);
-      return url.searchParams.get("invite") || "";
-    } catch { return ""; }
-  });
   const [socialForm, setSocialForm] = useState<SocialFormState>({
     instagram: { username: "", followerCount: "" },
     tiktok: { username: "", followerCount: "" },
@@ -230,7 +241,7 @@ export function RegisterPage() {
         city: formValues.city,
         signupType: signupType || undefined,
         socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
-        inviteCode: inviteCode.trim() || undefined,
+        inviteCode: inviteCode.trim().toUpperCase().slice(0, 16) || undefined,
       });
       trackEvent("register", {
         account_type: signupType || undefined,
