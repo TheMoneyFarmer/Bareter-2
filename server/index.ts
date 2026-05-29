@@ -228,8 +228,9 @@ app.use((req, res, next) => {
 </html>`;
 
   // Guard: any request to admin.bareter.com that is NOT an API call or a
-  // static asset must come from a verified admin session — otherwise we
-  // return the generic 404 above so the React app never loads.
+  // static asset is checked for admin status. Unauthenticated visitors get
+  // the React SPA (which renders the AdminLoginForm). Authenticated
+  // non-admins get the bare 404 — they should not know this panel exists.
   app.use(async (req: Request, res: Response, next: NextFunction) => {
     if (req.hostname !== ADMIN_DOMAIN) return next();
     // API calls are gated by requireAdmin individually — pass through.
@@ -238,9 +239,10 @@ app.use((req, res, next) => {
     if (/\.(js|css|png|jpe?g|gif|webp|ico|svg|woff2?|ttf|otf|map|webmanifest|json)$/i.test(req.path)) {
       return next();
     }
-    // All other requests (HTML page loads) — verify admin session.
+    // No session → let the React SPA load so AdminLoginForm can render.
     const userId = (req.session as any)?.userId as string | undefined;
-    if (!userId) return res.status(404).send(ADMIN_404_HTML);
+    if (!userId) return next();
+    // Session exists — verify the user is actually an admin.
     try {
       const { storage } = await import("./storage");
       const user = await storage.getUser(userId);
