@@ -312,6 +312,17 @@ export function BrowsePage() {
     queryKey: ["/api/listings/featured"],
   });
 
+  const { data: collabListings = [], isLoading: collabLoading } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/collabs"],
+    queryFn: async () => {
+      const res = await fetch("/api/listings/collabs", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+    enabled: activeTab === "collabs",
+  });
+
   const { data: recommendedUsers } = useQuery<any[]>({
     queryKey: ["/api/recommendations/users"],
     enabled: !!user,
@@ -784,50 +795,47 @@ export function BrowsePage() {
             </Link>
           </div>
 
-          {isLoading ? (
+          {collabLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}><CardContent className="p-0"><Skeleton className="h-48 rounded-t-md" /><div className="p-4 space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div></CardContent></Card>
               ))}
             </div>
-          ) : (() => {
-            const collabListings = (listings || []).filter((l) => (l as any).isCollab === true);
-            return collabListings.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
-                  <h3 className="font-semibold text-lg mb-2">No brand collab listings yet</h3>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    Be the first to post a brand collab — offer your product or service in exchange for creator content.
-                  </p>
-                  <Link href="/create-listing">
-                    <Button variant="bareter" size="sm">Post a Brand Collab</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-collabs">
-                  {collabListings.map((listing) => (
-                    <BrandListingCard
-                      key={listing.id}
-                      listing={listing}
-                      isWishlisted={currentWishlistedIds.has(listing.id)}
-                      onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
-                    />
-                  ))}
-                </StaggeredReveal>
-                <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 text-center">
-                  <Sparkles className="h-6 w-6 text-primary mx-auto mb-2" />
-                  <p className="font-semibold mb-1">Are you a content creator?</p>
-                  <p className="text-sm text-muted-foreground mb-3">Set up your creator profile and start receiving brand collab offers.</p>
-                  <Link href="/creators">
-                    <Button size="sm">Discover Creators</Button>
-                  </Link>
-                </div>
-              </>
-            );
-          })()}
+          ) : collabListings.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
+                <h3 className="font-semibold text-lg mb-2">No brand collab listings yet</h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Be the first to post a brand collab — offer your product or service in exchange for creator content.
+                </p>
+                <Link href="/create-listing">
+                  <Button variant="bareter" size="sm">Post a Brand Collab</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-collabs">
+                {collabListings.map((listing) => (
+                  <BrandListingCard
+                    key={listing.id}
+                    listing={listing}
+                    isWishlisted={currentWishlistedIds.has(listing.id)}
+                    onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
+                  />
+                ))}
+              </StaggeredReveal>
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 text-center">
+                <Sparkles className="h-6 w-6 text-primary mx-auto mb-2" />
+                <p className="font-semibold mb-1">Are you a content creator?</p>
+                <p className="text-sm text-muted-foreground mb-3">Set up your creator profile and start receiving brand collab offers.</p>
+                <Link href="/creators">
+                  <Button size="sm">Discover Creators</Button>
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       ) : activeTab === "for-you" ? (
         <ForYouTab

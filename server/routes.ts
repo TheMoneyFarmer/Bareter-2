@@ -1419,6 +1419,44 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/listings/collabs — all active brand-collab listings, no location filter
+  app.get("/api/listings/collabs", async (req, res) => {
+    try {
+      const rows = await db
+        .select()
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(
+          and(
+            eq((listings as any).isCollab, true),
+            eq(listings.isActive, true),
+          )
+        )
+        .orderBy(desc(listings.createdAt))
+        .limit(40);
+
+      const userId = req.session?.userId;
+      const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
+
+      const enriched = rows.map(({ listings: l, users: u }) => ({
+        ...l,
+        user: u ? {
+          id: u.id, fullName: u.fullName, avatarUrl: u.avatarUrl,
+          isVerified: u.isVerified, businessName: u.businessName,
+          kycStatus: u.kycStatus, kybStatus: u.kybStatus, accountType: u.accountType,
+          credibilityScore: u.credibilityScore, totalCompletedDeals: u.totalCompletedDeals,
+          founderBadge: u.founderBadge,
+        } : null,
+        isLiked: likedIds.has(l.id),
+        commentCount: 0,
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error("Get collab listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/listings/:id", async (req, res) => {
     try {
       const listing = await storage.getListingWithUser(param(req.params.id));

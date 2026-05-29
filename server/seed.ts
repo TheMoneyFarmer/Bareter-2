@@ -1068,8 +1068,8 @@ async function seedAiModeration(testPosts: { id: string; title: string; caption:
 // Runs in all environments so the /creators page and landing panel are never empty.
 export async function seedCreators() {
   try {
-    const existing = await db.select({ id: users.id }).from(users).where(eq(users.signupType, "creator")).limit(1);
-    if (existing.length > 0) return;
+    const existing = await db.select({ email: users.email }).from(users).where(eq(users.signupType, "creator"));
+    const existingEmails = new Set(existing.map(u => u.email));
 
     console.log("[seed] Inserting creator accounts...");
     const hashedPassword = await bcrypt.hash("creator123", 10);
@@ -1216,8 +1216,14 @@ export async function seedCreators() {
       },
     ];
 
+    const toInsert = CREATORS.filter(c => !existingEmails.has(c.email));
+    if (toInsert.length === 0) {
+      console.log("[seed] Creator accounts already up to date.");
+      return;
+    }
+
     await db.insert(users).values(
-      CREATORS.map(c => ({
+      toInsert.map(c => ({
         email: c.email,
         password: hashedPassword,
         fullName: c.fullName,
@@ -1226,6 +1232,7 @@ export async function seedCreators() {
         city: c.city,
         country: c.country,
         isVerified: c.isVerified,
+        isBanned: false,
         signupType: "creator" as const,
         creatorProfile: c.creatorProfile as any,
         accountType: "personal" as const,
@@ -1235,7 +1242,7 @@ export async function seedCreators() {
       }))
     );
 
-    console.log(`[seed] ✓ ${CREATORS.length} creator accounts inserted.`);
+    console.log(`[seed] ✓ ${toInsert.length} creator accounts inserted.`);
   } catch (err) {
     console.error("[seed] seedCreators error:", err);
   }
@@ -1429,8 +1436,12 @@ export async function seedCollabListings() {
 
     let inserted = 0;
     for (const collab of COLLAB_LISTINGS) {
-      await db.insert(listings).values(collab as any).onConflictDoNothing();
-      inserted++;
+      try {
+        await db.insert(listings).values({ ...collab, moderationStatus: "APPROVED" } as any);
+        inserted++;
+      } catch {
+        // already exists, skip
+      }
     }
     console.log(`[seed] ✓ ${inserted} brand collab listings inserted.`);
   } catch (err) {
