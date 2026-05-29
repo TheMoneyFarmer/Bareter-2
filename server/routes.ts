@@ -1423,35 +1423,79 @@ export async function registerRoutes(
   // GET /api/listings/collabs — all active brand-collab listings, no location filter
   app.get("/api/listings/collabs", async (req, res) => {
     try {
-      const rows = await db
-        .select()
-        .from(listings)
-        .leftJoin(users, eq(listings.userId, users.id))
-        .where(
-          and(
-            eq(listings.isCollab, true),
-            eq(listings.isActive, true),
-          )
-        )
-        .orderBy(desc(listings.createdAt))
-        .limit(40);
+      // Raw SQL — bypasses any ORM column-mapping issues with is_collab
+      const result = await db.execute(sqlOperator`
+        SELECT
+          l.*,
+          u.id          AS u_id,
+          u.full_name   AS u_full_name,
+          u.avatar_url  AS u_avatar_url,
+          u.is_verified AS u_is_verified,
+          u.business_name AS u_business_name,
+          u.kyc_status  AS u_kyc_status,
+          u.kyb_status  AS u_kyb_status,
+          u.account_type AS u_account_type,
+          u.credibility_score AS u_credibility_score,
+          u.total_completed_deals AS u_total_completed_deals,
+          u.founder_badge AS u_founder_badge
+        FROM listings l
+        LEFT JOIN users u ON l.user_id = u.id
+        WHERE l.is_collab = true
+          AND l.is_active = true
+          AND (l.moderation_status IS NULL OR l.moderation_status = 'APPROVED')
+        ORDER BY l.created_at DESC
+        LIMIT 40
+      `);
+
+      const rows = result.rows as any[];
+
+      // If empty, trigger lazy seed and re-query once
+      if (rows.length === 0) {
+        await seedCollabListings();
+        const result2 = await db.execute(sqlOperator`
+          SELECT l.*, u.id AS u_id, u.full_name AS u_full_name, u.avatar_url AS u_avatar_url,
+            u.is_verified AS u_is_verified, u.business_name AS u_business_name,
+            u.kyc_status AS u_kyc_status, u.kyb_status AS u_kyb_status,
+            u.account_type AS u_account_type, u.credibility_score AS u_credibility_score,
+            u.total_completed_deals AS u_total_completed_deals, u.founder_badge AS u_founder_badge
+          FROM listings l LEFT JOIN users u ON l.user_id = u.id
+          WHERE l.is_collab = true AND l.is_active = true
+          ORDER BY l.created_at DESC LIMIT 40
+        `);
+        const rows2 = result2.rows as any[];
+        return res.json(rows2.map((r: any) => ({
+          id: r.id, title: r.title, description: r.description,
+          retailValue: r.retail_value, location: r.location, city: r.city, country: r.country,
+          images: r.images || [], categories: r.categories || [], tags: r.tags || [],
+          isCollab: r.is_collab, collabDetails: r.collab_details,
+          isActive: r.is_active, likeCount: r.like_count || 0, viewCount: r.view_count || 0,
+          createdAt: r.created_at, userId: r.user_id,
+          isLiked: false, commentCount: 0,
+          user: r.u_id ? { id: r.u_id, fullName: r.u_full_name, avatarUrl: r.u_avatar_url,
+            isVerified: r.u_is_verified, businessName: r.u_business_name,
+            kycStatus: r.u_kyc_status, kybStatus: r.u_kyb_status, accountType: r.u_account_type,
+            credibilityScore: r.u_credibility_score, totalCompletedDeals: r.u_total_completed_deals,
+            founderBadge: r.u_founder_badge } : null,
+        })));
+      }
 
       const userId = req.session?.userId;
       const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
 
-      const enriched = rows.map(({ listings: l, users: u }) => ({
-        ...l,
-        user: u ? {
-          id: u.id, fullName: u.fullName, avatarUrl: u.avatarUrl,
-          isVerified: u.isVerified, businessName: u.businessName,
-          kycStatus: u.kycStatus, kybStatus: u.kybStatus, accountType: u.accountType,
-          credibilityScore: u.credibilityScore, totalCompletedDeals: u.totalCompletedDeals,
-          founderBadge: u.founderBadge,
-        } : null,
-        isLiked: likedIds.has(l.id),
-        commentCount: 0,
-      }));
-      res.json(enriched);
+      res.json(rows.map((r: any) => ({
+        id: r.id, title: r.title, description: r.description,
+        retailValue: r.retail_value, location: r.location, city: r.city, country: r.country,
+        images: r.images || [], categories: r.categories || [], tags: r.tags || [],
+        isCollab: r.is_collab, collabDetails: r.collab_details,
+        isActive: r.is_active, likeCount: r.like_count || 0, viewCount: r.view_count || 0,
+        createdAt: r.created_at, userId: r.user_id,
+        isLiked: likedIds.has(r.id), commentCount: 0,
+        user: r.u_id ? { id: r.u_id, fullName: r.u_full_name, avatarUrl: r.u_avatar_url,
+          isVerified: r.u_is_verified, businessName: r.u_business_name,
+          kycStatus: r.u_kyc_status, kybStatus: r.u_kyb_status, accountType: r.u_account_type,
+          credibilityScore: r.u_credibility_score, totalCompletedDeals: r.u_total_completed_deals,
+          founderBadge: r.u_founder_badge } : null,
+      })));
     } catch (error) {
       console.error("Get collab listings error:", error);
       res.status(500).json({ message: "Internal server error" });

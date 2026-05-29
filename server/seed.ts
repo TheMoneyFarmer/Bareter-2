@@ -1442,12 +1442,12 @@ export async function seedCollabListings() {
     for (const collab of COLLAB_LISTINGS) {
       const existing = byTitle.get(collab.title);
       if (existing) {
-        // Listing exists — make sure isCollab is set to true
+        // Listing exists — ensure is_collab is true via raw SQL
         if (!existing.isCollab) {
           try {
-            await db.update(listings).set({ isCollab: true, moderationStatus: "APPROVED" } as any).where(eq(listings.id, existing.id));
+            await db.execute(sql`UPDATE listings SET is_collab = true, is_active = true, moderation_status = 'APPROVED' WHERE id = ${existing.id}`);
             updated++;
-            console.log(`[seed]   ~ Updated isCollab=true for: ${collab.title}`);
+            console.log(`[seed]   ~ Updated is_collab=true for: ${collab.title}`);
           } catch (updateErr) {
             console.error(`[seed]   ! Failed to update "${collab.title}":`, updateErr);
           }
