@@ -42,6 +42,7 @@ import {
   ThumbsUp,
   Handshake,
   ExternalLink,
+  Settings,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -494,6 +495,16 @@ export function ProfilePage() {
 
   return (
     <div className="container px-4 py-8 mx-auto max-w-4xl">
+      {/* Mobile: settings shortcut bar */}
+      <div className="md:hidden flex items-center justify-between mb-4">
+        <h1 className="text-lg font-bold">My Profile</h1>
+        <Link href="/settings">
+          <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Settings">
+            <Settings className="h-5 w-5" />
+          </Button>
+        </Link>
+      </div>
+
       {isProfileIncomplete && (
         <Alert className="mb-6">
           <AlertCircle className="h-4 w-4" />

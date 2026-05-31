@@ -7419,6 +7419,17 @@ ${chatTranscript || "(No messages yet)"}`,
   });
 
   // ========== Inbox (Direct Messaging) ==========
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const [result] = await db.select({ count: count() }).from(notifications)
+        .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+      res.json({ count: Number(result?.count || 0) });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/inbox-unread-count", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;

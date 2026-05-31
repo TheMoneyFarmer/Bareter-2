@@ -45,6 +45,8 @@ import {
   TrendingUp,
   Youtube,
   Users,
+  ArrowLeft,
+  ChevronRight,
 } from "lucide-react";
 import { z } from "zod";
 import { useMemo } from "react";
@@ -128,6 +130,8 @@ export function SettingsPage() {
   const { language: activeLanguage, setLanguage, t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [mobileView, setMobileView] = useState<"menu" | "section">("menu");
+  const [activeTab, setActiveTab] = useState("account");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
@@ -455,18 +459,79 @@ export function SettingsPage() {
     );
   }
 
-  return (
-    <div className="container px-4 py-8 mx-auto max-w-4xl">
-      <div className="flex items-center gap-3 mb-8">
-        <Settings className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold">{t("settings.accountSettings")}</h1>
-          <p className="text-muted-foreground">{t("settings.managePreferences")}</p>
-        </div>
-      </div>
+  const SECTIONS = [
+    { id: "account",       label: t("settings.account"),       icon: User,      desc: "Name, email, phone, location" },
+    { id: "notifications", label: t("settings.notifications"), icon: Bell,      desc: "Email alerts, deals, messages" },
+    { id: "privacy",       label: t("settings.privacy"),       icon: Eye,       desc: "Who can see your profile" },
+    { id: "trading",       label: t("settings.bartering"),     icon: RefreshCw, desc: "Categories, radius, preferences" },
+    { id: "security",      label: t("settings.security"),      icon: Lock,      desc: "Password, verification, data" },
+    ...(user.signupType === "creator" ? [{ id: "creator", label: "Creator Profile", icon: Camera, desc: "Platform, followers, niches" }] : []),
+  ];
 
-      <Tabs defaultValue="account" className="space-y-6">
-        <TabsList className={`grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
+  const activeSectionLabel = SECTIONS.find(s => s.id === activeTab)?.label ?? "";
+
+  return (
+    <div className="mx-auto max-w-4xl">
+
+      {/* ── MOBILE: menu list ─────────────────────────────────────── */}
+      {mobileView === "menu" && (
+        <div className="md:hidden">
+          <div className="px-4 pt-6 pb-4 flex items-center gap-3 border-b border-border">
+            <Settings className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-bold">{t("settings.accountSettings")}</h1>
+          </div>
+          <div className="divide-y divide-border">
+            {SECTIONS.map(section => (
+              <button
+                key={section.id}
+                type="button"
+                className="w-full flex items-center gap-4 px-4 py-4 hover:bg-muted/40 active:bg-muted/60 transition-colors text-left"
+                onClick={() => { setActiveTab(section.id); setMobileView("section"); }}
+                data-testid={`mobile-settings-${section.id}`}
+              >
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <section.icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground">{section.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{section.desc}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── MOBILE: section content (back button header) ──────────── */}
+      {mobileView === "section" && (
+        <div className="md:hidden sticky top-0 z-10 bg-background border-b border-border flex items-center gap-3 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setMobileView("menu")}
+            className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
+            aria-label="Back to settings"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="font-semibold text-foreground">{activeSectionLabel}</h2>
+        </div>
+      )}
+
+      {/* ── CONTENT: hidden on mobile when showing menu ───────────── */}
+      <div className={`${mobileView === "menu" ? "hidden md:block" : "block"} container px-4 py-6 md:py-8`}>
+
+        {/* Desktop header */}
+        <div className="hidden md:flex items-center gap-3 mb-8">
+          <Settings className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold">{t("settings.accountSettings")}</h1>
+            <p className="text-muted-foreground">{t("settings.managePreferences")}</p>
+          </div>
+        </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setMobileView("section"); }} className="space-y-6">
+        <TabsList className={`hidden md:grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
           <TabsTrigger value="account" data-testid="tab-account">
             <User className="h-4 w-4 mr-2" />
             {t("settings.account")}
@@ -1663,6 +1728,7 @@ export function SettingsPage() {
           </TabsContent>
         )}
       </Tabs>
+      </div>{/* end content wrapper */}
     </div>
   );
 }
