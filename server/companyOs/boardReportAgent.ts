@@ -505,7 +505,7 @@ export async function gatherMetrics(month: string): Promise<BoardReportMetrics> 
 // Narrative — LLM call with budget gate + deterministic fallback.
 // ---------------------------------------------------------------------------
 
-const NARRATIVE_SYSTEM = `You are the Board Report Agent for Bareter (UAE/GCC barter marketplace). Write a concise, founder-style "month in 4 paragraphs" executive summary for the company's board.
+const NARRATIVE_SYSTEM = `You are the Board Report Agent for Bareter (UAE's barter marketplace). Write a concise, founder-style "month in 4 paragraphs" executive summary for the company's board.
 
 Constraints:
 - Exactly 4 paragraphs, separated by a blank line.

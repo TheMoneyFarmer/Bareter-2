@@ -920,7 +920,8 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── Brand Collab Toggle ──────────────────────────────────────── */}
+          {/* ── Brand Collab Toggle — hidden, reintroduced later ─────────── */}
+          {false && (
           <Card className={`border-2 transition-colors ${isCollab ? "border-primary bg-primary/5" : "border-dashed border-muted-foreground/30"}`}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
@@ -1060,6 +1061,8 @@ export function CreateListingPage() {
               )}
             </CardContent>
           </Card>
+
+          )} {/* end hidden collab toggle */}
 
           {/* ── Submit ───────────────────────────────────────────────────── */}
           <div className="flex gap-4 justify-end">

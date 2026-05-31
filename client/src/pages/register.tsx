@@ -351,20 +351,7 @@ export function RegisterPage() {
             </div>
           </button>
 
-          <button
-            type="button"
-            onClick={() => { setSignupType("creator"); setStep(2); }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "creator" ? "border-primary bg-primary/5" : "border-border"}`}
-            data-testid="card-signup-creator"
-          >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-              <Camera className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Creator</p>
-              <p className="text-xs text-muted-foreground mt-1">Influencers & content creators</p>
-            </div>
-          </button>
+          {/* Creator signup option — hidden, reintroduced later */}
         </div>
 
         <div className="mt-6 text-center text-sm">

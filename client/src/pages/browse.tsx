@@ -766,15 +766,7 @@ export function BrowsePage() {
             For You
           </Button>
         )}
-        <Button
-          variant={activeTab === "collabs" ? "bareter" : "bareter-outline"}
-          onClick={() => setActiveTab("collabs")}
-          className="gap-2 flex-shrink-0"
-          data-testid="tab-collabs"
-        >
-          <CameraIcon className="h-4 w-4" />
-          Brand Collabs
-        </Button>
+        {/* Brand Collabs tab hidden — reintroduced later */}
       </div>
 
       {activeTab === "collabs" ? (

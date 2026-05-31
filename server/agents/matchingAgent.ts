@@ -14,7 +14,7 @@ export interface MatchResult {
   reason: string;
 }
 
-const SYSTEM_PROMPT = `You are a smart matching agent for Bareter, a UAE barter marketplace.
+const SYSTEM_PROMPT = `You are a smart matching agent for Bareter, UAE's barter marketplace — trade goods & services without cash.
 Given a user's profile (what they offer and need) and available listings, rank the best barter matches.
 
 Consider:

@@ -789,7 +789,7 @@ export async function gatherDisputeData(windowDays = 7): Promise<DisputeRiskSnap
   }
 }
 
-const DISPUTE_RISK_SYSTEM_PROMPT = `You are the Legal Agent for Bareter, a UAE barter marketplace.
+const DISPUTE_RISK_SYSTEM_PROMPT = `You are the Legal Agent for Bareter, UAE's barter marketplace — trade goods & services without cash.
 
 Read the dispute / report data the founder gives you and produce 3 short, plain-English risk callouts.
 

@@ -465,7 +465,7 @@ export function SettingsPage() {
     { id: "privacy",       label: t("settings.privacy"),       icon: Eye,       desc: "Who can see your profile" },
     { id: "trading",       label: t("settings.bartering"),     icon: RefreshCw, desc: "Categories, radius, preferences" },
     { id: "security",      label: t("settings.security"),      icon: Lock,      desc: "Password, verification, data" },
-    ...(user.signupType === "creator" ? [{ id: "creator", label: "Creator Profile", icon: Camera, desc: "Platform, followers, niches" }] : []),
+    // Creator Profile tab hidden — reintroduced later
   ];
 
   const activeSectionLabel = SECTIONS.find(s => s.id === activeTab)?.label ?? "";

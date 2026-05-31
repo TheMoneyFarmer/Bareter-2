@@ -57,22 +57,15 @@ const FAQS = [
 ];
 
 const TESTIMONIALS = [
-  { name: "Khalid Al Mansoori", title: "CEO, Dubai Auto Group", quote: "Cheaper and more effective than any agency we've ever worked with. Closed three brand collabs in one week.", initials: "KA" },
-  { name: "Sara Al Hashimi", title: "Marketing Director, Luxury Hotels UAE", quote: "We exchanged hotel stays for authentic TikTok content. The quality was incredible and it cost us nothing but a room.", initials: "SA" },
+  { name: "Khalid Al Mansoori", title: "CEO, Dubai Auto Group", quote: "We traded a fleet service package for office fit-out work. No cash changed hands and both businesses got exactly what they needed.", initials: "KA" },
+  { name: "Sara Al Hashimi", title: "Marketing Director, Luxury Hotels UAE", quote: "We exchanged hotel stays for professional photography. The quality was incredible and it cost us nothing but a room.", initials: "SA" },
   { name: "Layla Karimi", title: "Fashion Creator, 80K followers", quote: "Finally a platform where I can find real brand deals without cold DMs. Got gifted three outfits this month alone.", initials: "LK" },
-];
-
-const STATIC_CREATORS = [
-  { name: "Aisha Rahman", platform: "Instagram", followers: "48K", rating: 4.7 },
-  { name: "Omar Al Farsi", platform: "TikTok", followers: "23K", rating: 4.9 },
-  { name: "Fatima Zahra", platform: "YouTube", followers: "56K", rating: 4.5 },
-  { name: "Youssef Benali", platform: "Instagram", followers: "14K", rating: 4.9 },
 ];
 
 type PublicSettings = Record<string, string | null>;
 type HowItWorksStep = { n: number; emoji: string; title: string; desc: string };
-const DEFAULT_HEADLINE = "Barter. Collab. Grow.";
-const DEFAULT_TAGLINE = "UAE's marketplace where businesses swap value — products for services, or products for content.";
+const DEFAULT_HEADLINE = "Trade what you have for what you need.";
+const DEFAULT_TAGLINE = "UAE's barter marketplace. No cash. No waste. Just pure exchange.";
 const DEFAULT_STEPS: HowItWorksStep[] = [
   { n: 1, emoji: "📋", title: "List what you have", desc: "Describe your item or service in minutes." },
   { n: 2, emoji: "🤖", title: "Get AI-matched", desc: "Our engine finds the perfect barter partner." },
@@ -120,11 +113,6 @@ export function LandingPage() {
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
   const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings/featured"] });
-  const { data: featuredCreators = [] } = useQuery<any[]>({
-    queryKey: ["/api/creators", "landing"],
-    queryFn: async () => { const res = await fetch("/api/creators"); if (!res.ok) return []; const all = await res.json(); return all.slice(0, 4); },
-    staleTime: 120_000,
-  });
   const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings"] });
 
   const featured = ((featuredListings && featuredListings.length > 0 ? featuredListings : latestListings || [])).slice(0, 4);
@@ -148,16 +136,6 @@ export function LandingPage() {
     { label: "Hospitality", category: "Hospitality" },
     { label: "Health", category: "Health & Wellness" },
   ];
-
-  const creators = featuredCreators.length > 0
-    ? featuredCreators.map((c: any) => ({
-        name: c.fullName,
-        platform: c.creatorProfile?.primaryPlatform ?? "Instagram",
-        followers: c.creatorProfile?.followerCount >= 1_000_000 ? `${(c.creatorProfile.followerCount / 1_000_000).toFixed(1)}M` : c.creatorProfile?.followerCount >= 1_000 ? `${(c.creatorProfile.followerCount / 1_000).toFixed(0)}K` : "—",
-        rating: 4.7,
-        avatarUrl: c.avatarUrl,
-      }))
-    : STATIC_CREATORS;
 
   const galleryImages = (latestListings?.filter(l => (l.images as string[])?.[0]).slice(0, 8).map(l => (l.images as string[])[0]) ?? []);
   const displayGallery = galleryImages.length >= 4 ? galleryImages : [catHospitalityImg, catCarsImg, catServicesImg, catElectronicsImg, catYachtsImg, catFitnessImg, catHomeImg, catRealEstateImg];
@@ -244,9 +222,8 @@ export function LandingPage() {
       {/* Deal ticker */}
       <DealTicker />
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          THREE WAYS — unchanged from original
-      ═══════════════════════════════════════════════════════════════════ */}
+      {/* Three Ways / For Brands / For Creators — hidden, reintroduced later */}
+      {false && (
       <section className="bg-white dark:bg-background" data-testid="section-three-ways">
         <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
           <div className="text-center mb-10">
@@ -374,6 +351,8 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      )} {/* end hidden collab sections */}
 
       {/* ═══════════════════════════════════════════════════════════════════
           TRENDING / LISTINGS
