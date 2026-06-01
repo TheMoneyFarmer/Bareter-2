@@ -301,73 +301,6 @@ export function LandingPage() {
               {heroTagline}
             </p>
 
-            {/* Search bar */}
-            <div ref={searchRef} className="w-full max-w-2xl relative mb-8">
-              {/* Category filter */}
-              <div className="flex items-center gap-2 mb-3 overflow-x-auto scrollbar-hide pb-1 justify-center">
-                {SEARCH_CATEGORIES.map((cat) => (
-                  <button key={cat.label} type="button" onClick={() => setHeroCategory(cat.category)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 ${heroCategory === cat.category ? "bg-bareter-teal text-white shadow" : "bg-white/10 text-white/80 border border-white/20 hover:bg-white/20"}`}
-                  >{cat.label}</button>
-                ))}
-              </div>
-
-              <form onSubmit={(e) => { setShowSuggestions(false); handleHeroSearch(e); }} className="flex items-stretch bg-white rounded-xl shadow-2xl overflow-hidden h-14" role="search">
-                <input type="search" value={heroQuery}
-                  onChange={(e) => { setHeroQuery(e.target.value); setShowSuggestions(true); }}
-                  onFocus={() => heroQuery.length >= 2 && setShowSuggestions(true)}
-                  placeholder="Search listings — cars, services, real estate…"
-                  className="flex-1 px-5 bg-transparent text-bareter-navy placeholder:text-gray-400 text-base focus:outline-none"
-                  data-testid="input-hero-search" autoComplete="off"
-                />
-                <button type="submit" className="px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold text-sm transition-colors flex items-center gap-2">
-                  <Search className="h-4 w-4" /> Search
-                </button>
-              </form>
-
-              {/* Autocomplete dropdown */}
-              {showSuggestions && heroQuery.trim().length >= 2 && (
-                <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
-                  {suggestionListings && suggestionListings.length > 0 && (
-                    <div>
-                      <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
-                      {suggestionListings.slice(0, 5).map((l) => (
-                        <button key={l.id} type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
-                          onClick={() => { setShowSuggestions(false); navigate(`/listings/${l.id}`); }}>
-                          {(l.images as string[])?.[0] && <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
-                            <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {Array.isArray(suggestionUsers) && suggestionUsers.length > 0 && (
-                    <div className="border-t border-gray-100">
-                      <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Members</p>
-                      {suggestionUsers.slice(0, 3).map((u: User) => (
-                        <button key={u.id} type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
-                          onClick={() => { setShowSuggestions(false); navigate(`/users/${u.id}`); }}>
-                          <div className="h-9 w-9 rounded-full bg-bareter-teal text-white flex items-center justify-center text-sm font-bold flex-shrink-0">{u.fullName?.charAt(0)?.toUpperCase() ?? "U"}</div>
-                          <div>
-                            <p className="text-sm font-semibold text-bareter-navy">{u.fullName}</p>
-                            <p className="text-xs text-muted-foreground">{u.businessName || u.location || "Member"}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="border-t border-gray-100 px-4 py-3">
-                    <button type="button" className="w-full text-sm font-semibold text-bareter-teal hover:underline text-center"
-                      onClick={() => { setShowSuggestions(false); handleHeroSearch({ preventDefault: () => {} } as React.FormEvent); }}>
-                      Search all results for "{heroQuery}" →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <Button size="lg" className="h-13 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold text-base gap-2 rounded-xl shadow-lg"
@@ -380,26 +313,10 @@ export function LandingPage() {
               </Button>
             </div>
 
-            {/* Social proof pill */}
-            <div className="mt-8 flex items-center gap-2 text-white/60 text-sm">
-              <div className="flex -space-x-2">
-                {["KA", "SA", "LK", "AR", "NK"].map((i) => (
-                  <div key={i} className="h-7 w-7 rounded-full bg-bareter-teal/60 border-2 border-white/20 flex items-center justify-center text-[10px] font-bold text-white">{i}</div>
-                ))}
-              </div>
-              <span>Joined by <strong className="text-white">400+ UAE businesses</strong> this month</span>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Deal ticker */}
-      <DealTicker />
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          TRUST METRICS BAR — acquire.com style 4-stat horizontal bar
-      ══════════════════════════════════════════════════════════════════════ */}
-      <AcquireStatsBar />
 
       {/* ══════════════════════════════════════════════════════════════════════
           THREE WAYS — acquire.com animated feature cards
@@ -688,55 +605,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          TESTIMONIALS — acquire.com horizontal scroll carousel
-      ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-gray-50 dark:bg-muted/20 py-20 overflow-hidden" data-testid="section-testimonials">
-        <div className="container mx-auto max-w-7xl px-4">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
-            <div>
-              <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-2">Success stories</p>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight">
-                What our community says
-              </h2>
-            </div>
-            <div className="flex items-center gap-1">
-              {[...Array(5)].map((_, i) => <Star key={i} className="h-5 w-5 text-yellow-400 fill-yellow-400" />)}
-              <span className="text-sm font-bold text-bareter-navy dark:text-foreground ml-2">4.8 / 5</span>
-              <span className="text-sm text-muted-foreground ml-1">· 200+ reviews</span>
-            </div>
-          </div>
-
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-4 -mx-4 px-4">
-            {TESTIMONIALS.map((item) => (
-              <div key={item.name} className="bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm p-6 flex flex-col min-w-[300px] max-w-[340px] flex-shrink-0 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                <div className="flex items-center gap-0.5 mb-4">
-                  {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 text-yellow-400 fill-yellow-400" />)}
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed flex-1 mb-5">"{item.quote}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-sm flex-shrink-0">{item.initials}</div>
-                  <div>
-                    <p className="text-sm font-bold text-bareter-navy dark:text-foreground">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.title}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          SUCCESS STORIES MARQUEE
-      ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-white dark:bg-background border-y border-gray-100 dark:border-border" data-testid="section-stories">
-        <div className="container mx-auto max-w-7xl px-4 pt-5 pb-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">{t("landing.realBarters")}</p>
-        </div>
-        <SuccessStoriesMarquee />
-        <div className="h-4" aria-hidden="true" />
-      </section>
 
       {/* ══════════════════════════════════════════════════════════════════════
           FAQ — accordion
@@ -780,7 +648,7 @@ export function LandingPage() {
             Join the Bareter community
           </h2>
           <p className="text-white/75 text-lg mb-10 max-w-xl mx-auto">
-            List your first barter in 2 minutes. Free forever. No credit card required.
+            Join the UAE's fastest-growing barter marketplace.
           </p>
           {!user && (
             <form
@@ -815,7 +683,6 @@ export function LandingPage() {
               </Link>
             </div>
           )}
-          <p className="text-white/50 text-xs mt-4">{t("landing.noSpam")}</p>
         </div>
       </section>
 
