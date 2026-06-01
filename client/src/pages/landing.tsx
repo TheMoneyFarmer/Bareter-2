@@ -344,23 +344,23 @@ export function LandingPage() {
               cta="Browse Barters"
             />
             <ValueCard
-              icon={<Camera className="h-6 w-6 text-bareter-teal" />}
-              badge="For brands"
-              title="Brand Collabs"
-              desc="Post your product or service. Verified creators apply with their pitch. Pick the best fit and receive authentic content in return."
-              items={["Creators apply to you", "No agency fees", "Choose the best fit", "Contract auto-generated", "Instagram, TikTok, YouTube"]}
+              icon={<Handshake className="h-6 w-6 text-bareter-teal" />}
+              badge="Business to business"
+              title="Services for Services"
+              desc="Two businesses, each with something the other needs. Skip the invoices — swap your expertise directly and both walk away with exactly what you need."
+              items={["Legal for marketing", "Design for accounting", "Consulting for tech", "AI-matched by value", "Contract auto-generated"]}
               href="/create-listing"
-              cta="Post a Collab"
+              cta="Post a Service"
               accent
             />
             <ValueCard
-              icon={<Sparkles className="h-6 w-6 text-bareter-teal" />}
-              badge="For creators"
-              title="Creator Deals"
-              desc="You have followers. Brands have products. Get real products and services in exchange for authentic content on your platform."
-              items={["Any niche, any follower count", "Browse brand listings", "Apply with your pitch", "Real products, not exposure", "Deals tracked in-app"]}
-              href="/register"
-              cta="Join as Creator"
+              icon={<ArrowLeftRight className="h-6 w-6 text-bareter-teal" />}
+              badge="Brands & individuals"
+              title="Goods for Goods"
+              desc="Got excess stock, equipment or a product nobody uses? Trade it directly for something your business actually needs — no cash, no middleman."
+              items={["Surplus stock & equipment", "Products for products", "Any value, any category", "Verified counterparts", "Deals tracked in-app"]}
+              href="/browse"
+              cta="Browse Goods"
             />
           </div>
         </div>
@@ -522,28 +522,29 @@ export function LandingPage() {
               </Link>
             </div>
 
-            {/* Left — creator cards visual */}
+            {/* Left — recent barter activity cards */}
             <div className="w-full lg:w-[420px] flex-shrink-0 space-y-3">
-              <p className="text-sm font-bold text-bareter-navy dark:text-foreground mb-4">Creators available now</p>
-              {creators.map((c, i) => (
-                <div key={i} className="group flex items-center gap-4 p-4 bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
-                  <Avatar className="h-11 w-11 flex-shrink-0">
-                    <AvatarImage src={(c as any).avatarUrl ?? undefined} />
-                    <AvatarFallback className="bg-bareter-teal text-white font-bold">{c.name?.[0] ?? "C"}</AvatarFallback>
-                  </Avatar>
+              <p className="text-sm font-bold text-bareter-navy dark:text-foreground mb-4">Recent barter activity</p>
+              {[
+                { initials: "KA", name: "Khalid Auto Group", offer: "Fleet maintenance package", wants: "Office fit-out", value: "AED 8,000" },
+                { initials: "SH", name: "Sara Hotels UAE", offer: "2-night hotel stay", wants: "Photography", value: "AED 3,500" },
+                { initials: "AR", name: "Ahmed Tech Agency", offer: "12-month SaaS licence", wants: "Legal services", value: "AED 4,200" },
+                { initials: "NF", name: "Nour Food Co.", offer: "Catering for 50 pax", wants: "Marketing campaign", value: "AED 6,000" },
+              ].map((item, i) => (
+                <div key={i} className="group flex items-center gap-4 p-4 bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+                  <div className="h-11 w-11 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                    {item.initials}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-bareter-navy dark:text-foreground text-sm truncate">{c.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{c.platform} · {c.followers} followers</p>
+                    <p className="font-bold text-bareter-navy dark:text-foreground text-sm truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">Offering: {item.offer} · Wants: {item.wants}</p>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Star className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400" />
-                    <span className="text-xs font-bold text-bareter-navy dark:text-foreground">{c.rating}</span>
-                  </div>
+                  <span className="text-xs font-bold text-bareter-teal whitespace-nowrap">{item.value}</span>
                 </div>
               ))}
-              <Link href="/creators">
+              <Link href="/browse">
                 <div className="flex items-center justify-center gap-2 p-3.5 rounded-2xl border-2 border-dashed border-bareter-teal/30 text-bareter-teal text-sm font-bold hover:bg-bareter-teal/5 transition-colors cursor-pointer">
-                  <Users className="h-4 w-4" /> View all creators
+                  <ArrowLeftRight className="h-4 w-4" /> Browse all barters
                 </div>
               </Link>
             </div>
