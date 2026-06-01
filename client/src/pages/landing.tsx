@@ -487,10 +487,8 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          FOR BUYERS — right text, left visual (acquire.com pattern, flipped)
-      ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-white dark:bg-background py-20" data-testid="section-for-buyers">
+      {/* For Buyers section removed
+      <section className="bg-white dark:bg-background py-20" data-testid="section-for-buyers-hidden">
         <div className="container mx-auto max-w-7xl px-4">
           <div className="flex flex-col lg:flex-row-reverse gap-14 lg:gap-20 items-center">
             {/* Right — copy */}
@@ -550,7 +548,7 @@ export function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
+      end For Buyers section removed */}
 
       {/* ══════════════════════════════════════════════════════════════════════
           HOW IT WORKS — acquire-style 4-step flow
