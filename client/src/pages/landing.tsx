@@ -293,8 +293,8 @@ export function LandingPage() {
           HERO — left text / right animated cards (acquire.com split layout)
       ══════════════════════════════════════════════════════════════════════ */}
       <section className="relative isolate overflow-hidden min-h-[calc(100vh-4rem)] bg-bareter-navy" data-testid="section-hero">
-        <img src={heroHandshakeImg} alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center opacity-20" loading="eager" />
-        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-bareter-navy via-bareter-navy/95 to-bareter-navy/60" />
+        <img src={heroHandshakeImg} alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center opacity-50" loading="eager" />
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-bareter-navy/90 via-bareter-navy/75 to-bareter-navy/40" />
 
         <div className="container relative z-10 mx-auto max-w-7xl px-6 pt-20 pb-20 md:pt-28 md:pb-28">
           <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
@@ -339,76 +339,44 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* ── RIGHT — animated floating cards ── */}
-            <div className="flex-1 relative hidden lg:block" style={{ minHeight: 480 }}>
-
-              {/* Card 1 — Featured listing (top-left, floating) */}
-              <div className="float-a absolute top-0 left-4 w-72 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[11px] font-bold text-bareter-teal uppercase tracking-wider bg-bareter-teal/20 px-2.5 py-1 rounded-full">Real Estate</span>
-                  <span className="text-white font-extrabold text-lg">AED 450K</span>
-                </div>
-                <p className="text-white font-semibold text-sm mb-3">Dubai Marina Office Space — 1,200 sqft</p>
-                <div className="space-y-2">
-                  <div className="h-2 bg-white/15 rounded-full w-full" />
-                  <div className="h-2 bg-white/10 rounded-full w-4/5" />
-                  <div className="h-2 bg-white/10 rounded-full w-3/5" />
-                </div>
-                <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between">
-                  <span className="text-white/60 text-xs">Wants:</span>
-                  <span className="text-white text-xs font-semibold">Legal Services</span>
-                </div>
-              </div>
-
-              {/* Card 2 — AI Match badge (top-right, different float speed) */}
-              <div className="float-b absolute top-4 right-0 bg-bareter-teal rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3 w-56">
-                <div className="relative flex-shrink-0">
-                  <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-sm">AR</div>
-                  <span className="pulse-dot absolute bottom-0 right-0 h-3 w-3 bg-green-400 rounded-full border-2 border-bareter-teal" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-white/70 text-[10px] font-semibold uppercase tracking-wide">AI Match found</p>
-                  <p className="text-white font-bold text-sm truncate">Ahmed Al Rashidi</p>
-                  <p className="text-white/60 text-[10px]">Automotive · AED 440K</p>
-                </div>
-              </div>
-
-              {/* Dotted connector line */}
-              <svg className="absolute top-28 right-32 w-20 h-16 opacity-30" viewBox="0 0 80 64" fill="none">
-                <path d="M0 0 C40 0 80 64 80 64" stroke="white" strokeWidth="1.5" strokeDasharray="4 4"/>
-              </svg>
-
-              {/* Card 3 — Barter proposal (bottom-right, slowest float) */}
-              <div className="float-c absolute bottom-0 right-0 w-80 bg-white rounded-2xl p-5 shadow-2xl">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Barter proposal</p>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-10 w-10 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-sm flex-shrink-0">SH</div>
-                  <div>
-                    <p className="font-bold text-bareter-navy text-sm">Sara Al Hashimi</p>
-                    <div className="flex items-center gap-1">
-                      <ShieldCheck className="h-3 w-3 text-bareter-teal" />
-                      <span className="text-[10px] text-bareter-teal font-semibold">Verified member</span>
+            {/* ── RIGHT — 2×2 grid of everyday barter proposal cards ── */}
+            <div className="flex-1 hidden lg:grid grid-cols-2 gap-3 self-start">
+              {([
+                { initials: "MA", name: "Mariam A.", offering: "iPhone 14 Pro", value: "AED 750", wants: "iPad Mini", category: "Electronics" },
+                { initials: "YK", name: "Youssef K.", offering: "10 Yoga Classes", value: "AED 500", wants: "Meal Prep (4 wk)", category: "Health & Fitness" },
+                { initials: "LN", name: "Layla N.", offering: "Logo Design", value: "AED 600", wants: "Social Media Mgmt", category: "Services" },
+                { initials: "OM", name: "Omar M.", offering: "Arabic Tutoring", value: "AED 400", wants: "English Lessons", category: "Education" },
+              ]).map((card, i) => (
+                <div key={i} className={`bg-white rounded-2xl p-4 shadow-xl ${i % 2 === 1 ? "mt-5" : ""}`}>
+                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Barter Proposal</p>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="h-9 w-9 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-xs flex-shrink-0">{card.initials}</div>
+                    <div>
+                      <p className="font-bold text-bareter-navy text-sm leading-tight">{card.name}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <ShieldCheck className="h-3 w-3 text-bareter-teal" />
+                        <span className="text-[9px] text-bareter-teal font-semibold">Verified</span>
+                      </div>
                     </div>
                   </div>
+                  <div className="grid grid-cols-3 gap-1.5 mb-3">
+                    {[
+                      { label: "Offering", value: card.offering },
+                      { label: "Value", value: card.value },
+                      { label: "Wants", value: card.wants },
+                    ].map(s => (
+                      <div key={s.label} className="bg-gray-50 rounded-lg p-2">
+                        <p className="text-[8px] text-muted-foreground uppercase font-bold">{s.label}</p>
+                        <p className="text-[10px] font-bold text-bareter-navy mt-0.5 leading-tight">{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button className="flex-1 py-1.5 rounded-lg border border-gray-200 text-[10px] font-semibold text-muted-foreground hover:bg-gray-50 transition-colors">Decline</button>
+                    <button className="flex-1 py-1.5 rounded-lg bg-bareter-teal text-white text-[10px] font-bold hover:bg-bareter-teal/90 transition-colors">Accept Barter</button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {[
-                    { label: "Offering", value: "Hotel Stay" },
-                    { label: "Value", value: "AED 3.5K" },
-                    { label: "Wants", value: "Photography" },
-                  ].map(s => (
-                    <div key={s.label} className="bg-gray-50 rounded-xl p-2.5">
-                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">{s.label}</p>
-                      <p className="text-xs font-bold text-bareter-navy mt-0.5">{s.value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-muted-foreground hover:bg-gray-50 transition-colors">Decline</button>
-                  <button className="flex-1 py-2 rounded-lg bg-bareter-teal text-white text-xs font-bold hover:bg-bareter-teal/90 transition-colors">Accept Barter</button>
-                </div>
-              </div>
-
+              ))}
             </div>
           </div>
         </div>

@@ -39,7 +39,9 @@ export function Header() {
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t, isRTL } = useI18n();
-  const [, navigate] = useLocation();
+  const [currentPath, navigate] = useLocation();
+  // Show search bar + CategoryNav only on marketplace/browse/feed pages
+  const isMarketplace = currentPath.startsWith("/browse") || currentPath === "/feed" || currentPath.startsWith("/listings") || currentPath.startsWith("/c/") || currentPath === "/my-searches" || currentPath === "/saved";
 
   const persistLanguageMutation = useMutation({
     mutationFn: async (lang: "en" | "ar") => {
@@ -225,8 +227,8 @@ export function Header() {
             <ChevronDown className="h-3 w-3 text-white/60" />
           </button>
 
-          {/* ── Search bar (center, flex-1) ── */}
-          <div ref={searchRef} className="flex-1 max-w-xl mx-auto relative hidden sm:block">
+          {/* ── Search bar (center, flex-1) — marketplace pages only ── */}
+          <div ref={searchRef} className={`flex-1 max-w-xl mx-auto relative hidden sm:block ${!isMarketplace ? "invisible pointer-events-none" : ""}`}>
             <form onSubmit={handleSearch} className="flex items-center h-9 bg-white/15 hover:bg-white/20 focus-within:bg-white rounded-lg transition-colors overflow-hidden border border-white/20 focus-within:border-transparent focus-within:shadow-lg">
               <Search className="h-4 w-4 text-white/70 flex-shrink-0 ms-3 focus-within:text-bareter-muted" />
               <input
@@ -633,8 +635,8 @@ export function Header() {
         </div>
       </div>
 
-      {/* ── Category navigation bar ── */}
-      <CategoryNav />
+      {/* ── Category navigation bar — marketplace pages only ── */}
+      {isMarketplace && <CategoryNav />}
 
       <LocationPicker
         open={locationPickerOpen}
