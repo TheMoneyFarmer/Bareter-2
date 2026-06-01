@@ -287,12 +287,6 @@ export function LandingPage() {
         <div className="container relative z-10 mx-auto max-w-6xl px-4 pt-24 pb-28 md:pt-32 md:pb-36">
           <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
 
-            {/* Eyebrow */}
-            <span className="inline-flex items-center gap-2 bg-bareter-teal/20 border border-bareter-teal/30 text-bareter-teal-light text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
-              <Zap className="h-3.5 w-3.5" />
-              UAE's #1 Barter Marketplace
-            </span>
-
             {/* Headline */}
             <h1
               className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.08] tracking-tight mb-6"
