@@ -487,68 +487,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* For Buyers section removed
-      <section className="bg-white dark:bg-background py-20" data-testid="section-for-buyers-hidden">
-        <div className="container mx-auto max-w-7xl px-4">
-          <div className="flex flex-col lg:flex-row-reverse gap-14 lg:gap-20 items-center">
-            {/* Right — copy */}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">Find what you need</p>
-              <h2 className="text-4xl sm:text-5xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight mb-5 leading-[1.1]">
-                Get 500k+ dirhams in value.<br />Without spending cash.
-              </h2>
-              <p className="text-muted-foreground text-lg leading-relaxed mb-8 max-w-lg">
-                Browse verified UAE businesses offering their best assets. Propose a barter with what you have. Our AI finds the perfect match so every deal is fair.
-              </p>
-              <div className="grid grid-cols-2 gap-4 mb-10">
-                {[
-                  { n: "500+", label: "Active listings" },
-                  { n: "300+", label: "Deals closed" },
-                  { n: "AED 0", label: "Commission" },
-                  { n: "100%", label: "Verified members" },
-                ].map((s) => (
-                  <div key={s.label} className="bg-gray-50 dark:bg-muted/30 rounded-2xl p-5 border border-gray-100 dark:border-border">
-                    <p className="text-2xl font-extrabold text-bareter-navy dark:text-foreground">{s.n}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-              <Link href="/browse">
-                <Button size="lg" className="bg-bareter-teal hover:bg-bareter-teal/90 text-white px-8 rounded-xl gap-2 font-bold">
-                  Browse listings <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-
-            {/* Left — recent barter activity cards */}
-            <div className="w-full lg:w-[420px] flex-shrink-0 space-y-3">
-              <p className="text-sm font-bold text-bareter-navy dark:text-foreground mb-4">Recent barter activity</p>
-              {[
-                { initials: "KA", name: "Khalid Auto Group", offer: "Fleet maintenance package", wants: "Office fit-out", value: "AED 8,000" },
-                { initials: "SH", name: "Sara Hotels UAE", offer: "2-night hotel stay", wants: "Photography", value: "AED 3,500" },
-                { initials: "AR", name: "Ahmed Tech Agency", offer: "12-month SaaS licence", wants: "Legal services", value: "AED 4,200" },
-                { initials: "NF", name: "Nour Food Co.", offer: "Catering for 50 pax", wants: "Marketing campaign", value: "AED 6,000" },
-              ].map((item, i) => (
-                <div key={i} className="group flex items-center gap-4 p-4 bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-                  <div className="h-11 w-11 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                    {item.initials}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-bareter-navy dark:text-foreground text-sm truncate">{item.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">Offering: {item.offer} · Wants: {item.wants}</p>
-                  </div>
-                  <span className="text-xs font-bold text-bareter-teal whitespace-nowrap">{item.value}</span>
-                </div>
-              ))}
-              <Link href="/browse">
-                <div className="flex items-center justify-center gap-2 p-3.5 rounded-2xl border-2 border-dashed border-bareter-teal/30 text-bareter-teal text-sm font-bold hover:bg-bareter-teal/5 transition-colors cursor-pointer">
-                  <ArrowLeftRight className="h-4 w-4" /> Browse all barters
-                </div>
-              </Link>
-            </div>
-          </div>
-        </div>
-      end For Buyers section removed */}
 
       {/* ══════════════════════════════════════════════════════════════════════
           HOW IT WORKS — acquire-style 4-step flow
