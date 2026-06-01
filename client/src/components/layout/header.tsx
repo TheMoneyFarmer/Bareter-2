@@ -10,7 +10,7 @@ import { useActiveLocation } from "@/lib/active-location";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { getCountryByCode } from "@shared/schema";
+import { getCountryByCode, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -218,14 +218,6 @@ export function Header() {
             <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
-          {/* Location pill */}
-          <button type="button" onClick={() => setLocationPickerOpen(true)}
-            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
-            data-testid="button-location-pill">
-            <MapPin className="h-3.5 w-3.5 text-white/70" />
-            <span className="max-w-[80px] truncate">{locationPillLabel}</span>
-            <ChevronDown className="h-3 w-3 text-white/60" />
-          </button>
 
           {/* ── Search bar (center, flex-1) — marketplace pages only ── */}
           <div ref={searchRef} className={`flex-1 max-w-xl mx-auto relative hidden sm:block ${!isMarketplace ? "invisible pointer-events-none" : ""}`}>
@@ -527,6 +519,65 @@ export function Header() {
                     List a Barter
                   </Button>
                 </Link>
+
+                {/* Location dropdown — far right, inline auto-save */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button"
+                      className="hidden md:flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+                      data-testid="button-location-pill">
+                      <MapPin className="h-3.5 w-3.5 text-white/70" />
+                      <span className="max-w-[80px] truncate">{locationPillLabel}</span>
+                      <ChevronDown className="h-3 w-3 text-white/60" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 p-3" data-testid="dropdown-location">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Your location</p>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">Country</label>
+                        <select
+                          className="w-full text-sm border border-border rounded-md px-2.5 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-bareter-teal"
+                          value={userCountry}
+                          onChange={(e) => {
+                            const newCountry = e.target.value;
+                            updateLocationMutation.mutate({ country: newCountry, city: "" });
+                          }}
+                        >
+                          {COUNTRIES.map((c) => (
+                            <option key={c.code} value={c.code}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {(() => {
+                        const cities = getCitiesForCountry(userCountry);
+                        return cities.length > 0 ? (
+                          <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">City</label>
+                            <select
+                              className="w-full text-sm border border-border rounded-md px-2.5 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-bareter-teal"
+                              value={userCity ?? ""}
+                              onChange={(e) => updateLocationMutation.mutate({ country: userCountry, city: e.target.value })}
+                            >
+                              <option value="">All cities</option>
+                              {cities.map((city) => (
+                                <option key={city} value={city}>{city}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                    <DropdownMenuSeparator className="my-2" />
+                    <button
+                      type="button"
+                      className="w-full text-xs text-center text-bareter-teal hover:underline font-medium py-0.5"
+                      onClick={() => updateLocationMutation.mutate({ country: "WORLDWIDE", city: "" })}
+                    >
+                      🌍 Show worldwide listings
+                    </button>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 {/* Mobile hamburger */}
                 <Sheet>

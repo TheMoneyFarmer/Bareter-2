@@ -382,6 +382,7 @@ export function LandingPage() {
         </div>
       </section>
 
+      <StatsBar />
 
       {/* ══════════════════════════════════════════════════════════════════════
           HOW BARETER WORKS — acquire.com 3-column mockup section
@@ -704,28 +705,60 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 relative">
-            <div className="absolute top-9 left-[13%] right-[13%] h-px hidden lg:block"
-              style={{ background: "linear-gradient(to right, transparent, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.15) 80%, transparent)" }} aria-hidden="true" />
+          {/* Desktop: organic staggered layout with connecting SVG lines */}
+          <div className="hidden lg:block relative" style={{ height: "360px" }}>
+            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
+              <path d="M 195,110 C 270,110 310,195 385,195" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeDasharray="7 5" fill="none"/>
+              <path d="M 555,195 C 630,195 670,80 745,80" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeDasharray="7 5" fill="none"/>
+              <path d="M 915,80 C 990,80 1030,220 1105,220" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeDasharray="7 5" fill="none"/>
+              <circle cx="385" cy="195" r="3" fill="rgba(255,255,255,0.3)"/>
+              <circle cx="745" cy="80" r="3" fill="rgba(255,255,255,0.3)"/>
+              <circle cx="1105" cy="220" r="3" fill="rgba(255,255,255,0.3)"/>
+            </svg>
 
             {([
-              { Icon: LayoutList, title: "List what you have", desc: "Upload photos, set a value, describe what you want back. Done in 2 minutes.", tag: "2 min to list" },
-              { Icon: Sparkles, title: "AI finds your match", desc: "Our engine scans thousands of listings and surfaces the most compatible partners.", tag: "Instant matching" },
-              { Icon: MessageSquare, title: "Negotiate in-app", desc: "Chat, counter-offer, and agree on terms — all inside Bareter.", tag: "No lawyers needed" },
-              { Icon: FileSignature, title: "Sign & exchange", desc: "Auto-generated barter contract. Sign on-platform and complete the exchange.", tag: "Legally binding" },
+              { Icon: LayoutList, title: "List what you have", desc: "Upload photos, set a value, describe what you want back.", tag: "2 min", bg: "bg-bareter-teal", left: "4%", top: "50px" },
+              { Icon: Sparkles,   title: "AI finds your match", desc: "Our engine surfaces the most compatible barter partners.", tag: "Instant", bg: "bg-violet-500", left: "27%", top: "135px" },
+              { Icon: MessageSquare, title: "Negotiate in-app", desc: "Chat, counter-offer, and agree on terms inside Bareter.", tag: "No lawyers", bg: "bg-amber-500", left: "52%", top: "20px" },
+              { Icon: FileSignature, title: "Sign & exchange", desc: "Auto-generated contract. Sign on-platform, deal complete.", tag: "Legally binding", bg: "bg-emerald-500", left: "74%", top: "160px" },
             ] as const).map((step, i) => (
-              <div key={step.title} className="relative flex flex-col items-center text-center group">
-                <div className="relative mb-5 z-10">
-                  <div className="h-[72px] w-[72px] rounded-2xl bg-bareter-teal group-hover:bg-bareter-teal/80 transition-all duration-300 flex items-center justify-center shadow-lg">
+              <div key={step.title} className="absolute flex flex-col items-center text-center" style={{ left: step.left, top: step.top, width: "190px" }}>
+                <div className="relative mb-4">
+                  <div className={`h-[68px] w-[68px] rounded-2xl ${step.bg} flex items-center justify-center shadow-xl`}
+                    style={{ animation: `float ${3.5 + i * 0.7}s ease-in-out infinite alternate` }}>
                     <step.Icon className="h-7 w-7 text-white" />
                   </div>
-                  <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white text-bareter-navy text-[11px] font-extrabold flex items-center justify-center shadow-md">{i + 1}</span>
+                  <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-white text-bareter-navy text-[10px] font-extrabold flex items-center justify-center shadow">{i + 1}</span>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2 leading-snug">{step.title}</h3>
-                <p className="text-sm text-white/55 leading-relaxed mb-4 max-w-[200px]">{step.desc}</p>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-3 py-1 rounded-full bg-white/10 text-white border border-white/20">
-                  <CheckCircle2 className="h-3 w-3" />{step.tag}
+                <h3 className="text-sm font-bold text-white mb-1.5">{step.title}</h3>
+                <p className="text-xs text-white/55 leading-relaxed mb-3">{step.desc}</p>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-white border border-white/20">
+                  <CheckCircle2 className="h-2.5 w-2.5" />{step.tag}
                 </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile: vertical steps */}
+          <div className="lg:hidden space-y-6">
+            {[
+              { Icon: LayoutList,    title: "List what you have",    desc: "Upload photos, set a value, describe what you want back.", bg: "bg-bareter-teal" },
+              { Icon: Sparkles,      title: "AI finds your match",   desc: "Our engine surfaces the most compatible barter partners.", bg: "bg-violet-500" },
+              { Icon: MessageSquare, title: "Negotiate in-app",      desc: "Chat, counter-offer, and agree on terms inside Bareter.", bg: "bg-amber-500" },
+              { Icon: FileSignature, title: "Sign & exchange",       desc: "Auto-generated contract. Sign on-platform, deal complete.", bg: "bg-emerald-500" },
+            ].map((step, i) => (
+              <div key={step.title} className="flex items-start gap-4">
+                <div className="relative flex-shrink-0">
+                  <div className={`h-12 w-12 rounded-2xl ${step.bg} flex items-center justify-center shadow-lg`}>
+                    <step.Icon className="h-5 w-5 text-white" />
+                  </div>
+                  <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-white text-bareter-navy text-[9px] font-extrabold flex items-center justify-center">{i + 1}</span>
+                  {i < 3 && <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-px h-5 border-l border-dashed border-white/20" />}
+                </div>
+                <div className="pt-0.5">
+                  <h3 className="text-sm font-bold text-white mb-1">{step.title}</h3>
+                  <p className="text-xs text-white/55">{step.desc}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -828,30 +861,28 @@ export function LandingPage() {
   );
 }
 
-// ── Acquire-style stats bar ───────────────────────────────────────────────────
-function AcquireStatsBar() {
-  const { ref, isVisible } = useReveal<HTMLElement>();
-  const { data: counter } = useQuery<{ count: number }>({ queryKey: ["/api/waitlist/count"], refetchInterval: 10_000 });
-  const signups = useCountUp(counter?.count ?? null, 1500, isVisible);
-
+// ── Stats bar ────────────────────────────────────────────────────────────────
+function StatsBar() {
   const stats = [
-    { value: signups !== null ? `${signups.toLocaleString()}+` : "400+", label: "Waitlist signups", icon: <Users className="h-5 w-5 text-bareter-teal" /> },
-    { value: "AED 0", label: "Commission — free forever", icon: <CheckCircle2 className="h-5 w-5 text-bareter-teal" /> },
-    { value: "AI-powered", label: "Instant barter matching", icon: <Cpu className="h-5 w-5 text-bareter-teal" /> },
-    { value: "E-signed", label: "Auto-generated contracts", icon: <FileSignature className="h-5 w-5 text-bareter-teal" /> },
+    { value: "500+", label: "active users" },
+    { value: "400+", label: "listings posted" },
+    { value: "100+", label: "deals closed" },
+    { value: "$100k+", label: "in deal value" },
   ];
 
   return (
-    <section ref={ref} className="bg-white dark:bg-card border-b border-gray-100 dark:border-border" data-testid="section-trust">
-      <div className="container mx-auto max-w-7xl px-4 py-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-gray-100 dark:bg-border rounded-2xl overflow-hidden">
+    <section className="bg-bareter-navy/95" data-testid="section-stats">
+      <div className="container mx-auto max-w-7xl px-6 py-7">
+        <div className="flex flex-wrap items-center justify-center gap-0">
           {stats.map((s, i) => (
-            <div key={i} className="bg-white dark:bg-card flex flex-col sm:flex-row items-center sm:items-start gap-3 px-6 py-5">
-              <div className="flex-shrink-0 mt-0.5">{s.icon}</div>
-              <div className="text-center sm:text-left">
-                <p className="text-lg sm:text-xl font-extrabold text-bareter-navy dark:text-foreground leading-tight">{s.value}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+            <div key={i} className="flex items-center">
+              <div className="text-center px-10 py-2">
+                <p className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">{s.value}</p>
+                <p className="text-white/55 text-sm mt-0.5">{s.label}</p>
               </div>
+              {i < stats.length - 1 && (
+                <div className="h-10 w-px border-l border-dashed border-white/20 flex-shrink-0" />
+              )}
             </div>
           ))}
         </div>
