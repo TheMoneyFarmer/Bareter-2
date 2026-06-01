@@ -277,46 +277,279 @@ export function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-background">
 
+      {/* Floating card animations */}
+      <style>{`
+        @keyframes floatA { 0%,100%{transform:translateY(0px)} 50%{transform:translateY(-12px)} }
+        @keyframes floatB { 0%,100%{transform:translateY(0px)} 50%{transform:translateY(-8px)} }
+        @keyframes floatC { 0%,100%{transform:translateY(0px)} 50%{transform:translateY(-14px)} }
+        .float-a { animation: floatA 4s ease-in-out infinite; }
+        .float-b { animation: floatB 5s ease-in-out infinite 1s; }
+        .float-c { animation: floatC 4.5s ease-in-out infinite 2s; }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+      `}</style>
+
       {/* ══════════════════════════════════════════════════════════════════════
-          HERO — dark image background, large headline, search, CTAs
+          HERO — left text / right animated cards (acquire.com split layout)
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="relative isolate overflow-hidden min-h-[calc(100vh-4rem)]" data-testid="section-hero">
-        <img src={heroHandshakeImg} alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center" loading="eager" />
-        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-bareter-navy/65 via-bareter-navy/55 to-bareter-navy/75" />
+      <section className="relative isolate overflow-hidden min-h-[calc(100vh-4rem)] bg-bareter-navy" data-testid="section-hero">
+        <img src={heroHandshakeImg} alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center opacity-20" loading="eager" />
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-bareter-navy via-bareter-navy/95 to-bareter-navy/60" />
 
-        <div className="container relative z-10 mx-auto max-w-6xl px-4 pt-24 pb-28 md:pt-32 md:pb-40">
-          <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
+        <div className="container relative z-10 mx-auto max-w-7xl px-6 pt-20 pb-20 md:pt-28 md:pb-28">
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
 
-            {/* Headline */}
-            <h1
-              className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.08] tracking-tight mb-6"
-              data-testid="text-hero-headline"
-              style={{ transform: `translate3d(${(headlineParallax.x * 2).toFixed(2)}px, ${(headlineParallax.y * 2).toFixed(2)}px, 0)`, transition: "transform 0.15s ease-out" }}
-            >
-              {heroHeadline}
-            </h1>
+            {/* ── LEFT — text ── */}
+            <div className="flex-1 min-w-0 lg:max-w-[520px]">
+              <h1
+                className="text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold text-white leading-[1.1] tracking-tight mb-6"
+                data-testid="text-hero-headline"
+              >
+                {heroHeadline}
+              </h1>
+              <p className="text-lg text-white/65 leading-relaxed mb-10 max-w-md" data-testid="text-hero-tagline">
+                {heroTagline}
+              </p>
 
-            {/* Subheadline */}
-            <p className="text-xl text-white/75 max-w-2xl mx-auto leading-relaxed mb-10" data-testid="text-hero-tagline">
-              {heroTagline}
-            </p>
+              <div className="flex flex-wrap gap-3 mb-10">
+                <Button size="lg" className="px-7 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-2"
+                  onClick={() => { if (waitlistGate()) navigate("/browse"); }}>
+                  Browse Listings <ArrowRight className="h-5 w-5" />
+                </Button>
+                <Button size="lg" variant="outline" className="px-7 border-white/25 text-white bg-white/8 hover:bg-white/15 font-semibold rounded-xl"
+                  onClick={() => { if (waitlistGate()) navigate(user ? "/create-listing" : "/register"); }}>
+                  List Your Barter
+                </Button>
+              </div>
 
-            {/* CTAs */}
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <Button size="lg" className="h-13 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold text-base gap-2 rounded-xl shadow-lg"
-                onClick={() => { if (waitlistGate()) navigate("/browse"); }}>
-                Browse Listings <ArrowRight className="h-5 w-5" />
-              </Button>
-              <Button size="lg" variant="outline" className="h-13 px-8 border-white/30 text-white bg-white/10 hover:bg-white/20 font-semibold text-base rounded-xl gap-2"
-                onClick={() => { if (waitlistGate()) navigate(user ? "/create-listing" : "/register"); }}>
-                List Your Barter
-              </Button>
+              {/* Social proof */}
+              <div className="flex items-center gap-3">
+                <div className="flex -space-x-2">
+                  {["KA","SH","AR","NF","LK"].map(i => (
+                    <div key={i} className="h-8 w-8 rounded-full bg-bareter-teal/60 border-2 border-bareter-navy flex items-center justify-center text-[10px] font-bold text-white">{i}</div>
+                  ))}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1">
+                    {[...Array(5)].map((_,i) => <Star key={i} className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400" />)}
+                    <span className="text-white font-bold text-sm ml-1">4.8</span>
+                  </div>
+                  <p className="text-white/50 text-xs">based on 400+ UAE businesses</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── RIGHT — animated floating cards ── */}
+            <div className="flex-1 relative hidden lg:block" style={{ minHeight: 480 }}>
+
+              {/* Card 1 — Featured listing (top-left, floating) */}
+              <div className="float-a absolute top-0 left-4 w-72 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 shadow-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-bareter-teal uppercase tracking-wider bg-bareter-teal/20 px-2.5 py-1 rounded-full">Real Estate</span>
+                  <span className="text-white font-extrabold text-lg">AED 450K</span>
+                </div>
+                <p className="text-white font-semibold text-sm mb-3">Dubai Marina Office Space — 1,200 sqft</p>
+                <div className="space-y-2">
+                  <div className="h-2 bg-white/15 rounded-full w-full" />
+                  <div className="h-2 bg-white/10 rounded-full w-4/5" />
+                  <div className="h-2 bg-white/10 rounded-full w-3/5" />
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between">
+                  <span className="text-white/60 text-xs">Wants:</span>
+                  <span className="text-white text-xs font-semibold">Legal Services</span>
+                </div>
+              </div>
+
+              {/* Card 2 — AI Match badge (top-right, different float speed) */}
+              <div className="float-b absolute top-4 right-0 bg-bareter-teal rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3 w-56">
+                <div className="relative flex-shrink-0">
+                  <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-sm">AR</div>
+                  <span className="pulse-dot absolute bottom-0 right-0 h-3 w-3 bg-green-400 rounded-full border-2 border-bareter-teal" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white/70 text-[10px] font-semibold uppercase tracking-wide">AI Match found</p>
+                  <p className="text-white font-bold text-sm truncate">Ahmed Al Rashidi</p>
+                  <p className="text-white/60 text-[10px]">Automotive · AED 440K</p>
+                </div>
+              </div>
+
+              {/* Dotted connector line */}
+              <svg className="absolute top-28 right-32 w-20 h-16 opacity-30" viewBox="0 0 80 64" fill="none">
+                <path d="M0 0 C40 0 80 64 80 64" stroke="white" strokeWidth="1.5" strokeDasharray="4 4"/>
+              </svg>
+
+              {/* Card 3 — Barter proposal (bottom-right, slowest float) */}
+              <div className="float-c absolute bottom-0 right-0 w-80 bg-white rounded-2xl p-5 shadow-2xl">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Barter proposal</p>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-10 w-10 rounded-full bg-bareter-teal flex items-center justify-center text-white font-bold text-sm flex-shrink-0">SH</div>
+                  <div>
+                    <p className="font-bold text-bareter-navy text-sm">Sara Al Hashimi</p>
+                    <div className="flex items-center gap-1">
+                      <ShieldCheck className="h-3 w-3 text-bareter-teal" />
+                      <span className="text-[10px] text-bareter-teal font-semibold">Verified member</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {[
+                    { label: "Offering", value: "Hotel Stay" },
+                    { label: "Value", value: "AED 3.5K" },
+                    { label: "Wants", value: "Photography" },
+                  ].map(s => (
+                    <div key={s.label} className="bg-gray-50 rounded-xl p-2.5">
+                      <p className="text-[9px] text-muted-foreground uppercase font-semibold">{s.label}</p>
+                      <p className="text-xs font-bold text-bareter-navy mt-0.5">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button className="flex-1 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-muted-foreground hover:bg-gray-50 transition-colors">Decline</button>
+                  <button className="flex-1 py-2 rounded-lg bg-bareter-teal text-white text-xs font-bold hover:bg-bareter-teal/90 transition-colors">Accept Barter</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          HOW BARETER WORKS — acquire.com 3-column mockup section
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section className="bg-[#EEF1FB] dark:bg-muted/30 py-24" data-testid="section-platform">
+        <div className="container mx-auto max-w-7xl px-6">
+          <h2 className="text-4xl sm:text-5xl font-extrabold text-bareter-navy dark:text-foreground text-center tracking-tight mb-20 max-w-2xl mx-auto leading-[1.15]">
+            We make bartering fast, safe, and easy
+          </h2>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative items-start">
+
+            {/* Dotted connector lines (desktop only) */}
+            <div className="hidden lg:block absolute top-[120px] left-[34%] right-[34%] h-px border-t-2 border-dashed border-bareter-navy/20 z-10" />
+            <div className="hidden lg:absolute top-[120px] left-1/3 flex items-center justify-center z-20">
+              <div className="h-5 w-5 rounded-full border-2 border-bareter-navy/30 bg-[#EEF1FB]" />
+            </div>
+            <div className="hidden lg:absolute top-[120px] right-1/3 flex items-center justify-center z-20">
+              <div className="h-5 w-5 rounded-full border-2 border-bareter-navy/30 bg-[#EEF1FB]" />
+            </div>
+
+            {/* ── Column 1 — List & Negotiate (chat mockup) ── */}
+            <div className="flex flex-col items-center text-center">
+              <div className="w-full bg-white rounded-3xl shadow-lg overflow-hidden mb-6">
+                {/* Chat header */}
+                <div className="bg-bareter-teal px-5 py-3.5 flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">AI</div>
+                  <div className="text-left">
+                    <p className="text-white font-semibold text-sm">Bareter AI</p>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                      <p className="text-white/70 text-[11px]">Online</p>
+                    </div>
+                  </div>
+                </div>
+                {/* Chat messages */}
+                <div className="p-5 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <div className="h-7 w-7 rounded-full bg-bareter-teal/20 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">AI</div>
+                    <div className="bg-gray-100 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[210px] text-left">
+                      <p className="text-bareter-navy text-xs leading-relaxed">Your listing is live! We found <strong>3 matching partners</strong> near Dubai.</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <div className="bg-bareter-teal/15 rounded-2xl rounded-tr-none px-4 py-2.5 max-w-[180px] text-right">
+                      <p className="text-bareter-teal text-xs font-medium">Show me the matches →</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="h-7 w-7 rounded-full bg-bareter-teal/20 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">AI</div>
+                    <div className="bg-gray-100 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[210px] text-left">
+                      <p className="text-bareter-navy text-xs leading-relaxed">Top match: <strong>Khalid Auto Group</strong> — value AED 8,000 ✓</p>
+                    </div>
+                  </div>
+                  {/* Input bar */}
+                  <div className="flex items-center gap-2 mt-2 border border-gray-200 rounded-xl px-3 py-2">
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full" />
+                    <div className="h-6 w-6 rounded-full bg-bareter-teal flex items-center justify-center flex-shrink-0">
+                      <ArrowRight className="h-3 w-3 text-white" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <h3 className="text-lg font-extrabold text-bareter-navy dark:text-foreground mb-2">List</h3>
+              <p className="text-muted-foreground text-sm max-w-[240px]">Post in 2 minutes. AI finds the best matching partner for your barter.</p>
+            </div>
+
+            {/* ── Column 2 — Bareter platform features ── */}
+            <div className="flex flex-col items-center text-center">
+              <div className="w-full bg-white rounded-3xl shadow-lg p-6 mb-6">
+                {/* Logo area */}
+                <div className="flex items-center justify-center gap-2 mb-6">
+                  <img src="/logo-full-color.png" alt="Bareter" className="h-7 w-auto" onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+                  <span className="text-bareter-navy font-extrabold text-xl tracking-tight">Bareter</span>
+                </div>
+                {/* Feature pills */}
+                <div className="space-y-3">
+                  {[
+                    { label: "AI-powered matching", icon: <Sparkles className="h-4 w-4 text-bareter-teal" /> },
+                    { label: "Verified UAE members", icon: <ShieldCheck className="h-4 w-4 text-bareter-teal" /> },
+                    { label: "Auto-generated contracts", icon: <FileSignature className="h-4 w-4 text-bareter-teal" /> },
+                  ].map(f => (
+                    <div key={f.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3.5 border border-gray-100">
+                      {f.icon}
+                      <span className="text-sm font-semibold text-bareter-navy">{f.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Connector dots */}
+                <div className="flex justify-center mt-6 gap-2">
+                  <div className="h-3 w-3 rounded-full border-2 border-bareter-navy/30" />
+                  <div className="h-3 w-3 rounded-full bg-bareter-teal" />
+                  <div className="h-3 w-3 rounded-full border-2 border-bareter-navy/30" />
+                </div>
+              </div>
+              <h3 className="text-lg font-extrabold text-bareter-navy dark:text-foreground mb-2">Negotiate</h3>
+              <p className="text-muted-foreground text-sm max-w-[240px]">Chat, counter-offer, and lock in terms — all inside Bareter. No back-and-forth emails.</p>
+            </div>
+
+            {/* ── Column 3 — My Deals panel ── */}
+            <div className="flex flex-col items-center text-center">
+              <div className="w-full bg-white rounded-3xl shadow-lg overflow-hidden mb-6">
+                <div className="px-5 pt-5 pb-3 border-b border-gray-100">
+                  <p className="font-extrabold text-bareter-navy text-sm text-left">My Barters</p>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {[
+                    { type: "Real Estate", title: "Dubai Marina Office", value: "AED 450K", status: "Matched" },
+                    { type: "Services", title: "Legal Package Deal", value: "AED 12K", status: "Pending" },
+                    { type: "Automotive", title: "Fleet Service Package", value: "AED 8K", status: "Completed" },
+                  ].map((d, i) => (
+                    <div key={i} className="px-5 py-3 flex items-center justify-between text-left">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground font-semibold uppercase">{d.type}</p>
+                        <p className="text-xs font-semibold text-bareter-navy">{d.title}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-bold text-bareter-navy">{d.value}</p>
+                        <p className={`text-[10px] font-semibold ${d.status === "Completed" ? "text-green-500" : d.status === "Matched" ? "text-bareter-teal" : "text-yellow-500"}`}>{d.status}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4">
+                  <button className="w-full py-2.5 rounded-xl bg-bareter-teal text-white text-xs font-bold hover:bg-bareter-teal/90 transition-colors">
+                    Propose a Barter
+                  </button>
+                </div>
+              </div>
+              <h3 className="text-lg font-extrabold text-bareter-navy dark:text-foreground mb-2">Deal</h3>
+              <p className="text-muted-foreground text-sm max-w-[240px]">Accept the best offer and sign a barter contract — both parties protected.</p>
             </div>
 
           </div>
         </div>
       </section>
-
 
       {/* ══════════════════════════════════════════════════════════════════════
           THREE WAYS — acquire.com animated feature cards
