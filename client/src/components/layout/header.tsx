@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { CategoryNav } from "./CategoryNav";
 import { Button } from "@/components/ui/button";
@@ -26,29 +26,10 @@ import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Menu,
-  Sun,
-  Moon,
-  Bell,
-  User,
-  LogOut,
-  Settings,
-  LayoutDashboard,
-  Handshake,
-  Search,
-  Plus,
-  Shield,
-  Languages,
-  Rss,
-  MessageSquare,
-  MapPin,
-  X,
-  Heart,
-  Bookmark,
-  FileText,
-  ChevronDown,
-  ShieldCheck,
-  Sparkles,
+  Menu, Sun, Moon, Bell, User, LogOut, Settings, LayoutDashboard,
+  Handshake, Search, Plus, Shield, Languages, MessageSquare, MapPin,
+  X, Heart, Bookmark, FileText, ChevronDown, ShieldCheck, Sparkles,
+  Clock, ArrowRight,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -58,7 +39,7 @@ export function Header() {
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t, isRTL } = useI18n();
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
 
   const persistLanguageMutation = useMutation({
     mutationFn: async (lang: "en" | "ar") => {
@@ -84,9 +65,21 @@ export function Header() {
 
   const { toast } = useToast();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const activeLocation = useActiveLocation();
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return localStorage.getItem("bareter_verify_banner_dismissed") === "1"; } catch { return false; }
@@ -116,6 +109,7 @@ export function Header() {
     ? "Worldwide"
     : userCity || countryEntry?.name || "Dubai";
 
+  // Notifications
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     enabled: !!user,
@@ -125,16 +119,38 @@ export function Header() {
     enabled: !!user,
     refetchInterval: 30000,
   });
-
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
   const inboxUnread = inboxData?.count || 0;
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  // Search suggestions
+  const { data: suggestionListings } = useQuery<any[]>({
+    queryKey: ["/api/listings", { search: searchQuery }],
+    queryFn: () => fetch(`/api/listings?search=${encodeURIComponent(searchQuery)}&limit=4`).then(r => r.json()),
+    enabled: searchQuery.trim().length >= 2,
+    staleTime: 5000,
+  });
+
+  // Search history (shown when focused but no query yet)
+  const { data: searchHistory } = useQuery<{ history: { id: string; query: string; createdAt: string }[] }>({
+    queryKey: ["/api/search-history"],
+    enabled: !!user && searchFocused,
+    staleTime: 30_000,
+  });
+
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const q = searchQuery.trim();
     if (!q) return;
+    setSearchFocused(false);
+    if (q.length >= 2) {
+      fetch("/api/search-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ query: q }),
+      }).catch(() => {});
+    }
     navigate(`/browse?q=${encodeURIComponent(q)}`);
-    setMobileSearchOpen(false);
   };
 
   const showVerifyBanner = user && !user.isVerified && !bannerDismissed;
@@ -149,23 +165,21 @@ export function Header() {
     try { localStorage.setItem("bareter_push_dismissed", "1"); } catch {}
   };
 
-  const navItemClass =
-    "relative flex flex-col items-center gap-0.5 px-3 py-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer";
-  const navLabelClass = "text-[11px] font-medium leading-none whitespace-nowrap";
+  const showSearchDropdown = searchFocused && (
+    (searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0) ||
+    (searchQuery.trim().length < 2 && searchHistory?.history && searchHistory.history.length > 0)
+  );
 
   return (
     <header className="sticky top-0 z-50 w-full" data-testid="site-header">
 
-      {/* ── Push notification opt-in banner ── */}
+      {/* ── Push notification banner ── */}
       {showPushBanner && (
         <div className="bg-teal-700 text-white px-4 py-2 flex items-center justify-center gap-3 text-sm">
           <Bell className="h-4 w-4 flex-shrink-0" />
-          <span className="text-xs sm:text-sm">Get instant alerts when you receive a proposal or counter-offer.</span>
-          <button
-            type="button"
-            onClick={() => { subscribePush(); dismissPushBanner(); }}
-            className="ms-1 px-3 py-1 border border-white rounded text-xs font-semibold hover:bg-white hover:text-teal-700 transition-colors whitespace-nowrap"
-          >
+          <span className="text-xs sm:text-sm">Get instant alerts for proposals and counter-offers.</span>
+          <button type="button" onClick={() => { subscribePush(); dismissPushBanner(); }}
+            className="ms-1 px-3 py-1 border border-white rounded text-xs font-semibold hover:bg-white hover:text-teal-700 transition-colors whitespace-nowrap">
             Enable
           </button>
           <button type="button" onClick={dismissPushBanner} className="ms-1 p-1 hover:bg-white/10 rounded" aria-label="Dismiss">
@@ -179,342 +193,335 @@ export function Header() {
         <div className="bg-[#1565c0] text-white px-4 py-2.5 flex items-center justify-center gap-3 text-sm">
           <ShieldCheck className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
           <span className="hidden sm:block text-center leading-snug">
-            Join us in building a safer community. Get verified to boost your credibility and assist us in creating trust amongst our users!
+            Get verified to boost your credibility and build trust in the community.
           </span>
-          <span className="sm:hidden text-center leading-snug text-xs">Get verified to boost your credibility!</span>
+          <span className="sm:hidden text-xs">Get verified to boost credibility!</span>
           <Link href="/settings">
-            <button
-              type="button"
-              className="ms-1 px-3 py-1 border border-white rounded text-xs font-semibold hover:bg-white hover:text-[#1565c0] transition-colors whitespace-nowrap"
-            >
+            <button type="button" className="ms-1 px-3 py-1 border border-white rounded text-xs font-semibold hover:bg-white hover:text-[#1565c0] transition-colors whitespace-nowrap">
               Verify Now
             </button>
           </Link>
-          <button
-            type="button"
-            onClick={dismissBanner}
-            className="ms-1 p-1 hover:bg-white/10 rounded"
-            aria-label="Dismiss"
-          >
+          <button type="button" onClick={dismissBanner} className="ms-1 p-1 hover:bg-white/10 rounded" aria-label="Dismiss">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {/* ── Main teal header bar ── */}
+      {/* ── Main header bar ── */}
       <div className="bg-bareter-teal text-white shadow-[0_2px_8px_rgba(34,160,160,0.20)]">
-        <div className="container mx-auto max-w-7xl px-4 flex items-center gap-2 sm:gap-3 h-16">
+        <div className="container mx-auto max-w-7xl px-4 flex items-center gap-3 h-16">
 
           {/* Logo */}
           <Link href="/" className="flex items-center flex-shrink-0" data-testid="link-home">
-            <img
-              src="/logo-full-white.png"
-              alt={t("app.name") || "Bareter"}
-              className="h-8 sm:h-9 w-auto"
-            />
+            <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
           {/* Location pill */}
-          <button
-            type="button"
-            onClick={() => setLocationPickerOpen(true)}
-            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-white/10 rounded-md transition-colors whitespace-nowrap flex-shrink-0"
-            data-testid="button-location-pill"
-          >
-            <MapPin className="h-4 w-4 text-white/70" aria-hidden="true" />
-            <span className="max-w-[100px] truncate">{locationPillLabel}</span>
-            <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+          <button type="button" onClick={() => setLocationPickerOpen(true)}
+            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+            data-testid="button-location-pill">
+            <MapPin className="h-3.5 w-3.5 text-white/70" />
+            <span className="max-w-[80px] truncate">{locationPillLabel}</span>
+            <ChevronDown className="h-3 w-3 text-white/60" />
           </button>
 
-          {/* ── CENTER nav (logged-in, desktop) ── */}
-          {user && (
-            <div className="hidden lg:flex items-center gap-0.5 mx-auto">
+          {/* ── Search bar (center, flex-1) ── */}
+          <div ref={searchRef} className="flex-1 max-w-xl mx-auto relative hidden sm:block">
+            <form onSubmit={handleSearch} className="flex items-center h-9 bg-white/15 hover:bg-white/20 focus-within:bg-white rounded-lg transition-colors overflow-hidden border border-white/20 focus-within:border-transparent focus-within:shadow-lg">
+              <Search className="h-4 w-4 text-white/70 flex-shrink-0 ms-3 focus-within:text-bareter-muted" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                placeholder={t("nav.searchBarters") || "Search listings…"}
+                className="flex-1 bg-transparent text-white placeholder:text-white/60 text-sm px-2.5 focus:outline-none focus:text-bareter-navy focus:placeholder:text-gray-400"
+                autoComplete="off"
+              />
+              {searchQuery && (
+                <button type="button" onClick={() => { setSearchQuery(""); setSearchFocused(false); }}
+                  className="px-2 text-white/60 hover:text-white flex-shrink-0">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </form>
 
-              {/* Feed */}
-              <Link href="/feed" className={navItemClass} data-testid="button-nav-feed">
-                <Rss className="h-5 w-5" />
-                <span className={navLabelClass}>Feed</span>
-              </Link>
-
-              {/* Notifications */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className={navItemClass} data-testid="button-notifications">
-                    <Bell className="h-5 w-5" />
-                    <span className={navLabelClass}>Notifications</span>
-                    {unreadCount > 0 && (
-                      <Badge
-                        variant="destructive"
-                        className="absolute -top-0.5 right-1.5 h-4 min-w-4 px-1 flex items-center justify-center text-[10px]"
-                      >
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                      </Badge>
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center" className="w-96 p-0">
-                  <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
-                    <div className="flex items-center gap-2">
-                      <Bell className="h-4 w-4" />
-                      <span className="font-semibold text-sm">{t("nav.notifications")}</span>
-                      {unreadCount > 0 && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{unreadCount}</Badge>
-                      )}
-                    </div>
-                    {unreadCount > 0 && (
-                      <button
-                        type="button"
-                        className="text-xs text-primary hover:underline font-medium"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          apiRequest("PATCH", "/api/notifications/read-all").then(() =>
-                            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] })
-                          );
-                        }}
-                      >
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-[420px] overflow-y-auto divide-y">
-                    {notifications && notifications.length > 0 ? (
-                      notifications.map((notification) => {
-                        const n = notification as any;
-                        const actionUrl = n.relatedListingId
-                          ? `/listings/${n.relatedListingId}`
-                          : n.relatedDealId
-                          ? `/deals/${n.relatedDealId}`
-                          : null;
-                        const actionLabel = n.relatedListingId ? "Review Proposal →" : "View Deal →";
-                        return (
-                          <Link
-                            key={notification.id}
-                            href={actionUrl || "#"}
-                            className={`flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer block ${!notification.isRead ? "bg-accent/40" : ""}`}
-                            onClick={() => {
-                              if (!notification.isRead) {
-                                apiRequest("PATCH", `/api/notifications/${notification.id}/read`).then(() =>
-                                  queryClient.invalidateQueries({ queryKey: ["/api/notifications"] })
-                                );
-                              }
-                            }}
-                          >
-                            <div className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${!notification.isRead ? "bg-primary" : "bg-transparent"}`} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium leading-tight">{notification.title}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
-                              {actionUrl && (
-                                <span className="inline-flex items-center gap-1 text-xs text-primary font-semibold mt-1.5">
-                                  {actionLabel}
-                                </span>
-                              )}
-                            </div>
-                          </Link>
-                        );
-                      })
-                    ) : (
-                      <div className="py-10 text-center text-muted-foreground text-sm">
-                        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                        {t("nav.noNotifications")}
-                      </div>
-                    )}
-                  </div>
-                  {notifications && notifications.length > 0 && (
-                    <div className="border-t px-4 py-2.5 bg-muted/20">
-                      <Link href="/notifications" className="text-xs text-center block text-primary hover:underline font-medium">
-                        View all notifications
+            {/* Search dropdown */}
+            {showSearchDropdown && (
+              <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                {/* Search history (when no query) */}
+                {searchQuery.trim().length < 2 && searchHistory?.history && searchHistory.history.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recent searches</p>
+                      <Link href="/my-searches" className="text-[10px] font-semibold text-bareter-teal hover:underline">
+                        View all
                       </Link>
                     </div>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Creators — discover content creators */}
-              <Link href="/creators" className={navItemClass} data-testid="button-nav-creators">
-                <Sparkles className="h-5 w-5" />
-                <span className={navLabelClass}>Creators</span>
-              </Link>
-
-              {/* My Searches */}
-              <Link href="/my-searches" className={navItemClass} data-testid="button-nav-searches">
-                <Bookmark className="h-5 w-5" />
-                <span className={navLabelClass}>My Searches</span>
-              </Link>
-
-              {/* Favorites — liked listings */}
-              <Link href="/saved" className={navItemClass} data-testid="button-nav-favorites">
-                <Heart className="h-5 w-5" />
-                <span className={navLabelClass}>Favorites</span>
-              </Link>
-
-              {/* Chats — direct messages / inbox */}
-              <Link href="/inbox" className={navItemClass} data-testid="button-inbox">
-                <MessageSquare className="h-5 w-5" />
-                <span className={navLabelClass}>Chats</span>
-                {inboxUnread > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="absolute -top-0.5 right-1.5 h-4 min-w-4 px-1 flex items-center justify-center text-[10px]"
-                  >
-                    {inboxUnread > 9 ? "9+" : inboxUnread}
-                  </Badge>
+                    {searchHistory.history.slice(0, 5).map((item) => (
+                      <button key={item.id} type="button"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                        onClick={() => { setSearchQuery(item.query); navigate(`/browse?q=${encodeURIComponent(item.query)}`); setSearchFocused(false); }}>
+                        <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm text-bareter-navy">{item.query}</span>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground ms-auto" />
+                      </button>
+                    ))}
+                  </>
                 )}
-              </Link>
 
-              {/* My Listings → dashboard */}
-              <Link href="/dashboard" className={navItemClass} data-testid="button-nav-my-listings">
-                <FileText className="h-5 w-5" />
-                <span className={navLabelClass}>My Listings</span>
-              </Link>
+                {/* Listing suggestions */}
+                {searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0 && (
+                  <>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
+                    {suggestionListings.slice(0, 4).map((l: any) => (
+                      <button key={l.id} type="button"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                        onClick={() => { setSearchFocused(false); navigate(`/listings/${l.id}`); }}>
+                        {(l.images as string[])?.[0] && (
+                          <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
+                          <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
+                        </div>
+                      </button>
+                    ))}
+                    <div className="border-t border-gray-100 px-4 py-3">
+                      <button type="button" className="w-full text-sm font-semibold text-bareter-teal hover:underline text-center"
+                        onClick={() => { setSearchFocused(false); handleSearch({ preventDefault: () => {} } as React.FormEvent); }}>
+                        Search all results for "{searchQuery}" →
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
-              {/* Deals — active/completed/pending */}
-              <Link href="/deals" className={navItemClass} data-testid="button-nav-deals">
-                <Handshake className="h-5 w-5" />
-                <span className={navLabelClass}>Deals</span>
-              </Link>
-            </div>
-          )}
+          {/* ── Right section ── */}
+          <div className="ms-auto flex items-center gap-1">
 
-          {/* ── RIGHT section ── */}
-          <div className={`${user ? "" : "ms-auto"} flex items-center gap-1.5`}>
-
-            {/* Language + theme */}
-            <button
-              type="button"
-              onClick={toggleLanguage}
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10"
-              aria-label={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}
-            >
+            {/* Language toggle */}
+            <button type="button" onClick={toggleLanguage}
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}>
               <Languages className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10"
-              aria-label="Toggle theme"
-            >
-              {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            </button>
 
-            {/* Mobile search toggle */}
-            <button
-              type="button"
-              onClick={() => setMobileSearchOpen((v) => !v)}
-              className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10"
-              aria-label="Search"
-            >
-              <Search className="h-4 w-4" />
+            {/* Theme toggle */}
+            <button type="button" onClick={toggleTheme}
+              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Toggle theme">
+              {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </button>
 
             {user ? (
               <>
-                {/* Avatar + name dropdown */}
+                {/* ── Notification bell (icon only) ── */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/10 transition-colors"
-                      data-testid="button-user-menu"
-                    >
+                    <button type="button"
+                      className="relative h-8 w-8 inline-flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                      aria-label="Notifications" data-testid="button-notifications">
+                      <Bell className="h-4 w-4" />
+                      {unreadCount > 0 && (
+                        <span className="absolute top-0.5 right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-96 p-0">
+                    <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-4 w-4" />
+                        <span className="font-semibold text-sm">Notifications</span>
+                        {unreadCount > 0 && <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{unreadCount}</Badge>}
+                      </div>
+                      {unreadCount > 0 && (
+                        <button type="button" className="text-xs text-primary hover:underline font-medium"
+                          onClick={() => apiRequest("PATCH", "/api/notifications/read-all").then(() =>
+                            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }))}>
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-[380px] overflow-y-auto divide-y">
+                      {notifications && notifications.length > 0 ? (
+                        notifications.map((notification) => {
+                          const n = notification as any;
+                          const actionUrl = n.relatedListingId
+                            ? `/listings/${n.relatedListingId}`
+                            : n.relatedDealId ? `/deals/${n.relatedDealId}` : null;
+                          return (
+                            <Link key={notification.id} href={actionUrl || "#"}
+                              className={`flex items-start gap-3 px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer block ${!notification.isRead ? "bg-accent/40" : ""}`}
+                              onClick={() => {
+                                if (!notification.isRead) {
+                                  apiRequest("PATCH", `/api/notifications/${notification.id}/read`).then(() =>
+                                    queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }));
+                                }
+                              }}>
+                              <div className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${!notification.isRead ? "bg-primary" : "bg-transparent"}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium leading-tight">{notification.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.message}</p>
+                              </div>
+                            </Link>
+                          );
+                        })
+                      ) : (
+                        <div className="py-10 text-center text-muted-foreground text-sm">
+                          <Bell className="h-8 w-8 mx-auto mb-2 opacity-25" />
+                          {t("nav.noNotifications")}
+                        </div>
+                      )}
+                    </div>
+                    {notifications && notifications.length > 0 && (
+                      <div className="border-t px-4 py-2.5 bg-muted/10">
+                        <Link href="/notifications" className="text-xs text-center block text-primary hover:underline font-medium">
+                          View all notifications
+                        </Link>
+                      </div>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* ── User dropdown ── */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button"
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/10 transition-colors"
+                      data-testid="button-user-menu">
                       <div className="relative">
-                        <Avatar className="h-8 w-8 ring-2 ring-bareter-teal/20">
+                        <Avatar className="h-8 w-8">
                           <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
-                          <AvatarFallback className="bg-bareter-teal text-white text-sm font-semibold">
+                          <AvatarFallback className="bg-white/20 text-white text-sm font-bold">
                             {user.fullName.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <span className="absolute -bottom-0.5 -end-0.5">
-                          <VerifiedBadge
-                            kycStatus={user.kycStatus}
-                            kybStatus={user.kybStatus}
-                            accountType={user.accountType}
-                            size="md"
-                            testId="header-user-verified"
-                          />
+                          <VerifiedBadge kycStatus={user.kycStatus} kybStatus={user.kybStatus} accountType={user.accountType} size="md" testId="header-user-verified" />
                         </span>
                       </div>
-                      <span className="hidden md:block text-sm font-medium text-white max-w-[90px] truncate">
+                      <span className="hidden md:block text-sm font-medium text-white max-w-[80px] truncate">
                         {user.fullName.split(" ")[0]}
                       </span>
                       <ChevronDown className="hidden md:block h-3.5 w-3.5 text-white/60" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <div className="flex items-center gap-3 p-3 border-b">
-                      <Avatar className="h-10 w-10">
+
+                  <DropdownMenuContent align="end" className="w-64 p-0">
+                    {/* Profile header */}
+                    <div className="flex items-center gap-3 p-4 border-b bg-muted/20">
+                      <Avatar className="h-11 w-11 flex-shrink-0">
                         <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
-                        <AvatarFallback className="bg-bareter-teal text-white">
+                        <AvatarFallback className="bg-bareter-teal text-white font-bold">
                           {user.fullName.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <FounderBadge show={!!user.founderBadge} />
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-medium text-sm truncate">{user.fullName}</span>
-                        <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-sm truncate">{user.fullName}</span>
+                          <FounderBadge show={!!user.founderBadge} />
+                        </div>
+                        <span className="text-xs text-muted-foreground truncate block">{user.email}</span>
                       </div>
                     </div>
-                    <Link href="/profile">
-                      <DropdownMenuItem className="cursor-pointer" data-testid="menu-profile">
-                        <User className="me-2 h-4 w-4" />{t("nav.profile")}
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/feed">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Rss className="me-2 h-4 w-4" />{t("nav.feed")}
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/browse">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Search className="me-2 h-4 w-4" />{t("nav.browseMarketplace")}
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/deals">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Handshake className="me-2 h-4 w-4" />{t("nav.myDeals")}
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/dashboard">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <LayoutDashboard className="me-2 h-4 w-4" />{t("nav.dashboard")}
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/settings">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Settings className="me-2 h-4 w-4" />{t("nav.settings")}
-                      </DropdownMenuItem>
-                    </Link>
-                    {user.isAdmin && (
-                      <>
-                        <DropdownMenuSeparator />
+
+                    {/* Navigation items */}
+                    <div className="py-1">
+                      <Link href="/profile">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-profile">
+                          <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Profile</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/browse">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Browse Listings</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/dashboard">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>My Listings</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/deals">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Handshake className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Deals</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/saved">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Heart className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Favorites</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/inbox">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span className="flex-1">Chats</span>
+                          {inboxUnread > 0 && (
+                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{inboxUnread}</Badge>
+                          )}
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/creators">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Creators</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/my-searches">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Search History</span>
+                        </DropdownMenuItem>
+                      </Link>
+                    </div>
+
+                    <DropdownMenuSeparator />
+
+                    <div className="py-1">
+                      <Link href="/settings">
+                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                          <Settings className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>{t("nav.settings")}</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      {user.isAdmin && (
                         <Link href="/admin">
-                          <DropdownMenuItem className="cursor-pointer" data-testid="menu-admin">
-                            <Shield className="me-2 h-4 w-4" />
-                            <span className="flex-1">{t("nav.admin")}</span>
-                            <Badge variant="destructive" className="ms-2 text-xs">Admin</Badge>
+                          <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-admin">
+                            <Shield className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="flex-1">Admin Panel</span>
+                            <Badge variant="destructive" className="text-[10px]">Admin</Badge>
                           </DropdownMenuItem>
                         </Link>
-                      </>
-                    )}
+                      )}
+                    </div>
+
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={logout}
-                      className="cursor-pointer text-destructive focus:text-destructive"
-                      data-testid="menu-logout"
-                    >
-                      <LogOut className="me-2 h-4 w-4" />{t("nav.logout")}
-                    </DropdownMenuItem>
+
+                    <div className="py-1">
+                      <DropdownMenuItem onClick={logout}
+                        className="cursor-pointer gap-2.5 px-4 py-2.5 text-destructive focus:text-destructive"
+                        data-testid="menu-logout">
+                        <LogOut className="h-4 w-4 flex-shrink-0" />
+                        <span>Logout</span>
+                      </DropdownMenuItem>
+                    </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* List a Barter — Bareter teal CTA */}
-                <Link href="/create-listing" className="hidden sm:inline-flex">
-                  <Button
-                    variant="bareter"
-                    size="sm"
-                    className="h-10 gap-1.5 whitespace-nowrap"
-                    data-testid="button-list-trade"
-                  >
-                    <Plus className="h-4 w-4" />
+                {/* List a Barter CTA */}
+                <Link href="/create-listing" className="hidden sm:inline-flex ms-1">
+                  <Button size="sm" className="h-9 px-4 gap-1.5 bg-white text-bareter-teal hover:bg-white/90 font-bold whitespace-nowrap rounded-lg" data-testid="button-list-trade">
+                    <Plus className="h-3.5 w-3.5" />
                     List a Barter
                   </Button>
                 </Link>
@@ -522,131 +529,101 @@ export function Header() {
                 {/* Mobile hamburger */}
                 <Sheet>
                   <SheetTrigger asChild>
-                    <button
-                      type="button"
-                      className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-md text-white/80 hover:text-white hover:bg-white/10"
-                      data-testid="button-mobile-menu"
-                      aria-label="Menu"
-                    >
+                    <button type="button"
+                      className="sm:hidden h-8 w-8 inline-flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10"
+                      data-testid="button-mobile-menu" aria-label="Menu">
                       <Menu className="h-5 w-5" />
                     </button>
                   </SheetTrigger>
-                  <SheetContent side={isRTL ? "left" : "right"} className="w-72">
-                    <nav className="flex flex-col gap-1 mt-8">
+                  <SheetContent side={isRTL ? "left" : "right"} className="w-72 p-0">
+                    {/* Mobile user info */}
+                    <div className="flex items-center gap-3 p-4 border-b bg-muted/20">
+                      <Avatar className="h-11 w-11 flex-shrink-0">
+                        <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
+                        <AvatarFallback className="bg-bareter-teal text-white font-bold">{user.fullName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">{user.fullName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    {/* Mobile search */}
+                    <div className="p-3 border-b">
+                      <form onSubmit={handleSearch} className="flex items-center gap-2 h-10 bg-muted/40 rounded-lg px-3">
+                        <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search listings…" className="flex-1 bg-transparent text-sm focus:outline-none" />
+                      </form>
+                    </div>
+                    <nav className="flex flex-col py-2">
                       <Link href="/create-listing">
-                        <Button variant="bareter" className="w-full justify-start gap-2 h-11">
-                          <Plus className="h-4 w-4" />
-                          {t("nav.listABarter")}
+                        <Button variant="bareter" className="mx-3 mb-2 w-[calc(100%-24px)] justify-start gap-2 h-11">
+                          <Plus className="h-4 w-4" />{t("nav.listABarter")}
                         </Button>
                       </Link>
-                      <Link href="/feed">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <Rss className="h-4 w-4" />{t("nav.feed")}
-                        </Button>
-                      </Link>
-                      <div className="h-2" />
-                      <Link href="/profile">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <User className="h-4 w-4" />{t("nav.profile")}
-                        </Button>
-                      </Link>
-                      <Link href="/dashboard">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <LayoutDashboard className="h-4 w-4" />{t("nav.dashboard")}
-                        </Button>
-                      </Link>
-                      <Link href="/inbox">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <MessageSquare className="h-4 w-4" />Chats
-                          {inboxUnread > 0 && <Badge variant="destructive" className="ms-auto text-xs">{inboxUnread}</Badge>}
-                        </Button>
-                      </Link>
-                      <Link href="/deals">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <Handshake className="h-4 w-4" />Deals
-                        </Button>
-                      </Link>
-                      <Link href="/saved">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <Heart className="h-4 w-4" />Favorites
-                        </Button>
-                      </Link>
-                      <Link href="/creators">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <Sparkles className="h-4 w-4" />Creators
-                        </Button>
-                      </Link>
-                      <Link href="/settings">
-                        <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                          <Settings className="h-4 w-4" />{t("nav.settings")}
-                        </Button>
-                      </Link>
+                      {[
+                        { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
+                        { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
+                        { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "My Listings" },
+                        { href: "/deals", icon: <Handshake className="h-4 w-4" />, label: "Deals" },
+                        { href: "/saved", icon: <Heart className="h-4 w-4" />, label: "Favorites" },
+                        { href: "/inbox", icon: <MessageSquare className="h-4 w-4" />, label: "Chats", badge: inboxUnread },
+                        { href: "/creators", icon: <Sparkles className="h-4 w-4" />, label: "Creators" },
+                        { href: "/my-searches", icon: <Bookmark className="h-4 w-4" />, label: "Search History" },
+                        { href: "/settings", icon: <Settings className="h-4 w-4" />, label: t("nav.settings") },
+                      ].map(({ href, icon, label, badge }) => (
+                        <Link key={href} href={href}>
+                          <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
+                            <span className="text-muted-foreground">{icon}</span>
+                            <span className="text-sm font-medium flex-1">{label}</span>
+                            {badge ? <Badge variant="destructive" className="text-[10px]">{badge}</Badge> : null}
+                          </button>
+                        </Link>
+                      ))}
                       {user.isAdmin && (
                         <Link href="/admin">
-                          <Button variant="bareter-ghost" className="w-full justify-start gap-2 h-11">
-                            <Shield className="h-4 w-4" />{t("nav.admin")}
-                            <Badge variant="destructive" className="ms-auto text-xs">Admin</Badge>
-                          </Button>
+                          <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
+                            <Shield className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium flex-1">Admin Panel</span>
+                            <Badge variant="destructive" className="text-[10px]">Admin</Badge>
+                          </button>
                         </Link>
                       )}
-                      <div className="border-t my-2" />
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="bareter-ghost"
-                          className="flex-1 justify-start gap-2"
-                          onClick={toggleLanguage}
-                        >
+                      <div className="border-t mx-4 my-2" />
+                      <div className="flex px-3 gap-2">
+                        <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={toggleLanguage}>
                           <Languages className="h-4 w-4" />
-                          {language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}
+                          {language === "en" ? "العربية" : "English"}
                         </Button>
-                        <Button
-                          variant="bareter-ghost"
-                          className="flex-1 justify-start gap-2"
-                          onClick={toggleTheme}
-                        >
+                        <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={toggleTheme}>
                           {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                          {theme === "light" ? t("nav.darkMode") : t("nav.lightMode")}
+                          {theme === "light" ? "Dark" : "Light"}
                         </Button>
                       </div>
-                      <Button
-                        variant="bareter-ghost"
-                        className="w-full justify-start gap-2 text-destructive"
-                        onClick={logout}
-                      >
-                        <LogOut className="h-4 w-4" />{t("nav.logout")}
-                      </Button>
+                      <div className="border-t mx-4 my-2" />
+                      <button type="button" onClick={logout}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-red-50 transition-colors text-destructive text-start"
+                        data-testid="menu-logout">
+                        <LogOut className="h-4 w-4" />
+                        <span className="text-sm font-medium">Logout</span>
+                      </button>
                     </nav>
                   </SheetContent>
                 </Sheet>
               </>
             ) : waitlistMode.enabled ? (
-              <Button
-                size="sm"
-                className="h-10 bg-white text-bareter-teal hover:bg-white/95 font-semibold shadow-sm"
-                onClick={openWaitlist}
-                data-testid="button-join-waitlist"
-              >
+              <Button size="sm" className="h-9 bg-white text-bareter-teal hover:bg-white/90 font-bold rounded-lg" onClick={openWaitlist} data-testid="button-join-waitlist">
                 {t("nav.joinWaitlist")}
               </Button>
             ) : (
               <div className="flex items-center gap-1.5">
                 <Link href="/login" className="hidden sm:inline-flex">
-                  <Button
-                    variant="bareter-ghost"
-                    size="sm"
-                    className="h-10 text-white hover:bg-white/10"
-                    data-testid="button-login"
-                  >
+                  <Button variant="ghost" size="sm" className="h-9 text-white hover:bg-white/10 rounded-lg" data-testid="button-login">
                     {t("nav.login")}
                   </Button>
                 </Link>
                 <Link href="/register">
-                  <Button
-                    variant="bareter"
-                    size="sm"
-                    className="h-10"
-                    data-testid="button-register"
-                  >
+                  <Button size="sm" className="h-9 bg-white text-bareter-teal hover:bg-white/90 font-bold rounded-lg" data-testid="button-register">
                     {t("nav.register")}
                   </Button>
                 </Link>
@@ -654,38 +631,9 @@ export function Header() {
             )}
           </div>
         </div>
-
-        {/* Mobile expandable search row */}
-        {mobileSearchOpen && (
-          <div className="lg:hidden border-t border-white/15 bg-bareter-teal px-4 py-3">
-            <form
-              onSubmit={handleSearchSubmit}
-              className="flex h-10 items-center bg-white rounded-full px-4"
-              role="search"
-            >
-              <Search className="h-4 w-4 text-bareter-muted flex-shrink-0" />
-              <input
-                autoFocus
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t("nav.searchBarters")}
-                className="flex-1 ms-3 bg-transparent text-bareter-navy placeholder:text-bareter-muted text-sm focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setMobileSearchOpen(false)}
-                className="text-bareter-muted ms-2"
-                aria-label="Close search"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </form>
-          </div>
-        )}
       </div>
 
-      {/* ── Category navigation bar — Dubizzle-style hover dropdowns ── */}
+      {/* ── Category navigation bar ── */}
       <CategoryNav />
 
       <LocationPicker
