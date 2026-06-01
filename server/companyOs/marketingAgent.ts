@@ -139,7 +139,7 @@ interface BriefDraft {
   recommendations: string;
 }
 
-const BRIEF_SYSTEM_PROMPT = `You are the Marketing Agent for Bareter, UAE's marketplace where businesses swap value — products for services, or products for content. Barter. Collab. Grow.
+const BRIEF_SYSTEM_PROMPT = `You are the Marketing Agent for Bareter, a UAE/GCC barter marketplace for SMEs and freelancers.
 
 Generate a weekly campaign brief.
 
@@ -371,7 +371,7 @@ export async function recordCampaignUpdate(u: CampaignUpdate): Promise<CampaignP
 // Draft post — single short copy block usable on IG / LinkedIn / X.
 // ---------------------------------------------------------------------------
 
-const DRAFT_POST_SYSTEM = `You are the Marketing Agent for Bareter (UAE marketplace — Barter. Collab. Grow.). Draft ONE short social post that works on Instagram, LinkedIn and X simultaneously.
+const DRAFT_POST_SYSTEM = `You are the Marketing Agent for Bareter (UAE/GCC barter marketplace). Draft ONE short social post that works on Instagram, LinkedIn and X simultaneously.
 
 Constraints:
 - Hard limit: 220 characters total (so X works).
@@ -414,7 +414,7 @@ export async function draftPost(topic: string): Promise<string> {
 // AI email draft — used by the admin broadcast tool.
 // ---------------------------------------------------------------------------
 
-const EMAIL_DRAFT_SYSTEM = `You are the Marketing Agent for Bareter — UAE's marketplace where businesses swap value. Barter. Collab. Grow.
+const EMAIL_DRAFT_SYSTEM = `You are the Marketing Agent for Bareter, a UAE/GCC cashless barter marketplace for SMEs and freelancers.
 
 Draft a broadcast email for the admin to send to platform users.
 
@@ -1064,7 +1064,7 @@ export async function handleConfirmPublishEdit(
   ].join("\n");
 }
 
-const TWEAK_POST_SYSTEM = `You are the Marketing Agent for Bareter (UAE marketplace — Barter. Collab. Grow.). Revise an existing draft social post using the founder's hint.
+const TWEAK_POST_SYSTEM = `You are the Marketing Agent for Bareter (UAE/GCC barter marketplace). Revise an existing draft social post using the founder's hint.
 
 Constraints:
 - Keep the same hard limits as the original draft: 220 characters total, hook + value prop + CTA + 3 hashtags on a final line.

@@ -15,7 +15,7 @@ export interface EngagementSuggestion {
   actionUrl?: string;
 }
 
-const SYSTEM_PROMPT = `You are an engagement advisor for Bareter, a worldwide cashless barter marketplace.
+const SYSTEM_PROMPT = `You are an engagement advisor for Bareter, a worldwide barter marketplace.
 Based on user activity, profile, and current location, suggest actions to improve their trading success.
 
 Types of suggestions:

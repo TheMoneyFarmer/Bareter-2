@@ -633,7 +633,7 @@ export interface ReEngagementResult {
   fallbackUsed: number;
 }
 
-const REENGAGE_SYSTEM_PROMPT = `You are the Sales Agent for Bareter — UAE's marketplace where businesses swap value. Barter. Collab. Grow.
+const REENGAGE_SYSTEM_PROMPT = `You are the Sales Agent for Bareter, a UAE/GCC barter marketplace.
 
 Write a short, warm re-engagement email to a Bareter user who hasn't been active for a while.
 

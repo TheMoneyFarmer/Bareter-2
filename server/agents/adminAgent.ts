@@ -8,7 +8,7 @@ export interface AdminInsight {
   recommendations: string[];
 }
 
-const SYSTEM_PROMPT = `You are an admin intelligence assistant for Bareter, UAE's barter marketplace — trade goods & services without cash.
+const SYSTEM_PROMPT = `You are an admin intelligence assistant for Bareter, a UAE barter marketplace.
 Analyze platform metrics and respond with ONLY a JSON object matching this exact structure — no markdown, no explanation:
 {
   "summary": "one sentence platform health summary",
@@ -114,7 +114,7 @@ export async function getDisputeResolution(
     ? dispute.evidence.map((e, i) => `${i + 1}. ${e.submittedByName ? `[${e.submittedByName}] ` : ""}${e.description}`).join("\n")
     : "No evidence submitted by either party.";
 
-  const userMessage = `You are an impartial arbiter on Bareter, UAE's B2B barter marketplace. Review this dispute and suggest a resolution.
+  const userMessage = `You are an impartial arbiter on Bareter, a UAE B2B barter marketplace. Review this dispute and suggest a resolution.
 
 Subject: ${dispute.subject}
 Party A: ${dispute.partyAName}

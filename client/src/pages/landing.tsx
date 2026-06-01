@@ -57,15 +57,22 @@ const FAQS = [
 ];
 
 const TESTIMONIALS = [
-  { name: "Khalid Al Mansoori", title: "CEO, Dubai Auto Group", quote: "We traded a fleet service package for office fit-out work. No cash changed hands and both businesses got exactly what they needed.", initials: "KA" },
-  { name: "Sara Al Hashimi", title: "Marketing Director, Luxury Hotels UAE", quote: "We exchanged hotel stays for professional photography. The quality was incredible and it cost us nothing but a room.", initials: "SA" },
+  { name: "Khalid Al Mansoori", title: "CEO, Dubai Auto Group", quote: "Cheaper and more effective than any agency we've ever worked with. Closed three brand collabs in one week.", initials: "KA" },
+  { name: "Sara Al Hashimi", title: "Marketing Director, Luxury Hotels UAE", quote: "We exchanged hotel stays for authentic TikTok content. The quality was incredible and it cost us nothing but a room.", initials: "SA" },
   { name: "Layla Karimi", title: "Fashion Creator, 80K followers", quote: "Finally a platform where I can find real brand deals without cold DMs. Got gifted three outfits this month alone.", initials: "LK" },
+];
+
+const STATIC_CREATORS = [
+  { name: "Aisha Rahman", platform: "Instagram", followers: "48K", rating: 4.7 },
+  { name: "Omar Al Farsi", platform: "TikTok", followers: "23K", rating: 4.9 },
+  { name: "Fatima Zahra", platform: "YouTube", followers: "56K", rating: 4.5 },
+  { name: "Youssef Benali", platform: "Instagram", followers: "14K", rating: 4.9 },
 ];
 
 type PublicSettings = Record<string, string | null>;
 type HowItWorksStep = { n: number; emoji: string; title: string; desc: string };
-const DEFAULT_HEADLINE = "Trade what you have for what you need.";
-const DEFAULT_TAGLINE = "UAE's barter marketplace. No cash. No waste. Just pure exchange.";
+const DEFAULT_HEADLINE = "Barter. Collab. Grow.";
+const DEFAULT_TAGLINE = "UAE's marketplace where businesses swap value — products for services, or products for content.";
 const DEFAULT_STEPS: HowItWorksStep[] = [
   { n: 1, emoji: "📋", title: "List what you have", desc: "Describe your item or service in minutes." },
   { n: 2, emoji: "🤖", title: "Get AI-matched", desc: "Our engine finds the perfect barter partner." },
@@ -113,6 +120,11 @@ export function LandingPage() {
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
   const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings/featured"] });
+  const { data: featuredCreators = [] } = useQuery<any[]>({
+    queryKey: ["/api/creators", "landing"],
+    queryFn: async () => { const res = await fetch("/api/creators"); if (!res.ok) return []; const all = await res.json(); return all.slice(0, 4); },
+    staleTime: 120_000,
+  });
   const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings"] });
 
   const featured = ((featuredListings && featuredListings.length > 0 ? featuredListings : latestListings || [])).slice(0, 4);
@@ -136,6 +148,16 @@ export function LandingPage() {
     { label: "Hospitality", category: "Hospitality" },
     { label: "Health", category: "Health & Wellness" },
   ];
+
+  const creators = featuredCreators.length > 0
+    ? featuredCreators.map((c: any) => ({
+        name: c.fullName,
+        platform: c.creatorProfile?.primaryPlatform ?? "Instagram",
+        followers: c.creatorProfile?.followerCount >= 1_000_000 ? `${(c.creatorProfile.followerCount / 1_000_000).toFixed(1)}M` : c.creatorProfile?.followerCount >= 1_000 ? `${(c.creatorProfile.followerCount / 1_000).toFixed(0)}K` : "—",
+        rating: 4.7,
+        avatarUrl: c.avatarUrl,
+      }))
+    : STATIC_CREATORS;
 
   const galleryImages = (latestListings?.filter(l => (l.images as string[])?.[0]).slice(0, 8).map(l => (l.images as string[])[0]) ?? []);
   const displayGallery = galleryImages.length >= 4 ? galleryImages : [catHospitalityImg, catCarsImg, catServicesImg, catElectronicsImg, catYachtsImg, catFitnessImg, catHomeImg, catRealEstateImg];
@@ -222,7 +244,136 @@ export function LandingPage() {
       {/* Deal ticker */}
       <DealTicker />
 
-      {/* Collab/creator sections removed — restore from git history (commit 271f170) when ready */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          THREE WAYS — unchanged from original
+      ═══════════════════════════════════════════════════════════════════ */}
+      <section className="bg-white dark:bg-background" data-testid="section-three-ways">
+        <div className="container mx-auto max-w-7xl px-4 py-12 sm:py-16">
+          <div className="text-center mb-10">
+            <h2 className="text-section text-bareter-navy dark:text-foreground">One platform. Three ways to swap value.</h2>
+            <p className="text-caption mt-2 max-w-xl mx-auto">Whether you're swapping a phone for software, running a brand, or creating content — Bareter has a place for you.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="rounded-2xl border-2 border-bareter-teal/40 bg-gradient-to-br from-bareter-teal/8 to-transparent p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-bareter-teal/15 flex items-center justify-center mb-4 flex-shrink-0"><ArrowLeftRight className="h-6 w-6 text-bareter-teal" /></div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Barter Anything</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">Swap your goods, services or skills for exactly what you need. No cash, no fees, no middleman.</p>
+              <div className="flex flex-wrap gap-1.5 mb-6">{["📱 Phone","🚲 Bike","🏢 Office Space","💻 Software","👔 Suit","👟 Shoes","📷 Camera","🚗 Car","🎨 Design","🍽️ Catering"].map(item => (<span key={item} className="text-xs px-2.5 py-1 rounded-full bg-bareter-teal/10 text-bareter-teal font-medium">{item}</span>))}</div>
+              <Link href="/browse" className="mt-auto"><Button variant="bareter" className="w-full gap-2">Browse Listings <ArrowRight className="h-4 w-4" /></Button></Link>
+            </div>
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 flex-shrink-0"><Camera className="h-6 w-6 text-primary" /></div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Brand Collabs</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">You're a brand. Offer your product or service. Get creator-made content back. No cash changes hands.</p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">{["Post your collab listing free","Creators apply with stats + pitch","You choose, deal auto-managed"].map(item => (<li key={item} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />{item}</li>))}</ul>
+              <Link href="/create-listing"><Button variant="outline" className="w-full gap-2 border-primary text-primary hover:bg-primary/5">Post a Brand Collab <ArrowRight className="h-4 w-4" /></Button></Link>
+            </div>
+            <div className="rounded-2xl border border-bareter-border dark:border-border bg-white dark:bg-card shadow-sm p-6 flex flex-col">
+              <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mb-4 flex-shrink-0"><Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" /></div>
+              <h3 className="text-xl font-bold text-bareter-navy dark:text-foreground mb-2">Creator Deals</h3>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">You have followers. Brands have products. Get real value in exchange for authentic content on your platform.</p>
+              <ul className="space-y-2 text-sm text-muted-foreground mb-6 flex-1">{["Any niche, any follower count","Instagram, TikTok, YouTube + more","Real products, not just exposure"].map(item => (<li key={item} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-bareter-teal flex-shrink-0" />{item}</li>))}</ul>
+              <Link href="/register"><Button variant="outline" className="w-full gap-2 border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10">Join as Creator <ArrowRight className="h-4 w-4" /></Button></Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          NEW: THREE FEATURE CARDS (getbarter.com style, Bareter colors)
+      ═══════════════════════════════════════════════════════════════════ */}
+      <section className="bg-bareter-off-white dark:bg-background py-16" data-testid="section-feature-cards">
+        <div className="container mx-auto max-w-6xl px-4">
+          <div className="text-center mb-10">
+            <h2 className="text-section text-bareter-navy dark:text-foreground">Everything you need to collab and grow</h2>
+            <p className="text-caption mt-2 max-w-lg mx-auto">Simple tools that put brands and creators together — no agencies, no wasted budget.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Card 1 — Creator applications */}
+            <div className="bg-white dark:bg-card rounded-2xl overflow-hidden border border-bareter-border dark:border-border shadow-sm flex flex-col">
+              <div className="p-5 space-y-2 flex-1">
+                <p className="text-[11px] font-bold text-bareter-teal uppercase tracking-wider mb-3">For Brands</p>
+                {creators.slice(0, 4).map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-bareter-border dark:border-border bg-bareter-off-white dark:bg-background">
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                      <AvatarImage src={c.avatarUrl} />
+                      <AvatarFallback className="bg-bareter-teal text-white text-xs font-semibold">{c.name?.[0] ?? "C"}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">{c.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />{c.rating} · {c.followers} Followers
+                      </p>
+                    </div>
+                    <Badge className="bg-bareter-teal text-white border-0 text-[10px] px-2">Verified</Badge>
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 pb-6">
+                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-2">Connect with thousands of verified creators</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">Access a growing network of vetted creators and micro-influencers ready to promote your brand. No agencies. No cold outreach. Just creators who genuinely want to work with you.</p>
+              </div>
+            </div>
+
+            {/* Card 2 — Content collage with play overlays */}
+            <div className="bg-white dark:bg-card rounded-2xl overflow-hidden border border-bareter-border dark:border-border shadow-sm flex flex-col">
+              <div className="p-4">
+                <p className="text-[11px] font-bold text-bareter-teal uppercase tracking-wider mb-3">How it works</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {COLLAGE_IMAGES.slice(0, 6).map((img, i) => (
+                    <div key={i} className={`relative rounded-xl overflow-hidden ${i === 1 ? "row-span-2" : ""}`} style={{ height: i === 1 ? "auto" : "72px", minHeight: i === 1 ? "150px" : "72px" }}>
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      {(i === 0 || i === 3) && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                          <div className="h-7 w-7 rounded-full bg-white/90 flex items-center justify-center"><Play className="h-3 w-3 fill-bareter-navy ml-0.5" /></div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 pb-6 flex-1">
+                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-2">Exchange products or services for authentic content</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">Offer your product or service in return for real, user-generated content. Think TikToks, Reels, Stories. No payments per video, just fresh engaging content.</p>
+              </div>
+            </div>
+
+            {/* Card 3 — ROI / cost */}
+            <div className="bg-white dark:bg-card rounded-2xl overflow-hidden border border-bareter-border dark:border-border shadow-sm flex flex-col">
+              <div className="p-5">
+                <p className="text-[11px] font-bold text-bareter-teal uppercase tracking-wider mb-3">The numbers</p>
+                <div className="relative h-36 rounded-xl border border-bareter-border dark:border-border bg-bareter-off-white dark:bg-background p-4 overflow-hidden mb-3">
+                  <p className="text-xs font-bold text-bareter-navy dark:text-foreground mb-1">UGC content</p>
+                  <svg viewBox="0 0 200 80" className="w-full" preserveAspectRatio="none">
+                    <path d="M0,75 C20,70 40,60 60,50 C80,40 100,25 120,15 C140,5 160,2 200,0" stroke="var(--bareter-teal, #14796b)" strokeWidth="3" fill="none" strokeLinecap="round"/>
+                    <path d="M0,75 C20,70 40,60 60,50 C80,40 100,25 120,15 C140,5 160,2 200,0 L200,80 L0,80 Z" fill="var(--bareter-teal, #14796b)" fillOpacity="0.1"/>
+                  </svg>
+                  <div className="absolute bottom-4 left-4">
+                    <p className="text-xs font-bold text-orange-500">Agency Costs</p>
+                    <svg viewBox="0 0 120 20" className="w-24 mt-0.5">
+                      <path d="M0,10 L120,10" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round"/>
+                      <polygon points="115,6 120,10 115,14" fill="#f97316"/>
+                    </svg>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[{ v: "0%", l: "Commission" }, { v: "3×", l: "Avg. ROI" }, { v: "Free", l: "Forever" }].map(s => (
+                    <div key={s.l} className="text-center p-2.5 rounded-xl bg-bareter-off-white dark:bg-background border border-bareter-border dark:border-border">
+                      <p className="text-base font-extrabold text-bareter-navy dark:text-foreground">{s.v}</p>
+                      <p className="text-[11px] text-muted-foreground">{s.l}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 pb-6 flex-1">
+                <h3 className="text-lg font-bold text-bareter-navy dark:text-foreground mb-2">Scale your UGC, not your costs</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">Bareter helps you create high-performing content at a fraction of the cost. No commissions. No hidden fees. Just direct collaborations that deliver.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ═══════════════════════════════════════════════════════════════════
           TRENDING / LISTINGS
