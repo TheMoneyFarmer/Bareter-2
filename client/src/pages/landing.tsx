@@ -284,7 +284,7 @@ export function LandingPage() {
         <img src={heroHandshakeImg} alt="" aria-hidden="true" className="absolute inset-0 -z-10 h-full w-full object-cover object-center" loading="eager" />
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-bareter-navy/65 via-bareter-navy/55 to-bareter-navy/75" />
 
-        <div className="container relative z-10 mx-auto max-w-6xl px-4 flex flex-col justify-center min-h-[calc(100vh-4rem)] py-16">
+        <div className="container relative z-10 mx-auto max-w-6xl px-4 pt-24 pb-28 md:pt-32 md:pb-40">
           <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
 
             {/* Headline */}
