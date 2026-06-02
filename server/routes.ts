@@ -2042,26 +2042,29 @@ export async function registerRoutes(
           message: `${listing.title} owner sent a counter-offer: ${body.name} (AED ${body.value})`,
           relatedListingId: listingId,
         });
-        // Email notification
+        // Email notification — non-blocking, doesn't hold up the response
         if (proposer?.email && proposer.emailNotifications) {
-          const { sendCounterOfferEmail } = await import("./emailService");
-          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
-          const owner = await storage.getUser(userId);
-          sendCounterOfferEmail(proposer.email, {
-            recipientName: proposer.fullName,
-            counterpartyName: owner?.fullName || "Listing owner",
-            listingTitle: listing.title,
-            counterName: body.name,
-            counterValue: body.value,
-            listingUrl: `${baseUrl}/listings/${listingId}`,
-            direction: "received",
-          }).catch(() => {});
-          // Push
-          sendPushToUser(proposal.userId, {
-            title: "Counter-offer received",
-            body: `${owner?.fullName || "Listing owner"} sent a counter-offer on "${listing.title}"`,
-            url: `/listings/${listingId}`,
-          }).catch(() => {});
+          void (async () => {
+            try {
+              const { sendCounterOfferEmail } = await import("./emailService");
+              const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+              const owner = await storage.getUser(userId);
+              sendCounterOfferEmail(proposer.email, {
+                recipientName: proposer.fullName,
+                counterpartyName: owner?.fullName || "Listing owner",
+                listingTitle: listing.title,
+                counterName: body.name,
+                counterValue: body.value,
+                listingUrl: `${baseUrl}/listings/${listingId}`,
+                direction: "received",
+              }).catch(() => {});
+              sendPushToUser(proposal.userId, {
+                title: "Counter-offer received",
+                body: `${owner?.fullName || "Listing owner"} sent a counter-offer on "${listing.title}"`,
+                url: `/listings/${listingId}`,
+              }).catch(() => {});
+            } catch {}
+          })();
         }
       }
       res.json(updated);
@@ -2097,25 +2100,29 @@ export async function registerRoutes(
             : `${proposer?.fullName || "Proposer"} declined your counter-offer on "${listing.title}"`,
           relatedListingId: listingId,
         });
-        // Email the owner about the response
+        // Email the owner about the response — non-blocking
         if (owner?.email && owner.emailNotifications) {
-          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
-          const { sendCounterOfferEmail } = await import("./emailService");
-          sendCounterOfferEmail(owner.email, {
-            recipientName: owner.fullName,
-            counterpartyName: proposer?.fullName || "Proposer",
-            listingTitle: listing.title,
-            counterName: proposal.counterOfferName || "",
-            counterValue: proposal.counterOfferValue || "0",
-            listingUrl: `${baseUrl}/listings/${listingId}`,
-            direction: "responded",
-            response,
-          }).catch(() => {});
-          sendPushToUser(listing.userId, {
-            title: response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined",
-            body: `${proposer?.fullName || "Proposer"} ${response === "accepted" ? "accepted" : "declined"} your counter-offer on "${listing.title}"`,
-            url: `/listings/${listingId}`,
-          }).catch(() => {});
+          void (async () => {
+            try {
+              const { sendCounterOfferEmail } = await import("./emailService");
+              const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+              sendCounterOfferEmail(owner.email, {
+                recipientName: owner.fullName,
+                counterpartyName: proposer?.fullName || "Proposer",
+                listingTitle: listing.title,
+                counterName: proposal.counterOfferName || "",
+                counterValue: proposal.counterOfferValue || "0",
+                listingUrl: `${baseUrl}/listings/${listingId}`,
+                direction: "responded",
+                response,
+              }).catch(() => {});
+              sendPushToUser(listing.userId, {
+                title: response === "accepted" ? "Counter-offer accepted!" : "Counter-offer declined",
+                body: `${proposer?.fullName || "Proposer"} ${response === "accepted" ? "accepted" : "declined"} your counter-offer on "${listing.title}"`,
+                url: `/listings/${listingId}`,
+              }).catch(() => {});
+            } catch {}
+          })();
         }
       }
       res.json(updated);

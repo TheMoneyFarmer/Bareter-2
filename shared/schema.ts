@@ -537,10 +537,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
-  // Index used by the Didit webhook to look up the user for a given
-  // verification session in O(log n) instead of scanning every row.
   diditSessionIdx: index("users_didit_session_id_idx").on(table.diditSessionId),
   unsubscribeTokenIdx: index("users_unsubscribe_token_idx").on(table.unsubscribeToken),
+  phoneIdx: index("users_phone_idx").on(table.phone),
 }));
 
 // Waitlist entries (pre-launch email collection)
@@ -676,6 +675,7 @@ export const listings = pgTable("listings", {
   index("listings_created_at_idx").on(table.createdAt),
   index("listings_is_collab_idx").on(table.isCollab),
   index("listings_is_bulk_idx").on(table.isBulkDeal),
+  index("listings_city_idx").on(table.city),
 ]);
 
 // Banned emails table - prevents re-registration of banned users
@@ -1005,6 +1005,7 @@ export const listingComments = pgTable("listing_comments", {
 }, (table) => [
   index("listing_comments_listing_id_idx").on(table.listingId),
   index("listing_comments_user_id_idx").on(table.userId),
+  index("listing_comments_listing_created_idx").on(table.listingId, table.createdAt),
 ]);
 
 // Reports table (scam/abuse reports)

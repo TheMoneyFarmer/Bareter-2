@@ -598,18 +598,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDealWithUsers(id: string): Promise<DealWithUsers | undefined> {
-    const result = await db
-      .select()
-      .from(deals)
-      .where(eq(deals.id, id));
-
+    const result = await db.select().from(deals).where(eq(deals.id, id));
     if (result.length === 0) return undefined;
-
-    const deal = result[0];
-    const [seeker] = await db.select().from(users).where(eq(users.id, deal.seekerId));
-    const [provider] = await db.select().from(users).where(eq(users.id, deal.providerId));
-
-    return { ...deal, seeker, provider };
+    const enriched = await this._enrichDealsWithUsers(result);
+    return enriched[0];
   }
 
   async getDealsByUser(userId: string): Promise<DealWithUsers[]> {
