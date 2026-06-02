@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { users, listings, deals, ratings, posts } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { eq, sql, isNull, and } from "drizzle-orm";
+import { eq, sql, isNull, and, inArray } from "drizzle-orm";
 import type { CreatorProfile } from "@shared/schema";
 
 // One-time backfill: ensure existing rows have country/city populated so the
@@ -739,13 +739,49 @@ export async function seedDatabase() {
   console.log("Database seeding completed!");
 }
 
-// Idempotent top-up: adds extra trending listings (covering all category-grid
-// categories) without disturbing existing rows. Safe to run on every boot —
-// each listing is keyed by title and skipped if already present.
+// Old luxury seed titles to clean up from the database
+const LEGACY_SEED_TITLES = [
+  "2023 Mercedes-Benz G63 AMG — Obsidian Black",
+  "Porsche 911 Carrera S — 2022, Guards Red",
+  "Range Rover Autobiography 2024",
+  "Palm Jumeirah Beachfront Villa — Direct Beach Access",
+  "Downtown Dubai Apartment — Burj Khalifa View",
+  "Wanted: Furnished Office (50 desks) in DIFC",
+  "Brand Identity & Web Design Package",
+  "End-to-End Event Management — Up to 200 Guests",
+  "Apple MacBook Pro M3 Max — 16\" (Bulk of 5)",
+  "DJI Inspire 3 Pro Cinema Drone Kit",
+  "10 Nights Presidential Suite — Marina Bay Hotel",
+  "Private Chef Catering — 12 Dinners for 20 Guests",
+  "Sunseeker 76 Yacht — 1-Week Charter",
+  "Azimut 60 Yacht — Day & Sunset Charters (10x)",
+  "Annual Premium Gym Membership (10 passes)",
+  "Wanted: Private Yoga Instructor (12 months)",
+  "Full Interior Design — 4-Bedroom Villa",
+  "Smart Home Automation Install — Whole Villa",
+  "Patek Philippe Nautilus 5711 — Box & Papers",
+  "Designer Couture Capsule — 20 Pieces",
+  // also remove original seedDatabase luxury listings
+  "5 Nights Luxury Suite at Marina Bay Hotel",
+  "Corporate Event Space for 100 Guests",
+  "1-Year Enterprise SaaS License",
+  "Looking for Premium Office Space",
+  "Custom Designer Abaya Collection (10 pieces)",
+  "Professional Fashion Photography Package",
+  "Full Corporate Event Management Package",
+  "Catering Partner for Upcoming Events",
+];
+
+// Idempotent top-up: adds everyday relatable listings covering all categories.
+// On each boot it also removes legacy luxury seed listings so the marketplace
+// feels real. Safe to run on every boot — new listings keyed by title.
 export async function topUpTrendingListings() {
   try {
     const allUsers = await db.select().from(users);
     if (allUsers.length === 0) return;
+
+    // Remove old luxury seed listings so they don't appear in the marketplace
+    await db.delete(listings).where(inArray(listings.title, LEGACY_SEED_TITLES));
 
     const pickUser = (preferredEmails: string[]) => {
       for (const email of preferredEmails) {
@@ -755,292 +791,410 @@ export async function topUpTrendingListings() {
       return allUsers[Math.floor(Math.random() * allUsers.length)];
     };
 
-    const sarah = pickUser(["sarah@bareter.com"]);
-    const omar = pickUser(["omar@bareter.com"]);
-    const fatima = pickUser(["fatima@bareter.com"]);
-    const ahmed = pickUser(["ahmed@bareter.com"]);
-    const layla = pickUser(["layla@bareter.com"]);
-    const khalid = pickUser(["khalid@bareter.com"]);
-    const noura = pickUser(["noura@bareter.com"]);
-    const rashid = pickUser(["rashid@bareter.com"]);
-    const mariam = pickUser(["mariam@bareter.com"]);
-    const hassan = pickUser(["hassan@bareter.com"]);
+    const sarah  = pickUser(["sarah@luxuryhotels.ae", "sarah@bareter.com"]);
+    const omar   = pickUser(["omar@techflow.ae", "omar@bareter.com"]);
+    const fatima = pickUser(["fatima@maisonfatima.ae", "fatima@bareter.com"]);
+    const ahmed  = pickUser(["ahmed@eventspro.ae", "ahmed@bareter.com"]);
+    const layla  = pickUser(["layla@gulfproperties.ae", "layla@bareter.com"]);
+    const khalid = pickUser(["khalid@saffronkitchen.ae", "khalid@bareter.com"]);
+    const noura  = pickUser(["noura@shuttercraft.ae", "noura@bareter.com"]);
+    const rashid = pickUser(["rashid@elitemotors.ae", "rashid@bareter.com"]);
+    const mariam = pickUser(["mariam@designhaus.ae", "mariam@bareter.com"]);
+    const hassan = pickUser(["hassan@gulfyachts.ae", "hassan@bareter.com"]);
 
     type ExtraListing = typeof listings.$inferInsert;
     const extras: ExtraListing[] = [
-      // ---- Cars (Automotive) ----
+
+      // ── Cars ──────────────────────────────────────────────────────────────
       {
         userId: rashid.id, type: "offer",
-        title: "2023 Mercedes-Benz G63 AMG — Obsidian Black",
-        description: "Showroom-condition G63 AMG with full service history. Bartering for off-plan property, watch collection, or yacht time.",
-        categories: ["Automotive"], wantedCategories: ["Real Estate", "Yachts", "Watches"],
-        retailValue: "950000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["luxury", "suv", "mercedes", "amg"],
-        condition: "like_new", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Downtown apartment", isPriority: true }, { name: "Patek Philippe watch", isPriority: false }],
-        images: ["/images/seed/car-mercedes-g63.jpg", "/images/seed/car-range-rover.jpg", "/images/seed/car-porsche-911.jpg"],
-        likeCount: 142, viewCount: 1280, isActive: true,
+        title: "Toyota Corolla 2020 — Low Mileage, Full Service History",
+        description: "Well-maintained Corolla 1.6L, 62,000 km, single owner. AC works great, new tyres. Looking to swap for a laptop, phone, or electronics package.",
+        categories: ["Automotive"], wantedCategories: ["Electronics", "Technology"],
+        retailValue: "32000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["car", "toyota", "corolla", "budget"],
+        condition: "good", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "MacBook or gaming laptop", isPriority: true }, { name: "iPhone 15", isPriority: false }],
+        images: ["/images/seed/car-mercedes-g63.jpg", "/images/seed/car-range-rover.jpg"],
+        likeCount: 87, viewCount: 940, isActive: true,
       },
       {
         userId: omar.id, type: "offer",
-        title: "Porsche 911 Carrera S — 2022, Guards Red",
-        description: "Low mileage Porsche 911 Carrera S, sport chrono pack. Looking to barter for commercial real estate or a serious yacht charter package.",
-        categories: ["Automotive"], wantedCategories: ["Real Estate", "Yachts"],
-        retailValue: "620000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["sportscar", "porsche", "luxury"],
-        condition: "excellent", openToOffers: true,
-        exchangeItems: [{ name: "Yacht charter (1 month)", isPriority: true }, { name: "Office space", isPriority: false }],
+        title: "Honda Civic 2021 — Accident Free, GCC Spec",
+        description: "Clean Civic RS Turbo, 45,000 km, no accidents. Selling or bartering for iPhone, PS5, cash top-up, or anything useful.",
+        categories: ["Automotive"], wantedCategories: ["Electronics", "Technology"],
+        retailValue: "42000.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["car", "honda", "civic", "used"],
+        condition: "excellent", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "iPhone 15 Pro", isPriority: true }, { name: "PS5 + games", isPriority: false }],
         images: ["/images/seed/car-porsche-911.jpg", "/images/seed/car-mercedes-g63.jpg"],
-        likeCount: 98, viewCount: 880, isActive: true,
+        likeCount: 64, viewCount: 710, isActive: true,
       },
       {
         userId: hassan.id, type: "offer",
-        title: "Range Rover Autobiography 2024",
-        description: "Brand new Range Rover Autobiography, fully loaded. Bartering for premium villa, art collection, or hospitality portfolio.",
-        categories: ["Automotive"], wantedCategories: ["Real Estate", "Hospitality"],
-        retailValue: "780000.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
-        tags: ["suv", "range rover", "luxury"],
-        condition: "brand_new", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Villa rental (1 year)", isPriority: true }],
-        images: ["/images/seed/car-range-rover.jpg", "/images/seed/car-mercedes-g63.jpg"],
-        likeCount: 76, viewCount: 612, isActive: true,
+        title: "Yamaha YBR 125 Motorbike — Barely Used",
+        description: "2022 Yamaha YBR 125, 8,000 km, excellent condition. Great for daily commuting. Trading for a laptop, tablet, or phone.",
+        categories: ["Automotive"], wantedCategories: ["Electronics", "Technology"],
+        retailValue: "7500.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["motorbike", "yamaha", "commuter", "bike"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Laptop", isPriority: true }, { name: "Tablet", isPriority: false }],
+        images: ["/images/seed/car-range-rover.jpg"],
+        likeCount: 43, viewCount: 380, isActive: true,
       },
 
-      // ---- Real Estate ----
+      // ── Real Estate / Rooms ───────────────────────────────────────────────
       {
         userId: layla.id, type: "offer",
-        title: "Palm Jumeirah Beachfront Villa — Direct Beach Access",
-        description: "5-bed Palm villa with private beach. Open to swap with luxury fleet, yacht, or commercial portfolio.",
-        categories: ["Real Estate"], wantedCategories: ["Automotive", "Yachts"],
-        retailValue: "12500000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["villa", "palm jumeirah", "beachfront"],
-        condition: "excellent", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Luxury car fleet", isPriority: true }, { name: "Sunseeker yacht", isPriority: true }],
-        images: ["/images/seed/villa-palm.jpg", "/images/seed/penthouse-saadiyat.jpg", "/images/seed/hotel-suite.jpg"],
-        likeCount: 312, viewCount: 4210, isActive: true,
+        title: "Studio Apartment in Deira — Furnished, Bills Included",
+        description: "Clean furnished studio near Deira City Centre. WiFi, AC, kitchen. AED 2,800/month. Willing to barter services like cleaning, tutoring, or delivery work.",
+        categories: ["Real Estate"], wantedCategories: ["Services"],
+        retailValue: "33600.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["studio", "deira", "apartment", "furnished"],
+        condition: "good", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Monthly cleaning service", isPriority: true }, { name: "Tutoring sessions", isPriority: false }],
+        images: ["/images/seed/apartment-downtown.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 121, viewCount: 1640, isActive: true,
       },
       {
         userId: mariam.id, type: "offer",
-        title: "Downtown Dubai Apartment — Burj Khalifa View",
-        description: "2-bed high-floor apartment with full Burj Khalifa view. Trading for tech services, SaaS, or consulting retainers.",
-        categories: ["Real Estate"], wantedCategories: ["Technology", "Services"],
-        retailValue: "3200000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["apartment", "downtown", "burj khalifa"],
-        condition: "like_new", openToOffers: true,
-        exchangeItems: [{ name: "Custom software build", isPriority: true }, { name: "3-year SaaS license", isPriority: false }],
-        images: ["/images/seed/apartment-downtown.jpg", "/images/seed/coworking-space.jpg"],
-        likeCount: 188, viewCount: 2640, isActive: true,
+        title: "1 Bedroom Flat in Ajman — Ready to Move In",
+        description: "Spacious 1BR in a quiet Ajman building, near Ajman Mall. AED 18,000/year. Open to bartering with home appliances, furniture, or services.",
+        categories: ["Real Estate"], wantedCategories: ["Services", "Electronics"],
+        retailValue: "18000.00", location: "Ajman", city: "Ajman", country: "AE",
+        tags: ["apartment", "ajman", "1br", "affordable"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Washing machine", isPriority: true }, { name: "Fridge", isPriority: false }],
+        images: ["/images/seed/apartment-downtown.jpg"],
+        likeCount: 78, viewCount: 890, isActive: true,
       },
       {
         userId: ahmed.id, type: "request",
-        title: "Wanted: Furnished Office (50 desks) in DIFC",
-        description: "Need turnkey office space for our growing team. Can offer events services, marketing, and design in return.",
-        categories: ["Real Estate"], wantedCategories: ["Services", "Events"],
-        retailValue: "180000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["office", "difc", "commercial"],
+        title: "Wanted: Shared Room in Dubai — Any Area",
+        description: "Looking for a shared room for 1 person, budget AED 1,500-2,000/month. Can offer handyman work, cooking, or photography in return.",
+        categories: ["Real Estate"], wantedCategories: ["Services"],
+        retailValue: "24000.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["room", "shared", "housing", "needed"],
         condition: "good", openToOffers: true,
-        exchangeItems: [{ name: "Annual events package", isPriority: true }],
-        images: ["/images/seed/office-commercial.jpg", "/images/seed/coworking-space.jpg"],
-        likeCount: 41, viewCount: 520, isActive: true,
+        exchangeItems: [{ name: "Handyman services", isPriority: true }, { name: "Photography sessions", isPriority: false }],
+        images: ["/images/seed/coworking-space.jpg"],
+        likeCount: 55, viewCount: 620, isActive: true,
       },
 
-      // ---- Services ----
+      // ── Phones ────────────────────────────────────────────────────────────
       {
         userId: noura.id, type: "offer",
-        title: "Brand Identity & Web Design Package",
-        description: "Full brand identity (logo, guidelines, web) by award-winning studio. Trading for hospitality stays, automotive, or premium watches.",
-        categories: ["Services"], wantedCategories: ["Hospitality", "Automotive"],
-        retailValue: "55000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["branding", "design", "creative"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Hotel stays (10 nights)", isPriority: true }, { name: "Watch", isPriority: false }],
-        images: ["/images/seed/listing-photography.jpg", "/images/seed/service-fashion.jpg"],
-        likeCount: 64, viewCount: 720, isActive: true,
-      },
-      {
-        userId: ahmed.id, type: "offer",
-        title: "End-to-End Event Management — Up to 200 Guests",
-        description: "Full corporate event production: venue, AV, catering, talent. 3-event package. Trading for marketing, real estate, or hospitality.",
-        categories: ["Services", "Events"], wantedCategories: ["Real Estate", "Services"],
-        retailValue: "120000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["events", "production"],
-        condition: "brand_new", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Office space (1 year)", isPriority: true }],
-        images: ["/images/seed/service-events.jpg", "/images/seed/listing-event-venue.jpg"],
-        likeCount: 53, viewCount: 480, isActive: true,
-      },
-
-      // ---- Electronics / Technology ----
-      {
-        userId: omar.id, type: "offer",
-        title: "Apple MacBook Pro M3 Max — 16\" (Bulk of 5)",
-        description: "Five brand new MacBook Pro M3 Max units, sealed. Bartering for office furniture, marketing services, or premium hospitality.",
-        categories: ["Technology"], wantedCategories: ["Services", "Hospitality"],
-        retailValue: "45000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["macbook", "apple", "tech", "bulk"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Marketing retainer (6 months)", isPriority: true }],
-        images: ["/images/seed/listing-saas.jpg", "/images/seed/service-tech.jpg"],
-        likeCount: 89, viewCount: 940, isActive: true,
-      },
-      {
-        userId: rashid.id, type: "offer",
-        title: "DJI Inspire 3 Pro Cinema Drone Kit",
-        description: "Complete cinema drone kit with full Pro Res RAW. Trading for photography services, hotel stays, or fitness equipment.",
-        categories: ["Technology"], wantedCategories: ["Services", "Hospitality"],
-        retailValue: "38000.00", location: "Sharjah", city: "Sharjah", country: "AE",
-        tags: ["drone", "cinema", "production"],
-        condition: "like_new", openToOffers: true,
-        exchangeItems: [{ name: "Photography package", isPriority: true }],
-        images: ["/images/seed/service-tech.jpg", "/images/seed/listing-photography.jpg"],
-        likeCount: 47, viewCount: 410, isActive: true,
-      },
-
-      // ---- Hospitality ----
-      {
-        userId: sarah.id, type: "offer",
-        title: "10 Nights Presidential Suite — Marina Bay Hotel",
-        description: "Presidential suite (10 nights) with butler service, spa, dining credit, airport transfers. Trading for premium services or watches.",
-        categories: ["Hospitality"], wantedCategories: ["Services", "Watches"],
-        retailValue: "85000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["luxury", "hotel", "presidential", "marina"],
-        condition: "brand_new", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Brand identity package", isPriority: true }, { name: "Patek Philippe watch", isPriority: false }],
-        images: ["/images/seed/hotel-suite.jpg", "/images/seed/dining-private.jpg", "/images/seed/listing-hotel.jpg"],
-        likeCount: 124, viewCount: 1640, isActive: true,
-      },
-      {
-        userId: khalid.id, type: "offer",
-        title: "Private Chef Catering — 12 Dinners for 20 Guests",
-        description: "Michelin-trained chef, full bespoke menus, ingredients included. Trading for marketing services or hotel stays.",
-        categories: ["Hospitality", "Food"], wantedCategories: ["Services"],
-        retailValue: "60000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["catering", "private chef", "fine dining"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Social media management (1 year)", isPriority: true }],
-        images: ["/images/seed/catering-event.jpg", "/images/seed/dining-private.jpg"],
-        likeCount: 71, viewCount: 690, isActive: true,
-      },
-
-      // ---- Yachts ----
-      {
-        userId: hassan.id, type: "offer",
-        title: "Sunseeker 76 Yacht — 1-Week Charter",
-        description: "Fully crewed 76ft Sunseeker, 1-week charter from Dubai Marina. Bartering for luxury cars, watches, or premium real estate.",
-        categories: ["Yachts"], wantedCategories: ["Automotive", "Real Estate"],
-        retailValue: "180000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["yacht", "sunseeker", "charter"],
-        condition: "excellent", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Luxury car (1 year lease)", isPriority: true }],
-        images: ["/images/seed/yacht-sunseeker.jpg", "/images/seed/yacht-azimut.jpg"],
+        title: "iPhone 14 Pro 256GB — Space Black, Like New",
+        description: "Used 3 months, no scratches, comes with original box, charger, and case. Trading for a laptop, camera, or cash top-up.",
+        categories: ["Electronics"], wantedCategories: ["Electronics", "Technology"],
+        retailValue: "3200.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["iphone", "apple", "phone", "used"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Laptop (any)", isPriority: true }, { name: "Sony camera", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg", "/images/seed/listing-saas.jpg"],
         likeCount: 156, viewCount: 1820, isActive: true,
       },
       {
+        userId: fatima.id, type: "offer",
+        title: "Samsung Galaxy S23 Ultra — 512GB, Green",
+        description: "Excellent condition S23 Ultra with S-Pen. 512GB storage, dual SIM, unlocked. Trading for clothes, shoes, or home items.",
+        categories: ["Electronics"], wantedCategories: ["Fashion", "Miscellaneous"],
+        retailValue: "2800.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["samsung", "galaxy", "android", "phone"],
+        condition: "excellent", openToOffers: true,
+        exchangeItems: [{ name: "Women's clothes bundle", isPriority: true }, { name: "Sneakers", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg"],
+        likeCount: 98, viewCount: 1100, isActive: true,
+      },
+
+      // ── Laptops ───────────────────────────────────────────────────────────
+      {
+        userId: omar.id, type: "offer",
+        title: "MacBook Air M2 — 8GB/256GB, Midnight",
+        description: "2022 MacBook Air M2, in perfect condition, used for light work. Trading for a PS5, iPhone 15, or equivalent value items.",
+        categories: ["Electronics", "Technology"], wantedCategories: ["Electronics"],
+        retailValue: "4200.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["macbook", "apple", "laptop", "m2"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "PlayStation 5", isPriority: true }, { name: "iPhone 15 Pro", isPriority: false }],
+        images: ["/images/seed/listing-saas.jpg", "/images/seed/service-tech.jpg"],
+        likeCount: 134, viewCount: 1540, isActive: true,
+      },
+      {
+        userId: khalid.id, type: "offer",
+        title: "Dell Inspiron 15 — Core i7, 16GB RAM, 512GB SSD",
+        description: "Great everyday laptop for work and study. Windows 11, runs fast. Looking to swap for a phone, tablet, headset, or clothes.",
+        categories: ["Electronics"], wantedCategories: ["Electronics", "Fashion"],
+        retailValue: "2200.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["dell", "laptop", "windows", "i7"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Samsung phone", isPriority: true }, { name: "AirPods or headset", isPriority: false }],
+        images: ["/images/seed/listing-saas.jpg"],
+        likeCount: 72, viewCount: 810, isActive: true,
+      },
+
+      // ── Gaming ────────────────────────────────────────────────────────────
+      {
         userId: rashid.id, type: "offer",
-        title: "Azimut 60 Yacht — Day & Sunset Charters (10x)",
-        description: "10 day-charter or sunset cruise vouchers on Azimut 60. Trading for hospitality services or premium electronics.",
-        categories: ["Yachts"], wantedCategories: ["Hospitality", "Technology"],
-        retailValue: "75000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["yacht", "azimut", "sunset"],
+        title: "PlayStation 5 + 3 Games — Disc Edition",
+        description: "PS5 Disc Edition with FIFA 24, God of War Ragnarok, and Spider-Man 2. Perfect condition. Trading for a phone, bike, or laptop.",
+        categories: ["Electronics", "Entertainment"], wantedCategories: ["Electronics", "Automotive"],
+        retailValue: "2400.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["ps5", "playstation", "gaming", "console"],
+        condition: "excellent", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "iPhone 14 or 15", isPriority: true }, { name: "Mountain bike", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg", "/images/seed/listing-saas.jpg"],
+        likeCount: 212, viewCount: 2640, isActive: true,
+      },
+      {
+        userId: ahmed.id, type: "offer",
+        title: "Xbox Series X — 1TB, Like New",
+        description: "Xbox Series X with 2 controllers and Game Pass (3 months remaining). Will swap for a phone, camera, or clothes bundle.",
+        categories: ["Electronics", "Entertainment"], wantedCategories: ["Electronics", "Fashion"],
+        retailValue: "1900.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["xbox", "gaming", "console", "microsoft"],
         condition: "like_new", openToOffers: true,
-        exchangeItems: [{ name: "Hotel stays", isPriority: true }],
-        images: ["/images/seed/yacht-azimut.jpg", "/images/seed/yacht-sunseeker.jpg"],
-        likeCount: 88, viewCount: 940, isActive: true,
+        exchangeItems: [{ name: "Smartphone", isPriority: true }, { name: "Clothes/shoes bundle", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg"],
+        likeCount: 88, viewCount: 980, isActive: true,
       },
 
-      // ---- Fitness / Health & Wellness ----
-      {
-        userId: noura.id, type: "offer",
-        title: "Annual Premium Gym Membership (10 passes)",
-        description: "10 corporate annual memberships at flagship Dubai Marina fitness club. Trading for marketing or hospitality.",
-        categories: ["Health & Wellness"], wantedCategories: ["Services", "Hospitality"],
-        retailValue: "60000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["gym", "fitness", "wellness", "corporate"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Brand campaign", isPriority: true }],
-        images: ["/images/seed/service-fashion.jpg", "/images/seed/coworking-space.jpg"],
-        likeCount: 39, viewCount: 320, isActive: true,
-      },
-      {
-        userId: fatima.id, type: "request",
-        title: "Wanted: Private Yoga Instructor (12 months)",
-        description: "Looking for certified private yoga instructor, 3 sessions/week. Can offer designer fashion or photography services in return.",
-        categories: ["Health & Wellness"], wantedCategories: ["Services"],
-        retailValue: "42000.00", location: "Sharjah", city: "Sharjah", country: "AE",
-        tags: ["yoga", "wellness", "fitness"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Designer abaya collection", isPriority: true }],
-        images: ["/images/seed/abaya-collection.jpg", "/images/seed/service-fashion.jpg"],
-        likeCount: 28, viewCount: 240, isActive: true,
-      },
-
-      // ---- Home ----
+      // ── TVs ───────────────────────────────────────────────────────────────
       {
         userId: mariam.id, type: "offer",
-        title: "Full Interior Design — 4-Bedroom Villa",
-        description: "Turnkey interior design and furnishing for a 4-bed villa, by award-winning studio. Trading for hospitality, real estate, or automotive.",
-        categories: ["Home"], wantedCategories: ["Hospitality", "Real Estate"],
-        retailValue: "220000.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
-        tags: ["interior design", "home", "furnishing"],
-        condition: "brand_new", openToOffers: true, isFeatured: true,
-        exchangeItems: [{ name: "Hotel stays (30 nights)", isPriority: true }, { name: "Luxury car", isPriority: false }],
-        images: ["/images/seed/apartment-downtown.jpg", "/images/seed/showroom-fashion.jpg"],
-        likeCount: 67, viewCount: 580, isActive: true,
+        title: "Samsung 55\" 4K Smart TV — QLED Series",
+        description: "2022 Samsung 55\" QLED, barely used, wall mount included. Trading for a washing machine, fridge, or phone.",
+        categories: ["Electronics"], wantedCategories: ["Electronics", "Miscellaneous"],
+        retailValue: "1800.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["tv", "samsung", "smart tv", "4k"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Washing machine", isPriority: true }, { name: "Smartphone", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg", "/images/seed/coworking-space.jpg"],
+        likeCount: 67, viewCount: 740, isActive: true,
+      },
+
+      // ── Home Appliances ───────────────────────────────────────────────────
+      {
+        userId: sarah.id, type: "offer",
+        title: "LG Front Load Washing Machine — 8KG",
+        description: "LG WM3400CW, 1.5 years old, works perfectly. Moving out, can't take it. Will trade for a phone, laptop bag, or clothes.",
+        categories: ["Electronics", "Miscellaneous"], wantedCategories: ["Electronics", "Fashion"],
+        retailValue: "1600.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["washing machine", "lg", "appliance", "home"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Any smartphone", isPriority: true }, { name: "Clothes bundle", isPriority: false }],
+        images: ["/images/seed/coworking-space.jpg"],
+        likeCount: 54, viewCount: 590, isActive: true,
+      },
+
+      // ── Headsets / Audio ──────────────────────────────────────────────────
+      {
+        userId: noura.id, type: "offer",
+        title: "Sony WH-1000XM5 Noise Cancelling Headphones",
+        description: "Best noise-cancelling headphones, used 2 months. Trading for sneakers, a charger bundle, or PS5 accessories.",
+        categories: ["Electronics"], wantedCategories: ["Fashion", "Electronics"],
+        retailValue: "1400.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["sony", "headphones", "noise cancelling", "audio"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Nike or Adidas sneakers", isPriority: true }, { name: "PS5 controller", isPriority: false }],
+        images: ["/images/seed/service-tech.jpg"],
+        likeCount: 93, viewCount: 1020, isActive: true,
+      },
+      {
+        userId: khalid.id, type: "offer",
+        title: "JBL Charge 5 Bluetooth Speaker — Teal",
+        description: "Waterproof JBL Charge 5, excellent sound, full battery life. Trading for clothes, shoes, or a small gadget.",
+        categories: ["Electronics"], wantedCategories: ["Fashion", "Miscellaneous"],
+        retailValue: "450.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["jbl", "speaker", "bluetooth", "portable"],
+        condition: "excellent", openToOffers: true,
+        exchangeItems: [{ name: "Jeans or sneakers", isPriority: true }],
+        images: ["/images/seed/service-tech.jpg"],
+        likeCount: 48, viewCount: 520, isActive: true,
+      },
+
+      // ── Shoes & Sneakers ──────────────────────────────────────────────────
+      {
+        userId: fatima.id, type: "offer",
+        title: "Nike Air Max 90 — Size 43, White/Black",
+        description: "Worn twice, basically new. EU size 43. Trading for a phone charger, earphones, or top-up value on anything.",
+        categories: ["Fashion"], wantedCategories: ["Electronics", "Miscellaneous"],
+        retailValue: "480.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["nike", "sneakers", "air max", "shoes"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Type-C charger bundle", isPriority: true }, { name: "Phone case", isPriority: false }],
+        images: ["/images/seed/service-fashion.jpg", "/images/seed/showroom-fashion.jpg"],
+        likeCount: 142, viewCount: 1680, isActive: true,
       },
       {
         userId: layla.id, type: "offer",
-        title: "Smart Home Automation Install — Whole Villa",
-        description: "Premium smart home install (lighting, climate, AV, security). Trading for property, services, or watches.",
-        categories: ["Home", "Technology"], wantedCategories: ["Real Estate", "Services"],
-        retailValue: "95000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["smart home", "automation", "tech"],
-        condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Office space", isPriority: true }],
-        images: ["/images/seed/service-tech.jpg", "/images/seed/coworking-space.jpg"],
-        likeCount: 44, viewCount: 380, isActive: true,
+        title: "Women's Heels Collection — 6 Pairs, Various Sizes",
+        description: "6 pairs of heels, sizes 37-39, barely worn. Mix of block heels and stilettos. Bartering for a phone, skincare set, or cash.",
+        categories: ["Fashion"], wantedCategories: ["Electronics", "Miscellaneous"],
+        retailValue: "600.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["heels", "women", "shoes", "fashion"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Any smartphone", isPriority: true }, { name: "Skincare bundle", isPriority: false }],
+        images: ["/images/seed/showroom-fashion.jpg", "/images/seed/service-fashion.jpg"],
+        likeCount: 87, viewCount: 960, isActive: true,
+      },
+      {
+        userId: ahmed.id, type: "offer",
+        title: "Adidas Yeezy Boost 350 V2 — Size 42, Authentic",
+        description: "100% authentic Yeezy 350 V2 Zebra. EU 42. Comes with original box and receipt. Trading for a phone, watch, or electronics.",
+        categories: ["Fashion"], wantedCategories: ["Electronics", "Jewelry & Watches"],
+        retailValue: "1100.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["yeezy", "adidas", "sneakers", "limited"],
+        condition: "excellent", openToOffers: true,
+        exchangeItems: [{ name: "Casio or Seiko watch", isPriority: true }, { name: "Earphones", isPriority: false }],
+        images: ["/images/seed/service-fashion.jpg"],
+        likeCount: 178, viewCount: 2100, isActive: true,
       },
 
-      // ---- Bonus: Watches / Fashion (round out the row) ----
-      {
-        userId: hassan.id, type: "offer",
-        title: "Patek Philippe Nautilus 5711 — Box & Papers",
-        description: "Patek Philippe Nautilus 5711, full set, immaculate. Trading for luxury cars, real estate, or yacht charter.",
-        categories: ["Watches", "Luxury"], wantedCategories: ["Automotive", "Real Estate"],
-        retailValue: "650000.00", location: "Dubai", city: "Dubai", country: "AE",
-        tags: ["watch", "patek", "luxury", "nautilus"],
-        condition: "like_new", openToOffers: false, isFeatured: true,
-        exchangeItems: [{ name: "Luxury SUV", isPriority: true }],
-        images: ["/images/seed/watch-patek.jpg"],
-        likeCount: 287, viewCount: 3120, isActive: true,
-      },
+      // ── Clothes & Jeans ───────────────────────────────────────────────────
       {
         userId: fatima.id, type: "offer",
-        title: "Designer Couture Capsule — 20 Pieces",
-        description: "Hand-finished couture capsule, ready for boutique retail. Trading for marketing, photography, or hospitality.",
-        categories: ["Fashion"], wantedCategories: ["Services", "Hospitality"],
-        retailValue: "80000.00", location: "Sharjah", city: "Sharjah", country: "AE",
-        tags: ["fashion", "couture", "designer"],
+        title: "Men's Clothes Bundle — 15 Pieces (M/L Sizes)",
+        description: "15 pieces of men's casual wear: Zara, H&M, Pull&Bear. T-shirts, shirts, and jeans. All in great condition. Trading for headset or phone accessories.",
+        categories: ["Fashion"], wantedCategories: ["Electronics"],
+        retailValue: "800.00", location: "Sharjah", city: "Sharjah", country: "AE",
+        tags: ["clothes", "mens fashion", "bundle", "zara"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Bluetooth earphones", isPriority: true }, { name: "Phone charger", isPriority: false }],
+        images: ["/images/seed/abaya-collection.jpg", "/images/seed/service-fashion.jpg"],
+        likeCount: 63, viewCount: 700, isActive: true,
+      },
+      {
+        userId: mariam.id, type: "offer",
+        title: "Women's Casual Wardrobe Bundle — 20 Pieces",
+        description: "20 pieces including jeans, tops, dresses, and cardigans. Sizes S-M. Mix of Zara, Mango, and H&M. Great condition. Swapping for kitchen gadgets or appliances.",
+        categories: ["Fashion"], wantedCategories: ["Miscellaneous", "Electronics"],
+        retailValue: "950.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["women", "clothes", "bundle", "fashion"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Air fryer", isPriority: true }, { name: "Bluetooth speaker", isPriority: false }],
+        images: ["/images/seed/showroom-fashion.jpg"],
+        likeCount: 74, viewCount: 820, isActive: true,
+      },
+
+      // ── Watches ───────────────────────────────────────────────────────────
+      {
+        userId: hassan.id, type: "offer",
+        title: "Casio G-Shock GA-2100 — Black, Original",
+        description: "Classic G-Shock Carbon Core, 2 months old. Comes with box. Trading for sneakers, jeans bundle, or small electronics.",
+        categories: ["Jewelry & Watches"], wantedCategories: ["Fashion", "Electronics"],
+        retailValue: "350.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["casio", "gshock", "watch", "casio"],
+        condition: "like_new", openToOffers: true,
+        exchangeItems: [{ name: "Sneakers size 42-44", isPriority: true }, { name: "Earphones", isPriority: false }],
+        images: ["/images/seed/watch-patek.jpg"],
+        likeCount: 95, viewCount: 1080, isActive: true,
+      },
+      {
+        userId: sarah.id, type: "offer",
+        title: "Apple Watch Series 8 — 45mm, Midnight",
+        description: "Apple Watch S8 with GPS + Cellular. New band included. Trading for a phone, laptop, or good clothes bundle.",
+        categories: ["Jewelry & Watches", "Electronics"], wantedCategories: ["Electronics", "Fashion"],
+        retailValue: "1400.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["apple watch", "smartwatch", "wearable"],
+        condition: "excellent", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "Android phone", isPriority: true }, { name: "Clothes bundle", isPriority: false }],
+        images: ["/images/seed/watch-patek.jpg", "/images/seed/service-tech.jpg"],
+        likeCount: 117, viewCount: 1340, isActive: true,
+      },
+
+      // ── Bikes ─────────────────────────────────────────────────────────────
+      {
+        userId: omar.id, type: "offer",
+        title: "Trek Marlin 5 Mountain Bike — 2022, Large Frame",
+        description: "Trek Marlin 5, barely used, 21-speed, hydraulic brakes. Great for trails or city riding. Trading for a phone, laptop, or PS5.",
+        categories: ["Sports & Fitness"], wantedCategories: ["Electronics"],
+        retailValue: "1800.00", location: "Abu Dhabi", city: "Abu Dhabi", country: "AE",
+        tags: ["bike", "mountain bike", "trek", "cycling"],
+        condition: "like_new", openToOffers: true, isFeatured: true,
+        exchangeItems: [{ name: "iPhone or Android phone", isPriority: true }, { name: "PlayStation 5", isPriority: false }],
+        images: ["/images/seed/service-fashion.jpg"],
+        likeCount: 102, viewCount: 1160, isActive: true,
+      },
+      {
+        userId: noura.id, type: "offer",
+        title: "Kids' Bicycle 20\" — Perfect for Ages 6-10",
+        description: "Disney-themed kids' bike with training wheels and helmet. Barely used. Trading for kids' clothes, shoes, or a small toy bundle.",
+        categories: ["Kids & Baby", "Sports & Fitness"], wantedCategories: ["Kids & Baby", "Fashion"],
+        retailValue: "320.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["kids bike", "bicycle", "children", "cycling"],
+        condition: "good", openToOffers: true,
+        exchangeItems: [{ name: "Kids' clothes bundle", isPriority: true }],
+        images: ["/images/seed/service-fashion.jpg"],
+        likeCount: 38, viewCount: 420, isActive: true,
+      },
+
+      // ── Chargers & Accessories ────────────────────────────────────────────
+      {
+        userId: khalid.id, type: "offer",
+        title: "iPhone Charger & Cable Bundle — 5 Pieces",
+        description: "5x original Apple 20W USB-C adapters + cables, new in box. Trading for anything: food, clothes, earphones — open to all offers.",
+        categories: ["Electronics"], wantedCategories: ["Miscellaneous", "Food"],
+        retailValue: "400.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["charger", "apple", "iphone", "accessories"],
         condition: "brand_new", openToOffers: true,
-        exchangeItems: [{ name: "Fashion campaign", isPriority: true }],
-        images: ["/images/seed/abaya-collection.jpg", "/images/seed/showroom-fashion.jpg"],
-        likeCount: 96, viewCount: 1080, isActive: true,
+        exchangeItems: [{ name: "Open to anything", isPriority: true }],
+        images: ["/images/seed/service-tech.jpg"],
+        likeCount: 44, viewCount: 480, isActive: true,
+      },
+
+      // ── Services ──────────────────────────────────────────────────────────
+      {
+        userId: ahmed.id, type: "offer",
+        title: "Professional Haircut & Grooming — 10 Sessions",
+        description: "10 grooming sessions at our barber shop in Dubai. Haircut, beard trim, wash. Trading for clothes, shoes, or phone accessories.",
+        categories: ["Services", "Health & Wellness"], wantedCategories: ["Fashion", "Electronics"],
+        retailValue: "700.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["barber", "grooming", "haircut", "service"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Men's sneakers", isPriority: true }, { name: "Earphones", isPriority: false }],
+        images: ["/images/seed/service-events.jpg"],
+        likeCount: 58, viewCount: 640, isActive: true,
+      },
+      {
+        userId: noura.id, type: "offer",
+        title: "Photography Session — 2 Hours, Edited Photos Included",
+        description: "Professional 2-hour portrait or product shoot. 30 fully edited photos delivered in 3 days. Bartering for a phone, laptop, or clothes.",
+        categories: ["Photography", "Services"], wantedCategories: ["Electronics", "Fashion"],
+        retailValue: "900.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["photography", "portrait", "creative", "session"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Smartphone", isPriority: true }, { name: "Clothes bundle", isPriority: false }],
+        images: ["/images/seed/listing-photography.jpg"],
+        likeCount: 76, viewCount: 860, isActive: true,
+      },
+
+      // ── Food ─────────────────────────────────────────────────────────────
+      {
+        userId: khalid.id, type: "offer",
+        title: "Home-Cooked Meal Prep — 20 Meals (Weekly Plan)",
+        description: "20 fresh home-cooked meals for the week (Arabic & Western options). Chicken, rice, salads included. Bartering for groceries, clothes, or household items.",
+        categories: ["Food", "Services"], wantedCategories: ["Miscellaneous", "Fashion"],
+        retailValue: "600.00", location: "Dubai", city: "Dubai", country: "AE",
+        tags: ["food", "meal prep", "homemade", "catering"],
+        condition: "brand_new", openToOffers: true,
+        exchangeItems: [{ name: "Grocery bundle", isPriority: true }, { name: "Kitchen appliance", isPriority: false }],
+        images: ["/images/seed/catering-event.jpg"],
+        likeCount: 89, viewCount: 980, isActive: true,
       },
     ];
 
-    const titles = extras.map((e) => e.title);
-    const existing = await db
-      .select({ title: listings.title })
-      .from(listings);
+    const existing = await db.select({ title: listings.title }).from(listings);
     const existingTitles = new Set(existing.map((r) => r.title));
     const toInsert = extras.filter((e) => !existingTitles.has(e.title));
 
     if (toInsert.length === 0) {
-      console.log(`[topUpTrending] All ${titles.length} trending listings already present.`);
+      console.log(`[topUpTrending] All ${extras.length} everyday listings already present.`);
       return;
     }
 
     await db.insert(listings).values(toInsert);
-    console.log(`[topUpTrending] Inserted ${toInsert.length} new trending listings.`);
+    console.log(`[topUpTrending] Inserted ${toInsert.length} everyday listings.`);
   } catch (err) {
     console.error("[topUpTrending] error:", err);
   }
