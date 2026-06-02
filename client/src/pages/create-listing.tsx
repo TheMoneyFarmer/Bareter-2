@@ -25,6 +25,8 @@ import {
   Tag, MapPin, DollarSign, FileText, ArrowLeftRight, Star,
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
   Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake,
+  Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
+  Wrench, TreePine, Luggage, Watch, Utensils, PawPrint,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -66,18 +68,32 @@ function makeCreateListingSchema(t: (key: string) => string) {
 type CreateListingForm = z.infer<ReturnType<typeof makeCreateListingSchema>>;
 
 const ITEM_TYPE_ICONS: Record<ItemType, React.ReactNode> = {
-  hospitality:  <BedDouble className="h-5 w-5" />,
-  room_rental:  <Home className="h-5 w-5" />,
-  office_space: <Building2 className="h-5 w-5" />,
-  real_estate:  <Home className="h-5 w-5" />,
-  automotive:   <Car className="h-5 w-5" />,
-  electronics:  <Smartphone className="h-5 w-5" />,
-  services:     <Briefcase className="h-5 w-5" />,
-  brand_collab: <Handshake className="h-5 w-5" />,
-  fashion:      <Shirt className="h-5 w-5" />,
-  furniture:    <Sofa className="h-5 w-5" />,
-  other:        <MoreHorizontal className="h-5 w-5" />,
-  "":           <MoreHorizontal className="h-5 w-5" />,
+  hospitality:         <BedDouble className="h-5 w-5" />,
+  room_rental:         <Home className="h-5 w-5" />,
+  office_space:        <Building2 className="h-5 w-5" />,
+  real_estate:         <Home className="h-5 w-5" />,
+  automotive:          <Car className="h-5 w-5" />,
+  yachts_boats:        <Anchor className="h-5 w-5" />,
+  electronics:         <Smartphone className="h-5 w-5" />,
+  gaming:              <Gamepad2 className="h-5 w-5" />,
+  fashion:             <Shirt className="h-5 w-5" />,
+  jewelry_watches:     <Watch className="h-5 w-5" />,
+  beauty_wellness:     <Sparkles className="h-5 w-5" />,
+  food_dining:         <Utensils className="h-5 w-5" />,
+  sports_fitness:      <Dumbbell className="h-5 w-5" />,
+  home_appliances:     <Zap className="h-5 w-5" />,
+  furniture:           <Sofa className="h-5 w-5" />,
+  garden_outdoor:      <TreePine className="h-5 w-5" />,
+  tools_equipment:     <Wrench className="h-5 w-5" />,
+  pets_animals:        <PawPrint className="h-5 w-5" />,
+  books_media:         <BookOpen className="h-5 w-5" />,
+  musical_instruments: <Music className="h-5 w-5" />,
+  art_collectibles:    <Palette className="h-5 w-5" />,
+  luggage_travel:      <Luggage className="h-5 w-5" />,
+  services:            <Briefcase className="h-5 w-5" />,
+  brand_collab:        <Handshake className="h-5 w-5" />,
+  other:               <MoreHorizontal className="h-5 w-5" />,
+  "":                  <MoreHorizontal className="h-5 w-5" />,
 };
 
 export function CreateListingPage() {
