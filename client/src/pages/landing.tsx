@@ -467,28 +467,35 @@ function VerifiedMemberCard() {
   );
 }
 
-// 4 tiles only — 2 per column, JS-driven 5 s scroll, left then right (+30 ms)
+// 6 tiles — 2 per column, 3-step cycle, JS-driven 5 s scroll, left then right (+30 ms)
 type HCPhase = "idle" | "exit" | "enter";
 
+const LEFT_STEPS  = [
+  <><ChatDealCard /><DeviceSwapCard /></>,
+  <><CreateListingCard /><BrandCollabCard /></>,
+  <><BarterItemCard /><DealClosedCard /></>,
+] as const;
+
+const RIGHT_STEPS = [
+  <><BarterItemCard /><DealClosedCard /></>,
+  <><ChatDealCard /><DeviceSwapCard /></>,
+  <><CreateListingCard /><BrandCollabCard /></>,
+] as const;
+
 function HeroCarousel() {
-  const [step, setStep]     = useState(0);       // 0 or 1
+  const [step, setStep]     = useState(0);       // 0, 1 or 2
   const [phaseL, setPhaseL] = useState<HCPhase>("idle");
   const [phaseR, setPhaseR] = useState<HCPhase>("idle");
 
   useEffect(() => {
     const cycle = () => {
-      // Left evaporates → right evaporates 30 ms later
       setPhaseL("exit");
       setTimeout(() => setPhaseR("exit"), 30);
-
-      // Exit finishes at ~1 900 ms — swap content + begin enter
       setTimeout(() => {
-        setStep(s => (s + 1) % 2);
+        setStep(s => (s + 1) % 3);
         setPhaseL("enter");
       }, 1950);
       setTimeout(() => setPhaseR("enter"), 1980);
-
-      // Enter finishes at ~1 950 + 1 900 = 3 850 ms → settle to idle
       setTimeout(() => setPhaseL("idle"), 3900);
       setTimeout(() => setPhaseR("idle"), 3930);
     };
@@ -502,13 +509,11 @@ function HeroCarousel() {
 
   return (
     <div className="flex w-full h-full" style={{ gap: "20px" }}>
-      {/* Left: Chat ↔ Creators */}
       <div className={`flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
-        {step === 0 ? <><ChatDealCard /><DeviceSwapCard /></> : <><DeviceSwapCard /><ChatDealCard /></>}
+        {LEFT_STEPS[step]}
       </div>
-      {/* Right: Barter ↔ DealClosed — staggered 70 px lower for visual depth */}
       <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 70 }}>
-        {step === 0 ? <><BarterItemCard /><DealClosedCard /></> : <><DealClosedCard /><BarterItemCard /></>}
+        {RIGHT_STEPS[step]}
       </div>
     </div>
   );
