@@ -55,6 +55,7 @@ import {
   type DisputeEvidence,
   insertDisputeSchema,
   DISPUTE_OUTCOMES,
+  featureWaitlists,
 } from "@shared/schema";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
@@ -8048,6 +8049,34 @@ ${chatTranscript || "(No messages yet)"}`,
   });
 
   registerWaitlistRoutes(app, requireAdmin);
+
+  // ── Feature interest waitlists (Creators Hub / Brand Collabs) ─────────
+  app.post("/api/feature-waitlist", async (req, res) => {
+    try {
+      const { email, feature } = req.body as { email?: string; feature?: string };
+      if (!email || !["creators", "brand-collabs"].includes(feature ?? "")) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      await db.insert(featureWaitlists).values({ email: email.trim().toLowerCase(), feature: feature! }).onConflictDoNothing();
+      import("./emailService").then(({ sendFeatureWaitlistEmail }) =>
+        sendFeatureWaitlistEmail(email.trim(), feature as "creators" | "brand-collabs", baseUrl).catch(console.error)
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[feature-waitlist] error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/admin/feature-waitlist", requireAdmin, async (req, res) => {
+    try {
+      const rows = await db.select().from(featureWaitlists).orderBy(featureWaitlists.createdAt);
+      return res.json(rows);
+    } catch (err) {
+      return res.status(500).json({ message: "Server error" });
+    }
+  });
 
   // ── Legal pages: public read + admin CRUD ──────────────────────────────
   const LEGAL_BLOCK_SCHEMA = z.discriminatedUnion("type", [

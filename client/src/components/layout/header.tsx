@@ -22,14 +22,13 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
-import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Menu, Sun, Moon, Bell, User, LogOut, Settings, LayoutDashboard,
+  Menu, Bell, User, LogOut, Settings,
   Handshake, Search, Plus, Shield, Languages, MessageSquare, MapPin,
   X, Heart, Bookmark, FileText, ChevronDown, ShieldCheck, Sparkles,
-  Clock, ArrowRight,
+  Clock, ArrowRight, BookOpen, HelpCircle,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -37,7 +36,6 @@ import { usePushNotifications } from "@/hooks/use-push-notifications";
 export function Header() {
   const { user, logout } = useAuth();
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
-  const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t, isRTL } = useI18n();
   const [currentPath, navigate] = useLocation();
   // Show search bar + CategoryNav only on marketplace/browse/feed pages
@@ -211,13 +209,60 @@ export function Header() {
 
       {/* ── Main header bar ── */}
       <div className="bg-bareter-teal text-white shadow-[0_2px_8px_rgba(34,160,160,0.20)]">
-        <div className="container mx-auto max-w-7xl px-4 flex items-center gap-3 h-16">
+        <div className="container mx-auto max-w-7xl px-4 flex items-center gap-3 h-16 relative">
 
           {/* Logo */}
           <Link href="/" className="flex items-center flex-shrink-0" data-testid="link-home">
             <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
+          {/* ── Centre nav — Feed, List a Barter, Resources (hidden on marketplace pages where search takes over) ── */}
+          <nav className={`hidden lg:flex items-center absolute left-1/2 -translate-x-1/2 ${isMarketplace ? "invisible pointer-events-none" : ""}`}>
+            <Link href="/browse">
+              <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                Browse Listings
+              </button>
+            </Link>
+            <Link href={user ? "/create-listing" : "/register"}>
+              <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                List a Barter
+              </button>
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="flex items-center gap-1 px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                  Resources <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52 p-1">
+                <Link href="/blog">
+                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                    <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span>Blog</span>
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/help">
+                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                    <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span>Help Center</span>
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/how-it-works">
+                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                    <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span>How it works</span>
+                  </DropdownMenuItem>
+                </Link>
+                <DropdownMenuSeparator />
+                <Link href="/#faq">
+                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                    <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span>FAQs</span>
+                  </DropdownMenuItem>
+                </Link>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </nav>
 
           {/* ── Search bar (center, flex-1) — marketplace pages only ── */}
           <div ref={searchRef} className={`flex-1 max-w-xl mx-auto relative hidden sm:block ${!isMarketplace ? "invisible pointer-events-none" : ""}`}>
@@ -301,13 +346,6 @@ export function Header() {
               className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
               aria-label={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}>
               <Languages className="h-4 w-4" />
-            </button>
-
-            {/* Theme toggle */}
-            <button type="button" onClick={toggleTheme}
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label="Toggle theme">
-              {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </button>
 
             {user ? (
@@ -512,14 +550,6 @@ export function Header() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* List a Barter CTA */}
-                <Link href="/create-listing" className="hidden sm:inline-flex ms-1">
-                  <Button size="sm" className="h-9 px-4 gap-1.5 bg-white text-bareter-teal hover:bg-white/90 font-bold whitespace-nowrap rounded-lg" data-testid="button-list-trade">
-                    <Plus className="h-3.5 w-3.5" />
-                    List a Barter
-                  </Button>
-                </Link>
-
                 {/* Location dropdown — far right, inline auto-save */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -616,6 +646,7 @@ export function Header() {
                       </Link>
                       {[
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
+                        { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "My Listings" },
                         { href: "/deals", icon: <Handshake className="h-4 w-4" />, label: "Deals" },
@@ -647,10 +678,6 @@ export function Header() {
                         <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={toggleLanguage}>
                           <Languages className="h-4 w-4" />
                           {language === "en" ? "العربية" : "English"}
-                        </Button>
-                        <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={toggleTheme}>
-                          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                          {theme === "light" ? "Dark" : "Light"}
                         </Button>
                       </div>
                       <div className="border-t mx-4 my-2" />

@@ -1379,3 +1379,65 @@ export async function sendProfileUpdatedEmail(
   const text = `${greeting}\n\nYour ${APP_NAME} profile has been updated successfully.\n\nIf you did not make this change, contact support at hello@bareter.com.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} profile has been updated`, html, text });
 }
+
+// ── Feature interest / coming-soon waitlist emails ─────────────────────────
+type FeatureVariant = "creators" | "brand-collabs";
+
+const FEATURE_COPY: Record<FeatureVariant, { name: string; tagline: string; color: string; what: string }> = {
+  creators: {
+    name: "Creators Hub",
+    tagline: "Where UAE creators get paid in products, not promises.",
+    color: "#7c3aed",
+    what: "curated brand deals, gifted products, and auto-generated barter contracts",
+  },
+  "brand-collabs": {
+    name: "Brand Collabs",
+    tagline: "Reach UAE audiences through authentic creator content.",
+    color: "#136c68",
+    what: "AI-matched creators, TikTok/Reels content campaigns, and zero-commission barter contracts",
+  },
+};
+
+export async function sendFeatureWaitlistEmail(
+  toEmail: string,
+  feature: FeatureVariant,
+  baseUrl: string,
+): Promise<void> {
+  const c = FEATURE_COPY[feature] ?? FEATURE_COPY["creators"];
+
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Feature waitlist (${feature}) confirmation for ${toEmail}`);
+    return;
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #0f1f3d; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: #162040; border-radius: 16px; padding: 36px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08);">
+    <div style="text-align: center; margin-bottom: 28px;">
+      <span style="display: inline-block; background: ${c.color}22; border: 1px solid ${c.color}55; border-radius: 999px; padding: 6px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: ${c.color};">${c.name} · Coming Soon</span>
+    </div>
+    <h2 style="font-size: 22px; color: #ffffff; margin: 0 0 12px; line-height: 1.2;">${c.tagline}</h2>
+    <p style="color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6; margin: 0 0 24px;">
+      You're on the early-access list for <strong style="color: white;">${c.name}</strong> — a dedicated space inside Bareter for ${c.what}.<br/><br/>
+      We'll email you the moment doors open. Early members get priority access, special perks, and the best deals at launch.
+    </p>
+    <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 18px; margin-bottom: 28px;">
+      <p style="margin: 0 0 8px; color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;">While you wait</p>
+      <p style="margin: 0; color: rgba(255,255,255,0.75); font-size: 13px; line-height: 1.5;">Browse live barter listings on ${APP_NAME} — from real estate and luxury cars to services and tech deals.</p>
+    </div>
+    <a href="${baseUrl}/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 10px; font-size: 15px; font-weight: 700; margin-bottom: 28px;">Browse Live Listings →</a>
+    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 0 0 20px;" />
+    <p style="color: rgba(255,255,255,0.25); font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE's Barter Marketplace · <a href="${baseUrl}/privacy" style="color: rgba(255,255,255,0.35); text-decoration: none;">Privacy</a></p>
+  </div>
+</body></html>`;
+
+  const text = `You're on the early-access list for ${c.name} on ${APP_NAME}!\n\n${c.tagline}\n\nWe'll email you the moment ${c.name} launches. In the meantime, browse live barter listings:\n${baseUrl}/browse\n\n— ${APP_NAME}`;
+
+  await sendMail({
+    to: toEmail,
+    subject: `You're on the ${c.name} early-access list 🎉`,
+    html,
+    text,
+  });
+}

@@ -40,6 +40,9 @@ import {
 import { withRetry } from "./retry";
 import { storage } from "../storage";
 import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
+import { db } from "../db";
+import { deals, users } from "@shared/schema";
+import { and, inArray, lt, sql as drizzleSql } from "drizzle-orm";
 
 const AGENT_JOB_MAP: Record<string, string> = {
   diditStatusPoll: "scheduler",
@@ -633,6 +636,56 @@ async function budgetWarningJob(): Promise<void> {
   }
 }
 
+async function dealInactivityReminderJob(): Promise<void> {
+  try {
+    const THRESHOLD_MS = 36 * 60 * 60 * 1000; // 36 hours
+    const cutoff = new Date(Date.now() - THRESHOLD_MS);
+    const ACTIONABLE_STATES = ["proposed", "negotiating", "accepted", "countered"];
+
+    const staleDeals = await db
+      .select({ id: deals.id, seekerId: deals.seekerId, providerId: deals.providerId, dealNumber: deals.dealNumber, state: deals.state, updatedAt: deals.updatedAt })
+      .from(deals)
+      .where(and(inArray(deals.state, ACTIONABLE_STATES), lt(deals.updatedAt, cutoff)));
+
+    if (staleDeals.length === 0) return;
+
+    const { sendMail } = await import("../emailService");
+    const baseUrl = process.env.BASE_URL ?? "https://bareter.com";
+
+    for (const deal of staleDeals) {
+      const parties = await db
+        .select({ id: users.id, email: users.email, fullName: users.fullName })
+        .from(users)
+        .where(inArray(users.id, [deal.seekerId, deal.providerId]));
+
+      for (const party of parties) {
+        const dealUrl = `${baseUrl}/deals/${deal.id}`;
+        const greeting = party.fullName ? `Hi ${party.fullName},` : "Hi there,";
+        const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f4f4f5;margin:0;padding:24px;">
+  <div style="max-width:480px;margin:0 auto;background:white;border-radius:12px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <h2 style="color:#1a1a2e;font-size:18px;margin:0 0 12px;">Your deal is waiting for a response ⏳</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.55;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.55;">Deal <strong>#${deal.dealNumber}</strong> has been in <strong>${deal.state}</strong> status for over 36 hours with no activity. Don't let a good deal go cold — log in to respond and keep things moving.</p>
+    <a href="${dealUrl}" style="display:block;text-align:center;background:#136c68;color:white;text-decoration:none;padding:14px 24px;border-radius:8px;font-size:15px;font-weight:600;margin:24px 0;">View Deal → Respond Now</a>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">Bareter · UAE's Barter Marketplace</p>
+  </div>
+</body></html>`;
+        await sendMail({
+          to: party.email,
+          subject: `⏳ Deal #${deal.dealNumber} needs your attention`,
+          html,
+          text: `${greeting}\n\nDeal #${deal.dealNumber} (${deal.state}) has had no activity for 36+ hours. Log in to respond:\n${dealUrl}\n\n— Bareter`,
+        }).catch(console.error);
+      }
+    }
+    console.log(`[dealInactivity] Sent reminders for ${staleDeals.length} stale deals`);
+  } catch (err) {
+    console.error("[dealInactivity] job failed:", err);
+  }
+}
+
 /**
  * Mount all scheduled jobs. Idempotent — safe to call once at boot
  * (subsequent calls become no-ops).
@@ -703,6 +756,11 @@ export function startScheduler(): void {
   // unsubscribe link in any mis-fired email is acted on within
   // business hours. Idempotent via reminder_log.
   schedule("dailyProgressReminders", "0 11 * * *", dailyProgressRemindersJob);
+
+  // 09:00 Dubai daily — deal inactivity reminders. Emails both parties
+  // in any deal that has been stuck (no updatedAt change) for ≥36 hours
+  // and is still in an actionable state (proposed/negotiating/accepted).
+  schedule("dealInactivityReminders", "0 9 * * *", dealInactivityReminderJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

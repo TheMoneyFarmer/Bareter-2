@@ -52,7 +52,7 @@ import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import { ReputationBadge } from "@/components/ReputationBadge";
 import { StarRating } from "@/components/StarRating";
-import { SiInstagram, SiLinkedin, SiX } from "react-icons/si";
+import { SiInstagram, SiLinkedin, SiX, SiTiktok, SiYoutube, SiSnapchat } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -435,22 +435,37 @@ export function UserProfilePage() {
                 )}
               </div>
 
-              {(socialLinks.instagram || socialLinks.linkedin || socialLinks.twitter) && (
+              {(socialLinks.instagram || socialLinks.linkedin || socialLinks.twitter || socialLinks.tiktok || socialLinks.youtube || socialLinks.snapchat) && (
                 <>
                   <Separator className="my-4" />
-                  <div className="flex items-center justify-center gap-3">
+                  <div className="flex items-center justify-center gap-4 flex-wrap">
                     {socialLinks.instagram && (
-                      <a href={ensureHttps(socialLinks.instagram)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-instagram">
+                      <a href={ensureHttps(socialLinks.instagram)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-pink-500 transition-colors" data-testid="link-instagram" title="Instagram">
                         <SiInstagram className="h-5 w-5" />
                       </a>
                     )}
+                    {socialLinks.tiktok && (
+                      <a href={ensureHttps(socialLinks.tiktok)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-tiktok" title="TikTok">
+                        <SiTiktok className="h-5 w-5" />
+                      </a>
+                    )}
+                    {socialLinks.youtube && (
+                      <a href={ensureHttps(socialLinks.youtube)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-red-500 transition-colors" data-testid="link-youtube" title="YouTube">
+                        <SiYoutube className="h-5 w-5" />
+                      </a>
+                    )}
+                    {socialLinks.snapchat && (
+                      <a href={ensureHttps(socialLinks.snapchat)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-yellow-400 transition-colors" data-testid="link-snapchat" title="Snapchat">
+                        <SiSnapchat className="h-5 w-5" />
+                      </a>
+                    )}
                     {socialLinks.linkedin && (
-                      <a href={ensureHttps(socialLinks.linkedin)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-linkedin">
+                      <a href={ensureHttps(socialLinks.linkedin)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-blue-600 transition-colors" data-testid="link-linkedin" title="LinkedIn">
                         <SiLinkedin className="h-5 w-5" />
                       </a>
                     )}
                     {socialLinks.twitter && (
-                      <a href={ensureHttps(socialLinks.twitter)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" data-testid="link-twitter">
+                      <a href={ensureHttps(socialLinks.twitter)} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-twitter" title="X / Twitter">
                         <SiX className="h-5 w-5" />
                       </a>
                     )}

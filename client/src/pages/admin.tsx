@@ -140,7 +140,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -827,6 +827,7 @@ export function AdminPage() {
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
+    { id: "feature-waitlist" as const, label: "Feature Waitlists", icon: Sparkles },
     { id: "legal" as const, label: "Legal", icon: ScrollText },
     { id: "email" as const, label: "Email", icon: Mail },
     { id: "support" as const, label: "Support", icon: MessageSquare },
@@ -3408,6 +3409,8 @@ export function AdminPage() {
         return renderAiLogs();
       case "waitlist":
         return renderWaitlist();
+      case "feature-waitlist":
+        return <FeatureWaitlistAdminSection />;
       case "legal":
         return <AdminLegalSection />;
       case "email":
@@ -5451,6 +5454,72 @@ function AdminsManagementTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function FeatureWaitlistAdminSection() {
+  const { data: entries = [], isLoading } = useQuery<{ id: number; email: string; feature: string; createdAt: string }[]>({
+    queryKey: ["/api/admin/feature-waitlist"],
+    staleTime: 30_000,
+  });
+
+  const creators = entries.filter(e => e.feature === "creators");
+  const brandCollabs = entries.filter(e => e.feature === "brand-collabs");
+
+  const downloadCsv = (rows: typeof entries, filename: string) => {
+    const csv = ["email,feature,joined_at", ...rows.map(r => `${r.email},${r.feature},${r.createdAt}`)].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderTable = (rows: typeof entries, label: string, accent: string) => (
+    <div className="rounded-xl border overflow-hidden">
+      <div className={`px-5 py-3.5 flex items-center justify-between ${accent}`}>
+        <div>
+          <p className="font-bold text-white text-sm">{label}</p>
+          <p className="text-white/70 text-xs">{rows.length} signups</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => downloadCsv(rows, `${label.toLowerCase().replace(/ /g,"-")}-waitlist.csv`)}
+          className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-lg transition-colors"
+        >
+          Export CSV
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-muted-foreground text-sm">No signups yet</div>
+      ) : (
+        <div className="divide-y">
+          {rows.map(r => (
+            <div key={r.id} className="flex items-center justify-between px-5 py-3 text-sm">
+              <span className="font-medium">{r.email}</span>
+              <span className="text-muted-foreground text-xs">{new Date(r.createdAt).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 p-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Feature Waitlists</h2>
+        <p className="text-muted-foreground">Early-access signups for Creators Hub and Brand Collabs coming-soon pages.</p>
+      </div>
+      {isLoading ? (
+        <div className="text-muted-foreground text-sm">Loading…</div>
+      ) : (
+        <div className="space-y-5">
+          {renderTable(creators, "Creators Hub", "bg-violet-600")}
+          {renderTable(brandCollabs, "Brand Collabs", "bg-bareter-teal")}
+        </div>
+      )}
     </div>
   );
 }

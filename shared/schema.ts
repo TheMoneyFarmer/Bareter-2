@@ -605,6 +605,18 @@ export type SavedSearchFilters = {
   type?: string;
 };
 
+// Feature-specific interest waitlists (Creators Hub, Brand Collabs, etc.)
+export const featureWaitlists = pgTable("feature_waitlists", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  feature: text("feature").notNull(), // "creators" | "brand-collabs"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  emailFeatureUniq: uniqueIndex("feature_waitlist_email_feature_idx").on(table.email, table.feature),
+  featureIdx: index("feature_waitlist_feature_idx").on(table.feature),
+}));
+export type FeatureWaitlistEntry = typeof featureWaitlists.$inferSelect;
+
 // Listings table
 export const listings = pgTable("listings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

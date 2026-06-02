@@ -138,8 +138,8 @@ export function SettingsPage() {
   const [passwordChangeStep, setPasswordChangeStep] = useState<PasswordChangeStep>("form");
   const [pendingPasswordData, setPendingPasswordData] = useState<{ currentPassword: string; newPassword: string } | null>(null);
   const [otpValue, setOtpValue] = useState("");
-  const [socialLinks, setSocialLinks] = useState<{ instagram?: string; linkedin?: string; twitter?: string }>(() => {
-    const sl = user?.socialLinks as { instagram?: string; linkedin?: string; twitter?: string } | null;
+  const [socialLinks, setSocialLinks] = useState<{ instagram?: string; linkedin?: string; twitter?: string; tiktok?: string; youtube?: string; snapchat?: string }>(() => {
+    const sl = user?.socialLinks as { instagram?: string; linkedin?: string; twitter?: string; tiktok?: string; youtube?: string; snapchat?: string } | null;
     return sl || {};
   });
 
@@ -645,33 +645,27 @@ export function SettingsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <Label htmlFor="social-instagram" className="flex items-center gap-1.5"><Instagram className="h-4 w-4" /> Instagram</Label>
-                        <Input
-                          id="social-instagram"
-                          placeholder="https://instagram.com/yourhandle"
-                          value={socialLinks.instagram || ""}
-                          onChange={(e) => setSocialLinks(prev => ({ ...prev, instagram: e.target.value }))}
-                          data-testid="input-social-instagram"
-                        />
+                        <Input id="social-instagram" placeholder="https://instagram.com/yourhandle" value={socialLinks.instagram || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, instagram: e.target.value }))} data-testid="input-social-instagram" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="social-tiktok" className="flex items-center gap-1.5">TikTok</Label>
+                        <Input id="social-tiktok" placeholder="https://tiktok.com/@yourhandle" value={socialLinks.tiktok || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, tiktok: e.target.value }))} data-testid="input-social-tiktok" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="social-youtube" className="flex items-center gap-1.5">YouTube</Label>
+                        <Input id="social-youtube" placeholder="https://youtube.com/@channel" value={socialLinks.youtube || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, youtube: e.target.value }))} data-testid="input-social-youtube" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="social-snapchat" className="flex items-center gap-1.5">Snapchat</Label>
+                        <Input id="social-snapchat" placeholder="https://snapchat.com/add/yourhandle" value={socialLinks.snapchat || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, snapchat: e.target.value }))} data-testid="input-social-snapchat" />
                       </div>
                       <div className="space-y-1">
                         <Label htmlFor="social-linkedin" className="flex items-center gap-1.5"><Linkedin className="h-4 w-4" /> LinkedIn</Label>
-                        <Input
-                          id="social-linkedin"
-                          placeholder="https://linkedin.com/in/yourprofile"
-                          value={socialLinks.linkedin || ""}
-                          onChange={(e) => setSocialLinks(prev => ({ ...prev, linkedin: e.target.value }))}
-                          data-testid="input-social-linkedin"
-                        />
+                        <Input id="social-linkedin" placeholder="https://linkedin.com/in/yourprofile" value={socialLinks.linkedin || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, linkedin: e.target.value }))} data-testid="input-social-linkedin" />
                       </div>
                       <div className="space-y-1">
                         <Label htmlFor="social-twitter" className="flex items-center gap-1.5"><Twitter className="h-4 w-4" /> X / Twitter</Label>
-                        <Input
-                          id="social-twitter"
-                          placeholder="https://x.com/yourhandle"
-                          value={socialLinks.twitter || ""}
-                          onChange={(e) => setSocialLinks(prev => ({ ...prev, twitter: e.target.value }))}
-                          data-testid="input-social-twitter"
-                        />
+                        <Input id="social-twitter" placeholder="https://x.com/yourhandle" value={socialLinks.twitter || ""} onChange={(e) => setSocialLinks(prev => ({ ...prev, twitter: e.target.value }))} data-testid="input-social-twitter" />
                       </div>
                     </div>
                   </div>
@@ -1719,7 +1713,7 @@ export function SettingsPage() {
                       </div>
                     )}
                     <p className="text-xs text-center text-muted-foreground mt-3">
-                      This is how brands will see you in <a href="/creators" className="text-primary hover:underline">Creator Discovery</a>.
+                      Creator Discovery is launching soon — <a href="/creators" className="text-primary hover:underline">join the waitlist</a> to be first in.
                     </p>
                   </CardContent>
                 </Card>
