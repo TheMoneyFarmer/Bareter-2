@@ -467,78 +467,85 @@ export function Header() {
                       </div>
                     </div>
 
-                    {/* Navigation items */}
+                    {/* Navigation items — use asChild so Link becomes the element,
+                        preventing Radix from blocking wouter navigation */}
                     <div className="py-1">
-                      <Link href="/profile">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-profile">
+                      <DropdownMenuItem asChild data-testid="menu-profile">
+                        <Link href="/profile" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>Profile</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/browse">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Browse Listings</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/dashboard">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>My Listings</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/deals">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/profile?tab=drafts" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
+                          <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>My Drafts</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/deals" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <Handshake className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>Deals</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/saved">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/saved" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <Heart className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>Favorites</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/inbox">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/inbox" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span className="flex-1">Chats</span>
                           {inboxUnread > 0 && (
                             <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{inboxUnread}</Badge>
                           )}
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/creators">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                          <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Creators</span>
-                        </DropdownMenuItem>
-                      </Link>
-                      <Link href="/my-searches">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/browse" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
+                          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Browse Listings</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/my-searches" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>Search History</span>
-                        </DropdownMenuItem>
-                      </Link>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/creators" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
+                          <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>Creators</span>
+                        </Link>
+                      </DropdownMenuItem>
                     </div>
 
                     <DropdownMenuSeparator />
 
                     <div className="py-1">
-                      <Link href="/settings">
-                        <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                           <Settings className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span>{t("nav.settings")}</span>
-                        </DropdownMenuItem>
-                      </Link>
+                        </Link>
+                      </DropdownMenuItem>
                       {user.isAdmin && (
-                        <Link href="/admin">
-                          <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-admin">
+                        <DropdownMenuItem asChild data-testid="menu-admin">
+                          <Link href="/admin" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
                             <Shield className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                             <span className="flex-1">Admin Panel</span>
                             <Badge variant="destructive" className="text-[10px]">Admin</Badge>
-                          </DropdownMenuItem>
-                        </Link>
+                          </Link>
+                        </DropdownMenuItem>
                       )}
                     </div>
 
@@ -654,6 +661,7 @@ export function Header() {
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "My Listings" },
+                        { href: "/profile?tab=drafts", icon: <BookOpen className="h-4 w-4" />, label: "My Drafts" },
                         { href: "/deals", icon: <Handshake className="h-4 w-4" />, label: "Deals" },
                         { href: "/saved", icon: <Heart className="h-4 w-4" />, label: "Favorites" },
                         { href: "/inbox", icon: <MessageSquare className="h-4 w-4" />, label: "Chats", badge: inboxUnread },
