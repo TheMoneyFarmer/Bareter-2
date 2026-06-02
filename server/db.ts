@@ -1,9 +1,13 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import ws from "ws";
 import * as schema from "@shared/schema";
 
-export const pool = new pg.Pool({
+// Use WebSocket for Node.js environments (required by @neondatabase/serverless)
+neonConfig.webSocketConstructor = ws;
+
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-export const db = drizzle(pool, { schema });
+export const db = drizzle({ client: pool, schema });

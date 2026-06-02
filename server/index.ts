@@ -1,3 +1,4 @@
+import compression from "compression";
 import express, { type Request, Response, NextFunction } from "express";
 import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
@@ -19,6 +20,9 @@ const httpServer = createServer(app);
 // so that rate-limiting and similar anti-abuse checks cannot be bypassed by
 // a forged X-Forwarded-For header from a direct client.
 app.set("trust proxy", 1);
+
+// Gzip/deflate all responses — biggest single win for JSON-heavy API payloads
+app.use(compression());
 
 // Standard browser security headers. CSP is left disabled because the Vite
 // dev middleware injects inline scripts/HMR that a strict CSP would block;
@@ -288,16 +292,6 @@ app.use((req, res, next) => {
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
-  }
-
-  // Keep the Neon DB endpoint warm so free-tier cold starts don't cause
-  // skeleton flashes on page load. Pings every 4 minutes (Neon suspends at 5).
-  if (process.env.NODE_ENV === "production") {
-    const { db } = await import("./db");
-    const { sql } = await import("drizzle-orm");
-    setInterval(async () => {
-      try { await db.execute(sql`SELECT 1`); } catch { /* non-fatal */ }
-    }, 4 * 60 * 1000);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
