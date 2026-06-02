@@ -102,7 +102,7 @@ Add a very subtle noise texture overlay at 3% opacity for depth
 Layout: Centred content stack
 Logo icon logo-icon.png at 64px — do NOT show this if navbar already shows the full logo. Instead lead with the headline directly
 Headline: Trade what you have for what you need. — white, bold, clamp(2rem, 5vw, 3.25rem), max-width 700px, centred
-Subheadline: UAE's AI-powered barter marketplace. No cash. Just value. — #22A0A0 (light teal), 1.1rem, font-weight 400, margin-top 12px
+Subheadline: UAE's First AI-powered barter marketplace. No cash. Just value. — #22A0A0 (light teal), 1.1rem, font-weight 400, margin-top 12px
 Search bar: Large centred pill, white background, height 52px, max-width 560px, margin-top 32px. Inside: location dropdown (📍 Dubai ▾) on left separated by a divider, text input Search trades... in middle, teal search button on right. Exactly like Dubizzle's hero search.
 Category pills row: Horizontal scroll, margin-top 24px. Pills: 🚗 Cars · 🏢 Real Estate · 💼 Services · 📱 Electronics · 🍽 Hospitality · ⛵ Yachts · 🏋 Fitness · 🏠 Home. Style: semi-transparent white border, white text, hover fills with var(--bareter-teal), border-radius pill
 

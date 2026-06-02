@@ -12,7 +12,7 @@
 
 `GET /api/public/settings` returns Sanity-backed content:
 - `hero_headline`: "Barter what you have for what you need."
-- `hero_tagline`: "UAE's AI-powered barter marketplace. No cash. Just value."
+- `hero_tagline`: "UAE's First AI-powered barter marketplace. No cash. Just value."
 - `hero_cta`: "Start Bartering"
 - `how_it_works_steps`: 3 steps (List, Match, Negotiate)
 - `faq_entries`: 2 categories (General, Listings)
