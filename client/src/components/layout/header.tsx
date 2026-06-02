@@ -196,7 +196,7 @@ export function Header() {
             Get verified to boost your credibility and build trust in the community.
           </span>
           <span className="sm:hidden text-xs">Get verified to boost credibility!</span>
-          <Link href="/settings">
+          <Link href="/profile?tab=verification">
             <button type="button" className="ms-1 px-3 py-1 border border-white rounded text-xs font-semibold hover:bg-white hover:text-[#1565c0] transition-colors whitespace-nowrap">
               Verify Now
             </button>
