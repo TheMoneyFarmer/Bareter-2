@@ -202,7 +202,11 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
 
   const badges: { icon: typeof Bed; label: string }[] = [];
 
-  if (feedCategory === "Real Estate" || feedCategory === "Space & Office") {
+  const isRealEstate = ["Real Estate", "Space & Office", "Hospitality"].includes(feedCategory ?? "");
+  const isVehicle = ["Automotive", "Vehicles", "Assets & Vehicles"].includes(feedCategory ?? "");
+  const isLuxury = ["Jewelry & Watches", "Luxury Goods", "Big Ticket", "Fashion", "Modeling"].includes(feedCategory ?? "");
+
+  if (isRealEstate) {
     if (details.bedrooms) badges.push({ icon: Bed, label: `${details.bedrooms} bed` });
     if (details.bathrooms) badges.push({ icon: Bath, label: `${details.bathrooms} bath` });
     if (details.squareMeters) badges.push({ icon: Ruler, label: `${details.squareMeters} sqm` });
@@ -213,7 +217,7 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
     }
   }
 
-  if (feedCategory === "Vehicles" || feedCategory === "Assets & Vehicles") {
+  if (isVehicle) {
     if (details.make || details.model) {
       badges.push({ icon: Car, label: [details.make, details.model, details.year].filter(Boolean).join(" ") });
     }
@@ -223,7 +227,7 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
     if (details.color) badges.push({ icon: Palette, label: details.color });
   }
 
-  if (feedCategory === "Luxury Goods" || feedCategory === "Big Ticket") {
+  if (isLuxury) {
     if (details.brand || details.model) {
       badges.push({ icon: Gem, label: [details.brand, details.model].filter(Boolean).join(" ") });
     }

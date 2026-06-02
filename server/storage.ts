@@ -893,7 +893,7 @@ export class DatabaseStorage implements IStorage {
 
     const conditions = [eq(posts.isActive, true), eq(posts.isStory, false)];
     if (options?.category && options.category !== "All") {
-      conditions.push(eq(posts.feedCategory, options.category));
+      conditions.push(ilike(posts.feedCategory, options.category));
     }
     if (options?.userId) {
       conditions.push(eq(posts.userId, options.userId));

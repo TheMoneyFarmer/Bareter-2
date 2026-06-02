@@ -32,15 +32,33 @@ export const CATEGORIES = [
   "Miscellaneous",
 ] as const;
 
-// Feed category tabs for the home feed
+// Feed category tabs for the home feed — kept in sync with CATEGORIES
 export const FEED_CATEGORIES = [
   "All",
-  "Services & Skills",
-  "Space & Office",
-  "Food & Hospitality",
-  "Assets & Vehicles",
-  "Big Ticket",
-  "Other",
+  "Hospitality",
+  "Fashion",
+  "Modeling",
+  "SaaS",
+  "Photography",
+  "Services",
+  "Food",
+  "Legal",
+  "Events",
+  "Real Estate",
+  "Automotive",
+  "Health & Wellness",
+  "Education",
+  "Marketing",
+  "Technology",
+  "Consulting",
+  "Design",
+  "Entertainment",
+  "Electronics",
+  "Jewelry & Watches",
+  "Sports & Fitness",
+  "Kids & Baby",
+  "Classified",
+  "Miscellaneous",
 ] as const;
 
 // Signup types
