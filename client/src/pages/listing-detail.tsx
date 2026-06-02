@@ -81,6 +81,132 @@ import { StarRating } from "@/components/StarRating";
 
 const _listingTranslationCache = new Map<string, { title: string; description: string }>();
 
+// ── Renders saved categoryDetails in a clean labelled grid ──────────────────
+const LABEL_MAP: Record<string, string> = {
+  // Common
+  condition:"Condition", brand:"Brand", model:"Model", color:"Colour",
+  year:"Year", make:"Make", dimensions:"Dimensions", material:"Material",
+  // Hospitality
+  propertyType:"Property Type", propertyName:"Property Name", starRating:"Star Rating",
+  roomType:"Room Type", nights:"Nights", rooms:"Rooms", bedConfig:"Bed Configuration",
+  maxOccupancy:"Max Occupancy", checkinFrom:"Check-in From", checkinUntil:"Check-in Until",
+  advanceNotice:"Advance Notice", minStay:"Minimum Stay", mealPlan:"Meal Plan",
+  cancellationPolicy:"Cancellation Policy", specialTerms:"Terms / Exclusions",
+  contentPlatforms:"Content Platforms", contentTypes:"Content Types Required",
+  minFollowers:"Min Followers", creatorNiche:"Creator Niche",
+  requiredHashtags:"Required Hashtags", keyMessages:"Key Messages",
+  postingDeadline:"Posting Deadline",
+  // Real estate / Room rental
+  sizeSqft:"Size (sqft)", plotSqft:"Plot Size (sqft)", bedrooms:"Bedrooms",
+  bathrooms:"Bathrooms", furnishing:"Furnishing", view:"View", buildingName:"Building / Development",
+  paymentTerms:"Payment Terms", amenities:"Amenities", unitFeatures:"Unit Features",
+  availableFrom:"Available From", availableUntil:"Available Until",
+  rentalDuration:"Rental Duration", utilitiesIncluded:"Utilities Included",
+  rules:"House Rules", tenantPreference:"Tenant Preference",
+  nationalityPref:"Nationality Preference", floor:"Floor",
+  // Office
+  spaceType:"Space Type", buildingGrade:"Building Grade", capacity:"Capacity",
+  fitout:"Fit-out", minRental:"Min Rental Period", jurisdiction:"Freezone / Mainland",
+  // Automotive
+  vehicleType:"Vehicle Type", mileageKm:"Mileage (km)", engine:"Engine",
+  fuelType:"Fuel Type", transmission:"Transmission", interiorColor:"Interior Colour",
+  specs:"Regional Specs", doors:"Doors", serviceHistory:"Service History",
+  warranty:"Warranty", gccRegistered:"GCC Registered", accidents:"Accident History",
+  features:"Features & Extras", additionalNotes:"Additional Notes",
+  // Yacht
+  vesselType:"Vessel Type", lengthFt:"Length (ft)", engineHours:"Engine Hours",
+  engineDetails:"Engine Details", marina:"Marina / Location", offeringType:"Offering Type",
+  flag:"Flag / Registration",
+  // Electronics
+  deviceType:"Device Type", storage:"Storage", ram:"RAM", region:"Region",
+  batteryHealth:"Battery Health", accessories:"Accessories Included",
+  // Gaming
+  gamingType:"Type", platform:"Platform", titleModel:"Title / Model",
+  format:"Format", includes:"Included",
+  // Fashion
+  fashionCategory:"Category", size:"Size", gender:"Gender",
+  // Jewelry
+  jewelryType:"Item Type", metal:"Metal", stone:"Stone", stoneCarat:"Stone Carat",
+  movement:"Watch Movement", caseSize:"Case Size (mm)",
+  // Beauty
+  beautyType:"Type", productName:"Product / Service", sizeVolume:"Size / Volume",
+  expiryDate:"Expiry Date", suitableFor:"Suitable For",
+  certifications:"Certifications", serviceLocation:"Service Location",
+  qualifications:"Qualifications",
+  // Food
+  foodType:"Type", providerName:"Provider / Restaurant", cuisine:"Cuisine",
+  serves:"Serves (persons)", mealType:"Meal Type", duration:"Duration",
+  dietary:"Dietary Options", menuDescription:"Menu Description", terms:"Terms",
+  // Sports & Fitness
+  sportsType:"Type", sportCategory:"Sport Category", targetLevel:"Level",
+  sessions:"Sessions / Classes", validUntil:"Valid Until", location:"Location",
+  // Home Appliances
+  applianceType:"Appliance Type", voltage:"Voltage",
+  // Furniture
+  furnitureType:"Item Type", assembly:"Assembly",
+  // Garden & Outdoor
+  gardenType:"Type",
+  // Tools
+  toolType:"Type", powerSource:"Power Source", hoursUsed:"Hours of Use",
+  // Pets
+  petsType:"Animal Type", breed:"Breed", age:"Age", health:"Health Status",
+  papers:"Papers & Pedigree",
+  // Books
+  mediaType:"Type", title:"Title", author:"Author", genre:"Genre",
+  language:"Language", quantity:"Quantity",
+  // Musical instruments
+  instrumentType:"Instrument Type",
+  // Art
+  artType:"Type", artist:"Artist / Maker", medium:"Medium",
+  documentation:"Documentation", frameStatus:"Frame",
+  // Luggage
+  luggageType:"Type", wheels:"Wheels", lock:"Lock Type",
+  // Services
+  serviceCategory:"Service Category", serviceTitle:"Service Title",
+  deliverables:"Deliverables", deliveryTimeline:"Delivery Timeline",
+  revisions:"Revisions", experienceLevel:"Experience Level",
+  languages:"Languages", packageBasic:"Basic Package",
+  packageStandard:"Standard Package", packagePremium:"Premium Package",
+  requirements:"Requirements from Client", tools:"Tools Used", portfolio:"Portfolio",
+  // Brand collab
+  offeringCategory:"Offering Category", offeringName:"Offering Name",
+  offeringDescription:"Offering Description", retailValue:"Retail Value (AED)",
+  spotsAvailable:"Spots Available", platforms:"Platforms",
+  contentFormats:"Content Formats", contentCount:"Content Pieces",
+  minEngagement:"Min Engagement Rate", creatorLocation:"Creator Location",
+  requiredMentions:"Required Tags / Mentions", toneStyle:"Tone & Style",
+  usageRights:"Content Usage Rights",
+};
+
+function CategoryDetailsDisplay({ details }: { details: Record<string, unknown> }) {
+  const entries = Object.entries(details).filter(([, v]) => {
+    if (v === null || v === undefined || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    return true;
+  });
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-muted/40 px-4 py-3 border-b border-border">
+        <h3 className="font-semibold text-sm">Listing Details</h3>
+      </div>
+      <div className="divide-y divide-border">
+        {entries.map(([key, value]) => {
+          const label = LABEL_MAP[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
+          const display = Array.isArray(value) ? value.join(", ") : String(value);
+          return (
+            <div key={key} className="flex gap-3 px-4 py-3 text-sm">
+              <span className="text-muted-foreground min-w-[160px] flex-shrink-0">{label}</span>
+              <span className="font-medium text-foreground flex-1">{display}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -858,6 +984,10 @@ export function ListingDetailPage() {
               </p>
             </div>
 
+            {/* ── Category-specific details ── */}
+            {(listing as any).categoryDetails && Object.keys((listing as any).categoryDetails).length > 0 && (
+              <CategoryDetailsDisplay details={(listing as any).categoryDetails} />
+            )}
 
             {/* Service tiers (Bronze / Silver / Gold) */}
             {(listing as any).serviceTiers && ((listing as any).serviceTiers as ServiceTier[]).length > 0 && (
