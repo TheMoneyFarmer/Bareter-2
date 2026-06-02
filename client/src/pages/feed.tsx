@@ -758,8 +758,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
       navigate("/profile");
       return;
     }
-    // Navigate to user profile so they can send a direct message / barter proposal
-    navigate(`/users/${post.userId}`);
+    navigate(`/inbox?userId=${post.userId}`);
   };
 
   const declaredValue = post.declaredValue ? parseFloat(post.declaredValue as string) : 0;

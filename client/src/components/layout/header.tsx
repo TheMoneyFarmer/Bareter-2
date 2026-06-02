@@ -28,7 +28,7 @@ import {
   Menu, Bell, User, LogOut, Settings,
   Handshake, Search, Plus, Shield, Languages, MessageSquare, MapPin,
   X, Heart, Bookmark, FileText, ChevronDown, ShieldCheck, Sparkles,
-  Clock, ArrowRight, BookOpen, HelpCircle,
+  Clock, ArrowRight, BookOpen, HelpCircle, Compass,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -38,8 +38,8 @@ export function Header() {
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const { language, setLanguage, t, isRTL } = useI18n();
   const [currentPath, navigate] = useLocation();
-  // Show search bar + CategoryNav only on marketplace/browse/feed pages
-  const isMarketplace = currentPath.startsWith("/browse") || currentPath === "/feed" || currentPath.startsWith("/listings") || currentPath.startsWith("/c/") || currentPath === "/my-searches" || currentPath === "/saved";
+  // Show search bar + CategoryNav only on marketplace/browse/discover pages
+  const isMarketplace = currentPath.startsWith("/browse") || currentPath === "/feed" || currentPath === "/discover" || currentPath.startsWith("/listings") || currentPath.startsWith("/c/") || currentPath === "/my-searches" || currentPath === "/saved";
 
   const persistLanguageMutation = useMutation({
     mutationFn: async (lang: "en" | "ar") => {
@@ -216,8 +216,14 @@ export function Header() {
             <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
-          {/* ── Centre nav — Feed, List a Barter, Resources (hidden on marketplace pages where search takes over) ── */}
+          {/* ── Centre nav — Discover, Browse, List a Barter, Resources (hidden on marketplace pages where search takes over) ── */}
           <nav className={`hidden lg:flex items-center absolute left-1/2 -translate-x-1/2 ${isMarketplace ? "invisible pointer-events-none" : ""}`}>
+            <Link href="/feed">
+              <button type="button" className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                <Compass className="h-4 w-4" />
+                Discover
+              </button>
+            </Link>
             <Link href="/browse">
               <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
                 Browse Listings
@@ -645,7 +651,7 @@ export function Header() {
                         </Button>
                       </Link>
                       {[
-                        { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
+                        { href: "/feed", icon: <Compass className="h-4 w-4" />, label: "Discover" },
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "My Listings" },
