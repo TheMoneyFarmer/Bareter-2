@@ -2,8 +2,11 @@ import fs from "node:fs";
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
 
+// Use a placeholder key so the constructor doesn't throw when the env var
+// is missing (e.g. local dev without .env.local). Actual API calls will
+// fail at call-time with a 401, not at server startup.
 export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "not-configured",
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
