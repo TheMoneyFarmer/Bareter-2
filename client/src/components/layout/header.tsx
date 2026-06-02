@@ -467,84 +467,62 @@ export function Header() {
                       </div>
                     </div>
 
-                    {/* Navigation items — use asChild so Link becomes the element,
-                        preventing Radix from blocking wouter navigation */}
+                    {/* Navigation items — onSelect fires after the menu closes,
+                        then navigate() imperatively routes without any event conflicts */}
                     <div className="py-1">
-                      <DropdownMenuItem asChild data-testid="menu-profile">
-                        <Link href="/profile" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Profile</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/profile")} className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-profile">
+                        <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Profile</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>My Listings</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>My Listings</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/profile?tab=drafts" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>My Drafts</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/profile?tab=drafts")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>My Drafts</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/deals" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Handshake className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Deals</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/deals")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Handshake className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Deals</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/saved" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Heart className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Favorites</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/saved")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Heart className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Favorites</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/inbox" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span className="flex-1">Chats</span>
-                          {inboxUnread > 0 && (
-                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{inboxUnread}</Badge>
-                          )}
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/inbox")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="flex-1">Chats</span>
+                        {inboxUnread > 0 && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{inboxUnread}</Badge>
+                        )}
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/browse" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Browse Listings</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/browse")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Browse Listings</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/my-searches" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Search History</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/my-searches")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Search History</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/creators" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>Creators</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>Creators</span>
                       </DropdownMenuItem>
                     </div>
 
                     <DropdownMenuSeparator />
 
                     <div className="py-1">
-                      <DropdownMenuItem asChild>
-                        <Link href="/settings" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                          <Settings className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span>{t("nav.settings")}</span>
-                        </Link>
+                      <DropdownMenuItem onSelect={() => navigate("/settings")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                        <Settings className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>{t("nav.settings")}</span>
                       </DropdownMenuItem>
                       {user.isAdmin && (
-                        <DropdownMenuItem asChild data-testid="menu-admin">
-                          <Link href="/admin" className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer">
-                            <Shield className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                            <span className="flex-1">Admin Panel</span>
-                            <Badge variant="destructive" className="text-[10px]">Admin</Badge>
-                          </Link>
+                        <DropdownMenuItem onSelect={() => navigate("/admin")} className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-admin">
+                          <Shield className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span className="flex-1">Admin Panel</span>
+                          <Badge variant="destructive" className="text-[10px]">Admin</Badge>
                         </DropdownMenuItem>
                       )}
                     </div>
