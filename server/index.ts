@@ -15,6 +15,14 @@ import { registerAudioRoutes } from "./replit_integrations/audio";
 const app = express();
 const httpServer = createServer(app);
 
+// On Replit, auto-derive PRIVATE_OBJECT_DIR from REPL_ID if not explicitly set.
+// Replit provisions an object storage bucket named replit-objstore-<REPL_ID>
+// which persists across redeploys. Without this, uploads fall back to the
+// ephemeral local filesystem and disappear whenever the Repl is redeployed.
+if (process.env.REPL_ID && !process.env.PRIVATE_OBJECT_DIR) {
+  process.env.PRIVATE_OBJECT_DIR = `replit-objstore-${process.env.REPL_ID}`;
+}
+
 // Trust exactly one proxy hop (Replit's edge / production load balancer).
 // This must be set before any middleware that reads req.ip or req.protocol
 // so that rate-limiting and similar anti-abuse checks cannot be bypassed by

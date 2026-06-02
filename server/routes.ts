@@ -283,7 +283,7 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       store: new PgSession({
-        pool,
+        pool: pool as any,
         tableName: "session",
         createTableIfMissing: true,
       }),
@@ -1180,6 +1180,10 @@ export async function registerRoutes(
       if (Object.keys(data).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
       }
+
+      // Decimal fields reject empty strings — coerce to null
+      if (data.minTradeValue === "") data.minTradeValue = null;
+      if (data.maxTradeValue === "") data.maxTradeValue = null;
 
       const updatedUser = await storage.updateUser(req.session.userId!, data);
       if (!updatedUser) {
@@ -2557,8 +2561,7 @@ export async function registerRoutes(
     }
   });
 
-  // AI-powered deal contract — reads chat history and extracts agreed terms,
-  // deliverables, and timelines to produce a fully personalised PDF.
+  // ── Contract: get stored data ────────────────────────────────────────────────
   app.get("/api/deals/:id/contract", requireAuth, async (req, res) => {
     try {
       const deal = await storage.getDealWithUsers(param(req.params.id));
@@ -2566,21 +2569,52 @@ export async function registerRoutes(
       if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
         return res.status(403).json({ message: "Not authorized" });
       }
+      const isSeeker = deal.seekerId === req.session.userId;
+      res.json({
+        contractContent: deal.contractContent || null,
+        contractGeneratedAt: deal.contractGeneratedAt || null,
+        seekerSigned: deal.seekerSignedAt ? { signedAt: deal.seekerSignedAt, initials: deal.seekerSignedInitials } : null,
+        providerSigned: deal.providerSignedAt ? { signedAt: deal.providerSignedAt, initials: deal.providerSignedInitials } : null,
+        currentUserRole: isSeeker ? "seeker" : "provider",
+        dealRef: deal.dealNumber,
+        seekerName: deal.seeker?.fullName || deal.seeker?.businessName || "Party A",
+        providerName: deal.provider?.fullName || deal.provider?.businessName || "Party B",
+        seekerEmail: deal.seeker?.email,
+        providerEmail: deal.provider?.email,
+        seekerCity: deal.seeker?.city,
+        providerCity: deal.provider?.city,
+        seekerOffer: deal.seekerOffer,
+        providerOffer: deal.providerOffer,
+        seekerValue: deal.seekerValue,
+        providerValue: deal.providerValue,
+      });
+    } catch (error) {
+      console.error("Get contract error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
-      // Fetch all chat messages for this deal
+  // ── Contract: generate / regenerate (AI-powered, chat-aware) ─────────────────
+  app.post("/api/deals/:id/contract/generate", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDealWithUsers(param(req.params.id));
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (deal.seekerSignedAt && deal.providerSignedAt) {
+        return res.status(409).json({ message: "Contract is fully executed — both parties signed." });
+      }
+
       const chatMessages = await storage.getMessagesByDeal(deal.id);
       const chatTranscript = chatMessages
-        .map((m) => `${m.sender?.fullName ?? "Unknown"}: ${m.content}`)
-        .join("\n");
+        .map((m) => `${m.sender?.fullName ?? "Unknown"}: ${m.content}`).join("\n");
 
-      // Build deal context for the AI
       const seekerName = deal.seeker?.fullName || deal.seeker?.businessName || "Party A";
       const providerName = deal.provider?.fullName || deal.provider?.businessName || "Party B";
       const deliverablesText = Array.isArray(deal.deliverables) && deal.deliverables.length
-        ? deal.deliverables.map((d: any) => `- ${d.label}`).join("\n")
-        : "Not specified";
+        ? deal.deliverables.map((d: any) => `- ${d.label}`).join("\n") : "Not specified";
 
-      // AI extracts personalised terms from the conversation
       interface ContractTerms {
         summary: string;
         partyADeliverables: string[];
@@ -2597,16 +2631,17 @@ export async function registerRoutes(
         agreedTimeline: deal.timeline || "To be mutually agreed",
         specialConditions: [],
         terms: [
-          "Both parties agree to exchange the goods/services described in this agreement.",
-          "Each party warrants they have full right and authority to exchange the items offered.",
-          "The exchange values stated are agreed estimates and do not constitute cash payment.",
-          "This agreement is governed by the laws of the United Arab Emirates.",
-          "Any disputes shall be resolved through arbitration in Dubai, UAE.",
-          "VAT (5%) may apply to certain barter transactions — consult a tax advisor.",
+          "1. Both parties agree to exchange the goods/services described in this agreement in good faith.",
+          "2. Each party warrants they have full right and authority to exchange the items offered.",
+          "3. The exchange values stated are agreed estimates and do not constitute a cash payment.",
+          "4. Delivery of exchanged items or services shall occur within the agreed timeline.",
+          "5. Either party may raise a dispute via the Bareter platform within 7 days of the agreed delivery date.",
+          "6. VAT (5%) may apply to certain barter transactions — each party is responsible for their own tax obligations.",
+          "7. This agreement is governed by the laws of the United Arab Emirates.",
+          "8. Any unresolved disputes shall be referred to arbitration in Dubai, UAE under UAE arbitration law.",
         ],
       };
 
-      // Use AI to enrich the contract when chat has substance
       if (chatTranscript.trim().length > 50) {
         try {
           const { jsonCompletion } = await import("./agents/llm");
@@ -2614,184 +2649,77 @@ export async function registerRoutes(
             [
               {
                 role: "system",
-                content: `You are a UAE commercial lawyer drafting a barter agreement.
-Analyse the deal details and chat conversation to extract what was actually agreed.
-Return a JSON object with these fields:
-- summary: one paragraph describing the exchange in plain legal English
-- partyADeliverables: array of strings — what ${seekerName} will deliver (from chat + deal offer)
-- partyBDeliverables: array of strings — what ${providerName} will deliver (from chat + deal offer)
-- agreedTimeline: string — any timeline/deadline agreed in chat, or "As mutually agreed"
-- specialConditions: array of strings — any specific conditions, quality standards, or requirements mentioned in chat
-- terms: array of numbered strings (start with "1.") — 6-8 personalised legal terms based on the nature of this specific exchange
-
-Be specific and personalised. Extract actual agreed details from the conversation.
-Respond ONLY with valid JSON.`,
+                content: `You are a UAE commercial lawyer drafting a barter agreement. Analyse the deal and chat to extract what was ACTUALLY agreed. Return JSON with: summary (one legal paragraph), partyADeliverables (array of specifics for ${seekerName}), partyBDeliverables (array of specifics for ${providerName}), agreedTimeline (specific date/period or "As mutually agreed"), specialConditions (array of specific conditions from chat, or empty), terms (array of 8 numbered strings "1." through "8." — personalised to this exchange type). Be specific, extract real details. Valid JSON only.`,
               },
               {
                 role: "user",
-                content: `DEAL REFERENCE: ${deal.dealNumber}
-DATE: ${new Date().toLocaleDateString("en-AE")}
-
-PARTY A (Seeker): ${seekerName}
-Offers: ${deal.seekerOffer}
-Estimated Value: AED ${Number(deal.seekerValue).toLocaleString()}
-
-PARTY B (Provider): ${providerName}
-Offers: ${deal.providerOffer}
-Estimated Value: AED ${Number(deal.providerValue).toLocaleString()}
-
-AGREED DELIVERABLES:
-${deliverablesText}
-
-TIMELINE: ${deal.timeline || "Not specified"}
-
-FULL CHAT TRANSCRIPT:
-${chatTranscript || "(No messages yet)"}`,
+                content: `DEAL: ${deal.dealNumber}\nDATE: ${new Date().toLocaleDateString("en-AE")}\n\nPARTY A (${seekerName}): ${deal.seekerOffer} — AED ${Number(deal.seekerValue).toLocaleString()}\nPARTY B (${providerName}): ${deal.providerOffer} — AED ${Number(deal.providerValue).toLocaleString()}\nDELIVERABLES: ${deliverablesText}\nTIMELINE: ${deal.timeline || "Not specified"}\n\nCHAT:\n${chatTranscript || "(No messages)"}`,
               },
             ],
-            {
-              agentName: "legal",
-              command: "generate_contract",
-              model: "gemini-2.0-flash",
-              maxTokens: 1500,
-              temperature: 0.3,
-              agentBudgetJsonFallback: contractTerms,
-            },
+            { agentName: "legal", command: "generate_contract", model: "gemini-2.0-flash", maxTokens: 1800, temperature: 0.2, agentBudgetJsonFallback: contractTerms }
           );
           if (result.data) contractTerms = result.data;
-        } catch {
-          // Fall back to template terms — contract still generates
-        }
+        } catch { /* fall back to template */ }
       }
 
-      // Build the PDF
-      const { jsPDF } = await import("jspdf");
-      const doc = new jsPDF();
-      const pageW = doc.internal.pageSize.getWidth();
-      const margin = 20;
-      const contentW = pageW - margin * 2;
-      let y = 20;
+      await storage.updateDeal(deal.id, {
+        contractContent: JSON.stringify(contractTerms),
+        contractGeneratedAt: new Date(),
+        seekerSignedAt: null as any,
+        seekerSignedInitials: null as any,
+        providerSignedAt: null as any,
+        providerSignedInitials: null as any,
+      });
 
-      const addText = (text: string, fontSize: number, bold = false, centerAlign = false) => {
-        doc.setFontSize(fontSize);
-        doc.setFont("helvetica", bold ? "bold" : "normal");
-        const lines = doc.splitTextToSize(text, contentW);
-        if (centerAlign) {
-          doc.text(lines, pageW / 2, y, { align: "center" });
-        } else {
-          doc.text(lines, margin, y);
-        }
-        y += lines.length * (fontSize * 0.4 + 1.5);
-      };
-
-      const addSection = (title: string) => {
-        y += 4;
-        addText(title, 11, true);
-        y += 1;
-        doc.setDrawColor(20, 83, 75);
-        doc.line(margin, y, pageW - margin, y);
-        y += 5;
-      };
-
-      const checkPage = () => {
-        if (y > 265) { doc.addPage(); y = 20; }
-      };
-
-      // ── Header ──
-      doc.setFillColor(20, 83, 75);
-      doc.rect(0, 0, pageW, 28, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("BARTER AGREEMENT", pageW / 2, 12, { align: "center" });
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text("Bareter Marketplace — Powered by AI Contract Drafting", pageW / 2, 21, { align: "center" });
-      doc.setTextColor(0, 0, 0);
-      y = 36;
-
-      // ── Reference block ──
-      addText(`Contract Reference: ${deal.dealNumber}`, 9);
-      addText(`Date: ${new Date().toLocaleDateString("en-AE", { day: "2-digit", month: "long", year: "numeric" })}`, 9);
-      addText(`Status: Pending Signature`, 9);
-      y += 4;
-
-      // ── Summary ──
-      addSection("AGREEMENT SUMMARY");
-      addText(contractTerms.summary, 10);
-
-      // ── Parties ──
-      checkPage();
-      addSection("PARTIES TO THIS AGREEMENT");
-      addText(`Party A — ${seekerName}`, 10, true);
-      if (deal.seeker?.email) addText(`Email: ${deal.seeker.email}`, 9);
-      if (deal.seeker?.city) addText(`Location: ${deal.seeker.city}`, 9);
-      y += 3;
-      addText(`Party B — ${providerName}`, 10, true);
-      if (deal.provider?.email) addText(`Email: ${deal.provider.email}`, 9);
-      if (deal.provider?.city) addText(`Location: ${deal.provider.city}`, 9);
-
-      // ── Exchange Details ──
-      checkPage();
-      addSection("EXCHANGE DETAILS");
-      addText(`Party A provides (value: AED ${Number(deal.seekerValue).toLocaleString()})`, 10, true);
-      contractTerms.partyADeliverables.forEach((d) => { checkPage(); addText(`  • ${d}`, 9); });
-      y += 3;
-      addText(`Party B provides (value: AED ${Number(deal.providerValue).toLocaleString()})`, 10, true);
-      contractTerms.partyBDeliverables.forEach((d) => { checkPage(); addText(`  • ${d}`, 9); });
-
-      // ── Timeline ──
-      checkPage();
-      addSection("AGREED TIMELINE");
-      addText(contractTerms.agreedTimeline, 10);
-
-      // ── Special Conditions ──
-      if (contractTerms.specialConditions?.length > 0) {
-        checkPage();
-        addSection("SPECIAL CONDITIONS & REQUIREMENTS");
-        contractTerms.specialConditions.forEach((c) => { checkPage(); addText(`  • ${c}`, 9); });
-      }
-
-      // ── Terms ──
-      checkPage();
-      addSection("TERMS AND CONDITIONS");
-      contractTerms.terms.forEach((term) => { checkPage(); addText(term, 9); y += 1; });
-
-      // ── Signatures ──
-      checkPage();
-      if (y > 220) { doc.addPage(); y = 20; }
-      y = Math.max(y + 10, 240);
-      addSection("SIGNATURES");
-      doc.setDrawColor(0, 0, 0);
-      doc.line(margin, y + 18, margin + 70, y + 18);
-      doc.line(pageW / 2 + 5, y + 18, pageW / 2 + 75, y + 18);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${seekerName} (Party A)`, margin, y + 23);
-      doc.text(`${providerName} (Party B)`, pageW / 2 + 5, y + 23);
-      doc.text("Signature & Date", margin, y + 28);
-      doc.text("Signature & Date", pageW / 2 + 5, y + 28);
-
-      // ── Footer ──
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(120, 120, 120);
-        doc.text(
-          `Bareter Marketplace | www.bareter.com | Page ${i} of ${totalPages} | ${deal.dealNumber}`,
-          pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" }
-        );
-        doc.setTextColor(0, 0, 0);
-      }
-
-      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="Contract_${deal.dealNumber}.pdf"`);
-      res.send(pdfBuffer);
+      res.json({ success: true, contractContent: JSON.stringify(contractTerms), generatedAt: new Date() });
     } catch (error) {
       console.error("Generate contract error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Contract: sign with initials ──────────────────────────────────────────────
+  app.post("/api/deals/:id/contract/sign", requireAuth, async (req, res) => {
+    try {
+      const deal = await storage.getDealWithUsers(param(req.params.id));
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (deal.seekerId !== req.session.userId && deal.providerId !== req.session.userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (!deal.contractContent) {
+        return res.status(400).json({ message: "Contract must be generated first." });
+      }
+      const { initials } = req.body as { initials: string };
+      if (!initials || initials.trim().length < 1) {
+        return res.status(400).json({ message: "Initials are required." });
+      }
+      const isSeeker = deal.seekerId === req.session.userId;
+      if (isSeeker ? !!deal.seekerSignedAt : !!deal.providerSignedAt) {
+        return res.status(409).json({ message: "You have already signed this contract." });
+      }
+
+      await storage.updateDeal(deal.id, isSeeker
+        ? { seekerSignedAt: new Date(), seekerSignedInitials: initials.trim().toUpperCase().slice(0, 6) }
+        : { providerSignedAt: new Date(), providerSignedInitials: initials.trim().toUpperCase().slice(0, 6) }
+      );
+
+      const updated = await storage.getDealWithUsers(deal.id);
+      const bothSigned = !!(updated?.seekerSignedAt && updated?.providerSignedAt);
+
+      if (bothSigned) {
+        await Promise.all([
+          storage.createNotification({ userId: deal.seekerId, type: "deal_update", title: "Contract fully executed", message: `Both parties signed the barter agreement for deal ${deal.dealNumber}.`, relatedDealId: deal.id }),
+          storage.createNotification({ userId: deal.providerId, type: "deal_update", title: "Contract fully executed", message: `Both parties signed the barter agreement for deal ${deal.dealNumber}.`, relatedDealId: deal.id }),
+        ]);
+      } else {
+        const otherUserId = isSeeker ? deal.providerId : deal.seekerId;
+        const signerName = isSeeker ? (deal.seeker?.fullName || "Party A") : (deal.provider?.fullName || "Party B");
+        await storage.createNotification({ userId: otherUserId, type: "deal_update", title: "Contract ready for your signature", message: `${signerName} signed deal ${deal.dealNumber}. It's your turn to sign.`, relatedDealId: deal.id });
+      }
+
+      res.json({ success: true, bothSigned });
+    } catch (error) {
+      console.error("Sign contract error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

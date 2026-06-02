@@ -708,6 +708,12 @@ export const deals = pgTable("deals", {
   seekerCompleted: boolean("seeker_completed").default(false),
   providerCompleted: boolean("provider_completed").default(false),
   contractPdfUrl: text("contract_pdf_url"),
+  contractContent: text("contract_content"),         // JSON-stringified ContractTerms
+  contractGeneratedAt: timestamp("contract_generated_at"),
+  seekerSignedAt: timestamp("seeker_signed_at"),
+  seekerSignedInitials: text("seeker_signed_initials"),
+  providerSignedAt: timestamp("provider_signed_at"),
+  providerSignedInitials: text("provider_signed_initials"),
   proposedAt: timestamp("proposed_at"),
   acceptedAt: timestamp("accepted_at"),
   completedAt: timestamp("completed_at"),

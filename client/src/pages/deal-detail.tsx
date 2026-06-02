@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { trackEvent } from "@/lib/posthog";
 import { useI18n } from "@/lib/i18n";
 import { Link, useParams, useSearch } from "wouter";
@@ -33,6 +33,7 @@ import {
   Send,
   FileText,
   CheckCircle,
+  CheckCircle2,
   Clock,
   Package,
   Upload,
@@ -46,6 +47,9 @@ import {
   Flag,
   CircleDot,
   Languages,
+  PenLine,
+  RefreshCw,
+  ScrollText,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -78,6 +82,11 @@ export function DealDetailPage() {
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
   const proofInputRef = useRef<HTMLInputElement>(null);
+  const [showContract, setShowContract] = useState(false);
+  const [contractScrolled, setContractScrolled] = useState(false);
+  const [contractInitials, setContractInitials] = useState("");
+  const [contractAgreed, setContractAgreed] = useState(false);
+  const contractBodyRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const isInitialMessagesLoad = useRef(true);
@@ -217,6 +226,60 @@ export function DealDetailPage() {
       });
     },
   });
+
+  // Contract data
+  type ContractTerms = { summary: string; partyADeliverables: string[]; partyBDeliverables: string[]; agreedTimeline: string; specialConditions: string[]; terms: string[] };
+  type ContractData = { contractContent: string | null; contractGeneratedAt: string | null; seekerSigned: { signedAt: string; initials: string } | null; providerSigned: { signedAt: string; initials: string } | null; currentUserRole: "seeker" | "provider"; dealRef: string; seekerName: string; providerName: string; seekerEmail?: string; providerEmail?: string; seekerCity?: string; providerCity?: string; seekerOffer: string; providerOffer: string; seekerValue: string; providerValue: string };
+
+  const CONTRACT_STATES = ["accepted", "active", "in_progress", "delivery_proof", "completed"];
+
+  const { data: contractData, refetch: refetchContract } = useQuery<ContractData>({
+    queryKey: ["/api/deals", id, "contract"],
+    queryFn: () => fetch(`/api/deals/${id}/contract`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!id && !!deal && CONTRACT_STATES.includes(deal.state),
+    staleTime: 30_000,
+  });
+
+  const generateContractMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/deals/${id}/contract/generate`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchContract();
+      setContractScrolled(false);
+      setContractInitials("");
+      setContractAgreed(false);
+      toast({ title: "Contract generated", description: "Review and sign below." });
+    },
+    onError: (err: any) => toast({ title: "Failed to generate contract", description: err?.message, variant: "destructive" }),
+  });
+
+  const signContractMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/deals/${id}/contract/sign`, { initials: contractInitials });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      refetchContract();
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      setContractInitials("");
+      setContractAgreed(false);
+      if (data.bothSigned) {
+        toast({ title: "Contract executed!", description: "Both parties have signed. The agreement is now binding." });
+      } else {
+        toast({ title: "Signed!", description: "Waiting for the other party to sign." });
+      }
+    },
+    onError: (err: any) => toast({ title: "Failed to sign", description: err?.message, variant: "destructive" }),
+  });
+
+  const handleContractScroll = useCallback(() => {
+    const el = contractBodyRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 40;
+    if (atBottom) setContractScrolled(true);
+  }, []);
 
   const disputeMutation = useMutation({
     mutationFn: async () => {
@@ -359,26 +422,14 @@ export function DealDetailPage() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {deal.contractPdfUrl && (
+          {CONTRACT_STATES.includes(deal.state) && (
             <Button
               variant="outline"
               className="gap-2"
-              data-testid="button-download-contract"
-              onClick={() => window.open(deal.contractPdfUrl!, "_blank")}
+              onClick={() => setShowContract(true)}
             >
-              <Download className="h-4 w-4" />
-              {t("dealDetail.downloadContract")}
-            </Button>
-          )}
-          {["accepted", "in_progress", "delivery_proof"].includes(deal.state) && (
-            <Button
-              variant="outline"
-              className="gap-2"
-              data-testid="button-generate-contract"
-              onClick={() => window.open(`/api/deals/${id}/contract`, "_blank")}
-            >
-              <FileText className="h-4 w-4" />
-              {deal.contractPdfUrl ? t("dealDetail.downloadContract") : t("dealDetail.generateContract")}
+              <ScrollText className="h-4 w-4" />
+              {contractData?.seekerSigned && contractData?.providerSigned ? "View Signed Contract" : "Barter Contract"}
             </Button>
           )}
         </div>
@@ -425,27 +476,53 @@ export function DealDetailPage() {
         </div>
       )}
 
-      {/* Contract banner — prompt both parties to generate + sign before starting */}
-      {(deal.state === "accepted" || deal.state === "active") && (
-        <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-          <div className="flex-1">
-            <p className="font-semibold text-blue-800 dark:text-blue-300">Sign your barter agreement before starting</p>
-            <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">
-              Download the auto-generated contract for this deal. Both parties should review and sign it to protect the exchange.
-            </p>
+      {/* Contract status banner */}
+      {CONTRACT_STATES.includes(deal.state) && contractData && (() => {
+        const bothSigned = contractData.seekerSigned && contractData.providerSigned;
+        const iAmSeeker = contractData.currentUserRole === "seeker";
+        const iSigned = iAmSeeker ? !!contractData.seekerSigned : !!contractData.providerSigned;
+        const theySigned = iAmSeeker ? !!contractData.providerSigned : !!contractData.seekerSigned;
+        if (bothSigned) return (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20 px-5 py-4 flex items-center gap-3">
+            <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300">Contract fully executed</p>
+              <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">Both parties signed. The barter agreement is legally binding.</p>
+            </div>
+            <Button size="sm" variant="outline" className="border-emerald-300 text-emerald-700 flex-shrink-0" onClick={() => setShowContract(true)}>
+              <ScrollText className="h-4 w-4 mr-1" /> View
+            </Button>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-blue-300 text-blue-700 hover:bg-blue-100 flex-shrink-0"
-            onClick={() => window.open(`/api/deals/${id}/contract`, "_blank")}
-          >
-            <Download className="h-4 w-4 mr-1" />
-            Download Contract
-          </Button>
-        </div>
-      )}
+        );
+        if (!contractData.contractContent) return (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <FileText className="h-6 w-6 text-blue-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-blue-800 dark:text-blue-300">Generate your barter contract</p>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">AI will draft a detailed agreement from your deal and chat. Both parties must sign before starting.</p>
+            </div>
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0" disabled={generateContractMutation.isPending} onClick={() => generateContractMutation.mutate()}>
+              {generateContractMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />} Generate Contract
+            </Button>
+          </div>
+        );
+        return (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <PenLine className="h-6 w-6 text-amber-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-amber-800 dark:text-amber-300">
+                {iSigned ? "Waiting for the other party to sign" : "Your signature is needed"}
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                {iSigned ? `You signed ✓  —  ${theySigned ? "Both signed" : "Waiting on other party"}` : "Open the contract, scroll to the bottom, and enter your initials to sign."}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 flex-shrink-0" onClick={() => setShowContract(true)}>
+              <PenLine className="h-4 w-4 mr-1" /> {iSigned ? "View Contract" : "Sign Contract"}
+            </Button>
+          </div>
+        );
+      })()}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -1074,6 +1151,225 @@ export function DealDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Inline Contract Modal ─────────────────────────────────────────── */}
+      {showContract && contractData && (() => {
+        const terms: ContractTerms | null = contractData.contractContent ? (() => { try { return JSON.parse(contractData.contractContent!); } catch { return null; } })() : null;
+        const bothSigned = contractData.seekerSigned && contractData.providerSigned;
+        const iAmSeeker = contractData.currentUserRole === "seeker";
+        const iSigned = iAmSeeker ? !!contractData.seekerSigned : !!contractData.providerSigned;
+        const myInitials = iAmSeeker ? contractData.seekerSigned?.initials : contractData.providerSigned?.initials;
+        const mySignDate = iAmSeeker ? contractData.seekerSigned?.signedAt : contractData.providerSigned?.signedAt;
+        const theirInitials = iAmSeeker ? contractData.providerSigned?.initials : contractData.seekerSigned?.initials;
+        const theirSignDate = iAmSeeker ? contractData.providerSigned?.signedAt : contractData.seekerSigned?.signedAt;
+        const theirName = iAmSeeker ? contractData.providerName : contractData.seekerName;
+        const myName = iAmSeeker ? contractData.seekerName : contractData.providerName;
+        const canSign = !iSigned && !!terms;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-card rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[92vh] overflow-hidden">
+
+              {/* Header */}
+              <div className="bg-bareter-teal px-6 py-4 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-white font-bold text-lg">Barter Agreement</h2>
+                  <p className="text-white/70 text-xs mt-0.5">Ref: {contractData.dealRef} · {contractData.seekerName} ↔ {contractData.providerName}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!bothSigned && !generateContractMutation.isPending && (
+                    <button onClick={() => generateContractMutation.mutate()} title="Regenerate" className="h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors">
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button onClick={() => setShowContract(false)} className="h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors">
+                    <XCircle className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Contract body — scrollable */}
+              {!terms ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
+                  {generateContractMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-8 w-8 animate-spin text-bareter-teal" />
+                      <p className="text-sm text-muted-foreground">AI is drafting your personalised contract from the deal details and chat…</p>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-12 w-12 text-muted-foreground/30" />
+                      <p className="font-medium text-bareter-navy dark:text-foreground">No contract yet</p>
+                      <p className="text-sm text-muted-foreground">Generate a personalised agreement based on your deal and chat conversation.</p>
+                      <Button className="bg-bareter-teal hover:bg-bareter-teal/90 text-white gap-2" onClick={() => generateContractMutation.mutate()}>
+                        <FileText className="h-4 w-4" /> Generate Contract
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div ref={contractBodyRef} onScroll={handleContractScroll} className="flex-1 overflow-y-auto p-6 space-y-5 text-sm text-bareter-navy dark:text-foreground">
+
+                  {/* Date + reference */}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground border-b pb-3">
+                    <span>Contract Ref: <strong>{contractData.dealRef}</strong></span>
+                    <span>Date: {contractData.contractGeneratedAt ? new Date(contractData.contractGeneratedAt).toLocaleDateString("en-AE", { day: "2-digit", month: "long", year: "numeric" }) : new Date().toLocaleDateString("en-AE", { day: "2-digit", month: "long", year: "numeric" })}</span>
+                  </div>
+
+                  {/* Summary */}
+                  <section>
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-2">Agreement Summary</h3>
+                    <p className="leading-relaxed text-foreground/80">{terms.summary}</p>
+                  </section>
+
+                  {/* Parties */}
+                  <section className="border-t pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">Parties</h3>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {[
+                        { label: "Party A", name: contractData.seekerName, email: contractData.seekerEmail, city: contractData.seekerCity },
+                        { label: "Party B", name: contractData.providerName, email: contractData.providerEmail, city: contractData.providerCity },
+                      ].map(p => (
+                        <div key={p.label} className="bg-gray-50 dark:bg-muted/40 rounded-xl p-3">
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">{p.label}</p>
+                          <p className="font-semibold">{p.name}</p>
+                          {p.email && <p className="text-xs text-muted-foreground">{p.email}</p>}
+                          {p.city && <p className="text-xs text-muted-foreground">{p.city}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Exchange Details */}
+                  <section className="border-t pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">Exchange Details</h3>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">{contractData.seekerName} provides — AED {Number(contractData.seekerValue).toLocaleString()}</p>
+                        <ul className="space-y-1">{terms.partyADeliverables.map((d, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-bareter-teal mt-0.5">•</span><span className="leading-snug">{d}</span></li>)}</ul>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">{contractData.providerName} provides — AED {Number(contractData.providerValue).toLocaleString()}</p>
+                        <ul className="space-y-1">{terms.partyBDeliverables.map((d, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-bareter-teal mt-0.5">•</span><span className="leading-snug">{d}</span></li>)}</ul>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Timeline */}
+                  <section className="border-t pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-2">Agreed Timeline</h3>
+                    <p>{terms.agreedTimeline}</p>
+                  </section>
+
+                  {/* Special Conditions */}
+                  {terms.specialConditions?.length > 0 && (
+                    <section className="border-t pt-4">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-2">Special Conditions</h3>
+                      <ul className="space-y-1.5">{terms.specialConditions.map((c, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-bareter-teal mt-0.5">•</span><span>{c}</span></li>)}</ul>
+                    </section>
+                  )}
+
+                  {/* Terms & Conditions */}
+                  <section className="border-t pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">Terms & Conditions</h3>
+                    <ol className="space-y-2">{terms.terms.map((t, i) => <li key={i} className="leading-relaxed text-foreground/80">{t}</li>)}</ol>
+                  </section>
+
+                  {/* Disclaimer */}
+                  <p className="text-[11px] text-muted-foreground bg-gray-50 dark:bg-muted/30 rounded-lg p-3 italic">
+                    This agreement was AI-drafted using deal details and chat history. Both parties should consult a UAE-qualified lawyer if required. Signing constitutes acceptance of all terms above.
+                  </p>
+
+                  {/* Signature status */}
+                  <section className="border-t pt-4">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-bareter-teal mb-3">Signatures</h3>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {[
+                        { name: contractData.seekerName, label: "Party A", signed: contractData.seekerSigned },
+                        { name: contractData.providerName, label: "Party B", signed: contractData.providerSigned },
+                      ].map(p => (
+                        <div key={p.label} className={`rounded-xl border px-4 py-3 ${p.signed ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20" : "border-gray-200 bg-gray-50 dark:border-border dark:bg-muted/30"}`}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{p.label} — {p.name}</p>
+                          {p.signed ? (
+                            <>
+                              <p className="font-mono font-bold text-lg text-bareter-navy dark:text-foreground">{p.signed.initials}</p>
+                              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">Signed {new Date(p.signed.signedAt).toLocaleDateString("en-AE", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                            </>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground italic">Pending signature</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Scroll anchor */}
+                  <div id="contract-end" className="h-1" />
+                </div>
+              )}
+
+              {/* Sign footer — only when contract loaded + not yet signed */}
+              {terms && !bothSigned && (
+                <div className="border-t bg-gray-50 dark:bg-muted/30 px-6 py-4 flex-shrink-0">
+                  {iSigned ? (
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                      <span className="text-sm font-medium">You signed with initials <strong>{myInitials}</strong> on {mySignDate ? new Date(mySignDate).toLocaleDateString("en-AE") : ""}. Waiting for {theirName}.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {!contractScrolled && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" /> Scroll to the bottom of the contract to enable signing.
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="contract-agree"
+                          checked={contractAgreed}
+                          disabled={!contractScrolled}
+                          onChange={e => setContractAgreed(e.target.checked)}
+                          className="h-4 w-4 accent-bareter-teal disabled:opacity-40"
+                        />
+                        <label htmlFor="contract-agree" className={`text-xs ${contractScrolled ? "text-foreground cursor-pointer" : "text-muted-foreground"}`}>
+                          I have read and agree to all terms in this barter agreement
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Your initials (e.g. TM)"
+                          value={contractInitials}
+                          onChange={e => setContractInitials(e.target.value.toUpperCase().slice(0, 6))}
+                          disabled={!contractScrolled || !contractAgreed}
+                          className="max-w-[140px] font-mono uppercase disabled:opacity-40"
+                          maxLength={6}
+                        />
+                        <Button
+                          className="bg-bareter-teal hover:bg-bareter-teal/90 text-white gap-2 flex-1"
+                          disabled={!contractScrolled || !contractAgreed || contractInitials.trim().length === 0 || signContractMutation.isPending}
+                          onClick={() => signContractMutation.mutate()}
+                        >
+                          {signContractMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+                          Sign as {myName}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Both signed — read-only footer */}
+              {terms && bothSigned && (
+                <div className="border-t px-6 py-4 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                  <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                  <span className="text-sm font-semibold">Contract fully executed — both parties signed. This agreement is binding.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
