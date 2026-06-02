@@ -12,8 +12,19 @@ import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { loginSchema } from "@shared/schema";
 import { trackEvent } from "@/lib/posthog";
-import { Handshake, Loader2, Eye, EyeOff, ExternalLink, Copy } from "lucide-react";
+import { Handshake, Loader2, Eye, EyeOff, ExternalLink, Copy, AlertCircle } from "lucide-react";
 import { z } from "zod";
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+}
 
 // Detect common in-app browsers where cookies are isolated from the main browser.
 function detectInAppBrowser(): { detected: boolean; name: string } {
@@ -40,6 +51,8 @@ export function LoginPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
   const passwordResetEnabled = config?.passwordResetEnabled ?? false;
+  const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
+  const googleEnabled = googleStatus?.enabled ?? false;
   const inApp = detectInAppBrowser();
 
   // Read query params once (wouter's useLocation only exposes the path).
@@ -87,9 +100,20 @@ export function LoginPage() {
       });
       navigate(redirectTo.startsWith("/") ? redirectTo : "/browse");
     } catch (error: any) {
+      const raw = (error?.message || "").toLowerCase();
+      const description =
+        raw.includes("invalid credentials") || raw.includes("401") || raw.includes("password") || raw.includes("incorrect")
+          ? "Incorrect email or password. Please double-check your details and try again."
+          : raw.includes("too many") || raw.includes("rate limit")
+          ? "Too many sign-in attempts. Please wait a few minutes before trying again."
+          : raw.includes("suspend") || raw.includes("banned")
+          ? "Your account has been suspended. Please contact support at hello@bareter.com."
+          : raw.includes("not found") || raw.includes("no account")
+          ? "No account found with that email. Please check your email or sign up."
+          : "We couldn't sign you in right now. Please try again in a moment.";
       toast({
-        title: t("auth.loginFailed"),
-        description: error.message || "Invalid email or password",
+        title: "Sign-in unsuccessful",
+        description,
         variant: "destructive",
       });
     } finally {
@@ -161,6 +185,36 @@ export function LoginPage() {
                 Your session ended — please sign in again to continue.
               </div>
             )}
+
+            {/* Google OAuth */}
+            {googleEnabled && (
+              <>
+                {params.get("google_error") && (
+                  <div className="mb-3 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    Google sign-in failed — please try again or use email below.
+                  </div>
+                )}
+                <a
+                  href={`/auth/google${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+                  data-testid="button-google-login"
+                >
+                  <GoogleIcon />
+                  Continue with Google
+                </a>
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200 dark:border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or sign in with email</span>
+                  </div>
+                </div>
+              </>
+            )}
+
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField

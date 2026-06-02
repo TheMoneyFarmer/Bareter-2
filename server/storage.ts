@@ -133,6 +133,7 @@ export interface IStorage {
   getUserByPhone(phone: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
   getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
+  getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUsersWithPendingVerification(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
@@ -439,6 +440,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByDiditSessionId(sessionId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.diditSessionId, sessionId));
+    return user;
+  }
+
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
     return user;
   }
 

@@ -298,6 +298,112 @@ export async function registerRoutes(
     })
   );
 
+  // ── Google OAuth ────────────────────────────────────────────────────────────
+  // Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.
+  // Set authorized redirect URI in Google Cloud Console to:
+  //   https://your-domain.com/auth/google/callback
+  //   http://localhost:5000/auth/google/callback  (dev)
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+    const { Strategy: GoogleStrategy } = await import("passport-google-oauth20");
+    const passport = (await import("passport")).default;
+    app.use(passport.initialize());
+
+    const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+    passport.use(new GoogleStrategy(
+      {
+        clientID: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_CLIENT_SECRET,
+        callbackURL: `${baseUrl}/auth/google/callback`,
+        scope: ["profile", "email"],
+      },
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value?.toLowerCase().trim();
+          if (!email) return done(new Error("No email returned from Google"), undefined);
+
+          // 1. Existing user matched by googleId
+          let user = await storage.getUserByGoogleId(profile.id);
+          if (user) return done(null, user);
+
+          // 2. Existing user with same email → link Google account
+          user = await storage.getUserByEmail(email);
+          if (user) {
+            await storage.updateUser(user.id, { googleId: profile.id });
+            return done(null, user);
+          }
+
+          // 3. Brand new user — create account from Google profile
+          const fullName = profile.displayName || profile.name?.givenName || email.split("@")[0];
+          const avatarUrl = profile.photos?.[0]?.value || null;
+          // Use a random unhashable password — Google users authenticate via OAuth only
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email,
+            password: randomPw,
+            fullName,
+            avatarUrl: avatarUrl ?? undefined,
+            googleId: profile.id,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+
+          return done(null, user);
+        } catch (err) {
+          return done(err as Error, undefined);
+        }
+      }
+    ));
+
+    // Kick off the OAuth flow
+    app.get("/auth/google", (req, res, next) => {
+      const redirect = (req.query.redirect as string) || "/browse";
+      // stash redirect destination in session before we leave the app
+      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      passport.authenticate("google", { session: false })(req, res, next);
+    });
+
+    // Google redirects here after user authorises
+    app.get(
+      "/auth/google/callback",
+      passport.authenticate("google", { session: false, failureRedirect: "/login?google_error=1" }),
+      async (req: any, res) => {
+        try {
+          const user = req.user;
+          if (!user) return res.redirect("/login?google_error=1");
+
+          // Create our own session (consistent with email/password login)
+          req.session.userId = user.id;
+          await new Promise<void>((resolve, reject) =>
+            req.session.save((err: any) => (err ? reject(err) : resolve()))
+          );
+
+          const dest = (req.session as any).oauthRedirect || "/browse";
+          delete (req.session as any).oauthRedirect;
+          res.redirect(dest);
+        } catch {
+          res.redirect("/login?google_error=1");
+        }
+      }
+    );
+  } else {
+    // Placeholder routes so the frontend doesn't get a raw 404
+    app.get("/auth/google", (_req, res) => {
+      res.redirect("/login?google_error=not_configured");
+    });
+    app.get("/auth/google/callback", (_req, res) => {
+      res.redirect("/login?google_error=not_configured");
+    });
+  }
+
+  // Expose whether Google OAuth is available to the frontend
+  app.get("/api/auth/google/status", (_req, res) => {
+    res.json({ enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) });
+  });
+
   // ── Maintenance mode middleware ──────────────────────────────────────
   let maintenanceCache: { value: boolean; at: number } = { value: false, at: 0 };
   const MAINTENANCE_TTL = 5_000;

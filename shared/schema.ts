@@ -552,12 +552,16 @@ export const users = pgTable("users", {
   // the existing users table on the first migration.
   unsubscribeToken: text("unsubscribe_token"),
 
+  // OAuth provider IDs
+  googleId: text("google_id").unique(),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   diditSessionIdx: index("users_didit_session_id_idx").on(table.diditSessionId),
   unsubscribeTokenIdx: index("users_unsubscribe_token_idx").on(table.unsubscribeToken),
   phoneIdx: index("users_phone_idx").on(table.phone),
+  googleIdIdx: index("users_google_id_idx").on(table.googleId),
 }));
 
 // Waitlist entries (pre-launch email collection)
