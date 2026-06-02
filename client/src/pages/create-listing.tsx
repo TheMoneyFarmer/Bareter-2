@@ -24,7 +24,7 @@ import {
   Package, ShoppingCart, Loader2, X, Plus, ImagePlus,
   Tag, MapPin, DollarSign, FileText, ArrowLeftRight, Star,
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
-  Camera, Users, Sparkles, Check,
+  Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -66,13 +66,18 @@ function makeCreateListingSchema(t: (key: string) => string) {
 type CreateListingForm = z.infer<ReturnType<typeof makeCreateListingSchema>>;
 
 const ITEM_TYPE_ICONS: Record<ItemType, React.ReactNode> = {
-  real_estate: <Home className="h-5 w-5" />,
-  automotive:  <Car className="h-5 w-5" />,
-  electronics: <Smartphone className="h-5 w-5" />,
-  fashion:     <Shirt className="h-5 w-5" />,
-  furniture:   <Sofa className="h-5 w-5" />,
-  other:       <MoreHorizontal className="h-5 w-5" />,
-  "":          <MoreHorizontal className="h-5 w-5" />,
+  hospitality:  <BedDouble className="h-5 w-5" />,
+  room_rental:  <Home className="h-5 w-5" />,
+  office_space: <Building2 className="h-5 w-5" />,
+  real_estate:  <Home className="h-5 w-5" />,
+  automotive:   <Car className="h-5 w-5" />,
+  electronics:  <Smartphone className="h-5 w-5" />,
+  services:     <Briefcase className="h-5 w-5" />,
+  brand_collab: <Handshake className="h-5 w-5" />,
+  fashion:      <Shirt className="h-5 w-5" />,
+  furniture:    <Sofa className="h-5 w-5" />,
+  other:        <MoreHorizontal className="h-5 w-5" />,
+  "":           <MoreHorizontal className="h-5 w-5" />,
 };
 
 export function CreateListingPage() {
@@ -522,17 +527,18 @@ export function CreateListingPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Settings2 className="h-5 w-5" />
-                Item Details
+                Listing Details
               </CardTitle>
               <CardDescription>
-                Select what you are listing — fields will adapt to your item type.
+                Choose your listing category — fields will adapt so your listing is as detailed as possible.
+                Great listings close faster.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               {/* Item type quick-select */}
               <div>
-                <FormLabel className="text-sm mb-2 block">What type of item is this?</FormLabel>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                <FormLabel className="text-sm mb-2 block">What are you listing?</FormLabel>
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
                   {(Object.keys(ITEM_TYPE_LABELS) as Exclude<ItemType, "">[]).map((type) => (
                     <button
                       key={type}
