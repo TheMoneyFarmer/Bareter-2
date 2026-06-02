@@ -119,28 +119,25 @@ function StoriesRow() {
   }, []);
 
   return (
-    <div className="flex gap-4 overflow-x-auto flex-nowrap py-4 px-1 scrollbar-hide border-b" data-testid="stories-row">
+    <div className="flex gap-3 overflow-x-auto flex-nowrap py-2.5 px-3 scrollbar-hide border-b" data-testid="stories-row">
       {uniqueUsers.map((story) => (
         <button
           key={story.id}
           onClick={() => gate()}
-          className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer"
+          className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer"
           data-testid={`story-${story.id}`}
         >
           <div className="rounded-full p-0.5 bg-gradient-to-tr from-primary to-primary/60">
-            <Avatar className="h-14 w-14 border-2 border-background">
+            <Avatar className="h-11 w-11 sm:h-14 sm:w-14 border-2 border-background">
               <AvatarImage src={story.user?.avatarUrl || undefined} />
-              <AvatarFallback className="text-sm">
+              <AvatarFallback className="text-xs sm:text-sm">
                 {story.user?.fullName?.charAt(0) || "U"}
               </AvatarFallback>
             </Avatar>
           </div>
-          <div className="flex flex-col items-center gap-0.5">
-            <span className="text-xs text-muted-foreground truncate w-16 text-center">
-              {story.user?.fullName?.split(" ")[0] || "User"}
-            </span>
-            <FounderBadge show={!!story.user?.founderBadge} />
-          </div>
+          <span className="text-[10px] text-muted-foreground truncate w-12 sm:w-16 text-center">
+            {story.user?.fullName?.split(" ")[0] || "User"}
+          </span>
         </button>
       ))}
     </div>
@@ -156,20 +153,23 @@ function CategoryTabs({
 }) {
   return (
     <div
-      className="flex gap-2 overflow-x-auto flex-nowrap py-3 px-2 sm:px-1 scrollbar-hide sticky top-16 z-40 bg-background border-b"
+      className="flex gap-1.5 overflow-x-auto flex-nowrap py-2 px-3 sm:px-1 scrollbar-hide sticky top-14 z-40 bg-background border-b"
       data-testid="category-tabs"
     >
       {FEED_CATEGORIES.map((cat) => (
-        <Button
+        <button
           key={cat}
-          variant={activeCategory === cat ? "default" : "outline"}
-          size="sm"
-          className="flex-shrink-0 whitespace-nowrap"
+          type="button"
           onClick={() => onCategoryChange(cat)}
           data-testid={`tab-${cat.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+          className={`flex-shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+            activeCategory === cat
+              ? "bg-bareter-teal text-white border-bareter-teal"
+              : "border-bareter-border text-muted-foreground hover:border-bareter-teal hover:text-bareter-teal bg-background"
+          }`}
         >
           {cat}
-        </Button>
+        </button>
       ))}
     </div>
   );
@@ -870,7 +870,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
             <ImageCarousel
               images={post.mediaUrls as string[]}
               alt={post.title || "Post media"}
-              aspect="aspect-square"
+              aspect="aspect-[4/3] sm:aspect-square"
               testIdPrefix={`post-media-${post.id}`}
               overlays={
                 <>
@@ -893,11 +893,11 @@ function FeedCard({ post }: { post: PostWithUser }) {
               }
             />
           ) : (
-            <div className="w-full aspect-square bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center relative">
+            <div className="w-full aspect-[4/3] sm:aspect-square bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center relative">
               {post.postType === "request" ? (
-                <Search className="h-20 w-20 text-primary/20" />
+                <Search className="h-14 w-14 sm:h-20 sm:w-20 text-primary/20" />
               ) : (
-                <PackagePlus className="h-20 w-20 text-primary/20" />
+                <PackagePlus className="h-14 w-14 sm:h-20 sm:w-20 text-primary/20" />
               )}
               {isHighValue && (
                 <div className="absolute top-3 left-3">
@@ -2222,6 +2222,68 @@ function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
   );
 }
 
+// ── Compact card used in the mobile 2-column grid ──────────────────
+function CompactListingCard({ listing }: { listing: ListingWithUser }) {
+  const { gate: waitlistGate } = useWaitlist();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [liked, setLiked] = useState(!!(listing as any).isLiked);
+  const [likeCount, setLikeCount] = useState(listing.likeCount ?? 0);
+  const images = listing.images as string[] | null;
+  const retailValue = listing.retailValue ? Number(listing.retailValue) : 0;
+  const sellerName = (listing as any).user?.fullName || "Bareter";
+
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/like`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setLiked(data.liked);
+      setLikeCount(data.likeCount);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+    },
+    onError: () => toast({ title: "Failed to like", variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-bareter-border bg-white dark:bg-card shadow-sm">
+      <Link href={`/listings/${listing.id}`} className="block relative aspect-square bg-muted/30">
+        {images?.[0] ? (
+          <img src={images[0]} alt={listing.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ArrowRightLeft className="h-7 w-7 text-bareter-teal/30" />
+          </div>
+        )}
+        {retailValue > 0 && (
+          <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+            {retailValue >= 1000 ? `AED ${Math.round(retailValue / 1000)}K` : `AED ${retailValue.toLocaleString()}`}
+          </span>
+        )}
+      </Link>
+      <div className="px-2 pt-1.5 pb-2">
+        <p className="text-[11px] font-semibold line-clamp-2 text-bareter-navy dark:text-foreground leading-tight">
+          {listing.title}
+        </p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-[10px] text-muted-foreground truncate flex-1 mr-1">
+            {sellerName.split(" ")[0]}
+          </p>
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); if (!waitlistGate()) return; likeMutation.mutate(); }}
+            className="flex items-center gap-0.5 flex-shrink-0"
+          >
+            <Heart className={`h-3.5 w-3.5 ${liked ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
+            {likeCount > 0 && <span className="text-[9px] text-muted-foreground">{likeCount}</span>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function newFeedSeed() { return Math.floor(Math.random() * 2147483647); }
 
 export function FeedPage() {
@@ -2323,35 +2385,35 @@ export function FeedPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-0 sm:px-4 pb-4 sm:pb-8">
+    <div className="max-w-6xl mx-auto px-0 sm:px-4 pb-20 sm:pb-8">
       <div className="flex gap-8">
-        <div className="flex-1 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
+        <div className="flex-1 min-w-0 max-w-xl mx-auto lg:mx-0 lg:max-w-none lg:flex-[3]">
           <StoriesRow />
 
           {/* ── Trending / Hot listings strip ── */}
           {trendingListings && trendingListings.length > 0 && (
-            <div className="mt-3 mb-1" data-testid="trending-strip">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1 px-4 sm:px-0">
-                <TrendingUp className="h-3.5 w-3.5 text-orange-500" />
-                🔥 Trending This Week
+            <div className="mt-2 mb-1" data-testid="trending-strip">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1 px-3 sm:px-0">
+                <TrendingUp className="h-3 w-3 text-orange-500" />
+                Trending This Week
               </p>
-              <div className="flex gap-3 overflow-x-auto pb-2 px-4 sm:px-0 snap-x scrollbar-hide">
+              <div className="flex gap-2 overflow-x-auto pb-2 px-3 sm:px-0 snap-x scrollbar-hide">
                 {trendingListings.map((l) => (
                   <Link
                     key={l.id}
                     href={`/listings/${l.id}`}
-                    className="shrink-0 w-40 snap-start rounded-xl border border-bareter-border bg-white dark:bg-card overflow-hidden hover:shadow-bareter-hover transition-shadow"
+                    className="shrink-0 w-28 sm:w-36 snap-start rounded-lg border border-bareter-border bg-white dark:bg-card overflow-hidden hover:shadow-bareter-hover transition-shadow"
                   >
                     {(l.images as string[])?.[0] ? (
-                      <img src={(l.images as string[])[0]} alt={l.title} className="w-full h-24 object-cover" />
+                      <img src={(l.images as string[])[0]} alt={l.title} className="w-full h-18 sm:h-24 object-cover" style={{ height: "72px" }} />
                     ) : (
-                      <div className="w-full h-24 bg-muted/30 flex items-center justify-center">
-                        <ArrowRightLeft className="h-5 w-5 text-muted-foreground/40" />
+                      <div className="w-full bg-muted/30 flex items-center justify-center" style={{ height: "72px" }}>
+                        <ArrowRightLeft className="h-4 w-4 text-muted-foreground/40" />
                       </div>
                     )}
-                    <div className="p-2">
-                      <p className="text-xs font-semibold line-clamp-2 text-bareter-navy dark:text-foreground">{l.title}</p>
-                      {l.retailValue && <p className="text-xs text-bareter-teal font-bold mt-0.5">AED {Number(l.retailValue).toLocaleString()}</p>}
+                    <div className="p-1.5">
+                      <p className="text-[10px] font-semibold line-clamp-2 text-bareter-navy dark:text-foreground leading-tight">{l.title}</p>
+                      {l.retailValue && <p className="text-[10px] text-bareter-teal font-bold mt-0.5">AED {Number(l.retailValue).toLocaleString()}</p>}
                     </div>
                   </Link>
                 ))}
@@ -2363,15 +2425,15 @@ export function FeedPage() {
           <AiMatchCards />
           <CategoryTabs activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
 
-          {/* ── Listings feed — Instagram-style ── */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-3 px-0.5">
+          {/* ── Listings feed ── */}
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-2 px-3 sm:px-0.5">
               <div>
-                <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
+                <h2 className="text-xs font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
                   {t("feed.latestListings")}
                 </h2>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Refreshed {refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                <p className="text-[9px] text-muted-foreground mt-0.5">
+                  {refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2380,40 +2442,55 @@ export function FeedPage() {
                   className="flex items-center gap-1 text-xs font-semibold text-bareter-teal hover:text-bareter-teal/80 transition-colors"
                   title="Refresh listings"
                 >
-                  <RotateCw className="h-3.5 w-3.5" />
+                  <RotateCw className="h-3 w-3" />
                   Refresh
                 </button>
                 <Link href="/browse" className="text-xs font-semibold text-bareter-teal hover:underline">
-                  Browse all →
+                  All →
                 </Link>
               </div>
             </div>
+
             {listingsLoading ? (
-              <div className="space-y-4">
-                {[...Array(3)].map((_, i) => (
-                  <Skeleton key={i} className="h-80 rounded-xl" />
-                ))}
-              </div>
+              <>
+                {/* Mobile skeleton */}
+                <div className="grid grid-cols-2 gap-2 px-3 sm:hidden">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+                </div>
+                {/* Desktop skeleton */}
+                <div className="hidden sm:block space-y-4">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-80 rounded-xl" />)}
+                </div>
+              </>
             ) : feedListings && feedListings.length > 0 ? (
-              <div className="space-y-4">
-                {feedListings.slice(0, 10).map((listing, idx) => (
-                  <div key={listing.id}>
-                    <ListingFeedCard listing={listing} />
-                    {/* Inject a social post every 3 listings */}
-                    {posts && posts[Math.floor(idx / 3)] && idx % 3 === 2 && (
-                      <div className="mt-4">
-                        <FeedCard post={posts[Math.floor(idx / 3)]} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <>
+                {/* ── Mobile: 2-column compact grid ── */}
+                <div className="grid grid-cols-2 gap-2 px-3 sm:hidden">
+                  {feedListings.slice(0, 12).map((listing) => (
+                    <CompactListingCard key={listing.id} listing={listing} />
+                  ))}
+                </div>
+
+                {/* ── Desktop: full Instagram-style single column ── */}
+                <div className="hidden sm:block space-y-4">
+                  {feedListings.slice(0, 10).map((listing, idx) => (
+                    <div key={listing.id}>
+                      <ListingFeedCard listing={listing} />
+                      {posts && posts[Math.floor(idx / 3)] && idx % 3 === 2 && (
+                        <div className="mt-4">
+                          <FeedCard post={posts[Math.floor(idx / 3)]} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Plus className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-                  <p className="font-semibold mb-1">{t("feed.noListingsYet")}</p>
-                  <p className="text-sm text-muted-foreground mb-4">{t("feed.beFirst")}</p>
+              <Card className="mx-3 sm:mx-0">
+                <CardContent className="py-10 text-center">
+                  <Plus className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="font-semibold text-sm mb-1">{t("feed.noListingsYet")}</p>
+                  <p className="text-xs text-muted-foreground mb-3">{t("feed.beFirst")}</p>
                   {user && (
                     <Link href="/create-listing">
                       <Button variant="bareter" size="sm">{t("nav.createListing")}</Button>
@@ -2425,22 +2502,22 @@ export function FeedPage() {
           </div>
 
           {/* ── Social Posts feed ── */}
-          {posts && posts.length > 0 && (
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-3 px-0.5">
-                <h2 className="text-sm font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
+          {(posts && posts.length > 0) || isLoading ? (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2 px-3 sm:px-0.5">
+                <h2 className="text-xs font-bold text-bareter-navy dark:text-foreground uppercase tracking-wider">
                   {t("feed.communityPosts")}
                 </h2>
               </div>
-              <div className="space-y-4 sm:space-y-6">
+              <div className="space-y-0 sm:space-y-4">
                 {isLoading ? (
-                  [...Array(3)].map((_, i) => <FeedCardSkeleton key={i} />)
+                  [...Array(2)].map((_, i) => <FeedCardSkeleton key={i} />)
                 ) : (
-                  posts.map((post) => <FeedCard key={post.id} post={post} />)
+                  posts!.map((post) => <FeedCard key={post.id} post={post} />)
                 )}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <aside className="hidden lg:block w-72 xl:w-80 flex-shrink-0 pt-4 sticky top-16 z-50 self-start h-[calc(100vh-5rem)] overflow-y-auto" data-testid="feed-sidebar">
