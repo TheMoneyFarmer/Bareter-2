@@ -683,6 +683,20 @@ export function RegisterPage() {
       <CardContent className="space-y-5">
         {renderStepIndicator()}
 
+        {/* Email-already-exists inline banner */}
+        {registerError?.emailExists && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-4 py-3.5 flex flex-col gap-1">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              An account with this email already exists
+            </p>
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Looks like you've already signed up. Please{" "}
+              <Link href="/login" className="font-semibold underline hover:no-underline">sign in to your account</Link>
+              {" "}instead, or use a different email address.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-4">
           {SOCIAL_PLATFORMS.map((platform) => {
             const Icon = platform.icon;
@@ -733,7 +747,7 @@ export function RegisterPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => setStep(2)}
+            onClick={() => { setStep(2); setRegisterError(null); }}
             data-testid="button-back-step2"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -744,7 +758,7 @@ export function RegisterPage() {
             variant="outline"
             className="flex-1"
             onClick={handleFinalSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !!registerError?.emailExists}
             data-testid="button-skip-social"
           >
             <SkipForward className="mr-2 h-4 w-4" />
@@ -754,7 +768,7 @@ export function RegisterPage() {
             type="button"
             className="flex-1"
             onClick={handleFinalSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !!registerError?.emailExists}
             data-testid="button-submit-register"
           >
             {isLoading ? (

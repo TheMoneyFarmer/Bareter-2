@@ -657,46 +657,57 @@ export function ProfilePage() {
         </div>
       </div>
 
-      <Tabs defaultValue={(() => {
-        if (typeof window === "undefined") return "profile";
-        const t = new URLSearchParams(window.location.search).get("tab");
-        const allowed = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"];
-        return t && allowed.includes(t) ? t : "profile";
-      })()} className="space-y-6">
-        <TabsList className="flex w-full overflow-x-auto">
-          <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
-            <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabProfile")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="offers" className="flex-1 min-w-0" data-testid="tab-offers">
-            <Package className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabOffers")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
-            <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabNeeds")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="deals" className="flex-1 min-w-0" data-testid="tab-deals">
-            <Handshake className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Deals</span>
-          </TabsTrigger>
-          <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
-            <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabEndorsements")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
-            <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabPortfolio")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="drafts" className="flex-1 min-w-0" data-testid="tab-drafts">
-            <FileText className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabDrafts")}</span>
-          </TabsTrigger>
-          <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
-            <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabVerify")}</span>
-          </TabsTrigger>
-        </TabsList>
+      {/* Profile section selector — clean dropdown, no icons */}
+      {(() => {
+        const ALLOWED_TABS = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"] as const;
+        type ProfileTab = typeof ALLOWED_TABS[number];
+        const initialTab: ProfileTab = (() => {
+          if (typeof window === "undefined") return "profile";
+          const p = new URLSearchParams(window.location.search).get("tab") as ProfileTab;
+          return ALLOWED_TABS.includes(p) ? p : "profile";
+        })();
+        const TAB_LABELS: Record<ProfileTab, string> = {
+          profile:      "Profile",
+          offers:       "My Offers",
+          needs:        "My Needs",
+          deals:        "Deals",
+          endorsements: "Endorsements",
+          portfolio:    "Portfolio",
+          drafts:       "Drafts",
+          verification: "Verification",
+        };
+
+        return (
+          <Tabs defaultValue={initialTab} className="space-y-6">
+            {/* Dropdown nav — no icons */}
+            <div className="flex items-center justify-between gap-3">
+              <Select
+                defaultValue={initialTab}
+                onValueChange={(val) => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("tab", val);
+                  window.history.replaceState({}, "", url.toString());
+                  // Programmatically click the hidden trigger so Radix Tabs syncs
+                  document.querySelector<HTMLButtonElement>(`[data-radix-tab="${val}"]`)?.click();
+                }}
+              >
+                <SelectTrigger className="w-56 font-medium" data-testid="profile-section-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(TAB_LABELS) as [ProfileTab, string][]).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Hidden tab triggers so Radix Tabs tracks the active panel */}
+            <TabsList className="sr-only" aria-hidden="true">
+              {(Object.keys(TAB_LABELS) as ProfileTab[]).map((val) => (
+                <TabsTrigger key={val} value={val} data-radix-tab={val} data-testid={`tab-${val}`} />
+              ))}
+            </TabsList>
 
         {/* Task #248 — Drafts tab: surface autosaved listings so users
             can pick up where they left off without going back to the
@@ -1106,7 +1117,9 @@ export function ProfilePage() {
         <TabsContent value="verification">
           <VerificationSection user={user} />
         </TabsContent>
-      </Tabs>
+          </Tabs>
+        );
+      })()}
     </div>
   );
 }
