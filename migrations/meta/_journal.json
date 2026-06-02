@@ -57,6 +57,13 @@
       "when": 1780070034451,
       "tag": "0007_previous_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780399326338,
+      "tag": "0008_contract_signing_columns",
+      "breakpoints": true
     }
   ]
 }
