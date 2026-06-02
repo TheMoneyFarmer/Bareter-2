@@ -151,34 +151,33 @@ function ChatDealCard() {
   return (
     <div className={`${CARD_BASE} p-4`} style={{ height: CARD_H }}>
       <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-slate-100">
-        <div className="h-8 w-8 rounded-full bg-bareter-teal/12 flex items-center justify-center flex-shrink-0">
-          <span className="text-bareter-teal text-[10px] font-bold">MH</span>
-        </div>
+        <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold"
+          style={{ background: "linear-gradient(135deg,#2AA0A0,#1a7a7a)" }}>FA</div>
         <div>
-          <p className="text-[11px] font-semibold text-slate-800">Barter Negotiation</p>
-          <p className="text-[9px] text-slate-400">Mohamed H. · Active now</p>
+          <p className="text-[11px] font-semibold text-slate-800">Fatima A. · Barter Chat</p>
+          <p className="text-[9px] text-slate-400">Abu Dhabi · Active now</p>
         </div>
         <div className="ms-auto h-2 w-2 rounded-full bg-green-400" />
       </div>
       <div className="space-y-2 mb-3">
         <div className="flex">
           <div className="bg-slate-100 rounded-2xl rounded-tl-none px-3 py-2 max-w-[90%]">
-            <p className="text-[10px] text-slate-700 leading-snug">Can we swap your photography package for my catering service?</p>
+            <p className="text-[10px] text-slate-700 leading-snug">Interested in your baby stroller — I have a kids' bicycle, same value?</p>
           </div>
         </div>
         <div className="flex justify-end">
           <div className="bg-bareter-teal/12 rounded-2xl rounded-tr-none px-3 py-2 max-w-[85%]">
-            <p className="text-[10px] text-bareter-teal font-medium leading-snug">AED 3,500 catering vs my AED 3,200 package — deal?</p>
+            <p className="text-[10px] text-bareter-teal font-medium leading-snug">Stroller is AED 650, bike worth AED 600 — add AED 50 and it's yours 🤝</p>
           </div>
         </div>
         <div className="flex">
           <div className="bg-slate-100 rounded-2xl rounded-tl-none px-3 py-2 max-w-[80%]">
-            <p className="text-[10px] text-slate-700 leading-snug">I'll add an extra hour — let's lock it in! 🤝</p>
+            <p className="text-[10px] text-slate-700 leading-snug">Deal! When can we meet?</p>
           </div>
         </div>
         <div className="flex justify-end">
           <div className="bg-bareter-teal rounded-2xl rounded-tr-none px-3 py-2 max-w-[70%]">
-            <p className="text-[10px] text-white font-semibold">Generating contract now →</p>
+            <p className="text-[10px] text-white font-semibold">Contract being generated →</p>
           </div>
         </div>
       </div>
@@ -208,9 +207,9 @@ function CreateListingCard() {
       </div>
       <div className="space-y-2.5">
         {[
-          { label: "What you're offering", val: "Legal Services Package", accent: false },
-          { label: "Retail value (AED)", val: "12,000", accent: false },
-          { label: "What you want in return", val: "Marketing services", accent: true },
+          { label: "What you're offering", val: "10 Arabic Tutoring Sessions", accent: false },
+          { label: "Retail value (AED)", val: "800", accent: false },
+          { label: "What you want in return", val: "English tutoring (same level)", accent: true },
         ].map(({ label, val, accent }) => (
           <div key={label}>
             <p className="text-[9px] text-slate-400 uppercase tracking-wide font-semibold mb-1">{label}</p>
@@ -242,30 +241,30 @@ function DeviceSwapCard() {
       {/* Items */}
       <div className="flex items-center gap-2 mb-3.5">
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
-          <span className="text-2xl block mb-1 leading-none">💻</span>
-          <p className="text-[9px] font-bold text-slate-700">MacBook Pro M3</p>
-          <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">AED 7,200</p>
+          <span className="text-2xl block mb-1 leading-none">🧹</span>
+          <p className="text-[9px] font-bold text-slate-700">Home Cleaning (4 hrs)</p>
+          <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">AED 200</p>
         </div>
         <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
           <ArrowLeftRight className="h-4 w-4 text-bareter-teal/70" />
           <p className="text-[8px] text-slate-400">swap</p>
         </div>
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-center">
-          <span className="text-2xl block mb-1 leading-none">📱</span>
-          <p className="text-[9px] font-bold text-slate-700">iPhone 15 Pro Max</p>
-          <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">AED 6,900</p>
+          <span className="text-2xl block mb-1 leading-none">🍕</span>
+          <p className="text-[9px] font-bold text-slate-700">Catering (10 pax)</p>
+          <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">AED 220</p>
         </div>
       </div>
 
-      {/* Profiles — full names + gradient avatars */}
+      {/* Profiles */}
       <div className="flex items-center gap-2 mb-2.5">
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-2.5 py-2.5 flex items-center gap-2">
           <div className="h-9 w-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[9px] font-extrabold shadow-sm"
             style={{ background: "linear-gradient(135deg, #2AA0A0, #1a7a7a)" }}>
-            AK
+            NH
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-800 truncate">Ahmad Al Karimi</p>
+            <p className="text-[10px] font-bold text-slate-800 truncate">Nour Al Hashimi</p>
             <div className="flex items-center gap-1 mt-0.5">
               <ShieldCheck className="h-2.5 w-2.5 text-bareter-teal flex-shrink-0" />
               <p className="text-[8px] text-slate-400">Dubai · Verified</p>
@@ -276,11 +275,11 @@ function DeviceSwapCard() {
       <div className="flex items-center gap-2 mb-2">
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-2.5 py-2.5 flex items-center gap-2">
           <div className="h-9 w-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[9px] font-extrabold shadow-sm"
-            style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)" }}>
-            SM
+            style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)" }}>
+            KR
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-800 truncate">Sara Al Mansouri</p>
+            <p className="text-[10px] font-bold text-slate-800 truncate">Khalid Al Rashidi</p>
             <div className="flex items-center gap-1 mt-0.5">
               <ShieldCheck className="h-2.5 w-2.5 text-bareter-teal flex-shrink-0" />
               <p className="text-[8px] text-slate-400">Sharjah · Verified</p>
@@ -303,13 +302,13 @@ function BrandCollabCard() {
       </div>
       <div className="bg-bareter-teal/8 rounded-xl p-3 mb-2.5">
         <p className="text-[9px] text-slate-500 mb-1">Brand is offering</p>
-        <p className="text-sm font-bold text-slate-800">Luxury Spa Weekend for 2</p>
-        <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">Value: AED 2,800 · JW Marriott</p>
+        <p className="text-sm font-bold text-slate-800">Iftar Dinner for 4 — Emirati Restaurant</p>
+        <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">Value: AED 350 · Al Fanar Dubai</p>
       </div>
       <div className="bg-slate-50 rounded-xl p-3 mb-3">
         <p className="text-[9px] text-slate-500 mb-1">Creator must deliver</p>
-        <p className="text-[10px] font-semibold text-slate-700">3× TikToks + 5 Stories + 1 Reel</p>
-        <p className="text-[9px] text-slate-400 mt-0.5">Min. 25K followers · Lifestyle / Travel</p>
+        <p className="text-[10px] font-semibold text-slate-700">2× TikTok videos + 3 Stories</p>
+        <p className="text-[9px] text-slate-400 mt-0.5">Min. 5K followers · Food / Lifestyle</p>
       </div>
       <div className="flex items-center gap-2">
         <div className="flex -space-x-1.5">
@@ -336,25 +335,25 @@ function BarterItemCard() {
       {/* Image section */}
       <div className="h-28 -mx-4 -mt-4 mb-4 bg-gradient-to-br from-slate-100 to-blue-50 flex items-center justify-center relative rounded-t-2xl overflow-hidden">
         <div className="h-14 w-14 rounded-2xl bg-slate-200/70 flex items-center justify-center">
-          <span className="text-3xl leading-none">📷</span>
+          <span className="text-3xl leading-none">🛵</span>
         </div>
-        <span className="absolute top-2.5 left-2.5 bg-white/95 text-[9px] font-bold text-bareter-teal px-2 py-0.5 rounded-full border border-bareter-teal/20">Photography</span>
+        <span className="absolute top-2.5 left-2.5 bg-white/95 text-[9px] font-bold text-bareter-teal px-2 py-0.5 rounded-full border border-bareter-teal/20">Automotive</span>
         <span className="absolute top-2.5 right-2.5 h-6 w-6 rounded-full bg-bareter-teal flex items-center justify-center shadow-sm">
           <ShieldCheck className="h-3 w-3 text-white" />
         </span>
       </div>
-      <h3 className="text-sm font-bold text-slate-800 mb-1">Canon R6 Camera Kit</h3>
+      <h3 className="text-sm font-bold text-slate-800 mb-1">Honda PCX Scooter 2022</h3>
       <p className="text-[9px] text-slate-400 mb-3 flex items-center gap-1">
-        <MapPin className="h-2.5 w-2.5 flex-shrink-0" /> Jumeirah, Dubai · Like new condition
+        <MapPin className="h-2.5 w-2.5 flex-shrink-0" /> Deira, Dubai · Good condition
       </p>
       <div className="flex items-end justify-between border-t border-slate-100 pt-3">
         <div>
           <p className="text-[8px] text-slate-400 uppercase tracking-wide font-semibold">Listed value</p>
-          <p className="text-base font-bold text-bareter-teal">AED 4,500</p>
+          <p className="text-base font-bold text-bareter-teal">AED 3,200</p>
         </div>
         <div className="text-right">
           <p className="text-[8px] text-slate-400 uppercase tracking-wide font-semibold">Wants</p>
-          <p className="text-[10px] font-semibold text-slate-700">Web design</p>
+          <p className="text-[10px] font-semibold text-slate-700">Car tyres / service</p>
         </div>
       </div>
     </div>
@@ -373,8 +372,8 @@ function DealClosedCard() {
       </div>
       <div className="grid grid-cols-2 gap-2 mb-3">
         {[
-          { l: "Party A", v: "Legal Services",   a: "AED 12K"   },
-          { l: "Party B", v: "Marketing Bundle", a: "AED 11.5K" },
+          { l: "Hessa N.", v: "Gym Membership (3 mo)", a: "AED 750" },
+          { l: "Omar F.",  v: "Meal Prep (4 weeks)",   a: "AED 720" },
         ].map(p => (
           <div key={p.l} className="bg-slate-50 rounded-xl p-2.5">
             <p className="text-[8px] text-slate-400 font-semibold">{p.l}</p>
@@ -414,9 +413,9 @@ function AnalyticsCard() {
       </div>
       <div className="grid grid-cols-3 gap-2">
         {[
-          { v: "14",    l: "Deals closed" },
-          { v: "AED 82K", l: "Total value" },
-          { v: "4.9★",  l: "Avg. rating"  },
+          { v: "8",       l: "Deals closed" },
+          { v: "AED 6.2K", l: "Total value" },
+          { v: "4.9★",    l: "Avg. rating"  },
         ].map(s => (
           <div key={s.l} className="text-center bg-slate-50 rounded-xl py-2.5">
             <p className="text-xs font-bold text-bareter-teal leading-tight">{s.v}</p>
