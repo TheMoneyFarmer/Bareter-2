@@ -572,7 +572,7 @@ function CMSSettings({ settings, onSave, saving }: { settings: PlatformSettings;
               id="hero-tagline"
               value={tagline}
               onChange={(e) => setTagline(e.target.value)}
-              placeholder="UAE's AI-powered barter marketplace. No cash. Just value."
+              placeholder="UAE's First AI-powered barter marketplace. No cash. Just value."
               className="mt-1.5"
               data-testid="input-hero-tagline"
             />

@@ -29,7 +29,8 @@ function useStagger(selector: string, deps: unknown[] = []) {
             items.forEach((item, i) => {
               setTimeout(() => item.classList.add("is-in-view"), i * 80);
             });
-            observer.disconnect();
+          } else {
+            items.forEach((item) => item.classList.remove("is-in-view"));
           }
         });
       },
@@ -49,7 +50,13 @@ function useRevealEl() {
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { el.classList.add("is-in-view"); observer.disconnect(); } },
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add("is-in-view");
+        } else {
+          el.classList.remove("is-in-view");
+        }
+      },
       { threshold: 0.1 }
     );
     observer.observe(el);
@@ -575,12 +582,13 @@ export function LandingPage() {
     const els = document.querySelectorAll<HTMLElement>("[data-reveal]");
     const io = new IntersectionObserver(
       (entries) => entries.forEach(e => {
+        const el = e.target as HTMLElement;
         if (e.isIntersecting) {
-          const el = e.target as HTMLElement;
           el.style.setProperty("--reveal-from", scrollDirRef.current === "up" ? "-36px" : "36px");
           void el.getBoundingClientRect();
           el.classList.add("is-in-view");
-          io.unobserve(el);
+        } else {
+          el.classList.remove("is-in-view");
         }
       }),
       { threshold: 0.12 }

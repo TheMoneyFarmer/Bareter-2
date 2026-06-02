@@ -77,7 +77,7 @@ export function HowItWorksPage() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">How Bareter Works</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Barter goods and services with UAE businesses in 6 simple steps. No cash needed.
+          Barter goods and services in 6 simple steps. No cash needed.
         </p>
       </div>
 

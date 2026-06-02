@@ -519,7 +519,7 @@ export function SettingsPage() {
       )}
 
       {/* ── CONTENT: hidden on mobile when showing menu ───────────── */}
-      <div className={`${mobileView === "menu" ? "hidden md:block" : "block"} container px-4 py-6 md:py-8`}>
+      <div className={`${mobileView === "menu" ? "hidden md:block" : "block"} px-3 py-4 md:container md:px-4 md:py-8`}>
 
         {/* Desktop header */}
         <div className="hidden md:flex items-center gap-3 mb-8">
@@ -531,7 +531,8 @@ export function SettingsPage() {
         </div>
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setMobileView("section"); }} className="space-y-6">
-        <TabsList className={`hidden md:grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
+        <div className="hidden md:block">
+        <TabsList className={`grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
           <TabsTrigger value="account" data-testid="tab-account">
             <User className="h-4 w-4 mr-2" />
             {t("settings.account")}
@@ -559,6 +560,7 @@ export function SettingsPage() {
             </TabsTrigger>
           )}
         </TabsList>
+        </div>
 
         <TabsContent value="account">
           <Card>
@@ -1437,25 +1439,6 @@ export function SettingsPage() {
                 <CardDescription>{t("settings.manageSecuritySettings")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${user.emailVerified ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400" : "bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400"}`}>
-                      {user.emailVerified ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    </div>
-                    <div>
-                      <p className="font-medium">{t("settings.emailVerification")}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {user.emailVerified ? t("settings.emailVerified") : t("settings.emailNotVerified")}
-                      </p>
-                    </div>
-                  </div>
-                  {!user.emailVerified && (
-                    <Button variant="outline" size="sm" data-testid="button-verify-email">
-                      {t("settings.verifyEmailBtn")}
-                    </Button>
-                  )}
-                </div>
-
                 <div className="flex items-center justify-between p-4 rounded-lg border">
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-full ${

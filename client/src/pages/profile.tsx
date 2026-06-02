@@ -494,7 +494,7 @@ export function ProfilePage() {
   const isProfileIncomplete = !user.bio || !user.location || !user.businessName;
 
   return (
-    <div className="container px-4 py-8 mx-auto max-w-4xl">
+    <div className="px-3 py-4 md:container md:px-4 md:py-8 mx-auto max-w-4xl">
       {/* Mobile: settings shortcut bar */}
       <div className="md:hidden flex items-center justify-between mb-4">
         <h1 className="text-lg font-bold">My Profile</h1>
@@ -506,7 +506,7 @@ export function ProfilePage() {
       </div>
 
       {isProfileIncomplete && (
-        <Alert className="mb-6">
+        <Alert className="mb-4">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>{t("profile.completeProfile")}</AlertTitle>
           <AlertDescription>
@@ -515,12 +515,12 @@ export function ProfilePage() {
         </Alert>
       )}
 
-      <div className="flex flex-col md:flex-row gap-6 mb-8">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="flex flex-col items-center">
           <div className="relative">
-            <Avatar className="h-32 w-32">
-              <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} />
-              <AvatarFallback className="text-4xl bg-primary text-primary-foreground">
+            <Avatar className="h-24 w-24 md:h-32 md:w-32">
+              <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} className="object-cover" />
+              <AvatarFallback className="text-3xl md:text-4xl bg-primary text-primary-foreground">
                 {user.fullName.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -561,9 +561,9 @@ export function ProfilePage() {
           </div>
         </div>
 
-        <div className="flex-1 text-center md:text-left">
+        <div className="flex-1 text-center md:text-left min-w-0">
           <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold">{user.fullName}</h1>
+            <h1 className="text-xl md:text-2xl font-bold">{user.fullName}</h1>
             <FounderBadge show={!!user.founderBadge} size="md" />
           </div>
           {user.businessName && (
@@ -626,37 +626,32 @@ export function ProfilePage() {
               )}
             </div>
           )}
-          <div className="flex items-center justify-center md:justify-start gap-4 mt-4 flex-wrap">
-            <div className="text-center">
-              <div className="text-xl font-bold">{listings?.length || 0}</div>
-              <div className="text-xs text-muted-foreground">{t("profile.listings")}</div>
+          <div className="grid grid-cols-3 md:flex md:items-center md:justify-start md:gap-4 gap-2 mt-3 w-full max-w-xs md:max-w-none">
+            <div className="text-center p-2 rounded-lg bg-muted/50 md:bg-transparent md:p-0">
+              <div className="text-lg md:text-xl font-bold">{listings?.length || 0}</div>
+              <div className="text-[10px] md:text-xs text-muted-foreground">{t("profile.listings")}</div>
             </div>
-            <Separator orientation="vertical" className="h-10" />
-            <div className="text-center">
-              <div className="text-xl font-bold flex items-center gap-1">
+            <div className="text-center p-2 rounded-lg bg-muted/50 md:bg-transparent md:p-0">
+              <div className="text-lg md:text-xl font-bold flex items-center justify-center gap-0.5">
                 {averageRating || "-"}
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                <Star className="h-3.5 w-3.5 md:h-4 md:w-4 text-yellow-500 fill-yellow-500" />
               </div>
-              <div className="text-xs text-muted-foreground">{t("profile.rating")} ({ratings?.length || 0})</div>
+              <div className="text-[10px] md:text-xs text-muted-foreground">{t("profile.rating")} ({ratings?.length || 0})</div>
             </div>
-            <Separator orientation="vertical" className="h-10" />
-            <div className="text-center">
-              <div className="text-xl font-bold text-primary">
+            <div className="text-center p-2 rounded-lg bg-muted/50 md:bg-transparent md:p-0">
+              <div className="text-sm md:text-xl font-bold text-primary leading-tight">
                 {t("common.aed")} {totalOfferValue.toLocaleString()}
               </div>
-              <div className="text-xs text-muted-foreground">{t("profile.offersValue")}</div>
+              <div className="text-[10px] md:text-xs text-muted-foreground">{t("profile.offersValue")}</div>
             </div>
             {endorsements && endorsements.length > 0 && (
-              <>
-                <Separator orientation="vertical" className="h-10" />
-                <div className="text-center">
-                  <div className="text-xl font-bold flex items-center gap-1">
-                    {endorsements.length}
-                    <ThumbsUp className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="text-xs text-muted-foreground">{t("profile.tabEndorsements")}</div>
+              <div className="text-center p-2 rounded-lg bg-muted/50 md:bg-transparent md:p-0 md:ml-4">
+                <div className="text-lg md:text-xl font-bold flex items-center justify-center gap-1">
+                  {endorsements.length}
+                  <ThumbsUp className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary" />
                 </div>
-              </>
+                <div className="text-[10px] md:text-xs text-muted-foreground">{t("profile.tabEndorsements")}</div>
+              </div>
             )}
           </div>
         </div>
