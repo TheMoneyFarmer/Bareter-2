@@ -35,15 +35,15 @@ export async function bootstrapAdmin(): Promise<void> {
   }
 
   try {
-    const passwordHash = await bcrypt.hash(password, 10);
-
     const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
     if (existing) {
+      // Only update admin flags — never overwrite the password of an existing
+      // account. Overwriting on every boot locks real users out if the env var
+      // changes or contains characters that produce a bad bcrypt hash.
       await db
         .update(users)
         .set({
-          password: passwordHash,
           isAdmin: true,
           role: "super_admin",
           founderBadge: true,
@@ -53,8 +53,9 @@ export async function bootstrapAdmin(): Promise<void> {
           updatedAt: new Date(),
         })
         .where(eq(users.id, existing.id));
-      console.log(`[bootstrapAdmin] Refreshed founder admin: ${email}`);
+      console.log(`[bootstrapAdmin] Ensured admin flags for: ${email}`);
     } else {
+      const passwordHash = await bcrypt.hash(password, 10);
       await db.insert(users).values({
         email,
         password: passwordHash,

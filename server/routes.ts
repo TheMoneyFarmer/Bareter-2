@@ -695,9 +695,8 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
       }
-      const msg = error instanceof Error ? error.message : String(error);
       console.error("Login error:", error);
-      res.status(500).json({ message: `Login failed: ${msg}` });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
