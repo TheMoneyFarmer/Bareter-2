@@ -1177,12 +1177,22 @@ export async function topUpTrendingListings() {
       },
     ];
 
+    // Approve any already-inserted everyday listings that landed with "pending" status
+    const everydayTitles = extras.map((e) => e.title);
+    await db
+      .update(listings)
+      .set({ moderationStatus: "approved", isActive: true })
+      .where(inArray(listings.title, everydayTitles));
+
     const existing = await db.select({ title: listings.title }).from(listings);
     const existingTitles = new Set(existing.map((r) => r.title));
-    const toInsert = extras.filter((e) => !existingTitles.has(e.title));
+
+    const toInsert = extras
+      .filter((e) => !existingTitles.has(e.title))
+      .map((e) => ({ ...e, moderationStatus: "approved" as const, isActive: true }));
 
     if (toInsert.length === 0) {
-      console.log(`[topUpTrending] All ${extras.length} everyday listings already present.`);
+      console.log(`[topUpTrending] All ${extras.length} everyday listings approved and present.`);
       return;
     }
 
