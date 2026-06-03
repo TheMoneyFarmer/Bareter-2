@@ -1236,8 +1236,17 @@ export async function topUpTrendingListings() {
       return;
     }
 
-    await db.insert(listings).values(toInsert);
-    console.log(`[topUpTrending] Inserted ${toInsert.length} everyday listings.`);
+    console.log(`[topUpTrending] Inserting ${toInsert.length} everyday listings...`);
+    let inserted = 0;
+    for (const listing of toInsert) {
+      try {
+        await db.insert(listings).values(listing);
+        inserted++;
+      } catch (rowErr) {
+        console.error(`[topUpTrending] Failed to insert "${listing.title}":`, rowErr);
+      }
+    }
+    console.log(`[topUpTrending] Done — inserted ${inserted}/${toInsert.length} everyday listings.`);
   } catch (err) {
     console.error("[topUpTrending] error:", err);
   }
