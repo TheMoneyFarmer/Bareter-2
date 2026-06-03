@@ -84,7 +84,7 @@ import {
   makeAiPerDayLimiter,
 } from "./handlers/aiRateLimit";
 import { db, pool } from "./db";
-import { seedCreators, seedCollabListings } from "./seed";
+import { seedCreators, seedCollabListings, wipeSeedData } from "./seed";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
@@ -3877,6 +3877,17 @@ export async function registerRoutes(
       res.json({ ok: true, message: "Seed re-run complete." });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Seed failed" });
+    }
+  });
+
+  // POST /api/admin/wipe-seed-data — manually trigger the two-pass seed wipe.
+  // Safe to call at any time: idempotent, never touches real user content.
+  app.post("/api/admin/wipe-seed-data", requireAdmin, async (req, res) => {
+    try {
+      await wipeSeedData();
+      res.json({ ok: true, message: "Seed wipe complete. Check server logs for details." });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Wipe failed" });
     }
   });
 

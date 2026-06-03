@@ -2542,6 +2542,7 @@ export function AdminPage() {
           </Card>
 
           <SeedDemoListingsCard />
+          <WipeSeedDataCard />
         </TabsContent>
 
         <TabsContent value="admins" className="space-y-4">
@@ -4812,6 +4813,55 @@ function SeedDemoListingsCard() {
           <p className="mt-2 text-sm text-muted-foreground">
             Demo data already present — no changes made.
           </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WipeSeedDataCard() {
+  const { toast } = useToast();
+  const wipeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/wipe-seed-data");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Wipe complete", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Wipe failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card className="border-red-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-red-700">
+          <Trash2 className="h-5 w-5" />
+          Wipe Seed / Editorial Listings
+        </CardTitle>
+        <CardDescription>
+          Immediately deletes all fake seed, editorial, and demo listings from the database.
+          Two-pass: removes by known titles first, then by demo/editorial account ownership.
+          Safe to run at any time — never touches real user listings or accounts.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          onClick={() => wipeMutation.mutate()}
+          disabled={wipeMutation.isPending}
+          variant="destructive"
+          size="sm"
+          className="gap-2"
+        >
+          <Trash2 className="h-4 w-4" />
+          {wipeMutation.isPending ? "Wiping…" : "Wipe Seed Data Now"}
+        </Button>
+        {wipeMutation.isSuccess && (
+          <p className="mt-2 text-sm text-green-600">✓ {wipeMutation.data?.message}</p>
         )}
       </CardContent>
     </Card>
