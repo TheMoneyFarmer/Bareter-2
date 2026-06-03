@@ -1685,76 +1685,21 @@ export async function seedCollabListings() {
 }
 
 // ── Production cleanup ───────────────────────────────────────────────────────
-// Deletes every fake seed/editorial account and all content they own.
-// Runs once on production boot, then never again (idempotent — once users
-// are gone, the query returns nothing to delete).
+// Removes ONLY the known luxury/editorial seed listings by exact title.
+// Never touches user accounts or listings not on this list — real user
+// content is always preserved.
 export async function wipeSeedData() {
-  const FAKE_EMAILS = [
-    "admin@bareter.com",
-    "sarah@luxuryhotels.ae", "omar@techflow.ae", "fatima@maisonfatima.ae",
-    "ahmed@eventspro.ae", "layla@gulfproperties.ae", "khalid@saffronkitchen.ae",
-    "noura@shuttercraft.ae", "rashid@elitemotors.ae", "mariam@designhaus.ae",
-    "hassan@gulfyachts.ae",
-    "editorial@bareter.com", "editorial.cars@bareter.com",
-    "editorial.realestate@bareter.com", "editorial.hospitality@bareter.com",
-    "editorial.services@bareter.com",
-    // creator seeds
-    "mariam.creator@bareter.com", "khalid.creator@bareter.com",
-    "layla.creator@bareter.com", "sara.creator@bareter.com",
-    "yousef.creator@bareter.com", "nour.creator@bareter.com",
-  ];
-
   try {
-    const fakeUsers = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(inArray(users.email, FAKE_EMAILS));
+    const deleted = await db
+      .delete(listings)
+      .where(inArray(listings.title, ALL_LUXURY_SEED_TITLES))
+      .returning({ id: listings.id });
 
-    if (fakeUsers.length === 0) {
-      console.log("[wipeSeed] No seed accounts found — already clean.");
-      return;
+    if (deleted.length > 0) {
+      console.log(`[wipeSeed] Removed ${deleted.length} luxury seed listings.`);
+    } else {
+      console.log("[wipeSeed] No seed listings found — already clean.");
     }
-
-    const fakeIds = fakeUsers.map((u) => u.id);
-    console.log(`[wipeSeed] Removing ${fakeIds.length} seed accounts and their data...`);
-
-    // Dependent rows first (FK order)
-    await db.delete(reviews).where(or(inArray(reviews.fromUserId, fakeIds), inArray(reviews.toUserId, fakeIds)));
-    await db.delete(ratings).where(or(inArray(ratings.fromUserId, fakeIds), inArray(ratings.toUserId, fakeIds)));
-    await db.delete(notifications).where(inArray(notifications.userId, fakeIds));
-    await db.delete(referrals).where(or(inArray(referrals.referrerId, fakeIds), inArray(referrals.referredId, fakeIds)));
-
-    // Posts + post interactions
-    const fakePosts = await db.select({ id: posts.id }).from(posts).where(inArray(posts.userId, fakeIds));
-    if (fakePosts.length > 0) {
-      const postIds = fakePosts.map((p) => p.id);
-      await db.delete(postLikes).where(inArray(postLikes.postId, postIds));
-      await db.delete(postBookmarks).where(inArray(postBookmarks.postId, postIds));
-      await db.delete(postComments).where(inArray(postComments.postId, postIds));
-    }
-    await db.delete(posts).where(inArray(posts.userId, fakeIds));
-
-    // Listings + listing interactions
-    const fakeLi = await db.select({ id: listings.id }).from(listings).where(inArray(listings.userId, fakeIds));
-    if (fakeLi.length > 0) {
-      const liIds = fakeLi.map((l) => l.id);
-      await db.delete(listingComments).where(inArray(listingComments.listingId, liIds));
-      await db.delete(wishlists).where(inArray(wishlists.listingId, liIds));
-    }
-    await db.delete(listings).where(inArray(listings.userId, fakeIds));
-
-    // Also nuke any luxury listing still owned by a real user (by title)
-    await db.delete(listings).where(inArray(listings.title, ALL_LUXURY_SEED_TITLES));
-
-    // Deals between fake users
-    await db.delete(deals).where(
-      or(inArray(deals.seekerId, fakeIds), inArray(deals.providerId, fakeIds))
-    );
-
-    // Finally remove the fake user accounts
-    await db.delete(users).where(inArray(users.id, fakeIds));
-
-    console.log(`[wipeSeed] ✓ Removed ${fakeIds.length} seed accounts and all their content.`);
   } catch (err) {
     console.error("[wipeSeed] error:", err);
   }
