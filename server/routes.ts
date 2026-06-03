@@ -752,6 +752,30 @@ export async function registerRoutes(
     res.json({ valid: true });
   });
 
+  // Dev-only: auth diagnostics — shows account state without exposing passwords.
+  app.get("/api/auth/dev-diag", async (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    try {
+      const email = (req.query.email as string || "").toLowerCase().trim();
+      if (!email) return res.json({ error: "pass ?email=... in the query string" });
+      const user = await storage.getUserByEmail(email);
+      if (!user) return res.json({ found: false, email });
+      const testPass = req.query.password as string | undefined;
+      const match = testPass ? await bcrypt.compare(testPass, user.password) : null;
+      res.json({
+        found: true,
+        email: user.email,
+        id: user.id,
+        isAdmin: user.isAdmin,
+        passwordHashPrefix: user.password?.slice(0, 7) ?? "null",
+        passwordTestMatch: match,
+        sessionUserId: (req.session as any)?.userId ?? null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? String(err) });
+    }
+  });
+
   // Dev-only: directly set a user's password without email verification.
   // Disabled in production — returns 404 so it's not discoverable.
   app.post("/api/auth/dev-set-password", async (req, res) => {
