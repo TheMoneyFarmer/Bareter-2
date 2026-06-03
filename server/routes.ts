@@ -679,8 +679,6 @@ export async function registerRoutes(
       }
 
       req.session.userId = user.id;
-      
-      // Explicitly save session before responding
       req.session.save((err) => {
         if (err) {
           console.error("Session save error:", err);
@@ -719,10 +717,12 @@ export async function registerRoutes(
           passwordResetExpires: expires,
         });
 
-        // Always use the publicly reachable URL so the link works on any device.
-        // Falls back to APP_BASE_URL for local dev when PUBLIC_APP_URL is not set.
-        const baseUrl = (process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, ""))
-          || (process.env.APP_BASE_URL?.trim().replace(/\/+$/, ""))
+        // In development use APP_BASE_URL (localhost) so the reset link opens
+        // in the same environment the user is testing. In production use the
+        // public URL so the link works from any device/email client.
+        const baseUrl = (process.env.NODE_ENV !== "production"
+          ? process.env.APP_BASE_URL?.trim().replace(/\/+$/, "")
+          : process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, ""))
           || (() => {
             const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
             const host = req.headers["x-forwarded-host"] || req.headers.host;

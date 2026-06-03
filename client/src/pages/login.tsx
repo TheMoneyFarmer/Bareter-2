@@ -110,7 +110,7 @@ export function LoginPage() {
           ? "Your account has been suspended. Please contact support at hello@bareter.com."
           : raw.includes("not found") || raw.includes("no account")
           ? "No account found with that email. Please check your email or sign up."
-          : (error?.message || "Unknown error — please try again.");
+          : "Something went wrong. Please try again in a moment.";
       toast({
         title: "Sign-in unsuccessful",
         description,
