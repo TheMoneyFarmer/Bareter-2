@@ -741,6 +741,7 @@ export async function seedDatabase() {
 
 // Every luxury/editorial seed title ever used — wiped on every boot.
 // Title-based so it works even if listings were assigned to a random real user.
+// Covers ALL title variants across every seed/dist version ever deployed to Replit.
 const ALL_LUXURY_SEED_TITLES = [
   // topUpTrendingListings v1 titles
   "2023 Mercedes-Benz G63 AMG — Obsidian Black","Porsche 911 Carrera S — 2022, Guards Red",
@@ -785,6 +786,16 @@ const ALL_LUXURY_SEED_TITLES = [
   "Azimut 60 — 12-Month Fractional Yacht Share",
   "Designer Abaya Capsule Collection — 10 Couture Pieces",
   "Patek Philippe Nautilus 5711 — Trade for Property or Cars",
+  // Older dist/Replit DB variant titles (different wording from earlier seed versions)
+  "Sunseeker 76 Yacht — 1-Week Exclusive Charter",
+  "Patek Philippe Nautilus 5711 — Stainless Steel",
+  "Range Rover Autobiography LWB 2024 — Full Option",
+  "Full Interior Design Package — 4-Bedroom Villa",
+  "5 Nights Luxury Suite — Azure Marina Hotel & Spa",
+  "1-Year Enterprise SaaS Licence — TechBridge ERP Suite",
+  "MacBook Pro M3 Max + Professional Creator Setup",
+  "Custom Designer Abaya Collection — 10 Bespoke Pieces",
+  "2023 Mercedes-Benz G63 AMG — Obsidian Black — Open to Multi-Asset Trade",
 ];
 
 // All seed/editorial user emails (secondary cleanup if users exist)
@@ -1684,20 +1695,71 @@ export async function seedCollabListings() {
   }
 }
 
+// Demo/editorial account email domains — listings owned by these accounts are
+// always seed data and safe to delete regardless of title variation.
+const DEMO_EMAIL_DOMAINS = [
+  "-demo.bareter.com",
+  "@luxuryhotels.ae",
+  "@techflow.ae",
+  "@maisonfatima.ae",
+  "@eventspro.ae",
+  "@gulfproperties.ae",
+  "@saffronkitchen.ae",
+  "@shuttercraft.ae",
+  "@elitemotors.ae",
+  "@designhaus.ae",
+  "@gulfyachts.ae",
+];
+
+const EDITORIAL_EMAILS = [
+  "editorial@bareter.com",
+  "editorial.cars@bareter.com",
+  "editorial.realestate@bareter.com",
+  "editorial.hospitality@bareter.com",
+  "editorial.services@bareter.com",
+];
+
 // ── Production cleanup ───────────────────────────────────────────────────────
-// Removes ONLY the known luxury/editorial seed listings by exact title.
-// Never touches user accounts or listings not on this list — real user
-// content is always preserved.
+// Two-pass wipe:
+//   Pass 1 — exact title match against ALL_LUXURY_SEED_TITLES (catches titles
+//             regardless of which account owns them).
+//   Pass 2 — ownership match: delete any listing owned by a known demo/editorial
+//             account (catches title variants we haven't enumerated yet).
+// Never touches real user accounts. Safe to re-run on every boot.
 export async function wipeSeedData() {
   try {
-    const deleted = await db
+    // Pass 1: wipe by exact title
+    const byTitle = await db
       .delete(listings)
       .where(inArray(listings.title, ALL_LUXURY_SEED_TITLES))
       .returning({ id: listings.id });
 
-    if (deleted.length > 0) {
-      console.log(`[wipeSeed] Removed ${deleted.length} luxury seed listings.`);
-    } else {
+    if (byTitle.length > 0) {
+      console.log(`[wipeSeed] Pass 1 — removed ${byTitle.length} luxury seed listings by title.`);
+    }
+
+    // Pass 2: wipe by demo/editorial user ownership
+    const allUsers = await db.select({ id: users.id, email: users.email }).from(users);
+    const seedUserIds = allUsers
+      .filter(u =>
+        EDITORIAL_EMAILS.includes(u.email) ||
+        DEMO_EMAIL_DOMAINS.some(domain => u.email.endsWith(domain))
+      )
+      .map(u => u.id);
+
+    let byOwner = 0;
+    if (seedUserIds.length > 0) {
+      const ownerDeleted = await db
+        .delete(listings)
+        .where(inArray(listings.userId, seedUserIds))
+        .returning({ id: listings.id });
+      byOwner = ownerDeleted.length;
+      if (byOwner > 0) {
+        console.log(`[wipeSeed] Pass 2 — removed ${byOwner} seed listings by owner account.`);
+      }
+    }
+
+    if (byTitle.length === 0 && byOwner === 0) {
       console.log("[wipeSeed] No seed listings found — already clean.");
     }
   } catch (err) {
