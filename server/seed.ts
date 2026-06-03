@@ -739,23 +739,61 @@ export async function seedDatabase() {
   console.log("Database seeding completed!");
 }
 
-// All seed/editorial user emails — listings from these accounts are wiped
-// on every boot and replaced with everyday relatable items.
+// Every luxury/editorial seed title ever used — wiped on every boot.
+// Title-based so it works even if listings were assigned to a random real user.
+const ALL_LUXURY_SEED_TITLES = [
+  // topUpTrendingListings v1 titles
+  "2023 Mercedes-Benz G63 AMG — Obsidian Black","Porsche 911 Carrera S — 2022, Guards Red",
+  "Range Rover Autobiography 2024","Palm Jumeirah Beachfront Villa — Direct Beach Access",
+  "Downtown Dubai Apartment — Burj Khalifa View","Wanted: Furnished Office (50 desks) in DIFC",
+  "Brand Identity & Web Design Package","End-to-End Event Management — Up to 200 Guests",
+  "Apple MacBook Pro M3 Max — 16\" (Bulk of 5)","DJI Inspire 3 Pro Cinema Drone Kit",
+  "10 Nights Presidential Suite — Marina Bay Hotel","Private Chef Catering — 12 Dinners for 20 Guests",
+  "Sunseeker 76 Yacht — 1-Week Charter","Azimut 60 Yacht — Day & Sunset Charters (10x)",
+  "Annual Premium Gym Membership (10 passes)","Wanted: Private Yoga Instructor (12 months)",
+  "Full Interior Design — 4-Bedroom Villa","Smart Home Automation Install — Whole Villa",
+  "Patek Philippe Nautilus 5711 — Box & Papers","Designer Couture Capsule — 20 Pieces",
+  // seedDatabase originals
+  "5 Nights Luxury Suite at Marina Bay Hotel","Corporate Event Space for 100 Guests",
+  "1-Year Enterprise SaaS License","Looking for Premium Office Space",
+  "Custom Designer Abaya Collection (10 pieces)","Professional Fashion Photography Package",
+  "Full Corporate Event Management Package","Catering Partner for Upcoming Events",
+  // launchSeed.ts editorial titles
+  "2023 Mercedes-AMG G63 — Trade for Property or Yacht Time",
+  "Porsche 911 Carrera S — Open to Multi-Item Barter",
+  "Range Rover Autobiography 2024 — Family SUV Barter",
+  "Wanted: Toyota Land Cruiser 300 Series for Fleet Use",
+  "Palm Jumeirah 4-Bedroom Villa — Open to Multi-Asset Barter",
+  "Downtown Dubai 2-Bed Apartment — Burj Khalifa View",
+  "Saadiyat Island Penthouse — Sea View, 3 Bedrooms",
+  "Premium Office Floor in DIFC — 1-Year Lease Tradeable",
+  "Sharjah Al Majaz 3-Bed Apartment — Long-Term Lease Trade",
+  "Wanted: Warehouse Space in Jebel Ali for 6 Months",
+  "Full Brand Identity & Website Design Package",
+  "Corporate Event Production for Up to 200 Guests",
+  "Luxury Brand Photography — 3-Day Production",
+  "Interior Design — Restaurant or Boutique Fit-Out",
+  "Wanted: Arabic + English Legal Translation, 200 Pages",
+  "1-Year Enterprise SaaS License — CRM + Workflow Suite",
+  "Bulk: 50× Apple MacBook Pro M3 (14-inch, 16GB/512GB)",
+  "AI Chatbot Implementation for Mid-Size Businesses",
+  "5 Nights in a Marina Bay Luxury Suite (Dubai)",
+  "Private Dining Experience for 12 — DIFC Restaurant",
+  "Corporate Catering Credit — 3 Events, ~250 Guests",
+  "Ballroom Venue for Wedding or Conference (Sharjah)",
+  "Sunseeker 86 Yacht — 7-Day Charter, Fully Crewed",
+  "Azimut 60 — 12-Month Fractional Yacht Share",
+  "Designer Abaya Capsule Collection — 10 Couture Pieces",
+  "Patek Philippe Nautilus 5711 — Trade for Property or Cars",
+];
+
+// All seed/editorial user emails (secondary cleanup if users exist)
 const SEED_USER_EMAILS = [
-  "sarah@luxuryhotels.ae",
-  "omar@techflow.ae",
-  "fatima@maisonfatima.ae",
-  "ahmed@eventspro.ae",
-  "layla@gulfproperties.ae",
-  "khalid@saffronkitchen.ae",
-  "noura@shuttercraft.ae",
-  "rashid@elitemotors.ae",
-  "mariam@designhaus.ae",
-  "hassan@gulfyachts.ae",
-  "editorial@bareter.com",
-  "editorial.cars@bareter.com",
-  "editorial.realestate@bareter.com",
-  "editorial.hospitality@bareter.com",
+  "sarah@luxuryhotels.ae","omar@techflow.ae","fatima@maisonfatima.ae",
+  "ahmed@eventspro.ae","layla@gulfproperties.ae","khalid@saffronkitchen.ae",
+  "noura@shuttercraft.ae","rashid@elitemotors.ae","mariam@designhaus.ae",
+  "hassan@gulfyachts.ae","editorial@bareter.com","editorial.cars@bareter.com",
+  "editorial.realestate@bareter.com","editorial.hospitality@bareter.com",
   "editorial.services@bareter.com",
 ];
 
@@ -767,8 +805,10 @@ export async function topUpTrendingListings() {
     const allUsers = await db.select().from(users);
     if (allUsers.length === 0) return;
 
-    // Delete ALL listings owned by seed/editorial accounts so luxury items
-    // are fully replaced by the everyday listings below.
+    // Delete luxury seed listings by title (catches listings even if assigned to a real user)
+    await db.delete(listings).where(inArray(listings.title, ALL_LUXURY_SEED_TITLES));
+
+    // Also delete by user ID for any seed accounts that exist
     const seedUserIds = allUsers
       .filter(u => SEED_USER_EMAILS.includes(u.email))
       .map(u => u.id);
