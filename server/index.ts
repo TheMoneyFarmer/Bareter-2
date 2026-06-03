@@ -4,7 +4,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase, backfillLocationFields, topUpTrendingListings, seedCreators, seedCollabListings } from "./seed";
+import { backfillLocationFields, wipeSeedData } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -110,23 +110,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Seed the database with sample data — development only.
-  // Production must never auto-populate fake users/listings.
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      await seedDatabase();
-      await topUpTrendingListings();
-    } catch (error) {
-      console.error("Failed to seed database:", error);
-    }
-  }
-
-  // Creator + collab seeds run in all environments — idempotent, skip if already present.
+  // Remove all fake seed/editorial data so only real users remain.
+  // Idempotent — safe to call on every boot (no-ops once seed accounts are gone).
   try {
-    await seedCreators();
-    await seedCollabListings();
+    await wipeSeedData();
   } catch (error) {
-    console.error("Failed to seed creators/collabs:", error);
+    console.error("Failed to wipe seed data:", error);
   }
 
   if (!process.env.DIDIT_WEBHOOK_SECRET) {
