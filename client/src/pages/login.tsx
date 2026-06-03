@@ -104,13 +104,13 @@ export function LoginPage() {
       const description =
         raw.includes("invalid credentials") || raw.includes("401") || raw.includes("password") || raw.includes("incorrect")
           ? "Incorrect email or password. Please double-check your details and try again."
-          : raw.includes("too many") || raw.includes("rate limit")
+          : raw.includes("too many") || raw.includes("rate limit") || raw.includes("429")
           ? "Too many sign-in attempts. Please wait a few minutes before trying again."
           : raw.includes("suspend") || raw.includes("banned")
           ? "Your account has been suspended. Please contact support at hello@bareter.com."
           : raw.includes("not found") || raw.includes("no account")
           ? "No account found with that email. Please check your email or sign up."
-          : "We couldn't sign you in right now. Please try again in a moment.";
+          : (error?.message || "Unknown error — please try again.");
       toast({
         title: "Sign-in unsuccessful",
         description,
