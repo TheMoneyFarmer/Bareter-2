@@ -752,6 +752,25 @@ export async function registerRoutes(
     res.json({ valid: true });
   });
 
+  // Dev-only: directly set a user's password without email verification.
+  // Disabled in production — returns 404 so it's not discoverable.
+  app.post("/api/auth/dev-set-password", async (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    try {
+      const { email, password } = req.body;
+      if (!email || !password || password.length < 8) {
+        return res.status(400).json({ message: "email and password (min 8 chars) required" });
+      }
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const hash = await bcrypt.hash(password, 10);
+      await storage.updateUser(user.id, { password: hash });
+      res.json({ message: "Password updated. You can now log in." });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed" });
+    }
+  });
+
   app.post("/api/auth/reset-password", resetPasswordLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;

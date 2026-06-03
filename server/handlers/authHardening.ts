@@ -37,7 +37,8 @@ const ipKey = (req: Request): string => `ip:${ipKeyGenerator(req.ip ?? "")}`;
 export function makeLoginRateLimiter(overrides: Partial<Options> = {}) {
   return rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 10,
+    // Higher limit in dev so repeated test logins don't get blocked
+    limit: process.env.NODE_ENV === "production" ? 10 : 100,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     keyGenerator: ipKey,
