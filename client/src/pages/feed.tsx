@@ -1101,13 +1101,6 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
   const { t } = useI18n();
   const guarded = (path: string) => () => { if (!gate()) return; navigate(path); };
 
-  const trendingCategories = [
-    { name: "Services & Skills", count: 42, color: "text-blue-600 dark:text-blue-400" },
-    { name: "Space & Office", count: 38, color: "text-emerald-600 dark:text-emerald-400" },
-    { name: "Food & Hospitality", count: 31, color: "text-orange-600 dark:text-orange-400" },
-    { name: "Assets & Vehicles", count: 27, color: "text-purple-600 dark:text-purple-400" },
-    { name: "Big Ticket", count: 15, color: "text-rose-600 dark:text-rose-400" },
-  ];
 
   const suggestedUsers = posts
     ?.reduce<PostWithUser[]>((acc, post) => {
@@ -1166,22 +1159,6 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
         </Card>
       )}
 
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-trending-title">{t("feed.trendingCategories")}</h3>
-          <div className="space-y-1">
-            {trendingCategories.map((cat) => (
-              <Link key={cat.name} href="/browse" data-testid={`sidebar-category-${cat.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
-                <Button variant="ghost" size="sm" className="w-full justify-between gap-2">
-                  <span className="text-sm font-medium">{cat.name}</span>
-                  <Badge variant="secondary" className="text-xs">{cat.count}</Badge>
-                </Button>
-              </Link>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {suggestedUsers.length > 0 && (
         <Card>
           <CardContent className="p-4">
@@ -1218,30 +1195,6 @@ function FeedSidebar({ posts }: { posts: PostWithUser[] | undefined }) {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-3" data-testid="sidebar-stats-title">{t("feed.platformStats")}</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="text-center p-2 rounded-md bg-muted/50">
-              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-trades">850+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.completedBarters")}</p>
-            </div>
-            <div className="text-center p-2 rounded-md bg-muted/50">
-              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-users">2,500+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.activeUsers")}</p>
-            </div>
-            <div className="text-center p-2 rounded-md bg-muted/50">
-              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-value">AED 12M+</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.dealValue")}</p>
-            </div>
-            <div className="text-center p-2 rounded-md bg-muted/50">
-              <span className="text-lg font-bold text-primary" data-testid="sidebar-stat-satisfaction">98%</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{t("feed.satisfaction")}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="px-1">
         <p className="text-[10px] text-muted-foreground leading-relaxed">
