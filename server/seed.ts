@@ -739,37 +739,24 @@ export async function seedDatabase() {
   console.log("Database seeding completed!");
 }
 
-// Old luxury seed titles to clean up from the database
-const LEGACY_SEED_TITLES = [
-  "2023 Mercedes-Benz G63 AMG — Obsidian Black",
-  "Porsche 911 Carrera S — 2022, Guards Red",
-  "Range Rover Autobiography 2024",
-  "Palm Jumeirah Beachfront Villa — Direct Beach Access",
-  "Downtown Dubai Apartment — Burj Khalifa View",
-  "Wanted: Furnished Office (50 desks) in DIFC",
-  "Brand Identity & Web Design Package",
-  "End-to-End Event Management — Up to 200 Guests",
-  "Apple MacBook Pro M3 Max — 16\" (Bulk of 5)",
-  "DJI Inspire 3 Pro Cinema Drone Kit",
-  "10 Nights Presidential Suite — Marina Bay Hotel",
-  "Private Chef Catering — 12 Dinners for 20 Guests",
-  "Sunseeker 76 Yacht — 1-Week Charter",
-  "Azimut 60 Yacht — Day & Sunset Charters (10x)",
-  "Annual Premium Gym Membership (10 passes)",
-  "Wanted: Private Yoga Instructor (12 months)",
-  "Full Interior Design — 4-Bedroom Villa",
-  "Smart Home Automation Install — Whole Villa",
-  "Patek Philippe Nautilus 5711 — Box & Papers",
-  "Designer Couture Capsule — 20 Pieces",
-  // also remove original seedDatabase luxury listings
-  "5 Nights Luxury Suite at Marina Bay Hotel",
-  "Corporate Event Space for 100 Guests",
-  "1-Year Enterprise SaaS License",
-  "Looking for Premium Office Space",
-  "Custom Designer Abaya Collection (10 pieces)",
-  "Professional Fashion Photography Package",
-  "Full Corporate Event Management Package",
-  "Catering Partner for Upcoming Events",
+// All seed/editorial user emails — listings from these accounts are wiped
+// on every boot and replaced with everyday relatable items.
+const SEED_USER_EMAILS = [
+  "sarah@luxuryhotels.ae",
+  "omar@techflow.ae",
+  "fatima@maisonfatima.ae",
+  "ahmed@eventspro.ae",
+  "layla@gulfproperties.ae",
+  "khalid@saffronkitchen.ae",
+  "noura@shuttercraft.ae",
+  "rashid@elitemotors.ae",
+  "mariam@designhaus.ae",
+  "hassan@gulfyachts.ae",
+  "editorial@bareter.com",
+  "editorial.cars@bareter.com",
+  "editorial.realestate@bareter.com",
+  "editorial.hospitality@bareter.com",
+  "editorial.services@bareter.com",
 ];
 
 // Idempotent top-up: adds everyday relatable listings covering all categories.
@@ -780,8 +767,14 @@ export async function topUpTrendingListings() {
     const allUsers = await db.select().from(users);
     if (allUsers.length === 0) return;
 
-    // Remove old luxury seed listings so they don't appear in the marketplace
-    await db.delete(listings).where(inArray(listings.title, LEGACY_SEED_TITLES));
+    // Delete ALL listings owned by seed/editorial accounts so luxury items
+    // are fully replaced by the everyday listings below.
+    const seedUserIds = allUsers
+      .filter(u => SEED_USER_EMAILS.includes(u.email))
+      .map(u => u.id);
+    if (seedUserIds.length > 0) {
+      await db.delete(listings).where(inArray(listings.userId, seedUserIds));
+    }
 
     const pickUser = (preferredEmails: string[]) => {
       for (const email of preferredEmails) {
