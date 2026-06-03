@@ -282,18 +282,16 @@ export async function registerRoutes(
       })(),
       resave: false,
       saveUninitialized: false,
-      rolling: true, // Reset maxAge on every response so active users stay logged in
       store: new PgSession({
         pool: pool as any,
         tableName: "session",
         createTableIfMissing: true,
-        pruneSessionInterval: 60 * 60, // Prune expired sessions every hour
       }),
       cookie: {
         secure: process.env.NODE_ENV === "production",
         httpOnly: true,
         sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (extended from 7)
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       },
     })
   );
