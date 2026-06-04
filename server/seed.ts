@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, listings, deals, ratings, posts, postLikes, postBookmarks, postComments, listingComments, wishlists, notifications, referrals, reviews } from "@shared/schema";
+import { users, listings, deals, ratings, posts, postLikes, postBookmarks, postComments, listingComments, wishlists, notifications, referrals, reviews, engagementEvents, listingLikes, quickInquiries, collabApplications, imageScans } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql, isNull, and, inArray, or } from "drizzle-orm";
 import type { CreatorProfile } from "@shared/schema";
@@ -1721,24 +1721,20 @@ const EDITORIAL_EMAILS = [
 
 // ── Production cleanup ───────────────────────────────────────────────────────
 // Two-pass wipe:
-//   Pass 1 — exact title match against ALL_LUXURY_SEED_TITLES (catches titles
-//             regardless of which account owns them).
-//   Pass 2 — ownership match: delete any listing owned by a known demo/editorial
-//             account (catches title variants we haven't enumerated yet).
+//   Pass 1 — exact title match against ALL_LUXURY_SEED_TITLES.
+//   Pass 2 — ownership match: any listing owned by a known demo/editorial account.
+// Before deleting listings, clears all FK-dependent child records so the
+// delete never fails with a constraint violation.
 // Never touches real user accounts. Safe to re-run on every boot.
 export async function wipeSeedData() {
   try {
-    // Pass 1: wipe by exact title
-    const byTitle = await db
-      .delete(listings)
-      .where(inArray(listings.title, ALL_LUXURY_SEED_TITLES))
-      .returning({ id: listings.id });
+    // Collect listing IDs to wipe — Pass 1 (by title)
+    const byTitleRows = await db
+      .select({ id: listings.id })
+      .from(listings)
+      .where(inArray(listings.title, ALL_LUXURY_SEED_TITLES));
 
-    if (byTitle.length > 0) {
-      console.log(`[wipeSeed] Pass 1 — removed ${byTitle.length} luxury seed listings by title.`);
-    }
-
-    // Pass 2: wipe by demo/editorial user ownership
+    // Collect listing IDs to wipe — Pass 2 (by seed owner email)
     const allUsers = await db.select({ id: users.id, email: users.email }).from(users);
     const seedUserIds = allUsers
       .filter(u =>
@@ -1747,21 +1743,44 @@ export async function wipeSeedData() {
       )
       .map(u => u.id);
 
-    let byOwner = 0;
-    if (seedUserIds.length > 0) {
-      const ownerDeleted = await db
-        .delete(listings)
-        .where(inArray(listings.userId, seedUserIds))
-        .returning({ id: listings.id });
-      byOwner = ownerDeleted.length;
-      if (byOwner > 0) {
-        console.log(`[wipeSeed] Pass 2 — removed ${byOwner} seed listings by owner account.`);
-      }
+    const byOwnerRows = seedUserIds.length > 0
+      ? await db.select({ id: listings.id }).from(listings).where(inArray(listings.userId, seedUserIds))
+      : [];
+
+    const allIds = [...new Set([...byTitleRows, ...byOwnerRows].map(r => r.id))];
+
+    if (allIds.length === 0) {
+      console.log("[wipeSeed] No seed listings found — already clean.");
+      return;
     }
 
-    if (byTitle.length === 0 && byOwner === 0) {
-      console.log("[wipeSeed] No seed listings found — already clean.");
-    }
+    // Clear all FK-dependent child records before touching listings.
+    // Deletes: rows that only exist because of the seed listing.
+    // Nulls:   nullable FK columns on tables where the parent row should survive
+    //          (e.g. a deal between two real users shouldn't be deleted just
+    //          because one side's listing is being wiped).
+    await db.delete(engagementEvents).where(inArray(engagementEvents.listingId, allIds));
+    await db.delete(listingComments).where(inArray(listingComments.listingId, allIds));
+    await db.delete(listingLikes).where(inArray(listingLikes.listingId, allIds));
+    await db.delete(wishlists).where(inArray(wishlists.listingId, allIds));
+    await db.delete(quickInquiries).where(inArray(quickInquiries.listingId, allIds));
+    await db.delete(reviews).where(inArray(reviews.listingId, allIds));
+    await db.delete(collabApplications).where(inArray(collabApplications.listingId, allIds));
+    await db.delete(imageScans).where(inArray(imageScans.listingId, allIds));
+    await db.delete(notifications).where(inArray(notifications.relatedListingId, allIds));
+    // Null out listing references on deals rather than deleting the deals
+    await db.update(deals).set({ seekerListingId: null }).where(inArray(deals.seekerListingId, allIds));
+    await db.update(deals).set({ providerListingId: null }).where(inArray(deals.providerListingId, allIds));
+
+    // Now safe to delete the listings themselves
+    const deleted = await db
+      .delete(listings)
+      .where(inArray(listings.id, allIds))
+      .returning({ id: listings.id });
+
+    const byTitle = byTitleRows.length;
+    const byOwner = byOwnerRows.length;
+    console.log(`[wipeSeed] Removed ${deleted.length} seed listings (${byTitle} by title, ${byOwner} by owner).`);
   } catch (err) {
     console.error("[wipeSeed] error:", err);
   }
