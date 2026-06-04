@@ -33,6 +33,38 @@ import {
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 
+// Extracted so it can be rendered without nesting inside a ternary
+function NavLinks({ user }: { user: boolean }) {
+  const px = user ? "px-2.5" : "px-3";
+  const base = `${px} py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap`;
+  const listHref = user ? "/create-listing" : "/register";
+  // Logged-in: always visible (no isMarketplace hide). Logged-out: centred absolute, hidden on marketplace.
+  const navClass = user
+    ? "hidden lg:flex items-center flex-shrink-0"
+    : "hidden lg:flex items-center absolute left-1/2 -translate-x-1/2";
+  return (
+    <nav className={navClass}>
+      <Link href="/feed"><button type="button" className={base}>Discover</button></Link>
+      <Link href="/browse"><button type="button" className={base}>Browse Listings</button></Link>
+      <Link href={listHref}><button type="button" className={base}>List a Barter</button></Link>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={`flex items-center gap-1 ${base}`}>
+            Resources <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52 p-1">
+          <Link href="/blog"><DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5"><BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>Blog</span></DropdownMenuItem></Link>
+          <Link href="/help"><DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5"><HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>Help Center</span></DropdownMenuItem></Link>
+          <Link href="/how-it-works"><DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5"><Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>How it works</span></DropdownMenuItem></Link>
+          <DropdownMenuSeparator />
+          <Link href="/#faq"><DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5"><MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>FAQs</span></DropdownMenuItem></Link>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </nav>
+  );
+}
+
 export function Header() {
   const { user, logout } = useAuth();
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
@@ -216,67 +248,19 @@ export function Header() {
             <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
-          {/* ── Centre: nav links + search bar always visible on desktop ── */}
-          <div className="hidden lg:flex flex-1 items-center gap-2 mx-3 min-w-0">
+          {/* ── Centre nav — always visible for logged-in users; swaps with search for logged-out ── */}
+          <NavLinks user={!!user} />
 
-            {/* Nav links */}
-            <nav className="flex items-center flex-shrink-0">
-              <Link href="/feed">
-                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                  Discover
-                </button>
-              </Link>
-              <Link href="/browse">
-                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                  Browse Listings
-                </button>
-              </Link>
-              <Link href={user ? "/create-listing" : "/register"}>
-                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                  List a Barter
-                </button>
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="flex items-center gap-1 px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                    Resources <ChevronDown className="h-3.5 w-3.5 text-white/60" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52 p-1">
-                  <Link href="/blog">
-                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                      <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span>Blog</span>
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/help">
-                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                      <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span>Help Center</span>
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/how-it-works">
-                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                      <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span>How it works</span>
-                    </DropdownMenuItem>
-                  </Link>
-                  <DropdownMenuSeparator />
-                  <Link href="/#faq">
-                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                      <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span>FAQs</span>
-                    </DropdownMenuItem>
-                  </Link>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </nav>
-
-            {/* Divider */}
-            <div className="w-px h-5 bg-white/20 flex-shrink-0 mx-1" />
-
-            {/* Search bar — compact, fills remaining space */}
-            <div ref={searchRef} className="flex-1 max-w-[240px] relative">
+          {/* ── Search bar — logged-in: compact beside nav; logged-out: full-width on marketplace pages ── */}
+          <div
+            ref={searchRef}
+            className={[
+              "relative hidden sm:block",
+              user
+                ? "hidden lg:block flex-none w-52"
+                : `flex-1 max-w-xl mx-auto ${!isMarketplace ? "invisible pointer-events-none" : ""}`,
+            ].join(" ")}
+          >
             <form onSubmit={handleSearch} className="flex items-center h-9 bg-white/15 hover:bg-white/20 focus-within:bg-white rounded-lg transition-colors overflow-hidden border border-white/20 focus-within:border-transparent focus-within:shadow-lg">
               <Search className="h-4 w-4 text-white/70 flex-shrink-0 ms-3 focus-within:text-bareter-muted" />
               <input
@@ -289,24 +273,19 @@ export function Header() {
                 autoComplete="off"
               />
               {searchQuery && (
-                <button type="button" onClick={() => { setSearchQuery(""); setSearchFocused(false); }}
-                  className="px-2 text-white/60 hover:text-white flex-shrink-0">
+                <button type="button" onClick={() => { setSearchQuery(""); setSearchFocused(false); }} className="px-2 text-white/60 hover:text-white flex-shrink-0">
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </form>
 
-            {/* Search dropdown */}
             {showSearchDropdown && (
               <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
-                {/* Search history (when no query) */}
                 {searchQuery.trim().length < 2 && searchHistory?.history && searchHistory.history.length > 0 && (
                   <>
                     <div className="flex items-center justify-between px-4 pt-3 pb-1">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Recent searches</p>
-                      <Link href="/my-searches" className="text-[10px] font-semibold text-bareter-teal hover:underline">
-                        View all
-                      </Link>
+                      <Link href="/my-searches" className="text-[10px] font-semibold text-bareter-teal hover:underline">View all</Link>
                     </div>
                     {searchHistory.history.slice(0, 5).map((item) => (
                       <button key={item.id} type="button"
@@ -319,8 +298,6 @@ export function Header() {
                     ))}
                   </>
                 )}
-
-                {/* Listing suggestions */}
                 {searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0 && (
                   <>
                     <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
@@ -339,26 +316,18 @@ export function Header() {
                     ))}
                     <div className="border-t border-gray-100 px-4 py-3">
                       <button type="button" className="w-full text-sm font-semibold text-bareter-teal hover:underline text-center"
-                        onClick={() => { setSearchFocused(false); handleSearch({ preventDefault: () => {} } as React.FormEvent); }}>
-                        Search all results for "{searchQuery}" →
+                        onClick={() => { setSearchFocused(false); navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`); }}>
+                        Search all results for &ldquo;{searchQuery}&rdquo; →
                       </button>
                     </div>
                   </>
                 )}
               </div>
             )}
-            </div>{/* end search bar */}
-          </div>{/* end centre flex */}
+          </div>
 
           {/* ── Right section ── */}
           <div className="flex items-center gap-1 flex-shrink-0">
-
-            {/* Language toggle */}
-            <button type="button" onClick={toggleLanguage}
-              className="hidden sm:inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label={language === "en" ? t("nav.switchToArabic") : t("nav.switchToEnglish")}>
-              <Languages className="h-4 w-4" />
-            </button>
 
             {user ? (
               <>
@@ -672,12 +641,7 @@ export function Header() {
                         </Link>
                       )}
                       <div className="border-t mx-4 my-2" />
-                      <div className="flex px-3 gap-2">
-                        <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={toggleLanguage}>
-                          <Languages className="h-4 w-4" />
-                          {language === "en" ? "العربية" : "English"}
-                        </Button>
-                      </div>
+                      {/* Language toggle — hidden until multi-language release */}
                       <div className="border-t mx-4 my-2" />
                       <button type="button" onClick={logout}
                         className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-red-50 transition-colors text-destructive text-start"
