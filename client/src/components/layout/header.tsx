@@ -216,61 +216,67 @@ export function Header() {
             <img src="/logo-full-white.png" alt={t("app.name") || "Bareter"} className="h-8 sm:h-9 w-auto" />
           </Link>
 
-          {/* ── Centre nav — Discover, Browse, List a Barter, Resources (hidden on marketplace pages where search takes over) ── */}
-          <nav className={`hidden lg:flex items-center absolute left-1/2 -translate-x-1/2 ${isMarketplace ? "invisible pointer-events-none" : ""}`}>
-            <Link href="/feed">
-              <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                Discover
-              </button>
-            </Link>
-            <Link href="/browse">
-              <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                Browse Listings
-              </button>
-            </Link>
-            <Link href={user ? "/create-listing" : "/register"}>
-              <button type="button" className="px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                List a Barter
-              </button>
-            </Link>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button type="button" className="flex items-center gap-1 px-3 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
-                  Resources <ChevronDown className="h-3.5 w-3.5 text-white/60" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52 p-1">
-                <Link href="/blog">
-                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                    <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span>Blog</span>
-                  </DropdownMenuItem>
-                </Link>
-                <Link href="/help">
-                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                    <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span>Help Center</span>
-                  </DropdownMenuItem>
-                </Link>
-                <Link href="/how-it-works">
-                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                    <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span>How it works</span>
-                  </DropdownMenuItem>
-                </Link>
-                <DropdownMenuSeparator />
-                <Link href="/#faq">
-                  <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
-                    <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span>FAQs</span>
-                  </DropdownMenuItem>
-                </Link>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </nav>
+          {/* ── Centre: nav links + search bar always visible on desktop ── */}
+          <div className="hidden lg:flex flex-1 items-center gap-2 mx-3 min-w-0">
 
-          {/* ── Search bar (center, flex-1) — marketplace pages only ── */}
-          <div ref={searchRef} className={`flex-1 max-w-xl mx-auto relative hidden sm:block ${!isMarketplace ? "invisible pointer-events-none" : ""}`}>
+            {/* Nav links */}
+            <nav className="flex items-center flex-shrink-0">
+              <Link href="/feed">
+                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                  Discover
+                </button>
+              </Link>
+              <Link href="/browse">
+                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                  Browse Listings
+                </button>
+              </Link>
+              <Link href={user ? "/create-listing" : "/register"}>
+                <button type="button" className="px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                  List a Barter
+                </button>
+              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex items-center gap-1 px-2.5 py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap">
+                    Resources <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52 p-1">
+                  <Link href="/blog">
+                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span>Blog</span>
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/help">
+                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span>Help Center</span>
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/how-it-works">
+                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span>How it works</span>
+                    </DropdownMenuItem>
+                  </Link>
+                  <DropdownMenuSeparator />
+                  <Link href="/#faq">
+                    <DropdownMenuItem className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span>FAQs</span>
+                    </DropdownMenuItem>
+                  </Link>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </nav>
+
+            {/* Divider */}
+            <div className="w-px h-5 bg-white/20 flex-shrink-0 mx-1" />
+
+            {/* Search bar — compact, fills remaining space */}
+            <div ref={searchRef} className="flex-1 max-w-[240px] relative">
             <form onSubmit={handleSearch} className="flex items-center h-9 bg-white/15 hover:bg-white/20 focus-within:bg-white rounded-lg transition-colors overflow-hidden border border-white/20 focus-within:border-transparent focus-within:shadow-lg">
               <Search className="h-4 w-4 text-white/70 flex-shrink-0 ms-3 focus-within:text-bareter-muted" />
               <input
@@ -341,10 +347,11 @@ export function Header() {
                 )}
               </div>
             )}
-          </div>
+            </div>{/* end search bar */}
+          </div>{/* end centre flex */}
 
           {/* ── Right section ── */}
-          <div className="ms-auto flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-shrink-0">
 
             {/* Language toggle */}
             <button type="button" onClick={toggleLanguage}
