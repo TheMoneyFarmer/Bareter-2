@@ -531,6 +531,11 @@ export function LandingPage() {
   const [showSugg, setShowSugg] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  // Redirect logged-in users away from the marketing landing page
+  useEffect(() => {
+    if (user) navigate("/feed");
+  }, [user, navigate]);
+
   useEffect(() => {
     const h = (e: MouseEvent) => { if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSugg(false); };
     document.addEventListener("mousedown", h);
