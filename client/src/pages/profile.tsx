@@ -657,47 +657,46 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Profile section selector — scrollable pill tabs */}
-      {(() => {
-        const ALLOWED_TABS = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"] as const;
-        type ProfileTab = typeof ALLOWED_TABS[number];
-        const initialTab: ProfileTab = (() => {
-          if (typeof window === "undefined") return "profile";
-          const p = new URLSearchParams(window.location.search).get("tab") as ProfileTab;
-          return ALLOWED_TABS.includes(p) ? p : "profile";
-        })();
-        const TAB_LABELS: Record<ProfileTab, string> = {
-          profile:      "Profile",
-          offers:       "My Offers",
-          needs:        "My Needs",
-          deals:        "Deals",
-          endorsements: "Endorsements",
-          portfolio:    "Portfolio",
-          drafts:       "Drafts",
-          verification: "Verification",
-        };
-
-        return (
-          <Tabs defaultValue={initialTab} className="space-y-6">
-            {/* Scrollable pill tab bar — same pattern as Discover categories */}
-            <TabsList className="flex w-full gap-1.5 overflow-x-auto bg-transparent p-0 h-auto justify-start scrollbar-hide border-b pb-2">
-              {(Object.entries(TAB_LABELS) as [ProfileTab, string][]).map(([val, label]) => (
-                <TabsTrigger
-                  key={val}
-                  value={val}
-                  data-radix-tab={val}
-                  data-testid={`tab-${val}`}
-                  onClick={() => {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("tab", val);
-                    window.history.replaceState({}, "", url.toString());
-                  }}
-                  className="flex-shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border border-border text-muted-foreground bg-background data-[state=active]:bg-bareter-teal data-[state=active]:text-white data-[state=active]:border-bareter-teal hover:border-bareter-teal hover:text-bareter-teal transition-colors"
-                >
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+      <Tabs defaultValue={(() => {
+        if (typeof window === "undefined") return "profile";
+        const p = new URLSearchParams(window.location.search).get("tab");
+        const allowed = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"];
+        return p && allowed.includes(p) ? p : "profile";
+      })()} className="space-y-6">
+        <TabsList className="flex w-full overflow-x-auto">
+          <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
+            <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabProfile")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="offers" className="flex-1 min-w-0" data-testid="tab-offers">
+            <Package className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabOffers")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
+            <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabNeeds")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="deals" className="flex-1 min-w-0" data-testid="tab-deals">
+            <Handshake className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">Deals</span>
+          </TabsTrigger>
+          <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
+            <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabEndorsements")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
+            <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabPortfolio")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="drafts" className="flex-1 min-w-0" data-testid="tab-drafts">
+            <FileText className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabDrafts")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
+            <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
+            <span className="truncate">{t("profile.tabVerify")}</span>
+          </TabsTrigger>
+        </TabsList>
 
         {/* Task #248 — Drafts tab: surface autosaved listings so users
             can pick up where they left off without going back to the
@@ -1107,9 +1106,7 @@ export function ProfilePage() {
         <TabsContent value="verification">
           <VerificationSection user={user} />
         </TabsContent>
-          </Tabs>
-        );
-      })()}
+      </Tabs>
     </div>
   );
 }
