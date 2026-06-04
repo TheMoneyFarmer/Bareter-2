@@ -26,6 +26,14 @@ function GoogleIcon() {
   );
 }
 
+function AppleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" fill="currentColor">
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.32.07 2.23.73 3 .78 1.17-.24 2.3-.96 3.55-.84 1.5.15 2.63.73 3.36 1.86-3.03 1.87-2.28 5.61.41 6.97-.61 1.55-1.38 3.08-2.32 4.11zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+    </svg>
+  );
+}
+
 // Detect common in-app browsers where cookies are isolated from the main browser.
 function detectInAppBrowser(): { detected: boolean; name: string } {
   const ua = (typeof navigator !== "undefined" ? navigator.userAgent : "") || "";
@@ -53,6 +61,8 @@ export function LoginPage() {
   const passwordResetEnabled = config?.passwordResetEnabled ?? false;
   const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
   const googleEnabled = googleStatus?.enabled ?? false;
+  const { data: appleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/apple/status"], staleTime: Infinity });
+  const appleEnabled = appleStatus?.enabled ?? false;
   const inApp = detectInAppBrowser();
 
   // Read query params once (wouter's useLocation only exposes the path).
@@ -186,23 +196,38 @@ export function LoginPage() {
               </div>
             )}
 
-            {/* Google OAuth */}
-            {googleEnabled && (
+            {/* Social OAuth buttons */}
+            {(googleEnabled || appleEnabled) && (
               <>
                 {params.get("google_error") && (
                   <div className="mb-3 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                    Google sign-in failed — please try again or use email below.
+                    Social sign-in failed — please try again or use email below.
                   </div>
                 )}
-                <a
-                  href={`/auth/google${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
-                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
-                  data-testid="button-google-login"
-                >
-                  <GoogleIcon />
-                  Continue with Google
-                </a>
+
+                <div className={`grid gap-3 ${googleEnabled && appleEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {googleEnabled && (
+                    <a
+                      href={`/auth/google${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+                      className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+                      data-testid="button-google-login"
+                    >
+                      <GoogleIcon />
+                      Google
+                    </a>
+                  )}
+                  {appleEnabled && (
+                    <a
+                      href={`/auth/apple${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+                      className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
+                      data-testid="button-apple-login"
+                    >
+                      <AppleIcon />
+                      Apple
+                    </a>
+                  )}
+                </div>
 
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">

@@ -554,6 +554,7 @@ export const users = pgTable("users", {
 
   // OAuth provider IDs
   googleId: text("google_id").unique(),
+  appleId: text("apple_id").unique(),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -562,6 +563,7 @@ export const users = pgTable("users", {
   unsubscribeTokenIdx: index("users_unsubscribe_token_idx").on(table.unsubscribeToken),
   phoneIdx: index("users_phone_idx").on(table.phone),
   googleIdIdx: index("users_google_id_idx").on(table.googleId),
+  appleIdIdx: index("users_apple_id_idx").on(table.appleId),
 }));
 
 // Waitlist entries (pre-launch email collection)

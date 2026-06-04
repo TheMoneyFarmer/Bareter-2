@@ -402,6 +402,117 @@ export async function registerRoutes(
     res.json({ enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) });
   });
 
+  // ── Apple Sign In ────────────────────────────────────────────────────────────
+  // Requires 4 env vars — see setup checklist below.
+  // APPLE_CLIENT_ID     = your Services ID (e.g. com.bareter.webapp)
+  // APPLE_TEAM_ID       = your 10-char Apple Developer Team ID
+  // APPLE_KEY_ID        = the key ID from the .p8 private key you downloaded
+  // APPLE_PRIVATE_KEY   = full contents of the .p8 file (newlines as \n)
+  const APPLE_CLIENT_ID  = process.env.APPLE_CLIENT_ID;
+  const APPLE_TEAM_ID    = process.env.APPLE_TEAM_ID;
+  const APPLE_KEY_ID     = process.env.APPLE_KEY_ID;
+  const APPLE_PRIVATE_KEY = process.env.APPLE_PRIVATE_KEY;
+  const appleConfigured  = !!(APPLE_CLIENT_ID && APPLE_TEAM_ID && APPLE_KEY_ID && APPLE_PRIVATE_KEY);
+
+  app.get("/api/auth/apple/status", (_req, res) => {
+    res.json({ enabled: appleConfigured });
+  });
+
+  if (appleConfigured) {
+    const appleSignin = await import("apple-signin-auth");
+    const jwt         = await import("jsonwebtoken");
+    const baseUrl     = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+
+    // Build a short-lived client_secret JWT signed with the Apple private key
+    function makeAppleClientSecret(): string {
+      const privateKey = (APPLE_PRIVATE_KEY as string).replace(/\\n/g, "\n");
+      const now = Math.floor(Date.now() / 1000);
+      return (jwt as any).default.sign(
+        { iss: APPLE_TEAM_ID, iat: now, exp: now + 180, aud: "https://appleid.apple.com", sub: APPLE_CLIENT_ID },
+        privateKey,
+        { algorithm: "ES256", keyid: APPLE_KEY_ID }
+      );
+    }
+
+    // Step 1 — redirect user to Apple's auth page
+    app.get("/auth/apple", (req, res) => {
+      const redirect = (req.query.redirect as string) || "/browse";
+      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      const params = new URLSearchParams({
+        client_id:     APPLE_CLIENT_ID as string,
+        redirect_uri:  `${baseUrl}/auth/apple/callback`,
+        response_type: "code id_token",
+        response_mode: "form_post",
+        scope:         "name email",
+        state:         crypto.randomBytes(8).toString("hex"),
+      });
+      res.redirect(`https://appleid.apple.com/auth/authorize?${params}`);
+    });
+
+    // Step 2 — Apple POSTs back with code + id_token
+    app.post("/auth/apple/callback", async (req: any, res) => {
+      try {
+        const { code, id_token: idToken, user: userJson } = req.body as Record<string, string>;
+        if (!code || !idToken) return res.redirect("/login?apple_error=1");
+
+        // Verify the identity token with Apple's public keys
+        const applePayload = await appleSignin.default.verifyIdToken(idToken, {
+          audience: APPLE_CLIENT_ID,
+          ignoreExpiration: false,
+        });
+
+        const appleId = applePayload.sub;
+        const email   = (applePayload.email as string | undefined)?.toLowerCase().trim();
+
+        // Apple only sends name on the very first sign-in
+        let fullName = "Bareter Member";
+        if (userJson) {
+          try {
+            const parsed = JSON.parse(userJson) as { name?: { firstName?: string; lastName?: string } };
+            const first  = parsed.name?.firstName || "";
+            const last   = parsed.name?.lastName  || "";
+            if (first || last) fullName = `${first} ${last}`.trim();
+          } catch { /* ignore */ }
+        }
+
+        // 1. Existing user matched by appleId
+        let user = await storage.getUserByAppleId?.(appleId);
+        if (!user && email) {
+          // 2. Existing user with same email → link Apple ID
+          user = await storage.getUserByEmail(email);
+          if (user) await storage.updateUser(user.id, { appleId } as any);
+        }
+        if (!user) {
+          // 3. Brand new user
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email: email || `apple_${appleId}@privaterelay.appleid.com`,
+            password: randomPw,
+            fullName,
+            appleId,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+        }
+
+        req.session.userId = user.id;
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err: any) => (err ? reject(err) : resolve()))
+        );
+
+        const dest = (req.session as any).oauthRedirect || "/browse";
+        delete (req.session as any).oauthRedirect;
+        res.redirect(dest);
+      } catch (err) {
+        console.error("[Apple OAuth] callback error:", err);
+        res.redirect("/login?apple_error=1");
+      }
+    });
+  } else {
+    app.get("/auth/apple", (_req, res) => res.redirect("/login?apple_error=not_configured"));
+    app.post("/auth/apple/callback", (_req, res) => res.redirect("/login?apple_error=not_configured"));
+  }
+
   // ── Maintenance mode middleware ──────────────────────────────────────
   let maintenanceCache: { value: boolean; at: number } = { value: false, at: 0 };
   const MAINTENANCE_TTL = 5_000;

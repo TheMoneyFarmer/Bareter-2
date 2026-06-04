@@ -64,6 +64,13 @@
       "when": 1780399326338,
       "tag": "0008_contract_signing_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780562745349,
+      "tag": "0009_add_apple_id",
+      "breakpoints": true
     }
   ]
 }

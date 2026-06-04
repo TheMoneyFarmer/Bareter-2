@@ -70,6 +70,7 @@
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.1",
     "@uppy/react": "^5.2.0",
+    "apple-signin-auth": "^2.0.0",
     "arabic-persian-reshaper": "^1.0.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",

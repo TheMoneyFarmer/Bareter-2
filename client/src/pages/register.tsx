@@ -49,6 +49,14 @@ function GoogleSignInIcon() {
   );
 }
 
+function AppleSignInIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" fill="currentColor">
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.32.07 2.23.73 3 .78 1.17-.24 2.3-.96 3.55-.84 1.5.15 2.63.73 3.36 1.86-3.03 1.87-2.28 5.61.41 6.97-.61 1.55-1.38 3.08-2.32 4.11zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+    </svg>
+  );
+}
+
 const extendedRegisterSchema = registerSchema.extend({
   confirmPassword: z.string(),
   acceptTerms: z.boolean().refine((val) => val === true, {
@@ -141,6 +149,8 @@ export function RegisterPage() {
   }, [waitlistMode.enabled, user, inviteCode, openWaitlist, navigate]);
   const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
   const googleEnabled = googleStatus?.enabled ?? false;
+  const { data: appleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/apple/status"], staleTime: Infinity });
+  const appleEnabled = appleStatus?.enabled ?? false;
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
@@ -350,17 +360,31 @@ export function RegisterPage() {
       <CardContent className="space-y-4">
         {renderStepIndicator()}
 
-        {/* Google OAuth */}
-        {googleEnabled && (
+        {/* Social OAuth */}
+        {(googleEnabled || appleEnabled) && (
           <>
-            <a
-              href="/auth/google"
-              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
-              data-testid="button-google-register"
-            >
-              <GoogleSignInIcon />
-              Continue with Google
-            </a>
+            <div className={`grid gap-3 ${googleEnabled && appleEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+              {googleEnabled && (
+                <a
+                  href="/auth/google"
+                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+                  data-testid="button-google-register"
+                >
+                  <GoogleSignInIcon />
+                  Google
+                </a>
+              )}
+              {appleEnabled && (
+                <a
+                  href="/auth/apple"
+                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
+                  data-testid="button-apple-register"
+                >
+                  <AppleSignInIcon />
+                  Apple
+                </a>
+              )}
+            </div>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200 dark:border-border" />
