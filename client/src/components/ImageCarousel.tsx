@@ -149,7 +149,9 @@ export function ImageCarousel({
   overlays,
   onFirstLoad,
 }: ImageCarouselProps) {
-  const safeImages = images && images.length > 0 ? images : [];
+  const [failedSrcs, setFailedSrcs] = useState<Set<string>>(new Set());
+  const handleError = (src: string) => setFailedSrcs(prev => new Set(prev).add(src));
+  const safeImages = (images && images.length > 0 ? images : []).filter(src => !failedSrcs.has(src));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -218,6 +220,7 @@ export function ImageCarousel({
                   loading={i === 0 ? "eager" : "lazy"}
                   className="w-full h-full object-cover"
                   onLoad={i === 0 ? onFirstLoad : undefined}
+                  onError={() => handleError(src)}
                   draggable={false}
                 />
               </div>

@@ -70,6 +70,7 @@ COMPANY_OS_MONTHLY_BUDGET_AED = "400"
 USD_TO_AED_RATE = "3.6725"
 BOOTSTRAP_ADMIN_EMAIL = "thandolwenkosimceeyah@gmail.com"
 ADMIN_EMAIL_ALLOWLIST = "thandolwenkosimceeyah@gmail.com,thando@bareter.com"
+PRIVATE_OBJECT_DIR = "replit-objstore-7e5628f2-57c3-4e06-a847-99cef1d8fb27/.private"
 
 [userenv.production]
 PUBLIC_APP_URL = "https://bareter.com "
