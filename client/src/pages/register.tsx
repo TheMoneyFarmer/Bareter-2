@@ -403,12 +403,27 @@ export function RegisterPage() {
             </div>
           </button>
 
-          <button
-            type="button"
-            onClick={() => { setSignupType("creator"); setStep(2); }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "creator" ? "border-primary bg-primary/5" : "border-border"}`}
+          <div
+            className="relative flex flex-col items-center gap-3 rounded-md border border-border p-5 text-center overflow-hidden cursor-not-allowed opacity-60"
             data-testid="card-signup-creator"
           >
+            {/* diagonal "Coming Soon" ribbon */}
+            <div className="pointer-events-none absolute inset-0">
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: "repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(100,116,139,0.07) 18px, rgba(100,116,139,0.07) 20px)",
+                }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span
+                  className="text-[11px] font-bold tracking-widest uppercase text-slate-400 border border-slate-300 px-2 py-0.5 rounded"
+                  style={{ transform: "rotate(-25deg)", whiteSpace: "nowrap" }}
+                >
+                  Coming Soon
+                </span>
+              </div>
+            </div>
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
               <Camera className="h-5 w-5 text-primary" />
             </div>
@@ -416,7 +431,7 @@ export function RegisterPage() {
               <p className="font-semibold text-sm">Creator</p>
               <p className="text-xs text-muted-foreground mt-1">Influencers & content creators</p>
             </div>
-          </button>
+          </div>
         </div>
 
         <div className="mt-6 text-center text-sm">
