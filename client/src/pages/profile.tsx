@@ -657,7 +657,7 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Profile section selector — clean dropdown, no icons */}
+      {/* Profile section selector — scrollable pill tabs */}
       {(() => {
         const ALLOWED_TABS = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"] as const;
         type ProfileTab = typeof ALLOWED_TABS[number];
@@ -679,33 +679,23 @@ export function ProfilePage() {
 
         return (
           <Tabs defaultValue={initialTab} className="space-y-6">
-            {/* Dropdown nav — no icons */}
-            <div className="flex items-center justify-between gap-3">
-              <Select
-                defaultValue={initialTab}
-                onValueChange={(val) => {
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("tab", val);
-                  window.history.replaceState({}, "", url.toString());
-                  // Programmatically click the hidden trigger so Radix Tabs syncs
-                  document.querySelector<HTMLButtonElement>(`[data-radix-tab="${val}"]`)?.click();
-                }}
-              >
-                <SelectTrigger className="w-56 font-medium" data-testid="profile-section-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.entries(TAB_LABELS) as [ProfileTab, string][]).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Hidden tab triggers so Radix Tabs tracks the active panel */}
-            <TabsList className="sr-only" aria-hidden="true">
-              {(Object.keys(TAB_LABELS) as ProfileTab[]).map((val) => (
-                <TabsTrigger key={val} value={val} data-radix-tab={val} data-testid={`tab-${val}`} />
+            {/* Scrollable pill tab bar — same pattern as Discover categories */}
+            <TabsList className="flex w-full gap-1.5 overflow-x-auto bg-transparent p-0 h-auto justify-start scrollbar-hide border-b pb-2">
+              {(Object.entries(TAB_LABELS) as [ProfileTab, string][]).map(([val, label]) => (
+                <TabsTrigger
+                  key={val}
+                  value={val}
+                  data-radix-tab={val}
+                  data-testid={`tab-${val}`}
+                  onClick={() => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", val);
+                    window.history.replaceState({}, "", url.toString());
+                  }}
+                  className="flex-shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border border-border text-muted-foreground bg-background data-[state=active]:bg-bareter-teal data-[state=active]:text-white data-[state=active]:border-bareter-teal hover:border-bareter-teal hover:text-bareter-teal transition-colors"
+                >
+                  {label}
+                </TabsTrigger>
               ))}
             </TabsList>
 
