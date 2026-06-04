@@ -2542,7 +2542,7 @@ export function AdminPage() {
           </Card>
 
           <SeedDemoListingsCard />
-          <WipeSeedDataCard />
+          <LaunchCleanupCard />
         </TabsContent>
 
         <TabsContent value="admins" className="space-y-4">
@@ -4819,50 +4819,104 @@ function SeedDemoListingsCard() {
   );
 }
 
-function WipeSeedDataCard() {
+function LaunchCleanupCard() {
   const { toast } = useToast();
+  const [confirmPurge, setConfirmPurge] = useState(false);
+
   const wipeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/wipe-seed-data");
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "Wipe complete", description: data.message });
+      toast({ title: "Listings wiped", description: data.message });
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
     },
-    onError: (err: Error) => {
-      toast({ title: "Wipe failed", description: err.message, variant: "destructive" });
+    onError: (err: Error) => toast({ title: "Wipe failed", description: err.message, variant: "destructive" }),
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/purge-seed-users");
+      return res.json();
     },
+    onSuccess: (data) => {
+      setConfirmPurge(false);
+      toast({ title: "Launch cleanup complete", description: `Removed ${data.deleted} seed account(s) and all their data. ${data.kept} real user(s) kept.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+    },
+    onError: (err: Error) => toast({ title: "Purge failed", description: err.message, variant: "destructive" }),
   });
 
   return (
-    <Card className="border-red-200">
+    <Card className="border-red-200 dark:border-red-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-red-700">
+        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
           <Trash2 className="h-5 w-5" />
-          Wipe Seed / Editorial Listings
+          Launch Cleanup — Remove All Seed Data
         </CardTitle>
         <CardDescription>
-          Immediately deletes all fake seed, editorial, and demo listings from the database.
-          Two-pass: removes by known titles first, then by demo/editorial account ownership.
-          Safe to run at any time — never touches real user listings or accounts.
+          Permanently removes all fake seed/demo accounts and every record they own (listings, deals, posts, messages, ratings). Real users and their data are never touched.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button
-          onClick={() => wipeMutation.mutate()}
-          disabled={wipeMutation.isPending}
-          variant="destructive"
-          size="sm"
-          className="gap-2"
-        >
-          <Trash2 className="h-4 w-4" />
-          {wipeMutation.isPending ? "Wiping…" : "Wipe Seed Data Now"}
-        </Button>
-        {wipeMutation.isSuccess && (
-          <p className="mt-2 text-sm text-green-600">✓ {wipeMutation.data?.message}</p>
-        )}
+      <CardContent className="space-y-4">
+
+        {/* Safe listings-only wipe */}
+        <div className="rounded-lg border p-4 space-y-2">
+          <p className="text-sm font-semibold">Step 1 — Wipe seed listings only (safe, re-runnable)</p>
+          <p className="text-xs text-muted-foreground">Deletes seeded listings by known titles and demo account ownership. Does not touch users or deals.</p>
+          <Button
+            onClick={() => wipeMutation.mutate()}
+            disabled={wipeMutation.isPending}
+            variant="outline"
+            size="sm"
+            className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            {wipeMutation.isPending ? "Wiping listings…" : "Wipe Seed Listings"}
+          </Button>
+          {wipeMutation.isSuccess && <p className="text-xs text-green-600">✓ {wipeMutation.data?.message}</p>}
+        </div>
+
+        {/* Full account purge */}
+        <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-4 space-y-2">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">Step 2 — Full purge: delete seed accounts + all their data</p>
+          <p className="text-xs text-red-700 dark:text-red-400">Removes seed/demo/creator user accounts and everything they own — listings, deals, posts, messages, ratings, notifications. <strong>Irreversible.</strong> Your admin account and all real users are protected.</p>
+
+          {!confirmPurge ? (
+            <Button
+              onClick={() => setConfirmPurge(true)}
+              variant="destructive"
+              size="sm"
+              className="gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Full Purge (Launch Cleanup)
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs font-bold text-red-800 dark:text-red-300 w-full">Are you sure? This deletes all seed accounts and their data permanently.</p>
+              <Button
+                onClick={() => purgeMutation.mutate()}
+                disabled={purgeMutation.isPending}
+                variant="destructive"
+                size="sm"
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {purgeMutation.isPending ? "Purging…" : "Yes, Purge Everything"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setConfirmPurge(false)}>Cancel</Button>
+            </div>
+          )}
+          {purgeMutation.isSuccess && (
+            <p className="text-xs text-green-600 dark:text-green-400 font-medium">✓ Purge complete — {purgeMutation.data?.deleted} seed account(s) removed, {purgeMutation.data?.kept} real user(s) kept.</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

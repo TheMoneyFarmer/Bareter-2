@@ -84,7 +84,7 @@ import {
   makeAiPerDayLimiter,
 } from "./handlers/aiRateLimit";
 import { db, pool } from "./db";
-import { seedCreators, seedCollabListings, wipeSeedData } from "./seed";
+import { seedCreators, seedCollabListings, wipeSeedData, purgeSeedUsers } from "./seed";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
@@ -4034,14 +4034,26 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/admin/wipe-seed-data — manually trigger the two-pass seed wipe.
-  // Safe to call at any time: idempotent, never touches real user content.
+  // POST /api/admin/wipe-seed-data — listings-only seed wipe (idempotent, safe).
   app.post("/api/admin/wipe-seed-data", requireAdmin, async (req, res) => {
     try {
       await wipeSeedData();
       res.json({ ok: true, message: "Seed wipe complete. Check server logs for details." });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Wipe failed" });
+    }
+  });
+
+  // POST /api/admin/purge-seed-users — FULL launch purge: deletes seed user
+  // accounts and ALL their owned data (listings, deals, posts, messages, etc).
+  // Keeps every real user account. Run once before going live.
+  app.post("/api/admin/purge-seed-users", requireAdmin, async (req, res) => {
+    try {
+      const adminId = req.session.userId!;
+      const result = await purgeSeedUsers(adminId);
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Purge failed" });
     }
   });
 
