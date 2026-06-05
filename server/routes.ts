@@ -3538,19 +3538,15 @@ export async function registerRoutes(
       if (user.diditSessionId && sameAccountType && sessionFresh) {
         try {
           const liveStatus = await getSessionStatus(user.diditSessionId);
-          // Only resume if Didit still considers the session in-flight.
-          if (
-            liveStatus &&
+          const isResumable = liveStatus &&
             liveStatus !== "EXPIRED" &&
             liveStatus !== "ABANDONED" &&
             liveStatus !== "DECLINED" &&
             liveStatus !== "REJECTED" &&
-            liveStatus !== "APPROVED"
-          ) {
-            // Re-fetch the URL via createVerificationSession would mint
-            // a new session id, so instead we hand back the existing
-            // verification page URL by hitting Didit's session detail.
-            // Didit's REST surface returns the URL on the session record.
+            liveStatus !== "APPROVED" &&
+            liveStatus !== "PROCESSING";
+
+          if (isResumable) {
             const { getSessionUrl } = await import("./diditClient");
             const resumeUrl = await getSessionUrl(user.diditSessionId).catch(() => null);
             if (resumeUrl) {
@@ -3561,8 +3557,16 @@ export async function registerRoutes(
               });
             }
           }
+          // URL unavailable or status is terminal — clear stale session so
+          // Didit accepts a fresh creation below.
+          console.log(`[verification] clearing stale session ${user.diditSessionId} (status: ${liveStatus}) for user ${user.id}`);
+          await storage.updateUser(user.id, {
+            diditSessionId: null,
+            verificationSessionStartedAt: null,
+          });
         } catch (err) {
-          console.warn("[verification] resume probe failed, falling through to new session:", err);
+          console.warn("[verification] resume probe failed, clearing session and retrying:", err);
+          await storage.updateUser(user.id, { diditSessionId: null, verificationSessionStartedAt: null }).catch(() => {});
         }
       }
 
@@ -3573,7 +3577,8 @@ export async function registerRoutes(
       );
 
       if (!session) {
-        return res.status(500).json({ message: "Failed to create verification session" });
+        console.error("[verification] createVerificationSession returned null for user", user.id, "workflowId:", workflowId);
+        return res.status(500).json({ message: "Could not start verification. Please try again in a few minutes or contact support." });
       }
 
       await storage.updateUser(user.id, {

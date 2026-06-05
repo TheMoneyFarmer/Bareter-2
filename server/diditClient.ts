@@ -76,11 +76,15 @@ export async function createVerificationSession(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Didit session creation failed:", response.status, errorText);
+      console.error("[didit] session creation failed:", response.status, errorText);
       return null;
     }
 
     const data = await response.json();
+    if (!data.session_id || !data.url) {
+      console.error("[didit] session creation response missing session_id or url:", JSON.stringify(data));
+      return null;
+    }
     return {
       session_id: data.session_id,
       url: data.url,
