@@ -4121,11 +4121,18 @@ export async function registerRoutes(
 </html>`);
   });
 
-  // POST /api/admin/wipe-seed-data — listings-only seed wipe (idempotent, safe).
+  // POST /api/admin/wipe-seed-data — full cleanup: wipes seed listings AND
+  // deletes all seed/demo user accounts + their data in one click.
   app.post("/api/admin/wipe-seed-data", requireAdmin, async (req, res) => {
     try {
+      const adminId = req.session.userId!;
       await wipeSeedData();
-      res.json({ ok: true, message: "Seed wipe complete. Check server logs for details." });
+      const purgeResult = await purgeSeedUsers(adminId);
+      res.json({
+        ok: true,
+        message: `Full cleanup complete — ${purgeResult.deleted} seed account(s) removed, ${purgeResult.kept} real user(s) kept.`,
+        ...purgeResult,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Wipe failed" });
     }
