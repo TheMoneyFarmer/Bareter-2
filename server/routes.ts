@@ -4034,6 +4034,88 @@ export async function registerRoutes(
     }
   });
 
+  // GET /admin-tools — server-rendered HTML page for admin operations that
+  // works independently of the React frontend build (no Vite required).
+  // Accessible to any logged-in admin at /admin-tools.
+  app.get("/admin-tools", async (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.redirect("/login?redirect=/admin-tools");
+    const adminUser = await storage.getUser(userId);
+    if (!adminUser?.isAdmin && adminUser?.role !== "admin" && adminUser?.role !== "super_admin") {
+      return res.status(403).send("<h2>403 — Admin access required</h2>");
+    }
+
+    const action = req.query.action as string | undefined;
+    let resultHtml = "";
+
+    if (action === "wipe") {
+      try {
+        await wipeSeedData();
+        resultHtml = `<div class="success">✓ Seed listings wiped. Check server logs for details.</div>`;
+      } catch (e: any) {
+        resultHtml = `<div class="error">✗ Error: ${e?.message}</div>`;
+      }
+    } else if (action === "purge") {
+      try {
+        const result = await purgeSeedUsers(userId);
+        resultHtml = `<div class="success">✓ Full purge complete — <strong>${result.deleted}</strong> seed account(s) removed, <strong>${result.kept}</strong> real user(s) kept.</div>`;
+      } catch (e: any) {
+        resultHtml = `<div class="error">✗ Error: ${e?.message}</div>`;
+      }
+    }
+
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bareter Admin Tools</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; background: #f9fafb; color: #111; }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .sub { color: #6b7280; margin-bottom: 32px; font-size: 0.9rem; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .card.danger { border-color: #fca5a5; background: #fff5f5; }
+    h2 { font-size: 1rem; margin: 0 0 6px; }
+    p { font-size: 0.875rem; color: #4b5563; margin: 0 0 16px; }
+    form { display: inline; }
+    button { padding: 10px 20px; border-radius: 8px; border: none; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+    .btn-safe { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; }
+    .btn-safe:hover { background: #e5e7eb; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.875rem; }
+    .error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.875rem; }
+    a { color: #0ea5e9; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <h1>Bareter Admin Tools</h1>
+  <p class="sub">Logged in as <strong>${adminUser.fullName || adminUser.email}</strong> &nbsp;·&nbsp; <a href="/admin">← Back to Admin Panel</a></p>
+
+  ${resultHtml}
+
+  <div class="card">
+    <h2>Step 1 — Wipe Seed Listings (safe, re-runnable)</h2>
+    <p>Deletes all seeded/demo listings by known titles and demo account ownership. Does not touch user accounts.</p>
+    <form method="GET" action="/admin-tools">
+      <input type="hidden" name="action" value="wipe" />
+      <button type="submit" class="btn-safe">Wipe Seed Listings</button>
+    </form>
+  </div>
+
+  <div class="card danger">
+    <h2>Step 2 — Full Purge: Delete Seed Accounts + All Their Data</h2>
+    <p>Permanently deletes all seed/demo/creator user accounts and everything they own (listings, deals, posts, messages, ratings). Your admin account and all real users are protected. <strong>Irreversible.</strong></p>
+    <form method="GET" action="/admin-tools" onsubmit="return confirm('Delete all seed accounts and their data permanently?')">
+      <input type="hidden" name="action" value="purge" />
+      <button type="submit" class="btn-danger">Full Purge (Launch Cleanup)</button>
+    </form>
+  </div>
+</body>
+</html>`);
+  });
+
   // POST /api/admin/wipe-seed-data — listings-only seed wipe (idempotent, safe).
   app.post("/api/admin/wipe-seed-data", requireAdmin, async (req, res) => {
     try {
