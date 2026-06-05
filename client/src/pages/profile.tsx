@@ -88,7 +88,9 @@ function VerificationSection({ user }: { user: User }) {
   const startVerificationMutation = useMutation({
     mutationFn: async (accountType: string) => {
       const res = await apiRequest("POST", "/api/verification/session", { accountType });
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || t("common.somethingWentWrong"));
+      return data;
     },
     onSuccess: (data) => {
       if (data.verificationUrl) {
@@ -101,10 +103,10 @@ function VerificationSection({ user }: { user: User }) {
         queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       }
     },
-    onError: () => {
+    onError: (err: Error) => {
       toast({
         title: t("common.error"),
-        description: t("common.somethingWentWrong"),
+        description: err.message || t("common.somethingWentWrong"),
         variant: "destructive",
       });
     },

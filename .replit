@@ -71,6 +71,8 @@ USD_TO_AED_RATE = "3.6725"
 BOOTSTRAP_ADMIN_EMAIL = "thandolwenkosimceeyah@gmail.com"
 ADMIN_EMAIL_ALLOWLIST = "thandolwenkosimceeyah@gmail.com,thando@bareter.com"
 PRIVATE_OBJECT_DIR = "replit-objstore-7e5628f2-57c3-4e06-a847-99cef1d8fb27/.private"
+DIDIT_KYC_WORKFLOW_ID = "e686a4fc-af82-4ccd-93f9-6b5a807a1735"
+DIDIT_KYB_WORKFLOW_ID = "1dc44918-7efd-406a-9e5a-9a923c91931e"
 
 [userenv.production]
 PUBLIC_APP_URL = "https://bareter.com "
