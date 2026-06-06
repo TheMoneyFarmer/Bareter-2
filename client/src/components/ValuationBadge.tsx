@@ -88,7 +88,7 @@ export function ValuationBadge({
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs space-y-1">
-          <p className="text-sm font-semibold">Bareter AI Estimated Value</p>
+          <p className="text-sm font-semibold">Bareter Estimated Value</p>
           <p className="text-xs text-muted-foreground">
             AED {min.toLocaleString()} – AED {max.toLocaleString()}
             {fair !== null && (

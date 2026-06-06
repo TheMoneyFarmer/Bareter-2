@@ -499,7 +499,7 @@ export function DealDetailPage() {
             <FileText className="h-6 w-6 text-blue-600 flex-shrink-0" />
             <div className="flex-1">
               <p className="font-semibold text-blue-800 dark:text-blue-300">Generate your barter contract</p>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">AI will draft a detailed agreement from your deal and chat. Both parties must sign before starting.</p>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">We'll draft a detailed agreement from your deal and chat. Both parties must sign before starting.</p>
             </div>
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0" disabled={generateContractMutation.isPending} onClick={() => generateContractMutation.mutate()}>
               {generateContractMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <FileText className="h-4 w-4 mr-1" />} Generate Contract
@@ -581,30 +581,7 @@ export function DealDetailPage() {
                               <p className={`text-xs ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                                 {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
                               </p>
-                              <button
-                                type="button"
-                                onClick={() => handleTranslateMessage(msg.id, msg.content)}
-                                disabled={translatingMsgIds.has(msg.id)}
-                                className={`flex items-center gap-0.5 text-[10px] transition-opacity hover:opacity-100 ${
-                                  isMe
-                                    ? "text-primary-foreground/60 hover:text-primary-foreground/90"
-                                    : "text-muted-foreground hover:text-foreground"
-                                } disabled:opacity-40`}
-                                data-testid={`btn-translate-message-${msg.id}`}
-                              >
-                                {translatingMsgIds.has(msg.id) ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                ) : (
-                                  <Languages className="h-2.5 w-2.5" />
-                                )}
-                                <span>
-                                  {translatingMsgIds.has(msg.id)
-                                    ? t("translate.loading")
-                                    : translatedMsgIds.has(msg.id)
-                                    ? t("translate.original")
-                                    : t("translate.button")}
-                                </span>
-                              </button>
+                              {/* Translate button — hidden until multi-language release */}
                             </div>
                           </div>
                         </div>
@@ -642,27 +619,35 @@ export function DealDetailPage() {
                   </button>
                 </div>
               )}
-              <form onSubmit={handleSendMessage} className="flex gap-2">
-                <Input
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder={t("dealDetail.typeMessage")}
-                  disabled={sendMessageMutation.isPending}
-                  data-testid="input-message"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!message.trim() || sendMessageMutation.isPending}
-                  data-testid="button-send-message"
-                >
-                  {sendMessageMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </form>
+              {user && !(user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified) ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-dashed">
+                  <Shield className="h-4 w-4 text-primary flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground flex-1">Verify your identity to send messages.</p>
+                  <Link href="/profile" className="text-xs font-semibold text-primary hover:underline">Verify now</Link>
+                </div>
+              ) : (
+                <form onSubmit={handleSendMessage} className="flex gap-2">
+                  <Input
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder={t("dealDetail.typeMessage")}
+                    disabled={sendMessageMutation.isPending}
+                    data-testid="input-message"
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!message.trim() || sendMessageMutation.isPending}
+                    data-testid="button-send-message"
+                  >
+                    {sendMessageMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </form>
+              )}
             </div>
           </Card>
 
@@ -1194,7 +1179,7 @@ export function DealDetailPage() {
                   {generateContractMutation.isPending ? (
                     <>
                       <Loader2 className="h-8 w-8 animate-spin text-bareter-teal" />
-                      <p className="text-sm text-muted-foreground">AI is drafting your personalised contract from the deal details and chat…</p>
+                      <p className="text-sm text-muted-foreground">Drafting your personalised contract from the deal details and chat…</p>
                     </>
                   ) : (
                     <>
@@ -1277,7 +1262,7 @@ export function DealDetailPage() {
 
                   {/* Disclaimer */}
                   <p className="text-[11px] text-muted-foreground bg-gray-50 dark:bg-muted/30 rounded-lg p-3 italic">
-                    This agreement was AI-drafted using deal details and chat history. Both parties should consult a UAE-qualified lawyer if required. Signing constitutes acceptance of all terms above.
+                    This agreement was drafted using deal details and chat history. Both parties should consult a UAE-qualified lawyer if required. Signing constitutes acceptance of all terms above.
                   </p>
 
                   {/* Signature status */}

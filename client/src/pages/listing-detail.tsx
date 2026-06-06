@@ -801,20 +801,7 @@ export function ListingDetailPage() {
                 <h1 className="text-2xl md:text-3xl font-bold text-bareter-navy dark:text-foreground" data-testid="text-listing-title">
                   {showTranslated && translation ? translation.title : listing.title}
                 </h1>
-                <button
-                  type="button"
-                  onClick={handleTranslateListing}
-                  disabled={translating}
-                  className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
-                  data-testid="button-translate-listing"
-                >
-                  {translating ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Languages className="h-3 w-3" />
-                  )}
-                  {showTranslated ? t("translate.original") : translating ? t("translate.loading") : t("translate.button")}
-                </button>
+                {/* Translate button — hidden until multi-language release */}
               </div>
               <div className="flex gap-2">
                 {user && (
@@ -1413,21 +1400,27 @@ export function ListingDetailPage() {
               )}
 
               {!user && (
-                <div className="pt-2 border-t text-center">
-                  <Link href="/login" className="text-sm text-primary hover:underline">{t("listingDetail.signInToPropose")}</Link>
+                <div className="pt-3 border-t space-y-2 text-center" data-testid="proposal-login-prompt">
+                  <p className="text-sm text-muted-foreground">Sign up or log in to propose a barter.</p>
+                  <div className="flex gap-2 justify-center">
+                    <Link href="/register" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-3 hover:bg-primary/90 transition-colors">Create account</Link>
+                    <Link href="/login" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-8 px-3 hover:bg-accent transition-colors">Log in</Link>
+                  </div>
                 </div>
               )}
 
-              {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED") && (
-                <div className="pt-2 border-t" data-testid="proposal-verify-prompt">
-                  <p className="text-xs text-muted-foreground text-center py-2">
-                    <Shield className="h-3.5 w-3.5 inline me-1 text-primary" />
-                    <Link href="/profile" className="text-primary hover:underline">{t("listingDetail.verifyIdentity")}</Link> {t("listingDetail.verifyToPropose")}
-                  </p>
+              {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED" && !user.isVerified) && (
+                <div className="pt-3 border-t space-y-2 text-center" data-testid="proposal-verify-prompt">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-primary" />
+                    <p className="text-sm font-medium">Verify your identity to propose a barter</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Identity verification protects both sides of every deal.</p>
+                  <Link href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-4 hover:bg-primary/90 transition-colors">Verify now</Link>
                 </div>
               )}
 
-              {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED") && (
+              {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified) && (
                 <div className="space-y-4 pt-3 border-t">
                   <p className="text-sm font-semibold flex items-center gap-2">
                     <ArrowRightLeft className="h-4 w-4 text-primary" />

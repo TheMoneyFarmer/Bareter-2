@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
+import { useActionGuard } from "@/lib/action-guard";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -256,6 +257,7 @@ function CategoryDetails({ details, feedCategory }: { details: PostCategoryDetai
 function CommentsSection({ postId, commentCount: initialCount }: { postId: string; commentCount: number }) {
   const { user } = useAuth();
   const { gate } = useWaitlist();
+  const { guard } = useActionGuard();
   const { toast } = useToast();
   const [offerName, setOfferName] = useState("");
   const [offerValue, setOfferValue] = useState("");
@@ -318,7 +320,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
   });
 
   const handleSubmitProposal = () => {
-    if (!gate()) return;
+    if (!guard()) return;
     if (!offerName.trim()) {
       toast({ title: "Missing info", description: "Please enter what you want to offer", variant: "destructive" });
       return;
@@ -609,6 +611,7 @@ function BarterExchangeSection({ post, onPropose }: { post: PostWithUser; onProp
 function FeedCard({ post }: { post: PostWithUser }) {
   const { user } = useAuth();
   const { gate } = useWaitlist();
+  const { guard, guardAuth } = useActionGuard();
   const { toast } = useToast();
   const queryClientHook = useQueryClient();
   const [, navigate] = useLocation();
@@ -681,17 +684,17 @@ function FeedCard({ post }: { post: PostWithUser }) {
   });
 
   const handleLike = () => {
-    if (!gate()) return;
+    if (!guardAuth()) return;
     likeMutation.mutate();
   };
 
   const handleBookmark = () => {
-    if (!gate()) return;
+    if (!guardAuth()) return;
     bookmarkMutation.mutate();
   };
 
   const handleComments = () => {
-    if (!gate()) return;
+    if (!guardAuth()) return;
     setShowComments((prev) => !prev);
   };
 
@@ -724,7 +727,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   };
 
   const handleContact = (type: "call" | "email" | "message") => {
-    if (!gate()) return;
+    if (!guard()) return;
     const poster = post.user;
     if (type === "call") {
       if (poster?.phone && poster?.showPhone !== false) {
@@ -750,18 +753,7 @@ function FeedCard({ post }: { post: PostWithUser }) {
   };
 
   const handleProposeBarter = () => {
-    if (!gate()) return;
-    if (!user) { navigate("/login"); return; }
-    const isVerified = user.isVerified || user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED";
-    if (!isVerified) {
-      toast({
-        title: "Verification required",
-        description: "Please verify your identity before proposing a barter.",
-        variant: "destructive",
-      });
-      navigate("/profile");
-      return;
-    }
+    if (!guard()) return;
     navigate(`/inbox?userId=${post.userId}`);
   };
 

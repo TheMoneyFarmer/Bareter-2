@@ -33,7 +33,7 @@ const CONFIG: Record<Variant, {
     sub: "Post your product or service, receive applications from verified UAE creators, and close deals on barter contracts zero fees, zero cash required.",
     accent: "bg-bareter-teal",
     features: [
-      { icon: <Sparkles className="h-5 w-5 text-bareter-teal" />, title: "AI-matched creators", desc: "Our engine surfaces creators whose audience matches your brand perfectly." },
+      { icon: <Sparkles className="h-5 w-5 text-bareter-teal" />, title: "Smart-matched creators", desc: "Our engine surfaces creators whose audience matches your brand perfectly." },
       { icon: <Camera className="h-5 w-5 text-bareter-teal" />, title: "TikTok, Reels & Stories", desc: "Authentic content from creators who actually use your product." },
       { icon: <Lock className="h-5 w-5 text-bareter-teal" />, title: "Zero-commission contracts", desc: "Auto-generated barter agreements. Both parties sign on-platform." },
     ],

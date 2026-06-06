@@ -354,7 +354,7 @@ export function RegisterPage() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-xl">Create your account</CardTitle>
         <CardDescription>
-          Join Bareter — UAE's first AI-powered barter marketplace
+          Join Bareter — UAE's first smart barter marketplace
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

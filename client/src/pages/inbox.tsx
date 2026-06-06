@@ -141,8 +141,28 @@ export function InboxPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64 flex-col gap-4">
         <p className="text-muted-foreground">Please log in to view your inbox.</p>
+        <div className="flex gap-3">
+          <a href="/register" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">Create account</a>
+          <a href="/login" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-9 px-4 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">Log in</a>
+        </div>
+      </div>
+    );
+  }
+
+  const isVerified = user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified;
+  if (!isVerified) {
+    return (
+      <div className="flex items-center justify-center h-64 flex-col gap-4 text-center px-4">
+        <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+        </div>
+        <div>
+          <h2 className="font-bold text-lg">Verify your identity to use messaging</h2>
+          <p className="text-muted-foreground text-sm mt-1">Verify your identity to unlock messaging and deal chats.</p>
+        </div>
+        <a href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">Verify now</a>
       </div>
     );
   }

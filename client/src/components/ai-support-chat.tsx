@@ -627,7 +627,7 @@ function NewTicketForm({
       qc.invalidateQueries({ queryKey: ["/api/support/tickets"] });
       toast({
         title: "Ticket created",
-        description: "Our AI assistant will reply shortly.",
+        description: "BarterBot will reply shortly.",
       });
       onSuccess();
     },
@@ -722,7 +722,7 @@ function NewTicketForm({
           />
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Our AI assistant will respond immediately. You can request a human agent at any time.
+          BarterBot will respond immediately. You can request a human agent at any time.
         </p>
       </div>
       <div className="p-3 border-t flex-shrink-0">
@@ -822,7 +822,7 @@ function HomeTab({
             </Button>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5">
-            Get an instant answer from our AI assistant.
+            Get an instant answer from BarterBot.
           </p>
         </div>
 
@@ -1133,7 +1133,7 @@ function QuickAskResult({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="text-xs font-semibold">AI Assistant</span>
+        <span className="text-xs font-semibold">BarterBot</span>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <div className="flex justify-end">

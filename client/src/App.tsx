@@ -9,6 +9,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { WaitlistProvider } from "@/lib/waitlist";
+import { ActionGuardProvider } from "@/lib/action-guard";
+import { VerificationReminder } from "@/components/verification-reminder";
 import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider, LanguageSync } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
@@ -390,6 +392,7 @@ function App() {
               ) : (
                 /* Main site */
                 <WaitlistProvider>
+                  <ActionGuardProvider>
                   <ErrorBoundary>
                     <MaintenanceGate>
                       <div className="min-h-screen flex flex-col bg-background">
@@ -412,8 +415,10 @@ function App() {
                       <BareterAiNotificationChat />
                       <LocationMismatchBanner />
                       <CookieConsent />
+                      <VerificationReminder />
                     </MaintenanceGate>
                   </ErrorBoundary>
+                  </ActionGuardProvider>
                 </WaitlistProvider>
               )}
             </TooltipProvider>

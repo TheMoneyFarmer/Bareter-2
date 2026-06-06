@@ -326,33 +326,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
             </div>
           )}
 
-          {/* Translate button */}
-          <div
-            className="pt-1"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            <button
-              type="button"
-              onClick={handleTranslate}
-              disabled={translating}
-              className="inline-flex items-center gap-1 text-[11px] text-bareter-teal hover:text-bareter-teal/80 transition-colors disabled:opacity-50"
-              data-testid={`button-translate-${listing.id}`}
-            >
-              {translating ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Languages className="h-3 w-3" />
-              )}
-              {translating
-                ? t("translate.loading")
-                : showTranslated
-                ? t("translate.original")
-                : t("translate.button")}
-            </button>
-          </div>
+          {/* Translate button — hidden until multi-language release */}
 
           {/* SOCIAL FOOTER */}
           <div

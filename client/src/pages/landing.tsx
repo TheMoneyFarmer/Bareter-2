@@ -67,11 +67,11 @@ function useRevealEl() {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const FAQS = [
-  { q: "What is Bareter?", a: "Bareter is the UAE's first Ai barter marketplace. Businesses and individuals swap products, services, or goods for content — no cash required." },
+  { q: "What is Bareter?", a: "Bareter is the UAE's first smart barter marketplace. Businesses and individuals swap products, services, or goods for content — no cash required." },
   { q: "Who can use Bareter?", a: "Any business or individual in the UAE with something to offer — brands, SMEs, freelancers, and verified creators." },
   { q: "Is it really free?", a: "Yes. Listing, matching, and closing deals is completely free. No commissions, no hidden fees, no agencies." },
   { q: "How does brand collabs work?", a: "Post your product or service. Creators apply with their stats. You pick the best fit, agree on deliverables, and a barter contract is auto-generated." },
-  { q: "Is it safe?", a: "All deals are documented inside Bareter with legally-scoped barter contracts. Our AI moderates listings and flags suspicious activity before it reaches you." },
+  { q: "Is it safe?", a: "All deals are documented inside Bareter with legally-scoped barter contracts. We review listings and flag suspicious activity before it reaches you." },
 ];
 
 // ── Listing card ──────────────────────────────────────────────────────────────
@@ -551,7 +551,7 @@ export function LandingPage() {
 
   const { data: cmsSettings } = useQuery<Record<string, string | null>>({ queryKey: ["/api/public/settings"], staleTime: 60_000 });
   const heroHeadline = cmsSettings?.hero_headline || "Barter. Collab. Grow.";
-  const heroTagline = cmsSettings?.hero_tagline || "UAE's First AI-powered barter marketplace. No cash. Just value.";
+  const heroTagline = cmsSettings?.hero_tagline || "UAE's First smart barter marketplace. No cash. Just value.";
   const heroCta = cmsSettings?.hero_cta || null;
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
@@ -909,9 +909,9 @@ export function LandingPage() {
             <div className="prop-card flex flex-col items-center text-center">
               <div className="w-full bg-white dark:bg-card rounded-3xl shadow-lg overflow-hidden mb-6 border border-gray-100 dark:border-border flex-1 flex flex-col">
                 <div className="bg-bareter-teal px-5 py-4 flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">AI</div>
+                  <div className="h-9 w-9 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">B</div>
                   <div className="text-left">
-                    <p className="text-white font-semibold text-sm">Bareter AI</p>
+                    <p className="text-white font-semibold text-sm">BarterBot</p>
                     <div className="flex items-center gap-1.5">
                       <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-green-400" />
                       <span className="text-white/70 text-[11px]">Online now</span>
@@ -921,7 +921,7 @@ export function LandingPage() {
                 <div className="p-5 space-y-3 flex-1">
                   {/* message 1 */}
                   <div className="chat-msg flex items-start gap-2">
-                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">AI</div>
+                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">B</div>
                     <div className="bg-gray-100 dark:bg-muted rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[210px] text-left">
                       <p className="text-bareter-navy dark:text-foreground text-xs leading-relaxed">Your listing is live! Found <strong>3 matching partners</strong> near Dubai.</p>
                     </div>
@@ -934,14 +934,14 @@ export function LandingPage() {
                   </div>
                   {/* typing indicator */}
                   <div className="chat-typing flex items-start gap-2">
-                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">AI</div>
+                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">B</div>
                     <div className="bg-gray-100 dark:bg-muted rounded-2xl rounded-tl-none px-4 py-3 text-bareter-teal/70 flex items-center gap-0.5">
                       <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
                     </div>
                   </div>
                   {/* message 3 — AI reply */}
                   <div className="chat-msg flex items-start gap-2">
-                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">AI</div>
+                    <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">B</div>
                     <div className="bg-gray-100 dark:bg-muted rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[210px] text-left">
                       <p className="text-bareter-navy dark:text-foreground text-xs leading-relaxed">Top match: <strong>Khalid Auto Group</strong> — value AED 8,000 ✓</p>
                     </div>
@@ -959,7 +959,7 @@ export function LandingPage() {
                 <Sparkles className="h-5 w-5 text-bareter-teal" />
               </div>
               <h3 className="text-lg font-extrabold text-bareter-navy dark:text-foreground mb-1.5">List</h3>
-              <p className="text-muted-foreground text-sm max-w-[240px] leading-relaxed">Post in 2 minutes. AI finds the best matching partner for your barter.</p>
+              <p className="text-muted-foreground text-sm max-w-[240px] leading-relaxed">Post in 2 minutes. We find the best matching partner for your barter.</p>
             </div>
 
             {/* ── Col 2: Feature pills ── */}
@@ -970,7 +970,7 @@ export function LandingPage() {
                 </div>
                 <div className="space-y-3">
                   {[
-                    { label: "AI-powered matching", icon: <Sparkles className="h-4 w-4 text-bareter-teal" /> },
+                    { label: "Smart matching", icon: <Sparkles className="h-4 w-4 text-bareter-teal" /> },
                     { label: "Verified UAE members", icon: <ShieldCheck className="h-4 w-4 text-bareter-teal" /> },
                     { label: "Auto-generated contracts", icon: <FileSignature className="h-4 w-4 text-bareter-teal" /> },
                     { label: "In-app chat & counter-offers", icon: <MessageSquare className="h-4 w-4 text-bareter-teal" /> },
@@ -1052,14 +1052,14 @@ export function LandingPage() {
                 icon: <ArrowLeftRight className="h-6 w-6 text-bareter-teal" />, badge: "Most popular",
                 title: "Barter Anything", accent: false,
                 desc: "Swap goods, services or skills directly. Cars, office space, legal services, hospitality anything goes.",
-                items: ["Goods for goods", "Services for services", "AI-matched partners", "Free, always"],
+                items: ["Goods for goods", "Services for services", "Matched partners", "Free, always"],
                 href: "/browse", cta: "Browse Barters",
               },
               {
                 icon: <Handshake className="h-6 w-6 text-white" />, badge: "",
                 title: "Services for Services", accent: true,
                 desc: "Two people each with something the other needs. Skip the invoices swap your expertise and both walk away with exactly what you need.",
-                items: ["Legal for marketing", "Design for accounting", "AI-matched by value", "Contract auto-generated"],
+                items: ["Legal for marketing", "Design for accounting", "Matched by value", "Contract auto-generated"],
                 href: "/create-listing", cta: "Post a Service",
               },
               {
@@ -1139,7 +1139,7 @@ export function LandingPage() {
           <div className="text-center mb-20" data-reveal>
             <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">How it works</p>
             <h2 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">From listing to closed deal.</h2>
-            <p className="text-white/55 max-w-lg mx-auto text-lg">No cash. No waste. Just value for value. Matched by AI and sealed with a contract.</p>
+            <p className="text-white/55 max-w-lg mx-auto text-lg">No cash. No waste. Just value for value. Matched and sealed with a contract.</p>
           </div>
 
           {/* Desktop: organic absolute positioning + SVG connector */}
@@ -1156,7 +1156,7 @@ export function LandingPage() {
             <div ref={stepsRef} className="absolute inset-0">
               {[
                 { Icon: LayoutList,    title: "List what you have",    desc: "Upload photos, set a value, describe what you want back.",      tag: "2 min",         bg: "bg-bareter-teal",   left: "4%",  top: "55px" },
-                { Icon: Sparkles,      title: "AI finds your match",   desc: "Our engine surfaces the most compatible barter partners.",     tag: "Instant match", bg: "bg-teal-600",       left: "27%", top: "145px" },
+                { Icon: Sparkles,      title: "Instantly matched",      desc: "Our engine surfaces the most compatible barter partners.",     tag: "Instant match", bg: "bg-teal-600",       left: "27%", top: "145px" },
                 { Icon: MessageSquare, title: "Negotiate in-app",      desc: "Chat, counter-offer, and agree on terms inside Bareter.",      tag: "No lawyers",    bg: "bg-bareter-teal",   left: "52%", top: "25px" },
                 { Icon: FileSignature, title: "Sign & exchange",       desc: "Auto-generated contract. Sign on-platform, deal complete.",   tag: "Legally binding",bg: "bg-teal-700",       left: "74%", top: "168px" },
               ].map((step, i) => (
@@ -1182,7 +1182,7 @@ export function LandingPage() {
           <div className="lg:hidden space-y-7">
             {[
               { Icon: LayoutList,    title: "List what you have",    desc: "Upload photos, set a value, describe what you want back.",    bg: "bg-bareter-teal" },
-              { Icon: Sparkles,      title: "AI finds your match",   desc: "Our engine surfaces the most compatible barter partners.",   bg: "bg-teal-600" },
+              { Icon: Sparkles,      title: "Instantly matched",      desc: "Our engine surfaces the most compatible barter partners.",   bg: "bg-teal-600" },
               { Icon: MessageSquare, title: "Negotiate in-app",      desc: "Chat, counter-offer, and agree on terms inside Bareter.",    bg: "bg-bareter-teal" },
               { Icon: FileSignature, title: "Sign & exchange",       desc: "Auto-generated contract. Sign on-platform, deal complete.", bg: "bg-teal-700" },
             ].map((step, i) => (

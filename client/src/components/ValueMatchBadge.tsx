@@ -38,7 +38,7 @@ export function ValueMatchBadge({ offerValue, listingValue, aiFairValue, aiConfi
   const conf = toNum(aiConfidence);
   const isAiBacked = aiVal > 0;
   const tooltipLabel = isAiBacked
-    ? `AI-verified offer value: AED ${aiVal.toLocaleString()}${conf > 0 ? ` · ${Math.round(conf * 100)}% confidence` : ""}`
+    ? `Verified offer value: AED ${aiVal.toLocaleString()}${conf > 0 ? ` · ${Math.round(conf * 100)}% confidence` : ""}`
     : `Declared offer: AED ${toNum(offerValue).toLocaleString()}`;
 
   const diffLabel = diff === 0
@@ -54,7 +54,7 @@ export function ValueMatchBadge({ offerValue, listingValue, aiFairValue, aiConfi
           <span className={`inline-flex items-center gap-0.5 rounded-full border text-[10px] font-semibold px-1.5 py-0.5 cursor-help ${color}`}>
             <Icon className="h-2.5 w-2.5" />
             {matchPct}% match
-            {isAiBacked && <span className="opacity-60 text-[9px]">·AI</span>}
+            {isAiBacked && <span className="opacity-60 text-[9px]">·✓</span>}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs space-y-1">

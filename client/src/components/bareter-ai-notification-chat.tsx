@@ -110,9 +110,8 @@ function NotifBubble({
       className="flex items-start gap-2 transition-all duration-500"
       style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(8px)" }}
     >
-      {/* AI avatar */}
       <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold border border-bareter-teal/20 mt-0.5">
-        AI
+        B
       </div>
 
       <div className="flex-1 min-w-0">
@@ -155,7 +154,7 @@ function EmptyState() {
       </div>
       <p className="text-sm font-semibold text-bareter-navy dark:text-foreground mb-1">All caught up!</p>
       <p className="text-xs text-muted-foreground leading-relaxed max-w-[200px]">
-        Bareter AI will notify you about listing matches, deal updates, messages, and more.
+        Bareter will notify you about listing matches, deal updates, messages, and more.
       </p>
     </div>
   );
@@ -220,10 +219,10 @@ export default function BareterAiNotificationChat() {
           <div className="flex items-center justify-between px-4 py-3 bg-bareter-teal flex-shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="h-9 w-9 rounded-full bg-white/20 border-2 border-white/30 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                AI
+                B
               </div>
               <div className="flex flex-col leading-tight">
-                <span className="font-bold text-white text-sm">Bareter AI</span>
+                <span className="font-bold text-white text-sm">Bareter</span>
                 <div className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
                   <span className="text-white/80 text-[10px]">Online now</span>
@@ -271,7 +270,7 @@ export default function BareterAiNotificationChat() {
                 {/* Greeting bubble */}
                 <div className="flex items-start gap-2">
                   <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold border border-bareter-teal/20 mt-0.5">
-                    AI
+                    B
                   </div>
                   <div className="bg-gray-100 dark:bg-muted rounded-2xl rounded-tl-none px-3.5 py-2.5 max-w-[85%]">
                     <p className="text-xs text-slate-700 dark:text-foreground/80 leading-relaxed">
@@ -297,7 +296,7 @@ export default function BareterAiNotificationChat() {
           {/* Footer input area */}
           <div className="border-t bg-gray-50 dark:bg-muted/30 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
             <div className="flex-1 h-9 rounded-xl bg-white dark:bg-background border border-gray-200 dark:border-border flex items-center px-3">
-              <span className="text-xs text-muted-foreground">Ask Bareter AI…</span>
+              <span className="text-xs text-muted-foreground">Ask Bareter…</span>
             </div>
             <button
               type="button"
@@ -315,7 +314,7 @@ export default function BareterAiNotificationChat() {
         data-testid="btn-bareter-ai-chat-toggle"
         onClick={() => setIsOpen((o) => !o)}
         className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-50 w-14 h-14 rounded-full bg-bareter-teal text-white shadow-lg flex items-center justify-center hover:bg-bareter-teal/90 transition-all hover:scale-105 active:scale-95"
-        aria-label="Bareter AI"
+        aria-label="Bareter notifications"
         style={{ display: isOpen ? "none" : "flex" }}
       >
         <Sparkles className="h-6 w-6" />

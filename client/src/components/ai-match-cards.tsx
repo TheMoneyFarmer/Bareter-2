@@ -70,7 +70,7 @@ export default function AiMatchCards() {
         <h3 className="font-semibold text-sm">For You</h3>
         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
           <Sparkles className="h-2.5 w-2.5 mr-0.5" />
-          AI Matched
+          Matched
         </Badge>
       </div>
 
