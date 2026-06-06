@@ -19,6 +19,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useActionGuard } from "@/lib/action-guard";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
   Cars: "#1C2D4A",
@@ -61,6 +62,7 @@ const translationCache: TranslationCache = new Map();
 export function ListingCard({ listing, className = "", style, testId, isWishlisted, onWishlistToggle }: ListingCardProps) {
   const { gate } = useWaitlist();
   const { user } = useAuth();
+  const { guardAuth } = useActionGuard();
   const { t, language } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -254,7 +256,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                       onSelect={(e) => {
                         e.preventDefault();
                         if (!gate()) return;
-                        if (!user) { navigate("/login"); return; }
+                        if (!guardAuth()) return;
                         setShowReport(true);
                       }}
                       className="text-destructive focus:text-destructive"
@@ -373,13 +375,14 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                 </span>
               )}
             </Link>
-            {user && !isOwnListing && (
+            {!isOwnListing && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   if (!gate()) return;
+                  if (!guardAuth()) return;
                   followMutation.mutate();
                 }}
                 disabled={followMutation.isPending}

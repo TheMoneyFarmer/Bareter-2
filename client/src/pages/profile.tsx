@@ -665,38 +665,39 @@ export function ProfilePage() {
         const allowed = ["profile", "offers", "needs", "deals", "endorsements", "portfolio", "drafts", "verification"];
         return p && allowed.includes(p) ? p : "profile";
       })()} className="space-y-6">
-        <TabsList className="flex w-full overflow-x-auto">
-          <TabsTrigger value="profile" className="flex-1 min-w-0" data-testid="tab-profile">
-            <User className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabProfile")}</span>
+        {/* Tab bar: icon-only on mobile (< sm), icon+text on sm+ */}
+        <TabsList className="flex w-full overflow-x-auto gap-0.5 h-auto p-1">
+          <TabsTrigger value="profile" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-profile">
+            <User className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabProfile")}</span>
           </TabsTrigger>
-          <TabsTrigger value="offers" className="flex-1 min-w-0" data-testid="tab-offers">
-            <Package className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabOffers")}</span>
+          <TabsTrigger value="offers" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-offers">
+            <Package className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabOffers")}</span>
           </TabsTrigger>
-          <TabsTrigger value="needs" className="flex-1 min-w-0" data-testid="tab-needs">
-            <ShoppingCart className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabNeeds")}</span>
+          <TabsTrigger value="needs" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-needs">
+            <ShoppingCart className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabNeeds")}</span>
           </TabsTrigger>
-          <TabsTrigger value="deals" className="flex-1 min-w-0" data-testid="tab-deals">
-            <Handshake className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">Deals</span>
+          <TabsTrigger value="deals" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-deals">
+            <Handshake className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">Deals</span>
           </TabsTrigger>
-          <TabsTrigger value="endorsements" className="flex-1 min-w-0" data-testid="tab-endorsements">
-            <ThumbsUp className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabEndorsements")}</span>
+          <TabsTrigger value="endorsements" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-endorsements">
+            <ThumbsUp className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabEndorsements")}</span>
           </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex-1 min-w-0" data-testid="tab-portfolio">
-            <ImageIcon className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabPortfolio")}</span>
+          <TabsTrigger value="portfolio" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-portfolio">
+            <ImageIcon className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabPortfolio")}</span>
           </TabsTrigger>
-          <TabsTrigger value="drafts" className="flex-1 min-w-0" data-testid="tab-drafts">
-            <FileText className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabDrafts")}</span>
+          <TabsTrigger value="drafts" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-drafts">
+            <FileText className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabDrafts")}</span>
           </TabsTrigger>
-          <TabsTrigger value="verification" className="flex-1 min-w-0" data-testid="tab-verification">
-            <Shield className="h-4 w-4 mr-1 sm:mr-2 flex-shrink-0" />
-            <span className="truncate">{t("profile.tabVerify")}</span>
+          <TabsTrigger value="verification" className="flex-shrink-0 flex-col sm:flex-row gap-0.5 sm:gap-1.5 px-2 sm:px-3 py-2 sm:py-1.5 text-xs min-w-[44px]" data-testid="tab-verification">
+            <Shield className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline whitespace-nowrap">{t("profile.tabVerify")}</span>
           </TabsTrigger>
         </TabsList>
 

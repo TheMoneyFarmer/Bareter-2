@@ -579,7 +579,7 @@ export function Header() {
                 <Sheet>
                   <SheetTrigger asChild>
                     <button type="button"
-                      className="sm:hidden h-8 w-8 inline-flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10"
+                      className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10"
                       data-testid="button-mobile-menu" aria-label="Menu">
                       <Menu className="h-5 w-5" />
                     </button>

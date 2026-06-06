@@ -762,6 +762,7 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("messages_deal_id_idx").on(table.dealId),
+  index("messages_created_at_idx").on(table.createdAt),
 ]);
 
 // Ratings table

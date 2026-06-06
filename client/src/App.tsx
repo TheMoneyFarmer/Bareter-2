@@ -2,9 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Switch, Route, useLocation } from "wouter";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { useQuery, useQueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
@@ -270,7 +268,7 @@ function AdminApp() {
   }
 
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" aria-label="Loading…" /></div>}>
       <Switch>
         <Route path="/" component={AdminPage} />
         <Route path="/admin" component={AdminPage} />
@@ -280,6 +278,27 @@ function AdminApp() {
         <Route component={AdminPage} />
       </Switch>
     </Suspense>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="container mx-auto max-w-7xl px-4 py-8">
+      <div className="h-8 w-48 rounded-lg bareter-shimmer mb-6" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-bareter-card border border-bareter-border shadow-bareter-card overflow-hidden">
+            <div className="aspect-[16/9] bareter-shimmer" />
+            <div className="p-4 space-y-3">
+              <div className="h-4 w-3/4 rounded bareter-shimmer" />
+              <div className="h-5 w-1/2 rounded bareter-shimmer" />
+              <div className="h-3 w-2/3 rounded bareter-shimmer" />
+              <div className="h-7 w-full rounded bareter-shimmer" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -354,30 +373,9 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-const persister = createSyncStoragePersister({
-  storage: window.localStorage,
-  key: "bareter-query-cache-v1",
-  throttleTime: 2000,
-});
-
 function App() {
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{
-        persister,
-        maxAge: 1000 * 60 * 10,
-        dehydrateOptions: {
-          shouldDehydrateQuery: (query) => {
-            const key = query.queryKey[0] as string;
-            return (
-              typeof key === "string" &&
-              (key.startsWith("/api/listings") || key === "/api/trending" || key === "/api/feed")
-            );
-          },
-        },
-      }}
-    >
+    <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>
@@ -401,7 +399,7 @@ function App() {
                         <main className="flex-1 pb-20 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
-                              <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh]"><div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" /></div>}>
+                              <Suspense fallback={<PageSkeleton />}>
                                 <Router />
                               </Suspense>
                             </GeoGate>

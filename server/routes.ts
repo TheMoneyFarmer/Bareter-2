@@ -163,6 +163,11 @@ function param(val: string | string[] | undefined): string {
   return val || "";
 }
 
+function uaFingerprint(req: Request): string {
+  const ua = req.headers["user-agent"] || "";
+  return crypto.createHash("sha256").update(ua).digest("hex").slice(0, 16);
+}
+
 // Module-level throttle: only update users.last_active_at at most once per
 // minute per user. Keeps requireAuth essentially free on hot paths while
 // still keeping the activeUsers7d KPI accurate. Entries older than the
@@ -183,11 +188,22 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!uid) {
     return res.status(401).json({ message: "Unauthorized" });
   }
+  // Session fingerprint check — if the stored fingerprint doesn't match the
+  // current user-agent, the session cookie may have been replayed from a
+  // different device or browser. We invalidate and force re-login.
+  const storedFp = (req.session as any).uaFingerprint as string | undefined;
+  if (storedFp) {
+    const currentFp = uaFingerprint(req);
+    if (storedFp !== currentFp) {
+      console.warn(`[requireAuth] UA fingerprint mismatch for user ${uid} — forcing re-auth`);
+      req.session.destroy(() => {});
+      return res.status(401).json({ message: "Session expired. Please log in again." });
+    }
+  }
   const now = Date.now();
   const lastTouch = lastActiveTouchedAt.get(uid) ?? 0;
   if (now - lastTouch > LAST_ACTIVE_THROTTLE_MS) {
     lastActiveTouchedAt.set(uid, now);
-    // Fire-and-forget so the request is never blocked on this write.
     storage
       .updateUser(uid, { lastActiveAt: new Date() })
       .catch((err) => console.error("[requireAuth] lastActiveAt update failed:", err));
@@ -374,6 +390,7 @@ export async function registerRoutes(
 
           // Create our own session (consistent with email/password login)
           req.session.userId = user.id;
+          (req.session as any).uaFingerprint = uaFingerprint(req);
           await new Promise<void>((resolve, reject) =>
             req.session.save((err: any) => (err ? reject(err) : resolve()))
           );
@@ -495,6 +512,7 @@ export async function registerRoutes(
         }
 
         req.session.userId = user.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
         await new Promise<void>((resolve, reject) =>
           req.session.save((err: any) => (err ? reject(err) : resolve()))
         );
@@ -704,12 +722,21 @@ export async function registerRoutes(
       }
 
       // Block duplicate phone numbers — same phone can't be used for multiple accounts
-      const regPhone: string | undefined = typeof req.body.phone === "string" ? req.body.phone : undefined;
+      const regPhone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
       if (regPhone) {
+        // E.164 validation: +<country code><number>, 8-15 digits total
+        if (!/^\+[1-9]\d{7,14}$/.test(regPhone)) {
+          return res.status(400).json({ message: "Invalid phone number format. Use international format e.g. +971501234567" });
+        }
         const phoneUser = await storage.getUserByPhone(regPhone);
         if (phoneUser) {
-          return res.status(400).json({ message: "A account with this phone number already exists" });
+          return res.status(400).json({ message: "An account with this phone number already exists" });
         }
+      }
+      const allowedSignupTypes = ["personal", "business"] as const;
+      const rawSignupType = req.body.signupType;
+      if (rawSignupType && !allowedSignupTypes.includes(rawSignupType)) {
+        return res.status(400).json({ message: "Invalid account type" });
       }
 
       const isBanned = await storage.isBannedEmail(data.email);
@@ -731,7 +758,7 @@ export async function registerRoutes(
         city: data.city || null,
         location: data.city || null,
         phone: regPhone || null,
-        signupType: req.body.signupType || "personal",
+        signupType: (allowedSignupTypes.includes(rawSignupType) ? rawSignupType : "personal") as "personal" | "business",
         socialProfiles: req.body.socialProfiles || [],
         founderBadge,
         founderBadgeAt: founderBadge ? new Date() : null,
@@ -744,7 +771,7 @@ export async function registerRoutes(
       }
 
       req.session.userId = user.id;
-      
+      (req.session as any).uaFingerprint = uaFingerprint(req);
       // Explicitly save session before responding
       req.session.save((err) => {
         if (err) {
@@ -789,6 +816,7 @@ export async function registerRoutes(
       }
 
       req.session.userId = user.id;
+      (req.session as any).uaFingerprint = uaFingerprint(req);
       req.session.save((err) => {
         if (err) {
           console.error("Session save error:", err);
@@ -1344,17 +1372,25 @@ export async function registerRoutes(
 
   const updateProfileSchema = z
     .object({
-      fullName: z.string().min(2).optional(),
-      bio: z.string().optional(),
-      location: z.string().optional(),
+      fullName: z.string().min(2).max(100).optional(),
+      bio: z.string().max(600).optional(),
+      location: z.string().max(100).optional(),
       country: z.string().length(2).optional(),
-      city: z.string().optional(),
+      city: z.string().max(100).optional(),
       locationPrompted: z.boolean().optional(),
-      businessName: z.string().optional(),
-      avatarUrl: z.string().optional(),
+      businessName: z.string().max(150).optional(),
+      avatarUrl: z.string().url().optional(),
       whatIOffer: z.array(offerNeedItemSchema).optional(),
       whatINeed: z.array(offerNeedItemSchema).optional(),
-      portfolioImages: z.array(z.string()).optional(),
+      portfolioImages: z
+        .array(
+          z.string().refine(
+            (url) => url.startsWith("/uploads/") || /^https?:\/\//.test(url),
+            "Portfolio image must be an uploaded file or a valid URL"
+          )
+        )
+        .max(20)
+        .optional(),
       language: z.enum(["en", "ar"]).optional(),
     })
     .strict();
@@ -2853,8 +2889,17 @@ export async function registerRoutes(
       }
 
       const chatMessages = await storage.getMessagesByDeal(deal.id);
+      // Sanitize content before inserting into the AI prompt to prevent prompt injection.
+      // Strip any lines that look like system instructions, truncate at 200 messages.
+      const sanitizeForPrompt = (text: string) =>
+        text
+          .replace(/\[INST\]|\[\/INST\]|<s>|<\/s>|###\s*(system|instruction|prompt)/gi, "")
+          .replace(/ignore (all )?previous instructions?/gi, "[redacted]")
+          .slice(0, 2000);
       const chatTranscript = chatMessages
-        .map((m) => `${m.sender?.fullName ?? "Unknown"}: ${m.content}`).join("\n");
+        .slice(-200)
+        .map((m) => `${m.sender?.fullName ?? "Unknown"}: ${sanitizeForPrompt(m.content)}`)
+        .join("\n");
 
       const seekerName = deal.seeker?.fullName || deal.seeker?.businessName || "Party A";
       const providerName = deal.provider?.fullName || deal.provider?.businessName || "Party B";
