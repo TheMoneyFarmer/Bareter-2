@@ -1736,6 +1736,7 @@ export async function seedCollabListings() {
 // Demo/editorial account email domains — listings owned by these accounts are
 // always seed data and safe to delete regardless of title variation.
 const DEMO_EMAIL_DOMAINS = [
+  "@demo.bareter.com",
   "-demo.bareter.com",
   "@luxuryhotels.ae",
   "@techflow.ae",
