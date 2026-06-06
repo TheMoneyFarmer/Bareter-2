@@ -4105,6 +4105,18 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.
+  // Idempotent: returns {deleted:0} when already clean.
+  app.get("/api/admin/run-cleanup", requireAdmin, async (req, res) => {
+    try {
+      const { purgeSeedUsers } = await import("./seed");
+      const result = await purgeSeedUsers();
+      res.json({ ok: true, ...result, message: `Cleanup complete — ${result.deleted} seed account(s) removed, ${result.kept} real user(s) kept.` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, message: err?.message || "Cleanup failed" });
+    }
+  });
+
   app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
     try {
       const allDeals = await storage.getAllDeals();
