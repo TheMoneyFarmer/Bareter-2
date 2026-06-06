@@ -1825,120 +1825,125 @@ export async function wipeSeedData() {
   }
 }
 
+// Fault-tolerant step helper — logs error but never throws, so one bad table
+// can't abort the entire purge run.
+async function tryDelete(label: string, fn: () => Promise<unknown>) {
+  try { await fn(); } catch (e: any) { console.warn(`[purgeSeed] ${label} skipped:`, e?.message); }
+}
+
 // ── Full launch purge — removes ALL seed/demo user accounts and every record
 // they own. Keeps every real user account (and their listings/deals).
-// Protected admin-only endpoint — run once before going live.
+// Idempotent — safe to call on every server boot (no-ops once clean).
 export async function purgeSeedUsers(adminUserId = "SYSTEM"): Promise<{ deleted: number; kept: number }> {
   const allUsers = await db.select({ id: users.id, email: users.email }).from(users);
 
   const CREATOR_PATTERN = /\.creator@bareter\.com$/;
 
-  const seedIds = allUsers
-    .filter(u =>
-      u.id !== adminUserId && (
-        EDITORIAL_EMAILS.includes(u.email) ||
-        DEMO_EMAIL_DOMAINS.some(d => u.email.endsWith(d)) ||
-        CREATOR_PATTERN.test(u.email)
-      )
+  const seedUsers = allUsers.filter(u =>
+    u.id !== adminUserId && (
+      EDITORIAL_EMAILS.includes(u.email) ||
+      DEMO_EMAIL_DOMAINS.some(d => u.email.endsWith(d)) ||
+      CREATOR_PATTERN.test(u.email)
     )
-    .map(u => u.id);
+  );
 
-  if (seedIds.length === 0) {
+  if (seedUsers.length === 0) {
+    console.log("[purgeSeed] Already clean — no seed accounts found.");
     return { deleted: 0, kept: allUsers.length };
   }
 
-  // ── Step 1: collect all listing IDs owned by seed users (+ title-matched) ──
-  const seedListingRows = await db.select({ id: listings.id }).from(listings)
-    .where(inArray(listings.userId, seedIds));
-  const titleListingRows = await db.select({ id: listings.id }).from(listings)
-    .where(inArray(listings.title, ALL_LUXURY_SEED_TITLES));
+  const seedIds = seedUsers.map(u => u.id);
+  const seedEmails = seedUsers.map(u => u.email);
+  console.log(`[purgeSeed] Found ${seedIds.length} seed accounts to remove.`);
+
+  // ── Collect IDs of all content owned by seed users ──────────────────────────
+  const seedListingRows = await db.select({ id: listings.id }).from(listings).where(inArray(listings.userId, seedIds));
+  const titleListingRows = ALL_LUXURY_SEED_TITLES.length > 0
+    ? await db.select({ id: listings.id }).from(listings).where(inArray(listings.title, ALL_LUXURY_SEED_TITLES))
+    : [];
   const allListingIds = Array.from(new Set([...seedListingRows, ...titleListingRows].map(r => r.id)));
 
-  // ── Step 2: collect all deal IDs touching seed users or their listings ──
-  const dealClauses = [
-    inArray(deals.seekerId, seedIds),
-    inArray(deals.providerId, seedIds),
-    ...(allListingIds.length > 0 ? [inArray(deals.seekerListingId, allListingIds), inArray(deals.providerListingId, allListingIds)] : []),
-  ];
-  const seedDealRows = dealClauses.length > 0
-    ? await db.select({ id: deals.id }).from(deals).where(or(...dealClauses))
-    : [];
+  const seedDealRows = await db.select({ id: deals.id }).from(deals).where(
+    or(inArray(deals.seekerId, seedIds), inArray(deals.providerId, seedIds))
+  );
   const allDealIds = seedDealRows.map(r => r.id);
 
-  // ── Step 3: collect post IDs ──
-  const seedPostRows = await db.select({ id: posts.id }).from(posts)
-    .where(inArray(posts.userId, seedIds));
+  const seedPostRows = await db.select({ id: posts.id }).from(posts).where(inArray(posts.userId, seedIds));
   const allPostIds = seedPostRows.map(r => r.id);
 
-  // Delete in dependency order (children before parents) ─────────────────────
+  // ── Delete children first (FK order) ────────────────────────────────────────
 
   // Deal children
   if (allDealIds.length > 0) {
-    await db.delete(messages).where(inArray(messages.dealId, allDealIds));
-    await db.delete(dealMilestones).where(inArray(dealMilestones.dealId, allDealIds));
-    await db.delete(notifications).where(inArray(notifications.relatedDealId, allDealIds));
-    await db.delete(ratings).where(inArray(ratings.dealId, allDealIds));
+    await tryDelete("messages(deal)", () => db.delete(messages).where(inArray(messages.dealId, allDealIds)));
+    await tryDelete("dealMilestones", () => db.delete(dealMilestones).where(inArray(dealMilestones.dealId, allDealIds)));
+    await tryDelete("notifications(deal)", () => db.delete(notifications).where(inArray(notifications.relatedDealId, allDealIds)));
+    await tryDelete("ratings(deal)", () => db.delete(ratings).where(inArray(ratings.dealId, allDealIds)));
   }
 
   // Listing children
   if (allListingIds.length > 0) {
-    await db.delete(engagementEvents).where(inArray(engagementEvents.listingId, allListingIds));
-    await db.delete(listingComments).where(inArray(listingComments.listingId, allListingIds));
-    await db.delete(listingLikes).where(inArray(listingLikes.listingId, allListingIds));
-    await db.delete(wishlists).where(inArray(wishlists.listingId, allListingIds));
-    await db.delete(quickInquiries).where(inArray(quickInquiries.listingId, allListingIds));
-    await db.delete(reviews).where(inArray(reviews.listingId, allListingIds));
-    await db.delete(collabApplications).where(inArray(collabApplications.listingId, allListingIds));
-    await db.delete(imageScans).where(inArray(imageScans.listingId, allListingIds));
-    await db.delete(notifications).where(inArray(notifications.relatedListingId, allListingIds));
+    await tryDelete("engagementEvents(listing)", () => db.delete(engagementEvents).where(inArray(engagementEvents.listingId, allListingIds)));
+    await tryDelete("listingComments(listing)", () => db.delete(listingComments).where(inArray(listingComments.listingId, allListingIds)));
+    await tryDelete("listingLikes(listing)", () => db.delete(listingLikes).where(inArray(listingLikes.listingId, allListingIds)));
+    await tryDelete("wishlists(listing)", () => db.delete(wishlists).where(inArray(wishlists.listingId, allListingIds)));
+    await tryDelete("quickInquiries(listing)", () => db.delete(quickInquiries).where(inArray(quickInquiries.listingId, allListingIds)));
+    await tryDelete("reviews(listing)", () => db.delete(reviews).where(inArray(reviews.listingId, allListingIds)));
+    await tryDelete("collabApplications(listing)", () => db.delete(collabApplications).where(inArray(collabApplications.listingId, allListingIds)));
+    await tryDelete("imageScans(listing)", () => db.delete(imageScans).where(inArray(imageScans.listingId, allListingIds)));
+    await tryDelete("notifications(listing)", () => db.delete(notifications).where(inArray(notifications.relatedListingId, allListingIds)));
+    await tryDelete("deals.seekerListingId null", () => db.update(deals).set({ seekerListingId: null }).where(inArray(deals.seekerListingId, allListingIds)));
+    await tryDelete("deals.providerListingId null", () => db.update(deals).set({ providerListingId: null }).where(inArray(deals.providerListingId, allListingIds)));
   }
 
   // Post children
   if (allPostIds.length > 0) {
-    await db.delete(postLikes).where(inArray(postLikes.postId, allPostIds));
-    await db.delete(postComments).where(inArray(postComments.postId, allPostIds));
-    await db.delete(postBookmarks).where(inArray(postBookmarks.postId, allPostIds));
-    await db.delete(notifications).where(inArray(notifications.relatedPostId, allPostIds));
+    await tryDelete("postLikes(post)", () => db.delete(postLikes).where(inArray(postLikes.postId, allPostIds)));
+    await tryDelete("postComments(post)", () => db.delete(postComments).where(inArray(postComments.postId, allPostIds)));
+    await tryDelete("postBookmarks(post)", () => db.delete(postBookmarks).where(inArray(postBookmarks.postId, allPostIds)));
+    await tryDelete("notifications(post)", () => db.delete(notifications).where(inArray(notifications.relatedPostId, allPostIds)));
   }
 
   // User-level children
-  await db.delete(notifications).where(inArray(notifications.userId, seedIds));
-  await db.delete(wishlists).where(inArray(wishlists.userId, seedIds));
-  await db.delete(listingLikes).where(inArray(listingLikes.userId, seedIds));
-  await db.delete(listingComments).where(inArray(listingComments.userId, seedIds));
-  await db.delete(postLikes).where(inArray(postLikes.userId, seedIds));
-  await db.delete(postComments).where(inArray(postComments.userId, seedIds));
-  await db.delete(postBookmarks).where(inArray(postBookmarks.userId, seedIds));
-  await db.delete(followers).where(or(inArray(followers.followerId, seedIds), inArray(followers.followingId, seedIds)));
-  await db.delete(savedSearches).where(inArray(savedSearches.userId, seedIds));
-  await db.delete(portfolioItems).where(inArray(portfolioItems.userId, seedIds));
-  await db.delete(reviews).where(inArray(reviews.reviewerId, seedIds));
-  await db.delete(ratings).where(or(inArray(ratings.fromUserId, seedIds), inArray(ratings.toUserId, seedIds)));
-  await db.delete(engagementEvents).where(inArray(engagementEvents.userId, seedIds));
-  await db.delete(collabApplications).where(inArray(collabApplications.creatorId, seedIds));
-  await db.delete(quickInquiries).where(inArray(quickInquiries.fromUserId, seedIds));
-  await db.delete(referrals).where(or(inArray(referrals.referrerId, seedIds), inArray(referrals.referredId, seedIds)));
-  // failedLoginAttempts keyed by email — use raw SQL to match seed user emails
-  await db.execute(sql`DELETE FROM failed_login_attempts WHERE email IN (SELECT email FROM users WHERE id = ANY(ARRAY[${sql.join(seedIds.map(id => sql`${id}`), sql`, `)}]::text[]))`);
+  await tryDelete("notifications(user)", () => db.delete(notifications).where(inArray(notifications.userId, seedIds)));
+  await tryDelete("wishlists(user)", () => db.delete(wishlists).where(inArray(wishlists.userId, seedIds)));
+  await tryDelete("listingLikes(user)", () => db.delete(listingLikes).where(inArray(listingLikes.userId, seedIds)));
+  await tryDelete("listingComments(user)", () => db.delete(listingComments).where(inArray(listingComments.userId, seedIds)));
+  await tryDelete("postLikes(user)", () => db.delete(postLikes).where(inArray(postLikes.userId, seedIds)));
+  await tryDelete("postComments(user)", () => db.delete(postComments).where(inArray(postComments.userId, seedIds)));
+  await tryDelete("postBookmarks(user)", () => db.delete(postBookmarks).where(inArray(postBookmarks.userId, seedIds)));
+  await tryDelete("followers(user)", () => db.delete(followers).where(or(inArray(followers.followerId, seedIds), inArray(followers.followingId, seedIds))));
+  await tryDelete("savedSearches(user)", () => db.delete(savedSearches).where(inArray(savedSearches.userId, seedIds)));
+  await tryDelete("portfolioItems(user)", () => db.delete(portfolioItems).where(inArray(portfolioItems.userId, seedIds)));
+  await tryDelete("reviews(user)", () => db.delete(reviews).where(inArray(reviews.reviewerId, seedIds)));
+  await tryDelete("ratings(user)", () => db.delete(ratings).where(or(inArray(ratings.fromUserId, seedIds), inArray(ratings.toUserId, seedIds))));
+  await tryDelete("engagementEvents(user)", () => db.delete(engagementEvents).where(inArray(engagementEvents.userId, seedIds)));
+  await tryDelete("collabApplications(user)", () => db.delete(collabApplications).where(inArray(collabApplications.creatorId, seedIds)));
+  await tryDelete("quickInquiries(user)", () => db.delete(quickInquiries).where(inArray(quickInquiries.fromUserId, seedIds)));
+  await tryDelete("referrals(user)", () => db.delete(referrals).where(or(inArray(referrals.referrerId, seedIds), inArray(referrals.referredId, seedIds))));
+  // failedLoginAttempts is keyed by email, not userId
+  await tryDelete("failedLoginAttempts", () =>
+    db.execute(sql`DELETE FROM failed_login_attempts WHERE email = ANY(${seedEmails})`)
+  );
+  // Support tickets + their messages
+  await tryDelete("supportTickets", async () => {
+    const ticketRows = await db.select({ id: supportTickets.id }).from(supportTickets).where(inArray(supportTickets.userId, seedIds));
+    if (ticketRows.length > 0) {
+      const tIds = ticketRows.map(r => r.id);
+      await db.execute(sql`DELETE FROM support_messages WHERE ticket_id = ANY(${tIds})`);
+      await db.delete(supportTickets).where(inArray(supportTickets.id, tIds));
+    }
+  });
 
-  // Support tickets for seed users
-  const seedTicketRows = await db.select({ id: supportTickets.id }).from(supportTickets)
-    .where(inArray(supportTickets.userId, seedIds));
-  if (seedTicketRows.length > 0) {
-    // Messages in support tickets
-    await db.execute(sql`DELETE FROM support_messages WHERE ticket_id IN (${sql.join(seedTicketRows.map(r => sql`${r.id}`), sql`, `)})`);
-    await db.delete(supportTickets).where(inArray(supportTickets.id, seedTicketRows.map(r => r.id)));
-  }
+  // ── Delete parent records ────────────────────────────────────────────────────
+  await tryDelete("deals", () => allDealIds.length > 0 ? db.delete(deals).where(inArray(deals.id, allDealIds)) : Promise.resolve());
+  await tryDelete("listings", () => allListingIds.length > 0 ? db.delete(listings).where(inArray(listings.id, allListingIds)) : Promise.resolve());
+  await tryDelete("posts", () => allPostIds.length > 0 ? db.delete(posts).where(inArray(posts.id, allPostIds)) : Promise.resolve());
 
-  // Delete deals, listings, posts
-  if (allDealIds.length > 0) await db.delete(deals).where(inArray(deals.id, allDealIds));
-  if (allListingIds.length > 0) await db.delete(listings).where(inArray(listings.id, allListingIds));
-  if (allPostIds.length > 0) await db.delete(posts).where(inArray(posts.id, allPostIds));
+  // ── Finally delete the seed user accounts ───────────────────────────────────
+  const deleted = await db.delete(users).where(inArray(users.id, seedIds)).returning({ id: users.id });
 
-  // Finally delete the seed user accounts
-  await db.delete(users).where(inArray(users.id, seedIds));
-
-  const kept = allUsers.length - seedIds.length;
-  console.log(`[purgeSeed] Deleted ${seedIds.length} seed accounts + all owned data. ${kept} real user(s) kept.`);
-  return { deleted: seedIds.length, kept };
+  const kept = allUsers.length - deleted.length;
+  console.log(`[purgeSeed] ✓ Deleted ${deleted.length} seed accounts + all owned data. ${kept} real user(s) kept.`);
+  return { deleted: deleted.length, kept };
 }
