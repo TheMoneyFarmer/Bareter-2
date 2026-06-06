@@ -353,6 +353,33 @@ function Router() {
   );
 }
 
+// Shows a subtle "starting up" banner only when the server is taking >3s
+// to respond (Replit cold start). Disappears automatically once the app loads.
+function WarmupBanner() {
+  const [show, setShow] = useState(false);
+  const { data: config, isLoading } = useQuery<{ maintenanceMode: boolean }>({
+    queryKey: ["/api/config"],
+    staleTime: 15_000,
+    retry: 3,
+    retryDelay: 2000,
+  });
+
+  useEffect(() => {
+    if (!isLoading || config) return;
+    const t = setTimeout(() => setShow(true), 3000);
+    return () => clearTimeout(t);
+  }, [isLoading, config]);
+
+  if (!show || !isLoading) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-bareter-teal text-white text-sm py-2 px-4 flex items-center justify-center gap-2 shadow-md">
+      <div className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin flex-shrink-0" />
+      <span>Starting up, please wait a moment…</span>
+    </div>
+  );
+}
+
 function MaintenanceGate({ children }: { children: React.ReactNode }) {
   const { data: config } = useQuery<{ maintenanceMode: boolean }>({
     queryKey: ["/api/config"],
@@ -376,6 +403,7 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <WarmupBanner />
       <ThemeProvider>
         <I18nProvider>
           <AuthProvider>

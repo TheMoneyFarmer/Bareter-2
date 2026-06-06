@@ -110,70 +110,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Full launch cleanup: removes ALL seed/demo accounts and every record they
-  // own (listings, deals, posts, messages, ratings). Idempotent — no-ops once
-  // seed accounts are gone. @bareter.com admin accounts are always kept safe.
-  try {
-    await purgeSeedUsers();
-  } catch (error) {
-    console.error("Failed to cleanup seed data:", error);
-  }
-
   if (!process.env.DIDIT_WEBHOOK_SECRET) {
     console.warn(
       "[startup] DIDIT_WEBHOOK_SECRET is not set — KYC/KYB webhook signature verification will reject all callbacks. Set this secret before going live.",
     );
   }
 
-  // Provision the founder admin account (idempotent). Runs in every
-  // environment so the same secret rotation lands in dev and prod.
-  await bootstrapAdmin();
-
-  // Backfill the legal pack into the database on first boot so the admin
-  // editor and the public LegalDocPage both read from the same source.
-  try {
-    await seedLegalPages();
-  } catch (error) {
-    console.error("Failed to seed legal pages:", error);
-  }
-
-  // Backfill country/city/location for legacy rows so location filters and
-  // worldwide-toggle behavior work correctly across pre-expansion data.
-  try {
-    await backfillLocationFields();
-  } catch (error) {
-    console.error("Failed to backfill location fields:", error);
-  }
-
-  // Register main routes first so the session middleware is initialized
-  // before the object-storage routes try to read req.session.
+  // Register main routes — MUST happen before listen so session middleware
+  // and all API handlers are in place before the first request arrives.
   await registerRoutes(httpServer, app);
-
-  // Company OS scheduler — node-cron jobs (daily briefing, hourly
-  // finance snapshot, budget warning). Production-only by default;
-  // safe to call on every boot (idempotent).
-  try {
-    const { startScheduler } = await import("./companyOs/scheduler");
-    startScheduler();
-  } catch (err) {
-    console.error("[startup] Failed to start Company OS scheduler:", err);
-  }
-
-  // Warm the per-agent budget override cache BEFORE the server starts
-  // serving requests. We await this so the very first dashboard load
-  // and the very first LLM safety/throttle decision after restart see
-  // the persisted DB caps, not the hardcoded fallback. Failures are
-  // non-fatal — getAgentBudgetAed degrades gracefully to the
-  // hardcoded defaults and ensureAgentBudgetOverridesLoaded will
-  // retry on the next read because loadOverrideCache only flips the
-  // ready flag on success.
-  try {
-    const { ensureAgentBudgetOverridesLoaded, seedAgentBudgetDefaults } = await import("./companyOs/costTracker");
-    await seedAgentBudgetDefaults();
-    await ensureAgentBudgetOverridesLoaded();
-  } catch (err) {
-    console.error("[startup] Failed to warm agent-budget cache:", err);
-  }
 
   // Register object storage routes (depend on session middleware above)
   registerObjectStorageRoutes(app);
@@ -301,13 +246,40 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      // reusePort is a Linux-only socket option (used on the production
-      // Replit host). macOS/Windows kernels reject it with ENOTSUP, so we
-      // only set it on linux to keep local dev working.
       reusePort: process.platform === "linux",
     },
     () => {
       log(`serving on port ${port}`);
+
+      // ── Background startup tasks ─────────────────────────────────────────
+      // These run AFTER the server is already accepting requests so they
+      // never delay the first user's page load. All are idempotent — safe
+      // to re-run on every cold start, and failures are non-fatal.
+
+      // 1. Purge any remaining seed/demo accounts and their data.
+      purgeSeedUsers().catch((err) => console.error("[startup] purgeSeedUsers failed:", err));
+
+      // 2. Provision the founder admin account (no-op if already exists).
+      bootstrapAdmin().catch((err) => console.error("[startup] bootstrapAdmin failed:", err));
+
+      // 3. Seed legal pages into DB on first boot.
+      seedLegalPages().catch((err) => console.error("[startup] seedLegalPages failed:", err));
+
+      // 4. Backfill country/city/location for legacy user rows.
+      backfillLocationFields().catch((err) => console.error("[startup] backfillLocationFields failed:", err));
+
+      // 5. Company OS cron scheduler.
+      import("./companyOs/scheduler")
+        .then(({ startScheduler }) => startScheduler())
+        .catch((err) => console.error("[startup] scheduler failed:", err));
+
+      // 6. Warm per-agent budget cache (degrades gracefully on miss).
+      import("./companyOs/costTracker")
+        .then(async ({ ensureAgentBudgetOverridesLoaded, seedAgentBudgetDefaults }) => {
+          await seedAgentBudgetDefaults();
+          await ensureAgentBudgetOverridesLoaded();
+        })
+        .catch((err) => console.error("[startup] budget cache failed:", err));
     },
   );
 })();
