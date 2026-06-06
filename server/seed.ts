@@ -796,6 +796,44 @@ const ALL_LUXURY_SEED_TITLES = [
   "MacBook Pro M3 Max + Professional Creator Setup",
   "Custom Designer Abaya Collection — 10 Bespoke Pieces",
   "2023 Mercedes-Benz G63 AMG — Obsidian Black — Open to Multi-Asset Trade",
+  // topUpTrendingListings everyday titles
+  "Toyota Corolla 2020 — Low Mileage, Full Service History",
+  "Honda Civic 2021 — Accident Free, GCC Spec",
+  "Yamaha YBR 125 Motorbike — Barely Used",
+  "Studio Apartment in Deira — Furnished, Bills Included",
+  "1 Bedroom Flat in Ajman — Ready to Move In",
+  "Wanted: Shared Room in Dubai — Any Area",
+  "iPhone 14 Pro 256GB — Space Black, Like New",
+  "Samsung Galaxy S23 Ultra — 512GB, Green",
+  "MacBook Air M2 — 8GB/256GB, Midnight",
+  "Dell Inspiron 15 — Core i7, 16GB RAM, 512GB SSD",
+  "PlayStation 5 + 3 Games — Disc Edition",
+  "Xbox Series X — 1TB, Like New",
+  "Samsung 55\" 4K Smart TV — QLED Series",
+  "LG Front Load Washing Machine — 8KG",
+  "Sony WH-1000XM5 Noise Cancelling Headphones",
+  "JBL Charge 5 Bluetooth Speaker — Teal",
+  "Nike Air Max 90 — Size 43, White/Black",
+  "Women's Heels Collection — 6 Pairs, Various Sizes",
+  "Adidas Yeezy Boost 350 V2 — Size 42, Authentic",
+  "Men's Clothes Bundle — 15 Pieces (M/L Sizes)",
+  "Women's Casual Wardrobe Bundle — 20 Pieces",
+  "Casio G-Shock GA-2100 — Black, Original",
+  "Apple Watch Series 8 — 45mm, Midnight",
+  "Trek Marlin 5 Mountain Bike — 2022, Large Frame",
+  "Kids' Bicycle 20\" — Perfect for Ages 6-10",
+  "iPhone Charger & Cable Bundle — 5 Pieces",
+  "Professional Haircut & Grooming — 10 Sessions",
+  "Photography Session — 2 Hours, Edited Photos Included",
+  "Home-Cooked Meal Prep — 20 Meals (Weekly Plan)",
+  // seedCollabListings titles
+  "Luxury Hotel Stay — Dubai Marina (2 nights)",
+  "12-Month TechFlow Pro SaaS License (AED 2,400 value)",
+  "Luxury Abaya + Styling Session — Maison Fatima",
+  "Corporate Event Photography Package — AED 3,500 value",
+  "Premium Fitness Membership — 3 Months (Dubai)",
+  "Fine Dining Experience for Two — AED 800 F&B Credit",
+  "Smart Home Tech Bundle — AED 1,500 worth of devices",
 ];
 
 // All seed/editorial user emails (secondary cleanup if users exist)
@@ -1789,7 +1827,7 @@ export async function wipeSeedData() {
 // ── Full launch purge — removes ALL seed/demo user accounts and every record
 // they own. Keeps every real user account (and their listings/deals).
 // Protected admin-only endpoint — run once before going live.
-export async function purgeSeedUsers(adminUserId: string): Promise<{ deleted: number; kept: number }> {
+export async function purgeSeedUsers(adminUserId = "SYSTEM"): Promise<{ deleted: number; kept: number }> {
   const allUsers = await db.select({ id: users.id, email: users.email }).from(users);
 
   const CREATOR_PATTERN = /\.creator@bareter\.com$/;

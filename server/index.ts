@@ -4,7 +4,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { backfillLocationFields, wipeSeedData } from "./seed";
+import { backfillLocationFields, purgeSeedUsers } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -110,12 +110,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Remove all fake seed/editorial data so only real users remain.
-  // Idempotent — safe to call on every boot (no-ops once seed accounts are gone).
+  // Full launch cleanup: removes ALL seed/demo accounts and every record they
+  // own (listings, deals, posts, messages, ratings). Idempotent — no-ops once
+  // seed accounts are gone. @bareter.com admin accounts are always kept safe.
   try {
-    await wipeSeedData();
+    await purgeSeedUsers();
   } catch (error) {
-    console.error("Failed to wipe seed data:", error);
+    console.error("Failed to cleanup seed data:", error);
   }
 
   if (!process.env.DIDIT_WEBHOOK_SECRET) {
