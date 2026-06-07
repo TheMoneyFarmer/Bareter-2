@@ -187,6 +187,9 @@ export function Header() {
 
   const showVerifyBanner = user && !user.isVerified && !bannerDismissed;
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   const { state: pushState, subscribe: subscribePush } = usePushNotifications();
   const [pushDismissed, setPushDismissed] = useState(() => {
     try { return localStorage.getItem("bareter_push_dismissed") === "1"; } catch { return false; }
@@ -481,9 +484,10 @@ export function Header() {
                         <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span>Search History</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5">
+                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5 opacity-70">
                         <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span>Creators</span>
+                        <span className="flex-1">Creators</span>
+                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                       </DropdownMenuItem>
                     </div>
 
@@ -576,7 +580,7 @@ export function Header() {
                 </DropdownMenu>
 
                 {/* Mobile hamburger */}
-                <Sheet>
+                <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                   <SheetTrigger asChild>
                     <button type="button"
                       className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-white/10"
@@ -598,14 +602,14 @@ export function Header() {
                     </div>
                     {/* Mobile search */}
                     <div className="p-3 border-b">
-                      <form onSubmit={handleSearch} className="flex items-center gap-2 h-10 bg-muted/40 rounded-lg px-3">
+                      <form onSubmit={(e) => { handleSearch(e); closeMobileMenu(); }} className="flex items-center gap-2 h-10 bg-muted/40 rounded-lg px-3">
                         <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Search listings…" className="flex-1 bg-transparent text-sm focus:outline-none" />
                       </form>
                     </div>
                     <nav className="flex flex-col py-2">
-                      <Link href="/create-listing">
+                      <Link href="/create-listing" onClick={closeMobileMenu}>
                         <Button variant="bareter" className="mx-3 mb-2 w-[calc(100%-24px)] justify-start gap-2 h-11">
                           <Plus className="h-4 w-4" />{t("nav.listABarter")}
                         </Button>
@@ -619,11 +623,9 @@ export function Header() {
                         { href: "/deals", icon: <Handshake className="h-4 w-4" />, label: "Deals" },
                         { href: "/saved", icon: <Heart className="h-4 w-4" />, label: "Favorites" },
                         { href: "/inbox", icon: <MessageSquare className="h-4 w-4" />, label: "Chats", badge: inboxUnread },
-                        { href: "/creators", icon: <Sparkles className="h-4 w-4" />, label: "Creators" },
                         { href: "/my-searches", icon: <Bookmark className="h-4 w-4" />, label: "Search History" },
-                        { href: "/settings", icon: <Settings className="h-4 w-4" />, label: t("nav.settings") },
                       ].map(({ href, icon, label, badge }) => (
-                        <Link key={href} href={href}>
+                        <Link key={href} href={href} onClick={closeMobileMenu}>
                           <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
                             <span className="text-muted-foreground">{icon}</span>
                             <span className="text-sm font-medium flex-1">{label}</span>
@@ -631,8 +633,16 @@ export function Header() {
                           </button>
                         </Link>
                       ))}
+                      {/* Creators — coming soon */}
+                      <Link href="/creators" onClick={closeMobileMenu}>
+                        <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start opacity-70">
+                          <span className="text-muted-foreground"><Sparkles className="h-4 w-4" /></span>
+                          <span className="text-sm font-medium flex-1">Creators</span>
+                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
+                        </button>
+                      </Link>
                       {user.isAdmin && (
-                        <Link href="/admin">
+                        <Link href="/admin" onClick={closeMobileMenu}>
                           <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
                             <Shield className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium flex-1">Admin Panel</span>
@@ -641,9 +651,13 @@ export function Header() {
                         </Link>
                       )}
                       <div className="border-t mx-4 my-2" />
-                      {/* Language toggle — hidden until multi-language release */}
+                      <button type="button" onClick={() => { closeMobileMenu(); toggleLanguage(); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
+                        <Languages className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{language === "en" ? "العربية" : "English"}</span>
+                      </button>
                       <div className="border-t mx-4 my-2" />
-                      <button type="button" onClick={logout}
+                      <button type="button" onClick={() => { closeMobileMenu(); logout(); }}
                         className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-red-50 transition-colors text-destructive text-start"
                         data-testid="menu-logout">
                         <LogOut className="h-4 w-4" />
