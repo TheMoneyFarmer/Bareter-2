@@ -960,30 +960,28 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── Brand Collab Toggle ──────────────────────────────────────── */}
-          <Card className={`border-2 transition-colors ${isCollab ? "border-primary bg-primary/5" : "border-dashed border-muted-foreground/30"}`}>
+          {/* ── Brand Collab Toggle — Coming Soon ───────────────────────── */}
+          <Card className="border-2 border-dashed border-muted-foreground/30 opacity-60 cursor-not-allowed">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${isCollab ? "bg-primary text-white" : "bg-muted"}`}>
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
                     <Camera className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-semibold text-sm">Brand Collab Listing</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">Brand Collab Listing</p>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Coming Soon</span>
+                    </div>
                     <p className="text-xs text-muted-foreground">Offer your product/service in exchange for creator content</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCollab(!isCollab)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${isCollab ? "bg-primary" : "bg-muted-foreground/30"}`}
-                  data-testid="toggle-is-collab"
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCollab ? "translate-x-6" : "translate-x-1"}`} />
-                </button>
+                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted-foreground/20 flex-shrink-0 pointer-events-none">
+                  <span className="inline-block h-4 w-4 transform rounded-full bg-white translate-x-1" />
+                </div>
               </div>
 
-              {isCollab && (
+              {false && isCollab && (
                 <div className="mt-5 space-y-4 border-t pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
