@@ -1277,7 +1277,7 @@ export function ListingDetailPage() {
             <CardContent className="space-y-3">
               {listingComments && listingComments.length > 0 ? (
                 <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {listingComments.map((comment) => (
+                  {listingComments.filter((comment) => isOwnListing || user?.id === comment.userId).map((comment) => (
                     <div key={comment.id} className="flex items-start gap-2 p-2 rounded-md bg-muted/40" data-testid={`comment-${comment.id}`}>
                       <Link href={`/users/${comment.userId}`}>
                         <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">

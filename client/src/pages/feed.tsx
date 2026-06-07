@@ -1529,7 +1529,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
         </div>
       ) : proposals && proposals.length > 0 ? (
         <div className="space-y-2 max-h-72 overflow-y-auto">
-          {proposals.map((p) => (
+          {proposals.filter((p) => isOwner || user?.id === p.userId).map((p) => (
             <div
               key={p.id}
               className={`rounded-lg p-3 border ${
@@ -1642,8 +1642,8 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                 </div>
               )}
 
-              {/* Accepted proposal — link directly to the deal page */}
-              {p.status === "accepted" && (
+              {/* Accepted proposal — only visible to the two participants */}
+              {p.status === "accepted" && user && (user.id === p.userId || user.id === ownerId) && (
                 <div className="mt-2.5 pt-2 border-t border-green-200 dark:border-green-800 flex gap-2">
                   <Button
                     size="sm"
@@ -1652,11 +1652,9 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                   >
                     🤝 View Deal & Progress
                   </Button>
-                  {user && (user.id === p.userId || user.id === ownerId) && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setReviewProposal({ id: p.id, otherPartyName: user.id === p.userId ? listing.title : (p.user?.fullName || "Proposer") })}>
-                      ★ Review
-                    </Button>
-                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setReviewProposal({ id: p.id, otherPartyName: user.id === p.userId ? listing.title : (p.user?.fullName || "Proposer") })}>
+                    ★ Review
+                  </Button>
                 </div>
               )}
             </div>

@@ -51,6 +51,8 @@ import {
   adminAuditLogs,
   failedLoginAttempts,
   searchQueryHistory,
+  engagementEvents,
+  reviews as reviewsTable,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -1991,6 +1993,55 @@ export async function registerRoutes(
     }
   });
 
+  // Toggle listing active status (pause / activate) — owner only
+  app.patch("/api/listings/:id/status", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Not authorized" });
+      const { isActive } = req.body;
+      if (typeof isActive !== "boolean") return res.status(400).json({ message: "isActive must be a boolean" });
+      const updated = await storage.updateListing(listingId, { isActive });
+      res.json(updated);
+    } catch (error) {
+      console.error("Toggle listing status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete own listing with full cascade cleanup
+  app.delete("/api/listings/:id", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Not authorized" });
+
+      // Null out nullable FK references so history (deals, notifications, reviews) is preserved
+      await db.update(deals).set({ seekerListingId: null }).where(eq(deals.seekerListingId, listingId));
+      await db.update(deals).set({ providerListingId: null }).where(eq(deals.providerListingId, listingId));
+      await db.update(notifications).set({ relatedListingId: null }).where(eq(notifications.relatedListingId, listingId));
+      await db.update(quickInquiries).set({ listingId: null }).where(eq(quickInquiries.listingId, listingId));
+      await db.update(engagementEvents).set({ listingId: null }).where(eq(engagementEvents.listingId, listingId));
+      await db.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, listingId));
+
+      // Delete rows that have NOT NULL FK on listingId
+      await db.delete(wishlists).where(eq(wishlists.listingId, listingId));
+      await db.delete(imageScans).where(eq(imageScans.listingId, listingId));
+      await db.delete(listingLikes).where(eq(listingLikes.listingId, listingId));
+      await db.delete(listingComments).where(eq(listingComments.listingId, listingId));
+      await db.delete(moderationLogs).where(
+        and(eq(moderationLogs.targetType, "listing"), eq(moderationLogs.targetId, listingId)),
+      );
+      await db.delete(listings).where(eq(listings.id, listingId));
+      res.json({ message: "Listing deleted" });
+    } catch (error) {
+      console.error("Delete listing error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Listing Likes
   app.post("/api/listings/:id/like", requireAuth, async (req, res) => {
     try {
@@ -2084,7 +2135,25 @@ export async function registerRoutes(
   app.get("/api/listings/:id/comments", async (req, res) => {
     try {
       const listingId = param(req.params.id);
-      const comments = await storage.getListingComments(listingId);
+      const sessionUserId = req.session?.userId as string | undefined;
+
+      // Determine who owns this listing so we can gate visibility
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+      const isOwner = !!sessionUserId && listing.userId === sessionUserId;
+
+      let comments = await storage.getListingComments(listingId);
+
+      // Privacy gate: owners see all proposals; proposers see only their own;
+      // third-party users (neither owner nor proposer) see nothing.
+      if (!isOwner) {
+        if (sessionUserId) {
+          comments = comments.filter((c) => c.userId === sessionUserId);
+        } else {
+          comments = [];
+        }
+      }
 
       // Attach dealId to accepted proposals so the UI can link directly to the deal
       const enriched = await Promise.all(
