@@ -144,7 +144,7 @@ export interface IStorage {
   getListing(id: string): Promise<Listing | undefined>;
   getListingWithUser(id: string): Promise<ListingWithUser | undefined>;
   getListings(): Promise<ListingWithUser[]>;
-  getListingsFiltered(params: { search?: string; type?: string; category?: string; location?: string; country?: string; city?: string; verified?: boolean; minValue?: number; maxValue?: number; limit?: number; offset?: number }): Promise<ListingWithUser[]>;
+  getListingsFiltered(params: { search?: string; type?: string; category?: string; location?: string; country?: string; city?: string; verified?: boolean; minValue?: number; maxValue?: number; limit?: number; offset?: number; excludeUserId?: string }): Promise<ListingWithUser[]>;
   getListingsByUser(userId: string): Promise<Listing[]>;
   createListing(listing: InsertListing): Promise<Listing>;
   updateListing(id: string, data: Partial<Listing>): Promise<Listing | undefined>;
@@ -529,10 +529,12 @@ export class DatabaseStorage implements IStorage {
     maxValue?: number;
     limit?: number;
     offset?: number;
+    excludeUserId?: string;
   }): Promise<ListingWithUser[]> {
-    const { search, type, category, location, country, city, verified, minValue, maxValue, limit = 50, offset = 0 } = params;
+    const { search, type, category, location, country, city, verified, minValue, maxValue, limit = 50, offset = 0, excludeUserId } = params;
 
     const conditions = [eq(listings.isActive, true)];
+    if (excludeUserId) conditions.push(sql`${listings.userId} != ${excludeUserId}`);
 
     if (search) {
       conditions.push(

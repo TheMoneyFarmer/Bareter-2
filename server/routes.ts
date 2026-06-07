@@ -1653,6 +1653,7 @@ export async function registerRoutes(
         maxValue: typeof maxValue === "string" && !isNaN(parseFloat(maxValue)) ? parseFloat(maxValue) : undefined,
         limit: seedParam ? limit * 3 : limit, // overfetch for shuffle
         offset,
+        excludeUserId: req.session?.userId || undefined,
       });
 
       const userId = req.session?.userId;
@@ -5909,10 +5910,12 @@ export async function registerRoutes(
         ? undefined
         : queryCityPosts || (queryCountryPosts ? undefined : sessionUserPosts?.city || undefined);
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
+      const currentUserId = req.session?.userId;
       // Legacy-tolerant filter: posts without country/city are kept (legacy/seed
       // data may have only `location` set). Strict country/city match is applied
-      // when those fields exist.
+      // when those fields exist. Authenticated users never see their own posts in the feed.
       const filtered = allPosts.filter((p) => {
+        if (currentUserId && p.userId === currentUserId) return false;
         if (country && p.country) {
           if (p.country.toUpperCase() !== country) return false;
         }
