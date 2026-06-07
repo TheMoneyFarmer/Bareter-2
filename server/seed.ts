@@ -1919,7 +1919,11 @@ export async function purgeSeedUsers(adminUserId = "SYSTEM"): Promise<{ deleted:
   await tryDelete("ratings(user)", () => db.delete(ratings).where(or(inArray(ratings.fromUserId, seedIds), inArray(ratings.toUserId, seedIds))));
   await tryDelete("engagementEvents(user)", () => db.delete(engagementEvents).where(inArray(engagementEvents.userId, seedIds)));
   await tryDelete("collabApplications(user)", () => db.delete(collabApplications).where(inArray(collabApplications.creatorId, seedIds)));
-  await tryDelete("quickInquiries(user)", () => db.delete(quickInquiries).where(inArray(quickInquiries.fromUserId, seedIds)));
+  await tryDelete("quickInquiries(user)", () =>
+    db.delete(quickInquiries).where(
+      or(inArray(quickInquiries.fromUserId, seedIds), inArray(quickInquiries.toUserId, seedIds))
+    )
+  );
   await tryDelete("referrals(user)", () => db.delete(referrals).where(or(inArray(referrals.referrerId, seedIds), inArray(referrals.referredId, seedIds))));
   // failedLoginAttempts is keyed by email, not userId
   await tryDelete("failedLoginAttempts", () =>

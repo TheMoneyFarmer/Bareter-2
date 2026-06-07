@@ -451,7 +451,7 @@ function App() {
           </AuthProvider>
         </I18nProvider>
       </ThemeProvider>
-    </PersistQueryClientProvider>
+    </QueryClientProvider>
   );
 }
 
