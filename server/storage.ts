@@ -508,7 +508,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(listings)
       .leftJoin(users, eq(listings.userId, users.id))
-      .where(eq(listings.isActive, true))
+      .where(and(eq(listings.isActive, true), isNull(listings.deletedAt)))
       .orderBy(desc(listings.createdAt));
 
     return result.map(({ listings: listing, users: user }) => ({
@@ -533,7 +533,7 @@ export class DatabaseStorage implements IStorage {
   }): Promise<ListingWithUser[]> {
     const { search, type, category, location, country, city, verified, minValue, maxValue, limit = 50, offset = 0, excludeUserId } = params;
 
-    const conditions = [eq(listings.isActive, true)];
+    const conditions = [eq(listings.isActive, true), isNull(listings.deletedAt)];
     if (excludeUserId) conditions.push(sql`${listings.userId} != ${excludeUserId}`);
 
     if (search) {
@@ -580,7 +580,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(listings)
-      .where(and(eq(listings.userId, userId), eq(listings.isActive, true)))
+      .where(and(eq(listings.userId, userId), isNull(listings.deletedAt)))
       .orderBy(desc(listings.createdAt));
   }
 

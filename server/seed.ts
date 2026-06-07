@@ -1756,6 +1756,9 @@ const EDITORIAL_EMAILS = [
   "editorial.realestate@bareter.com",
   "editorial.hospitality@bareter.com",
   "editorial.services@bareter.com",
+  // Founder internal test accounts — purged on every boot so test listings
+  // never appear in real users' feeds after a deploy.
+  "thando@bareter.com",
 ];
 
 // ── Production cleanup ───────────────────────────────────────────────────────

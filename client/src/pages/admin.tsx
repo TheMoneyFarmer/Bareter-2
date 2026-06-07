@@ -165,8 +165,16 @@ type AnalyticsData = {
   totalDeals: number;
   activeDeals: number;
   completedDeals: number;
+  cancelledDeals: number;
+  proposedDeals: number;
+  inProgressDeals: number;
   totalListings: number;
+  liveListings: number;
   activeListings: number;
+  pausedListings: number;
+  deletedListings: number;
+  pendingListings: number;
+  flaggedListings: number;
   newListingsToday: number;
   totalGMV: number;
   monthlyGMV: number;
@@ -270,51 +278,61 @@ export function AdminPage() {
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: listings, isLoading: listingsLoading } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/admin/listings"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: deals, isLoading: dealsLoading } = useQuery<DealWithUsers[]>({
     queryKey: ["/api/admin/deals"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: userGrowth } = useQuery<{ date: string; count: number }[]>({
     queryKey: ["/api/admin/analytics/user-growth"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: topListings } = useQuery<{ id: string; title: string; viewCount: number; proposalCount: number }[]>({
     queryKey: ["/api/admin/analytics/top-listings"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: funnelData, isLoading: funnelLoading } = useQuery<FunnelData>({
     queryKey: ["/api/admin/analytics/funnel"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: emailStats } = useQuery<{ total: number; sent: number; failed: number }>({
     queryKey: ["/api/admin/email/stats"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: emailTemplates } = useQuery<Record<string, string>>({
     queryKey: ["/api/admin/email/templates"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
   });
 
   const { data: dealMessages } = useQuery<MessageWithSender[]>({
     queryKey: ["/api/admin/deals", selectedDeal?.id, "messages"],
     enabled: !!selectedDeal,
+    staleTime: 0,
   });
 
   const createUserMutation = useMutation({
@@ -507,16 +525,19 @@ export function AdminPage() {
   const { data: userDetail } = useQuery<User & { listings: Listing[]; deals: DealWithUsers[] }>({
     queryKey: ["/api/admin/users", selectedUserId, "detail"],
     enabled: !!selectedUserId,
+    staleTime: 0,
   });
 
   const { data: listingModerationHistory } = useQuery<ModerationLog[]>({
     queryKey: ["/api/admin/listings", selectedListingId, "moderation-history"],
     enabled: !!selectedListingId,
+    staleTime: 0,
   });
 
   const { data: disputesData = [], isLoading: disputesLoading } = useQuery<DisputeWithParties[]>({
     queryKey: ["/api/admin/disputes"],
     enabled: activeSection === "disputes",
+    staleTime: 0,
   });
 
   const auditLogQueryParams = new URLSearchParams();
@@ -530,21 +551,25 @@ export function AdminPage() {
     queryKey: ["/api/admin/audit-logs", auditLogActionFilter, auditLogAdminFilter, auditLogDateFrom, auditLogDateTo],
     queryFn: () => fetch(auditLogUrl, { credentials: "include" }).then(r => r.json()),
     enabled: activeSection === "settings" && settingsTab === "audit",
+    staleTime: 0,
   });
 
   const { data: failedLogins = [] } = useQuery<FailedLoginAttempt[]>({
     queryKey: ["/api/admin/failed-logins"],
     enabled: activeSection === "settings" && settingsTab === "security",
+    staleTime: 0,
   });
 
   const { data: dataCollectionSetting } = useQuery<{ dataCollectionDisabled: boolean }>({
     queryKey: ["/api/admin/settings/data-collection"],
     enabled: activeSection === "settings",
+    staleTime: 0,
   });
 
   const { data: betaInviteData } = useQuery<{ code: string | null; inviteUrl: string | null }>({
     queryKey: ["/api/admin/beta-invite-code"],
     enabled: activeSection === "settings",
+    staleTime: 0,
   });
 
   const regenerateInviteCodeMutation = useMutation({
@@ -720,6 +745,7 @@ export function AdminPage() {
   const { data: broadcastJobStatus } = useQuery<{ id: string; status: string; recipientCount: number; sent: number; failed: number; completedAt: string | null }>({
     queryKey: ["/api/admin/email/broadcast", broadcastJobId],
     enabled: !!broadcastJobId,
+    staleTime: 0,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === "completed" || status === "failed" ? false : 3000;
@@ -789,7 +815,11 @@ export function AdminPage() {
       l.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
+    const isDeleted = !!(l as any).deletedAt;
+    if (listingStatusFilter === "deleted") return isDeleted;
+    if (isDeleted) return false; // hide deleted from all other filters
     if (listingStatusFilter === "active" && (!l.isActive || l.moderationStatus === "rejected")) return false;
+    if (listingStatusFilter === "paused" && (l.isActive || isDeleted)) return false;
     if (listingStatusFilter === "inactive" && l.isActive) return false;
     if (listingStatusFilter === "pending" && l.moderationStatus !== "pending") return false;
     if (listingStatusFilter === "flagged" && l.moderationStatus !== "flagged" && !l.valueFlagged && !l.imageFlagged) return false;
@@ -2392,7 +2422,7 @@ export function AdminPage() {
             <CardDescription>All-time platform metrics</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="text-center">
                 <p className="text-3xl font-bold text-primary">{analytics?.totalUsers || 0}</p>
                 <p className="text-sm text-muted-foreground">Total Users</p>
@@ -2408,12 +2438,24 @@ export function AdminPage() {
                 <p className="text-sm text-muted-foreground">Total GMV</p>
               </div>
               <div className="text-center">
+                <p className="text-3xl font-bold text-orange-500">{analytics?.liveListings || 0}</p>
+                <p className="text-sm text-muted-foreground">Live Listings</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-red-500">{analytics?.deletedListings || 0}</p>
+                <p className="text-sm text-muted-foreground">Deleted Listings</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-green-600">{analytics?.completedDeals || 0}</p>
+                <p className="text-sm text-muted-foreground">Closed Deals</p>
+              </div>
+              <div className="text-center">
                 <p className="text-3xl font-bold text-purple-500">{analytics?.newListingsToday || 0}</p>
                 <p className="text-sm text-muted-foreground">New Today</p>
               </div>
               <div className="text-center">
-                <p className="text-3xl font-bold text-orange-500">{analytics?.activeListings || 0}</p>
-                <p className="text-sm text-muted-foreground">Active Listings</p>
+                <p className="text-3xl font-bold text-amber-500">{analytics?.cancelledDeals || 0}</p>
+                <p className="text-sm text-muted-foreground">Cancelled Deals</p>
               </div>
             </div>
           </CardContent>

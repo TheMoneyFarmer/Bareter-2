@@ -5149,10 +5149,15 @@ export async function registerRoutes(
   app.delete("/api/admin/listings/:id", requireAdmin, async (req, res) => {
     try {
       const listingId = param(req.params.id);
-      const listing = await storage.updateListing(listingId, { isActive: false });
+      const listing = await storage.getListing(listingId);
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
+      await db.update(listings).set({
+        deletedAt: new Date(),
+        deletedByUserId: req.session.userId,
+        isActive: false,
+      }).where(eq(listings.id, listingId));
       await logAdminAction(req, "listing_removed", "listing", listingId, { title: listing.title });
       res.json({ message: "Listing removed successfully" });
     } catch (error) {
