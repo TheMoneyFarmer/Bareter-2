@@ -135,6 +135,7 @@ export function UserProfilePage() {
   const { data: profileData, isLoading } = useQuery<PublicUserData>({
     queryKey: ["/api/users", id],
     enabled: !!currentUser,
+    staleTime: 0,
   });
 
   const { data: credibility } = useQuery<CredibilityData>({

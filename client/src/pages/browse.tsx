@@ -310,6 +310,7 @@ export function BrowsePage() {
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
+    staleTime: 0,
   });
 
   const { data: featuredListings } = useQuery<ListingWithUser[]>({

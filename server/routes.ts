@@ -2026,6 +2026,16 @@ export async function registerRoutes(
       await db.update(engagementEvents).set({ listingId: null }).where(eq(engagementEvents.listingId, listingId));
       await db.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, listingId));
 
+      // Null out reviews that reference comments on this listing (FK chain: reviews → listingComments → listings)
+      const commentIds = await db
+        .select({ id: listingComments.id })
+        .from(listingComments)
+        .where(eq(listingComments.listingId, listingId));
+      if (commentIds.length > 0) {
+        const ids = commentIds.map((c) => c.id);
+        await db.update(reviewsTable).set({ listingCommentId: null }).where(inArray(reviewsTable.listingCommentId, ids));
+      }
+
       // Delete rows that have NOT NULL FK on listingId
       await db.delete(wishlists).where(eq(wishlists.listingId, listingId));
       await db.delete(imageScans).where(eq(imageScans.listingId, listingId));
