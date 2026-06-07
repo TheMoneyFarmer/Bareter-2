@@ -2018,33 +2018,9 @@ export async function registerRoutes(
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Not authorized" });
 
-      // Null out nullable FK references so history (deals, notifications, reviews) is preserved
-      await db.update(deals).set({ seekerListingId: null }).where(eq(deals.seekerListingId, listingId));
-      await db.update(deals).set({ providerListingId: null }).where(eq(deals.providerListingId, listingId));
-      await db.update(notifications).set({ relatedListingId: null }).where(eq(notifications.relatedListingId, listingId));
-      await db.update(quickInquiries).set({ listingId: null }).where(eq(quickInquiries.listingId, listingId));
-      await db.update(engagementEvents).set({ listingId: null }).where(eq(engagementEvents.listingId, listingId));
-      await db.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, listingId));
-
-      // Null out reviews that reference comments on this listing (FK chain: reviews → listingComments → listings)
-      const commentIds = await db
-        .select({ id: listingComments.id })
-        .from(listingComments)
-        .where(eq(listingComments.listingId, listingId));
-      if (commentIds.length > 0) {
-        const ids = commentIds.map((c) => c.id);
-        await db.update(reviewsTable).set({ listingCommentId: null }).where(inArray(reviewsTable.listingCommentId, ids));
-      }
-
-      // Delete rows that have NOT NULL FK on listingId
-      await db.delete(wishlists).where(eq(wishlists.listingId, listingId));
-      await db.delete(imageScans).where(eq(imageScans.listingId, listingId));
-      await db.delete(listingLikes).where(eq(listingLikes.listingId, listingId));
-      await db.delete(listingComments).where(eq(listingComments.listingId, listingId));
-      await db.delete(moderationLogs).where(
-        and(eq(moderationLogs.targetType, "listing"), eq(moderationLogs.targetId, listingId)),
-      );
-      await db.delete(listings).where(eq(listings.id, listingId));
+      // Soft-delete: set isActive = false so it disappears from all feeds immediately
+      // without touching any FK chains (deals, reviews, comments all retain their references).
+      await db.update(listings).set({ isActive: false }).where(eq(listings.id, listingId));
       res.json({ message: "Listing deleted" });
     } catch (error) {
       console.error("Delete listing error:", error);
@@ -4239,6 +4215,26 @@ export async function registerRoutes(
       res.json({ ok: true, ...result, message: `Cleanup complete — ${result.deleted} seed account(s) removed, ${result.kept} real user(s) kept.` });
     } catch (err: any) {
       res.status(500).json({ ok: false, message: err?.message || "Cleanup failed" });
+    }
+  });
+
+  // POST /api/admin/deactivate-user-listings — soft-delete ALL listings for a given user email.
+  // Use this to clear stuck listings that the UI delete failed to remove.
+  app.post("/api/admin/deactivate-user-listings", requireAdmin, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") return res.status(400).json({ message: "email required" });
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const result = await db
+        .update(listings)
+        .set({ isActive: false })
+        .where(eq(listings.userId, user.id))
+        .returning({ id: listings.id });
+      res.json({ ok: true, deactivated: result.length, userId: user.id, email: user.email });
+    } catch (err: any) {
+      console.error("deactivate-user-listings error:", err);
+      res.status(500).json({ ok: false, message: err?.message || "Failed" });
     }
   });
 
