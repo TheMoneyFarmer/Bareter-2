@@ -2018,9 +2018,11 @@ export async function registerRoutes(
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Not authorized" });
 
-      // Soft-delete: set isActive = false so it disappears from all feeds immediately
-      // without touching any FK chains (deals, reviews, comments all retain their references).
-      await db.update(listings).set({ isActive: false }).where(eq(listings.id, listingId));
+      // Soft-delete: stamp deletedAt + set isActive = false.
+      // deletedAt = timestamp → excluded from all feed/browse queries AND dashboard.
+      // isActive = false → excluded from recommendation/feed queries that don't check deletedAt.
+      // Paused listings (isActive=false, deletedAt=null) still show in dashboard for reactivation.
+      await db.update(listings).set({ isActive: false, deletedAt: new Date() }).where(eq(listings.id, listingId));
       res.json({ message: "Listing deleted" });
     } catch (error) {
       console.error("Delete listing error:", error);
