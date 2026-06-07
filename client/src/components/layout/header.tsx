@@ -35,13 +35,15 @@ import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 // Extracted so it can be rendered without nesting inside a ternary
 function NavLinks({ user }: { user: boolean }) {
+  const [currentPath] = useLocation();
+  const isMarketplace = currentPath.startsWith("/browse") || currentPath === "/feed" || currentPath === "/discover" || currentPath.startsWith("/listings") || currentPath.startsWith("/c/") || currentPath === "/my-searches" || currentPath === "/saved";
   const px = user ? "px-2.5" : "px-3";
   const base = `${px} py-2 text-sm font-semibold text-white/85 hover:text-white hover:bg-white/10 rounded-lg transition-colors whitespace-nowrap`;
   const listHref = user ? "/create-listing" : "/register";
-  // Logged-in: always visible (no isMarketplace hide). Logged-out: centred absolute, hidden on marketplace.
+  // Logged-in: always visible. Logged-out: centred absolute, hidden on marketplace pages where search bar takes centre.
   const navClass = user
     ? "hidden lg:flex items-center flex-shrink-0"
-    : "hidden lg:flex items-center absolute left-1/2 -translate-x-1/2";
+    : `hidden lg:flex items-center absolute left-1/2 -translate-x-1/2 ${isMarketplace ? "invisible pointer-events-none" : ""}`;
   return (
     <nav className={navClass}>
       <Link href="/feed"><button type="button" className={base}>Discover</button></Link>

@@ -580,7 +580,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(listings)
-      .where(eq(listings.userId, userId))
+      .where(and(eq(listings.userId, userId), eq(listings.isActive, true)))
       .orderBy(desc(listings.createdAt));
   }
 
