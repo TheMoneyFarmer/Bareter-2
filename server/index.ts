@@ -4,7 +4,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { backfillLocationFields, purgeSeedUsers } from "./seed";
+import { backfillLocationFields, purgeSeedUsers, wipePlatformContent } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -110,8 +110,18 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Wipe ALL platform content (listings, posts, deals, comments, etc.) on first
+  // boot after this code is deployed. Runs once — subsequent boots are no-ops.
+  // User accounts are preserved; only content is removed.
+  try {
+    await wipePlatformContent();
+  } catch (err) {
+    console.error("[startup] wipePlatformContent failed:", err);
+  }
+
   // Remove all seed/demo accounts and their data on every boot.
   // Idempotent — no-ops once accounts are gone. Keeps all real users.
+  // Never touches protected founder accounts (thando@bareter.com, personal gmail).
   try {
     await purgeSeedUsers();
   } catch (err) {
@@ -271,7 +281,10 @@ app.use((req, res, next) => {
       // never delay the first user's page load. All are idempotent — safe
       // to re-run on every cold start, and failures are non-fatal.
 
-      // 1. Purge any remaining seed/demo accounts and their data.
+      // 1a. Wipe all platform content on first boot (one-time pre-launch cleanup).
+      wipePlatformContent().catch((err) => console.error("[startup] wipePlatformContent failed:", err));
+
+      // 1b. Purge any remaining seed/demo accounts and their data.
       purgeSeedUsers().catch((err) => console.error("[startup] purgeSeedUsers failed:", err));
 
       // 2. Provision the founder admin account (no-op if already exists).

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, listings, deals, ratings, posts, postLikes, postBookmarks, postComments, listingComments, wishlists, notifications, referrals, reviews, engagementEvents, listingLikes, quickInquiries, collabApplications, imageScans, messages, followers, dealMilestones, savedSearches, portfolioItems, failedLoginAttempts, supportTickets } from "@shared/schema";
+import { users, listings, deals, ratings, posts, postLikes, postBookmarks, postComments, listingComments, wishlists, notifications, referrals, reviews, engagementEvents, listingLikes, quickInquiries, collabApplications, imageScans, messages, followers, dealMilestones, savedSearches, portfolioItems, failedLoginAttempts, supportTickets, endorsements, reports, moderationLogs, appSettings } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql, isNull, and, inArray, or, notInArray } from "drizzle-orm";
 import type { CreatorProfile } from "@shared/schema";
@@ -1756,10 +1756,16 @@ const EDITORIAL_EMAILS = [
   "editorial.realestate@bareter.com",
   "editorial.hospitality@bareter.com",
   "editorial.services@bareter.com",
-  // Founder internal test accounts — purged on every boot so test listings
-  // never appear in real users' feeds after a deploy.
-  "thando@bareter.com",
 ];
+
+// Accounts that must NEVER be deleted under any circumstances.
+// These are both of the founder's real accounts. Any cleanup function must
+// cross-check this set before touching any user row.
+export const PROTECTED_EMAILS_HARD = new Set<string>([
+  "thando@bareter.com",
+  "thandolwenkosimceeyah@gmail.com",
+  ...(process.env.BOOTSTRAP_ADMIN_EMAIL ? [process.env.BOOTSTRAP_ADMIN_EMAIL.trim().toLowerCase()] : []),
+]);
 
 // ── Production cleanup ───────────────────────────────────────────────────────
 // Two-pass wipe:
@@ -1842,13 +1848,20 @@ export async function purgeSeedUsers(adminUserId = "SYSTEM"): Promise<{ deleted:
 
   const CREATOR_PATTERN = /\.creator@bareter\.com$/;
 
-  const seedUsers = allUsers.filter(u =>
-    u.id !== adminUserId && (
+  const seedUsers = allUsers.filter(u => {
+    if (u.id === adminUserId) return false;
+    // NEVER delete the founder's protected accounts, no matter what.
+    const emailLower = u.email.toLowerCase();
+    if (PROTECTED_EMAILS_HARD.has(emailLower)) return false;
+    return (
       EDITORIAL_EMAILS.includes(u.email) ||
       DEMO_EMAIL_DOMAINS.some(d => u.email.endsWith(d)) ||
-      CREATOR_PATTERN.test(u.email)
-    )
-  );
+      CREATOR_PATTERN.test(u.email) ||
+      // Catch all remaining @bareter.com accounts — these are seed/internal accounts.
+      // Protected ones (thando@bareter.com, BOOTSTRAP_ADMIN_EMAIL) are already filtered above.
+      emailLower.endsWith("@bareter.com")
+    );
+  });
 
   if (seedUsers.length === 0) {
     console.log("[purgeSeed] Already clean — no seed accounts found.");
@@ -1953,4 +1966,74 @@ export async function purgeSeedUsers(adminUserId = "SYSTEM"): Promise<{ deleted:
   const kept = allUsers.length - deleted.length;
   console.log(`[purgeSeed] ✓ Deleted ${deleted.length} seed accounts + all owned data. ${kept} real user(s) kept.`);
   return { deleted: deleted.length, kept };
+}
+
+// ── Pre-launch platform content wipe ────────────────────────────────────────
+// Deletes ALL marketplace content (listings, posts, deals, comments, etc.)
+// from EVERY user account — including the founder's accounts.
+// User accounts themselves are preserved.
+// Runs once: records completion in app_settings so subsequent boots skip it.
+// Never touches referral records or legal/app-config settings.
+export async function wipePlatformContent(): Promise<void> {
+  const WIPE_KEY = "pre_launch_content_wipe_v1";
+
+  // Check if already done
+  const [existing] = await db.select({ value: appSettings.value }).from(appSettings).where(eq(appSettings.key, WIPE_KEY)).limit(1);
+  if (existing) {
+    console.log("[wipeContent] Already done — skipping.");
+    return;
+  }
+
+  console.log("[wipeContent] Starting pre-launch platform content wipe…");
+
+  // Clear nullable FK columns first so listing/deal deletes don't cascade unexpectedly
+  await tryDelete("deals.seekerListingId", () => db.update(deals).set({ seekerListingId: null }));
+  await tryDelete("deals.providerListingId", () => db.update(deals).set({ providerListingId: null }));
+
+  // Listing children
+  await tryDelete("engagementEvents", () => db.delete(engagementEvents));
+  await tryDelete("listingComments", () => db.delete(listingComments));
+  await tryDelete("listingLikes", () => db.delete(listingLikes));
+  await tryDelete("wishlists", () => db.delete(wishlists));
+  await tryDelete("quickInquiries", () => db.delete(quickInquiries));
+  await tryDelete("collabApplications", () => db.delete(collabApplications));
+  await tryDelete("imageScans", () => db.delete(imageScans));
+  await tryDelete("moderationLogs", () => db.delete(moderationLogs));
+  await tryDelete("reports", () => db.delete(reports));
+
+  // Post children
+  await tryDelete("postLikes", () => db.delete(postLikes));
+  await tryDelete("postComments", () => db.delete(postComments));
+  await tryDelete("postBookmarks", () => db.delete(postBookmarks));
+
+  // Deal children
+  await tryDelete("messages", () => db.delete(messages));
+  await tryDelete("dealMilestones", () => db.delete(dealMilestones));
+  await tryDelete("ratings", () => db.delete(ratings));
+
+  // Reviews and social
+  await tryDelete("reviews", () => db.delete(reviews));
+  await tryDelete("endorsements", () => db.delete(endorsements));
+  await tryDelete("followers", () => db.delete(followers));
+  await tryDelete("savedSearches", () => db.delete(savedSearches));
+
+  // Notifications (all of them — clean slate)
+  await tryDelete("notifications", () => db.delete(notifications));
+
+  // Parent content tables
+  await tryDelete("listings", () => db.delete(listings));
+  await tryDelete("posts", () => db.delete(posts));
+  await tryDelete("deals", () => db.delete(deals));
+
+  // Record completion so this never runs again
+  await db.insert(appSettings).values({
+    key: WIPE_KEY,
+    value: new Date().toISOString(),
+    updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: appSettings.key,
+    set: { value: new Date().toISOString(), updatedAt: new Date() },
+  });
+
+  console.log("[wipeContent] ✓ Platform content wiped. All listings, posts, deals, and activity removed.");
 }
