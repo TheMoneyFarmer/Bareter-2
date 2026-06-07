@@ -70,7 +70,7 @@ import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import type { ExchangeItem } from "@shared/schema";
-import { getDeliverablesForCategories, type DeliverableItem } from "@shared/deliverables";
+import { getDeliverablesForListing, type DeliverableItem } from "@shared/deliverables";
 import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
 import { timeAgo, formatValue } from "@/lib/utils";
@@ -222,6 +222,7 @@ export function ListingDetailPage() {
   const [counterValue, setCounterValue] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
+  const [newDeliverable, setNewDeliverable] = useState("");
   const [inquirySent, setInquirySent] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState<{ title: string; description: string } | null>(null);
@@ -305,9 +306,14 @@ export function ListingDetailPage() {
   }, [listing, user]);
 
   useEffect(() => {
-    if (proposeOpen && listing?.categories) {
-      const items = getDeliverablesForCategories(listing.categories as string[]);
+    if (proposeOpen && listing) {
+      const items = getDeliverablesForListing(
+        listing.title ?? "",
+        listing.description ?? "",
+        (listing.categories as string[]) ?? [],
+      );
       setDeliverables(items);
+      setNewDeliverable("");
     }
   }, [proposeOpen, listing]);
 
@@ -315,6 +321,13 @@ export function ListingDetailPage() {
     setDeliverables(prev => prev.map((item, i) =>
       i === index ? { ...item, checked: !item.checked } : item
     ));
+  };
+
+  const addCustomDeliverable = () => {
+    const label = newDeliverable.trim();
+    if (!label) return;
+    setDeliverables(prev => [...prev, { label, checked: true }]);
+    setNewDeliverable("");
   };
 
   const handleTranslateListing = async () => {
@@ -1832,18 +1845,21 @@ export function ListingDetailPage() {
                       </div>
                     </div>
 
-                    {deliverables.length > 0 && (
-                      <div className="space-y-3" data-testid="deliverables-checklist">
-                        <Separator />
-                        <div>
-                          <Label className="flex items-center gap-2 mb-1">
-                            <ClipboardList className="h-4 w-4 text-primary" />
-                            {t("listingDetail.deliverablesChecklist")}
-                          </Label>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            {t("listingDetail.suggestedDeliverables")}
-                          </p>
-                        </div>
+                    {/* Deliverables checklist — always shown, smart-matched to listing */}
+                    <div className="space-y-3" data-testid="deliverables-checklist">
+                      <Separator />
+                      <div>
+                        <Label className="flex items-center gap-2 mb-1">
+                          <ClipboardList className="h-4 w-4 text-primary" />
+                          {t("listingDetail.deliverablesChecklist")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Suggested based on what's being bartered. Check, uncheck, or add your own.
+                        </p>
+                      </div>
+
+                      {/* Checklist */}
+                      {deliverables.length > 0 && (
                         <div className="space-y-2.5 rounded-lg border p-3">
                           {deliverables.map((item, index) => (
                             <div key={index} className="flex items-start gap-2.5">
@@ -1855,7 +1871,7 @@ export function ListingDetailPage() {
                               />
                               <label
                                 htmlFor={`deliverable-${index}`}
-                                className={`text-sm leading-tight cursor-pointer ${
+                                className={`text-sm leading-tight cursor-pointer flex-1 ${
                                   item.checked ? "text-foreground" : "text-muted-foreground line-through"
                                 }`}
                               >
@@ -1864,11 +1880,43 @@ export function ListingDetailPage() {
                             </div>
                           ))}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {deliverables.filter(d => d.checked).length} {t("common.of")} {deliverables.length} {t("listingDetail.itemsSelected")}
-                        </p>
+                      )}
+
+                      {/* Add custom deliverable */}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newDeliverable}
+                          onChange={(e) => setNewDeliverable(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomDeliverable(); } }}
+                          placeholder="Add a custom deliverable…"
+                          className="flex-1 text-sm border border-border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-bareter-teal"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addCustomDeliverable}
+                          disabled={!newDeliverable.trim()}
+                          className="flex-shrink-0 h-9 px-3"
+                        >
+                          + Add
+                        </Button>
                       </div>
-                    )}
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          {deliverables.filter(d => d.checked).length} of {deliverables.length} selected
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setDeliverables(prev => prev.map(d => ({ ...d, checked: false })))}
+                          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                        >
+                          Continue without selecting
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </ScrollArea>
                 {counterValue && listing && (parseFloat(listing.retailValue as string) + parseFloat(counterValue)) > 5000 && (

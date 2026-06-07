@@ -169,6 +169,258 @@ export const CATEGORY_DELIVERABLES: Record<string, string[]> = {
   ],
 };
 
+// ── Keyword-based deliverable sets for specific items ──────────────────────────
+// Each entry maps a keyword group to tailored deliverables. Checked true = pre-selected.
+const KEYWORD_DELIVERABLES: { keywords: string[]; items: string[] }[] = [
+  {
+    keywords: ["iphone", "samsung", "phone", "smartphone", "mobile", "android", "pixel", "oneplus", "huawei", "xiaomi", "oppo"],
+    items: [
+      "Device unlocked and factory reset",
+      "Original charger, cable and box included",
+      "Battery health report (screenshot)",
+      "IMEI clearance confirmation",
+      "Screen and body condition documented with photos",
+      "All ports and buttons tested and working",
+      "Warranty period remaining (if applicable)",
+    ],
+  },
+  {
+    keywords: ["macbook", "laptop", "notebook", "computer", "pc", "dell", "hp", "lenovo", "asus", "surface"],
+    items: [
+      "Device wiped and OS reinstalled",
+      "Original charger and accessories included",
+      "Screen, keyboard and trackpad condition report",
+      "Battery cycle count and health report",
+      "All ports tested and confirmed working",
+      "Storage and RAM specifications confirmed",
+      "Original packaging (if available)",
+    ],
+  },
+  {
+    keywords: ["ipad", "tablet", "kindle"],
+    items: [
+      "Device factory reset and unlocked",
+      "Original charger and cable included",
+      "Screen and body condition with photos",
+      "Battery health report",
+      "Accessories (case, stylus) if agreed",
+      "IMEI or serial number confirmed",
+    ],
+  },
+  {
+    keywords: ["airpods", "headphones", "earbuds", "earphones", "speaker", "audio", "sound"],
+    items: [
+      "Device tested and confirmed working",
+      "Original case and charging cable included",
+      "Battery life report for both earbuds and case",
+      "Original packaging included",
+      "All controls and microphone tested",
+    ],
+  },
+  {
+    keywords: ["apple watch", "smartwatch", "watch", "garmin", "fitbit", "wearable"],
+    items: [
+      "Watch face and body in described condition",
+      "Band(s) included",
+      "Charger included",
+      "Battery health report",
+      "All sensors and features tested",
+      "Original box (if available)",
+    ],
+  },
+  {
+    keywords: ["camera", "dslr", "mirrorless", "gopro", "drone", "gimbal", "lens", "nikon", "canon", "sony"],
+    items: [
+      "Camera body tested and confirmed working",
+      "Shutter count report",
+      "All lenses and accessories included as listed",
+      "Sensor cleaned and inspected",
+      "Battery and charger included",
+      "Memory card (if agreed)",
+      "Original packaging and manual (if available)",
+    ],
+  },
+  {
+    keywords: ["ps5", "playstation", "xbox", "nintendo", "console", "gaming", "game"],
+    items: [
+      "Console factory reset and tested",
+      "All controllers included and working",
+      "HDMI cable and power cable included",
+      "Games / accessories as listed",
+      "Disk drive tested (if applicable)",
+      "Original packaging (if available)",
+    ],
+  },
+  {
+    keywords: ["tv", "television", "monitor", "screen", "display"],
+    items: [
+      "Screen tested with no dead pixels or burn-in",
+      "All ports (HDMI, USB) tested",
+      "Remote control included",
+      "Power cable and accessories included",
+      "Mounting hardware (if applicable)",
+      "Original packaging (if available)",
+    ],
+  },
+  {
+    keywords: ["reel", "reels", "tiktok", "video", "film", "youtube", "vlog", "short", "footage"],
+    items: [
+      "Instagram Reels (specify count)",
+      "TikTok videos (specify count)",
+      "YouTube video / Short (specify length)",
+      "Raw footage files delivered",
+      "Edited and color-graded final cut",
+      "Subtitles and captions included",
+      "Usage rights for all produced content",
+      "Content goes live on agreed date",
+    ],
+  },
+  {
+    keywords: ["photo", "photoshoot", "shoot", "portrait", "headshot", "product photo"],
+    items: [
+      "Professional photoshoot session (specify hours)",
+      "Edited high-resolution images (specify count)",
+      "Raw files delivery",
+      "Same-day preview selection",
+      "Retouching and post-production",
+      "Usage rights for commercial use",
+      "Online gallery delivery link",
+    ],
+  },
+  {
+    keywords: ["instagram", "social media", "post", "story", "stories", "influencer", "ugc", "content creator"],
+    items: [
+      "Instagram feed posts (specify count)",
+      "Instagram Stories (specify count)",
+      "Brand tagging and mentions in all posts",
+      "Content live on agreed date",
+      "Usage rights for all content",
+      "No deletion for agreed period (min 30 days)",
+      "Performance insights screenshot",
+    ],
+  },
+  {
+    keywords: ["logo", "brand", "branding", "graphic", "design", "ui", "ux", "figma", "illustration"],
+    items: [
+      "Logo files in all formats (AI, SVG, PNG, PDF)",
+      "Design files in editable formats (Figma/AI/PSD)",
+      "3 revision rounds included",
+      "Print-ready and digital-ready assets",
+      "Brand guidelines document",
+      "Social media template kit",
+      "Color palette and typography guide",
+    ],
+  },
+  {
+    keywords: ["website", "web", "webapp", "app", "mobile app", "development", "coding", "software", "saas", "platform"],
+    items: [
+      "Technical scope of work document",
+      "Full development and deployment",
+      "Source code and documentation",
+      "Testing and QA coverage",
+      "Hosting and domain setup (if agreed)",
+      "Maintenance period (specify months)",
+      "User training or handover session",
+    ],
+  },
+  {
+    keywords: ["marketing", "ads", "campaign", "seo", "ppc", "google ads", "meta ads", "advertising"],
+    items: [
+      "Campaign strategy document",
+      "Ad creative designs (specify count)",
+      "Copywriting for all ad variations",
+      "Audience targeting setup",
+      "Monthly content calendar",
+      "A/B test variations",
+      "Performance metrics report",
+    ],
+  },
+  {
+    keywords: ["hotel", "stay", "accommodation", "villa", "resort", "suite", "airbnb", "room", "chalet"],
+    items: [
+      "Room nights (specify count and room type)",
+      "Breakfast or meal plan included",
+      "Spa or wellness access",
+      "Airport transfer (if agreed)",
+      "F&B credits",
+      "Photo and video usage rights of property",
+      "Confirmed booking dates",
+    ],
+  },
+  {
+    keywords: ["car", "vehicle", "rent", "rental", "supercar", "suv", "truck", "motorcycle", "bike", "bmw", "mercedes", "porsche", "ferrari", "lamborghini", "tesla"],
+    items: [
+      "Vehicle professionally detailed and cleaned",
+      "Full tank of fuel included",
+      "Loan or rental period (specify days)",
+      "Vehicle condition report with photos",
+      "Insurance coverage during use confirmed",
+      "Delivery and pickup service",
+      "Mileage limit agreed and documented",
+    ],
+  },
+  {
+    keywords: ["food", "catering", "chef", "meal", "restaurant", "dining", "cake", "pastry", "bakery", "cuisine"],
+    items: [
+      "Meals / dishes (specify count and type)",
+      "Delivery and setup included",
+      "Menu customization agreed",
+      "Dietary accommodations confirmed",
+      "Branded packaging",
+      "Professional food styling (if content involved)",
+      "Tasting session (if applicable)",
+    ],
+  },
+  {
+    keywords: ["fitness", "training", "gym", "workout", "personal trainer", "pt", "yoga", "pilates", "coach"],
+    items: [
+      "Personal training sessions (specify count)",
+      "Customized workout program",
+      "Nutritional guidance and meal plan",
+      "Progress tracking and check-ins",
+      "Video workout demos",
+      "Fitness assessment report",
+      "Access to app or online platform (if applicable)",
+    ],
+  },
+  {
+    keywords: ["legal", "lawyer", "attorney", "contract", "compliance", "advisory", "law"],
+    items: [
+      "Legal consultation hours (specify count)",
+      "Document drafting and review",
+      "Contract templates (customized)",
+      "Compliance advisory report",
+      "Legal opinion letter",
+      "Follow-up advisory session",
+      "NDA included (if required)",
+    ],
+  },
+  {
+    keywords: ["event", "party", "wedding", "conference", "seminar", "entertainment", "show", "concert"],
+    items: [
+      "Event planning and coordination",
+      "Venue arrangement",
+      "Guest list and RSVP management",
+      "AV and production setup",
+      "Photography and videography coverage",
+      "Post-event recap or analytics",
+      "Social media promotion pre and post event",
+    ],
+  },
+  {
+    keywords: ["consulting", "strategy", "advisory", "mentorship", "coaching", "business"],
+    items: [
+      "Discovery and assessment session",
+      "Strategy document or roadmap",
+      "Implementation recommendations",
+      "Follow-up advisory sessions (specify count)",
+      "Industry benchmarking report",
+      "Stakeholder presentation",
+      "Action plan with milestones",
+    ],
+  },
+];
+
 export function getDeliverablesForCategories(categories: string[]): DeliverableItem[] {
   const seen = new Set<string>();
   const items: DeliverableItem[] = [];
@@ -186,4 +438,47 @@ export function getDeliverablesForCategories(categories: string[]): DeliverableI
   }
 
   return items;
+}
+
+/**
+ * Smart deliverable suggestions based on the listing title, description, and categories.
+ * Keyword matching on title/description takes priority; falls back to category mapping.
+ * Returns at most 7 items to keep the checklist scannable.
+ */
+export function getDeliverablesForListing(
+  title: string,
+  description: string,
+  categories: string[],
+): DeliverableItem[] {
+  const haystack = `${title} ${description}`.toLowerCase();
+  const seen = new Set<string>();
+  const items: string[] = [];
+
+  // First pass: keyword matching against title + description
+  for (const group of KEYWORD_DELIVERABLES) {
+    if (group.keywords.some((kw) => haystack.includes(kw))) {
+      for (const label of group.items) {
+        if (!seen.has(label) && items.length < 7) {
+          seen.add(label);
+          items.push(label);
+        }
+      }
+      if (items.length >= 7) break;
+    }
+  }
+
+  // Second pass: fill remaining slots from category map
+  if (items.length < 7) {
+    for (const category of categories) {
+      const catItems = CATEGORY_DELIVERABLES[category] ?? [];
+      for (const label of catItems) {
+        if (!seen.has(label) && items.length < 7) {
+          seen.add(label);
+          items.push(label);
+        }
+      }
+    }
+  }
+
+  return items.map((label) => ({ label, checked: true }));
 }
