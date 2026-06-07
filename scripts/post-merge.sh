@@ -2,6 +2,7 @@
 set -e
 npm install
 npm run db:push -- --force
+npm run build
 
 echo "==> Running security regression suite (npm run test:security)"
 if ! npm run test:security; then

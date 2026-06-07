@@ -692,6 +692,8 @@ export const listings = pgTable("listings", {
   bulkMaxPartners: integer("bulk_max_partners"), // how many partners can share the batch
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+  deletedByUserId: varchar("deleted_by_user_id", { length: 36 }).references(() => users.id),
 }, (table) => [
   index("listings_user_id_idx").on(table.userId),
   index("listings_is_active_idx").on(table.isActive),
@@ -700,6 +702,7 @@ export const listings = pgTable("listings", {
   index("listings_is_collab_idx").on(table.isCollab),
   index("listings_is_bulk_idx").on(table.isBulkDeal),
   index("listings_city_idx").on(table.city),
+  index("listings_deleted_at_idx").on(table.deletedAt),
 ]);
 
 // Banned emails table - prevents re-registration of banned users
