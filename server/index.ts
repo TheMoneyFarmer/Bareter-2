@@ -110,6 +110,21 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Remove all seed/demo accounts and their data on every boot.
+  // Idempotent — no-ops once accounts are gone. Keeps all real users.
+  try {
+    await purgeSeedUsers();
+  } catch (err) {
+    console.error("[startup] purgeSeedUsers failed:", err);
+  }
+
+  // Backfill country/city for legacy rows.
+  try {
+    await backfillLocationFields();
+  } catch (err) {
+    console.error("[startup] backfillLocationFields failed:", err);
+  }
+
   if (!process.env.DIDIT_WEBHOOK_SECRET) {
     console.warn(
       "[startup] DIDIT_WEBHOOK_SECRET is not set — KYC/KYB webhook signature verification will reject all callbacks. Set this secret before going live.",
