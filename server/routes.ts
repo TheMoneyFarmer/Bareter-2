@@ -383,7 +383,10 @@ export async function registerRoutes(
       const redirect = (req.query.redirect as string) || "/browse";
       // stash redirect destination in session before we leave the app
       (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
-      passport.authenticate("google", { session: false })(req, res, next);
+      // session must NOT be false here — passport needs to store the OAuth state
+      // parameter in the session. Without it, Google rejects the request as
+      // non-compliant with its OAuth 2.0 security policy.
+      passport.authenticate("google")(req, res, next);
     });
 
     // Google redirects here after user authorises
