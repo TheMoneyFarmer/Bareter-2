@@ -4,7 +4,8 @@ import helmet from "helmet";
 export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const CSRF_EXEMPT_PATHS = new Set<string>([
-  "/api/webhooks/didit",
+  // DIDIT CODE ARCHIVED — See _archived/didit/misc-small-snippets.ts — Re-integrate when ENABLE_DIDIT needed
+  // "/api/webhooks/didit",
   // Sanity CMS publish webhook. Verified via HMAC-SHA256 inside the handler.
   "/api/webhooks/sanity",
   // Company OS webhook. Verifies the sender via Twilio HMAC inside the

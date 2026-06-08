@@ -135,11 +135,10 @@ app.use((req, res, next) => {
     console.error("[startup] backfillLocationFields failed:", err);
   }
 
-  if (!process.env.DIDIT_WEBHOOK_SECRET) {
-    console.warn(
-      "[startup] DIDIT_WEBHOOK_SECRET is not set — KYC/KYB webhook signature verification will reject all callbacks. Set this secret before going live.",
-    );
-  }
+  // DIDIT CODE ARCHIVED
+  // See _archived/didit/misc-small-snippets.ts
+  // Re-integrate when ENABLE_DIDIT needed
+  // if (!process.env.DIDIT_WEBHOOK_SECRET) { console.warn(...) }
 
   // Register main routes — MUST happen before listen so session middleware
   // and all API handlers are in place before the first request arrives.

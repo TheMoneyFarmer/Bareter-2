@@ -132,10 +132,11 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
-  getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
+  // DIDIT CODE ARCHIVED — See _archived/didit/storage-didit-methods.ts — Re-integrate when ENABLE_DIDIT needed
+  // getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
+  // getUsersWithPendingVerification(): Promise<User[]>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
-  getUsersWithPendingVerification(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
@@ -439,10 +440,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByDiditSessionId(sessionId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.diditSessionId, sessionId));
-    return user;
-  }
+  // DIDIT CODE ARCHIVED
+  // See _archived/didit/storage-didit-methods.ts
+  // Re-integrate when ENABLE_DIDIT needed
+  // async getUserByDiditSessionId(...)
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
@@ -454,17 +455,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUsersWithPendingVerification(): Promise<User[]> {
-    return db.select().from(users).where(
-      and(
-        isNotNull(users.diditSessionId),
-        or(
-          inArray(users.kycStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
-          inArray(users.kybStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
-        ),
-      ),
-    );
-  }
+  // DIDIT CODE ARCHIVED
+  // See _archived/didit/storage-didit-methods.ts
+  // Re-integrate when ENABLE_DIDIT needed
+  // async getUsersWithPendingVerification(...)
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
