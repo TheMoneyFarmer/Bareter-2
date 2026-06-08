@@ -5168,6 +5168,132 @@ export async function registerRoutes(
     }
   });
 
+  // ── Bulk actions ────────────────────────────────────────────────────────────
+
+  app.post("/api/admin/bulk/users", requireAdmin, async (req, res) => {
+    try {
+      const { ids, action } = req.body as { ids: string[]; action: "ban" | "unban" | "delete" };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      if (!["ban", "unban", "delete"].includes(action)) return res.status(400).json({ message: "invalid action" });
+
+      let affected = 0;
+      for (const userId of ids) {
+        if (userId === req.session.userId) continue; // never self-modify
+        const user = await storage.getUser(userId);
+        if (!user || user.role === "super_admin") continue;
+
+        if (action === "ban") {
+          await db.update(users).set({ isBanned: true }).where(eq(users.id, userId));
+          await destroyUserSessions(userId);
+        } else if (action === "unban") {
+          await db.update(users).set({ isBanned: false }).where(eq(users.id, userId));
+        } else if (action === "delete") {
+          await destroyUserSessions(userId);
+          const userListingRows = await db.select({ id: listings.id }).from(listings).where(eq(listings.userId, userId));
+          const listingIds = userListingRows.map(l => l.id);
+          await db.transaction(async (tx) => {
+            for (const lid of listingIds) {
+              await tx.delete(imageScans).where(eq(imageScans.listingId, lid));
+              await tx.delete(listingLikes).where(eq(listingLikes.listingId, lid));
+              await tx.delete(listingComments).where(eq(listingComments.listingId, lid));
+            }
+            if (listingIds.length > 0) await tx.delete(listings).where(eq(listings.userId, userId));
+            const userDealRows = await tx.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+            for (const d of userDealRows) {
+              await tx.delete(messages).where(eq(messages.dealId, d.id));
+              await tx.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
+            }
+            await tx.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+            await tx.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+            await tx.delete(listingLikes).where(eq(listingLikes.userId, userId));
+            await tx.delete(listingComments).where(eq(listingComments.userId, userId));
+            await tx.delete(wishlists).where(eq(wishlists.userId, userId));
+            await tx.delete(users).where(eq(users.id, userId));
+          });
+        }
+        await logAdminAction(req, `bulk_user_${action}` as any, "user", userId, {});
+        affected++;
+      }
+      res.json({ ok: true, affected });
+    } catch (error) {
+      console.error("Bulk user action error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/bulk/listings", requireAdmin, async (req, res) => {
+    try {
+      const { ids, action } = req.body as { ids: string[]; action: "approve" | "reject" | "delete" };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      if (!["approve", "reject", "delete"].includes(action)) return res.status(400).json({ message: "invalid action" });
+
+      let affected = 0;
+      for (const listingId of ids) {
+        const listing = await storage.getListing(listingId);
+        if (!listing) continue;
+
+        if (action === "approve") {
+          await storage.updateListing(listingId, { isActive: true, moderationStatus: "approved" });
+          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "approved", reason: "Bulk approved by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null });
+        } else if (action === "reject") {
+          await storage.updateListing(listingId, { isActive: false, moderationStatus: "rejected" });
+          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "rejected", reason: "Bulk rejected by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null });
+        } else if (action === "delete") {
+          await db.update(listings).set({ deletedAt: new Date(), deletedByUserId: req.session.userId, isActive: false }).where(eq(listings.id, listingId));
+        }
+        await logAdminAction(req, `bulk_listing_${action}` as any, "listing", listingId, { title: listing.title });
+        affected++;
+      }
+      res.json({ ok: true, affected });
+    } catch (error) {
+      console.error("Bulk listing action error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/bulk/deals", requireAdmin, async (req, res) => {
+    try {
+      const { ids, action } = req.body as { ids: string[]; action: "delete" };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      let affected = 0;
+      for (const dealId of ids) {
+        await db.delete(messages).where(eq(messages.dealId, dealId));
+        await db.delete(dealMilestones).where(eq(dealMilestones.dealId, dealId));
+        await db.delete(deals).where(eq(deals.id, dealId));
+        await logAdminAction(req, "bulk_deal_delete" as any, "deal", dealId, {});
+        affected++;
+      }
+      res.json({ ok: true, affected });
+    } catch (error) {
+      console.error("Bulk deal delete error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/bulk/disputes", requireAdmin, async (req, res) => {
+    try {
+      const { ids, action } = req.body as { ids: string[]; action: "delete" | "resolve" };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      if (!["delete", "resolve"].includes(action)) return res.status(400).json({ message: "invalid action" });
+      let affected = 0;
+      for (const id of ids) {
+        if (action === "delete") {
+          await db.delete(disputes).where(eq(disputes.id, id));
+        } else if (action === "resolve") {
+          await db.update(disputes).set({ status: "resolved" }).where(eq(disputes.id, id));
+        }
+        await logAdminAction(req, `bulk_dispute_${action}` as any, "dispute", id, {});
+        affected++;
+      }
+      res.json({ ok: true, affected });
+    } catch (error) {
+      console.error("Bulk dispute action error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── End bulk actions ─────────────────────────────────────────────────────────
+
   app.patch("/api/admin/listings/:id/approve", requireAdmin, async (req, res) => {
     try {
       const listingId = param(req.params.id);

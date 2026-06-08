@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sheet,
   SheetContent,
@@ -274,6 +275,20 @@ export function AdminPage() {
   const [adminRoleDialog, setAdminRoleDialog] = useState<{ open: boolean; user: User | null; action: "promote" | "demote" }>({
     open: false, user: null, action: "promote",
   });
+
+  // ── Bulk selection state ──────────────────────────────────────────────────
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [selectedListingIds, setSelectedListingIds] = useState<Set<string>>(new Set());
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set());
+  const [selectedDisputeIds, setSelectedDisputeIds] = useState<Set<string>>(new Set());
+
+  const toggleId = useCallback((id: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
+    setter(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }, []);
+
+  const toggleAll = useCallback((ids: string[], setter: React.Dispatch<React.SetStateAction<Set<string>>>) => {
+    setter(prev => prev.size === ids.length && ids.every(id => prev.has(id)) ? new Set() : new Set(ids));
+  }, []);
 
   const { data: users, isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
@@ -520,6 +535,61 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
       toast({ title: "Success", description: "Listing feature status updated" });
     },
+  });
+
+  // ── Bulk mutations ────────────────────────────────────────────────────────
+  const bulkUserMutation = useMutation({
+    mutationFn: async ({ ids, action }: { ids: string[]; action: "ban" | "unban" | "delete" }) => {
+      const res = await apiRequest("POST", "/api/admin/bulk/users", { ids: Array.from(ids), action });
+      return res.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      setSelectedUserIds(new Set());
+      toast({ title: "Done", description: `${data.affected} user(s) ${vars.action === "delete" ? "deleted" : vars.action === "ban" ? "banned" : "unbanned"}` });
+    },
+    onError: () => toast({ title: "Error", description: "Bulk action failed", variant: "destructive" }),
+  });
+
+  const bulkListingMutation = useMutation({
+    mutationFn: async ({ ids, action }: { ids: string[]; action: "approve" | "reject" | "delete" }) => {
+      const res = await apiRequest("POST", "/api/admin/bulk/listings", { ids: Array.from(ids), action });
+      return res.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
+      setSelectedListingIds(new Set());
+      toast({ title: "Done", description: `${data.affected} listing(s) ${vars.action}d` });
+    },
+    onError: () => toast({ title: "Error", description: "Bulk action failed", variant: "destructive" }),
+  });
+
+  const bulkDealMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/admin/bulk/deals", { ids: Array.from(ids), action: "delete" });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deals"] });
+      setSelectedDealIds(new Set());
+      toast({ title: "Done", description: `${data.affected} deal(s) deleted` });
+    },
+    onError: () => toast({ title: "Error", description: "Bulk delete failed", variant: "destructive" }),
+  });
+
+  const bulkDisputeMutation = useMutation({
+    mutationFn: async ({ ids, action }: { ids: string[]; action: "delete" | "resolve" }) => {
+      const res = await apiRequest("POST", "/api/admin/bulk/disputes", { ids: Array.from(ids), action });
+      return res.json();
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      setSelectedDisputeIds(new Set());
+      toast({ title: "Done", description: `${data.affected} dispute(s) ${vars.action}d` });
+    },
+    onError: () => toast({ title: "Error", description: "Bulk action failed", variant: "destructive" }),
   });
 
   const { data: userDetail } = useQuery<User & { listings: Listing[]; deals: DealWithUsers[] }>({
@@ -1194,6 +1264,25 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
 
+      {selectedUserIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <span className="text-sm font-medium">{selectedUserIds.size} selected</span>
+          <div className="flex items-center gap-2 ml-2">
+            <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "ban" })} disabled={bulkUserMutation.isPending}>
+              <Ban className="h-3.5 w-3.5 mr-1.5" />Ban
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "unban" })} disabled={bulkUserMutation.isPending}>
+              <UserCheck className="h-3.5 w-3.5 mr-1.5" />Unban
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Delete ${selectedUserIds.size} user(s) permanently? This cannot be undone.`)) bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "delete" }); }} disabled={bulkUserMutation.isPending}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedUserIds(new Set())}>
+            <X className="h-3.5 w-3.5 mr-1" />Clear
+          </Button>
+        </div>
+      )}
       <Card>
         <CardContent className="p-0">
           {usersLoading ? (
@@ -1206,6 +1295,12 @@ export function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filteredUsers && filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.has(u.id)) ? true : filteredUsers?.some(u => selectedUserIds.has(u.id)) ? "indeterminate" : false}
+                      onCheckedChange={() => toggleAll(filteredUsers?.map(u => u.id) ?? [], setSelectedUserIds)}
+                    />
+                  </TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
@@ -1218,7 +1313,10 @@ export function AdminPage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers?.map((u) => (
-                  <TableRow key={u.id} className={`${u.isBanned ? "opacity-50" : ""} cursor-pointer`} onClick={() => setSelectedUserId(u.id)}>
+                  <TableRow key={u.id} className={`${u.isBanned ? "opacity-50" : ""} ${selectedUserIds.has(u.id) ? "bg-primary/5" : ""} cursor-pointer`} onClick={() => setSelectedUserId(u.id)}>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={selectedUserIds.has(u.id)} onCheckedChange={() => toggleId(u.id, setSelectedUserIds)} />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
@@ -1442,6 +1540,25 @@ export function AdminPage() {
         </div>
       </div>
 
+      {selectedListingIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <span className="text-sm font-medium">{selectedListingIds.size} selected</span>
+          <div className="flex items-center gap-2 ml-2">
+            <Button size="sm" variant="outline" onClick={() => bulkListingMutation.mutate({ ids: Array.from(selectedListingIds), action: "approve" })} disabled={bulkListingMutation.isPending}>
+              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />Approve
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => bulkListingMutation.mutate({ ids: Array.from(selectedListingIds), action: "reject" })} disabled={bulkListingMutation.isPending}>
+              <XCircle className="h-3.5 w-3.5 mr-1.5" />Reject
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Remove ${selectedListingIds.size} listing(s)? This cannot be undone.`)) bulkListingMutation.mutate({ ids: Array.from(selectedListingIds), action: "delete" }); }} disabled={bulkListingMutation.isPending}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedListingIds(new Set())}>
+            <X className="h-3.5 w-3.5 mr-1" />Clear
+          </Button>
+        </div>
+      )}
       <Card>
         <CardContent className="p-0">
           {listingsLoading ? (
@@ -1454,6 +1571,12 @@ export function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filteredListings && filteredListings.length > 0 && filteredListings.every(l => selectedListingIds.has(l.id)) ? true : filteredListings?.some(l => selectedListingIds.has(l.id)) ? "indeterminate" : false}
+                      onCheckedChange={() => toggleAll(filteredListings?.map(l => l.id) ?? [], setSelectedListingIds)}
+                    />
+                  </TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Owner</TableHead>
                   <TableHead>Value (AED)</TableHead>
@@ -1466,7 +1589,10 @@ export function AdminPage() {
               </TableHeader>
               <TableBody>
                 {filteredListings?.map((l) => (
-                  <TableRow key={l.id} className="cursor-pointer" onClick={() => setSelectedListingId(l.id)}>
+                  <TableRow key={l.id} className={`cursor-pointer ${selectedListingIds.has(l.id) ? "bg-primary/5" : ""}`} onClick={() => setSelectedListingId(l.id)}>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={selectedListingIds.has(l.id)} onCheckedChange={() => toggleId(l.id, setSelectedListingIds)} />
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
@@ -1634,6 +1760,19 @@ export function AdminPage() {
         </div>
       </div>
 
+      {selectedDealIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <span className="text-sm font-medium">{selectedDealIds.size} selected</span>
+          <div className="flex items-center gap-2 ml-2">
+            <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Delete ${selectedDealIds.size} deal(s) permanently?`)) bulkDealMutation.mutate(Array.from(selectedDealIds)); }} disabled={bulkDealMutation.isPending}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedDealIds(new Set())}>
+            <X className="h-3.5 w-3.5 mr-1" />Clear
+          </Button>
+        </div>
+      )}
       <Card>
         <CardContent className="p-0">
           {dealsLoading ? (
@@ -1646,6 +1785,12 @@ export function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filteredDeals && filteredDeals.length > 0 && filteredDeals.every(d => selectedDealIds.has(d.id)) ? true : filteredDeals?.some(d => selectedDealIds.has(d.id)) ? "indeterminate" : false}
+                      onCheckedChange={() => toggleAll(filteredDeals?.map(d => d.id) ?? [], setSelectedDealIds)}
+                    />
+                  </TableHead>
                   <TableHead>Deal ID</TableHead>
                   <TableHead>Parties</TableHead>
                   <TableHead>Values (AED)</TableHead>
@@ -1658,10 +1803,13 @@ export function AdminPage() {
                 {filteredDeals?.map((d) => (
                   <TableRow
                     key={d.id}
-                    className="cursor-pointer hover-elevate"
+                    className={`cursor-pointer hover-elevate ${selectedDealIds.has(d.id) ? "bg-primary/5" : ""}`}
                     onClick={() => setSelectedDeal(d)}
                     data-testid={`row-deal-${d.id}`}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={selectedDealIds.has(d.id)} onCheckedChange={() => toggleId(d.id, setSelectedDealIds)} />
+                    </TableCell>
                     <TableCell className="font-mono text-sm">{d.dealNumber}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -1748,6 +1896,22 @@ export function AdminPage() {
         </div>
       </div>
 
+      {selectedDisputeIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <span className="text-sm font-medium">{selectedDisputeIds.size} selected</span>
+          <div className="flex items-center gap-2 ml-2">
+            <Button size="sm" variant="outline" onClick={() => bulkDisputeMutation.mutate({ ids: Array.from(selectedDisputeIds), action: "resolve" })} disabled={bulkDisputeMutation.isPending}>
+              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />Resolve
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Delete ${selectedDisputeIds.size} dispute(s) permanently?`)) bulkDisputeMutation.mutate({ ids: Array.from(selectedDisputeIds), action: "delete" }); }} disabled={bulkDisputeMutation.isPending}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedDisputeIds(new Set())}>
+            <X className="h-3.5 w-3.5 mr-1" />Clear
+          </Button>
+        </div>
+      )}
       <Card>
         <CardContent className="p-0">
           {disputesLoading ? (
@@ -1760,6 +1924,12 @@ export function AdminPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filteredDisputes.length > 0 && filteredDisputes.every(d => selectedDisputeIds.has(d.id)) ? true : filteredDisputes.some(d => selectedDisputeIds.has(d.id)) ? "indeterminate" : false}
+                      onCheckedChange={() => toggleAll(filteredDisputes.map(d => d.id), setSelectedDisputeIds)}
+                    />
+                  </TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Party A</TableHead>
                   <TableHead>Party B</TableHead>
@@ -1770,7 +1940,10 @@ export function AdminPage() {
               </TableHeader>
               <TableBody>
                 {filteredDisputes.map((d) => (
-                  <TableRow key={d.id} data-testid={`row-dispute-${d.id}`}>
+                  <TableRow key={d.id} className={selectedDisputeIds.has(d.id) ? "bg-primary/5" : ""} data-testid={`row-dispute-${d.id}`}>
+                    <TableCell>
+                      <Checkbox checked={selectedDisputeIds.has(d.id)} onCheckedChange={() => toggleId(d.id, setSelectedDisputeIds)} />
+                    </TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate">{d.subject}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
