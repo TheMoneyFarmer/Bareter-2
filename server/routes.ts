@@ -347,7 +347,7 @@ export async function registerRoutes(
     const passport = (await import("passport")).default;
     app.use(passport.initialize());
 
-    const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const baseUrl = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).trim();
 
     passport.use(new GoogleStrategy(
       {
@@ -463,7 +463,7 @@ export async function registerRoutes(
   if (appleConfigured) {
     const appleSignin = await import("apple-signin-auth");
     const jwt         = await import("jsonwebtoken");
-    const baseUrl     = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+    const baseUrl     = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).trim();
 
     // Build a short-lived client_secret JWT signed with the Apple private key
     function makeAppleClientSecret(): string {
