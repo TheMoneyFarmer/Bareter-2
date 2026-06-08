@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -28,6 +28,8 @@ import {
   ArrowLeft,
   ArrowRight,
   SkipForward,
+  Mail,
+  RefreshCw,
   Instagram,
   Youtube,
   Linkedin,
@@ -156,6 +158,8 @@ export function RegisterPage() {
   const [step, setStep] = useState(1);
   const [signupType, setSignupType] = useState<SignupType | null>(null);
   const [registerError, setRegisterError] = useState<{ emailExists?: boolean; message?: string } | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const [socialForm, setSocialForm] = useState<SocialFormState>({
     instagram: { username: "", followerCount: "" },
     tiktok: { username: "", followerCount: "" },
@@ -273,11 +277,8 @@ export function RegisterPage() {
         account_type: signupType || undefined,
         country: formValues.country,
       });
-      toast({
-        title: t("auth.accountCreated"),
-        description: t("auth.welcomeToMargin"),
-      });
-      navigate("/profile");
+      // Show "check your email" step instead of navigating directly
+      setRegisteredEmail(formValues.email);
     } catch (error: any) {
       const raw = (error?.message || "").toLowerCase();
       if (raw.includes("already registered") || raw.includes("already exists") || raw.includes("email already") || raw.includes("duplicate")) {
@@ -872,9 +873,54 @@ export function RegisterPage() {
           </div>
 
           <Card>
-            {step === 1 && renderStep1()}
-            {step === 2 && renderStep2()}
-            {step === 3 && renderStep3()}
+            {registeredEmail ? (
+              <div className="p-8 text-center space-y-5">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                  <Mail className="h-8 w-8 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold mb-1">Check your email</h2>
+                  <p className="text-muted-foreground text-sm">
+                    We sent a verification link to <strong>{registeredEmail}</strong>.<br />
+                    Click the link to verify your email and complete your account.
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground space-y-1.5 text-left">
+                  <p className="font-medium text-foreground">What's next?</p>
+                  <p>1. Open the email from Bareter</p>
+                  <p>2. Click "Verify my email"</p>
+                  <p>3. You're all set — start bartering</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button onClick={() => navigate("/browse")} className="w-full">
+                    Continue to Bareter
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={resendingVerification}
+                    onClick={async () => {
+                      setResendingVerification(true);
+                      try {
+                        await fetch("/api/auth/resend-verification", { method: "POST", credentials: "include" });
+                        toast({ title: "Email resent", description: "Check your inbox again." });
+                      } catch { /* ignore */ }
+                      setResendingVerification(false);
+                    }}
+                    className="gap-1.5 text-muted-foreground"
+                  >
+                    {resendingVerification ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Resend verification email
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {step === 1 && renderStep1()}
+                {step === 2 && renderStep2()}
+                {step === 3 && renderStep3()}
+              </>
+            )}
           </Card>
         </div>
       </div>

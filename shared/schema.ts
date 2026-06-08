@@ -503,6 +503,9 @@ export const users = pgTable("users", {
   
   // Contact Info
   phone: text("phone"),
+  phoneVerified: boolean("phone_verified").default(false),
+  phoneVerificationCode: text("phone_verification_code"),
+  phoneVerificationExpires: timestamp("phone_verification_expires"),
   website: text("website"),
   socialLinks: jsonb("social_links").$type<{linkedin?: string; instagram?: string; twitter?: string}>(),
   

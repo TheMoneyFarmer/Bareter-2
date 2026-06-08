@@ -1,4 +1,4 @@
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, Mail, MessageCircle, ShieldCheck } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,57 @@ export function isUserVerified(
   kybStatus?: string | null,
 ): boolean {
   return kycStatus === "APPROVED" || kybStatus === "APPROVED";
+}
+
+// ── Email / Phone trust badges ───────────────────────────────────────────────
+
+interface TrustBadgesProps {
+  emailVerified?: boolean | null;
+  phoneVerified?: boolean | null;
+  className?: string;
+}
+
+export function TrustBadges({ emailVerified, phoneVerified, className }: TrustBadgesProps) {
+  const both = emailVerified && phoneVerified;
+  if (!emailVerified && !phoneVerified) return null;
+
+  return (
+    <TooltipProvider>
+      <div className={cn("flex items-center gap-1.5", className)}>
+        {both && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold">
+                <ShieldCheck className="h-3 w-3" />
+                Trusted
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Email and phone verified</TooltipContent>
+          </Tooltip>
+        )}
+        {!both && emailVerified && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-blue-500" aria-label="Email verified">
+                <Mail className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Email verified</TooltipContent>
+          </Tooltip>
+        )}
+        {!both && phoneVerified && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 text-green-500" aria-label="Phone verified">
+                <MessageCircle className="h-3.5 w-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">WhatsApp verified</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    </TooltipProvider>
+  );
 }
 
 export function VerifiedBadge({

@@ -67,7 +67,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
-import { VerifiedBadge } from "@/components/verified-badge";
+import { VerifiedBadge, TrustBadges } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForListing, type DeliverableItem } from "@shared/deliverables";
@@ -1763,6 +1763,7 @@ export function ListingDetailPage() {
                   <div className="flex items-center gap-1 flex-wrap">
                     <Link href={`/users/${listing.userId}`} className="font-semibold hover:underline hover:text-primary transition-colors">{listing.user?.fullName}</Link>
                     <VerifiedBadge isVerified={listing.user?.isVerified} kycStatus={listing.user?.kycStatus} kybStatus={listing.user?.kybStatus} accountType={listing.user?.accountType} size="xs" testId="badge-verified" />
+                    <TrustBadges emailVerified={(listing.user as any)?.emailVerified} phoneVerified={(listing.user as any)?.phoneVerified} />
                     <FounderBadge show={!!listing.user?.founderBadge} />
                     <ReputationBadge completedDeals={listing.user?.totalCompletedDeals ?? 0} avgRating={userReviews?.avgRating} />
                   </div>

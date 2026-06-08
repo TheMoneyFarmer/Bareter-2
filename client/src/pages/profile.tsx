@@ -46,7 +46,7 @@ import {
   ChevronRight,
   ArrowLeft,
 } from "lucide-react";
-import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
+import { VerifiedBadge, TrustBadges, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import { SiInstagram, SiTiktok, SiYoutube, SiLinkedin, SiX } from "react-icons/si";
 import { z } from "zod";
@@ -628,6 +628,7 @@ export function ProfilePage() {
           <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
             <h1 className="text-xl md:text-2xl font-bold">{user.fullName}</h1>
             <FounderBadge show={!!user.founderBadge} size="md" />
+            <TrustBadges emailVerified={(user as any).emailVerified} phoneVerified={(user as any).phoneVerified} />
           </div>
           {user.businessName && (
             <p className="text-muted-foreground flex items-center justify-center md:justify-start gap-1 mt-1">

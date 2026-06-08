@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { PhoneVerificationModal } from "@/components/phone-verification-modal";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -129,6 +130,10 @@ export function CreateListingPage() {
   const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
   const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 
+  // Phone verification gate
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<CreateListingForm | null>(null);
+
   // Custom "Other" category
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState("");
@@ -214,11 +219,25 @@ export function CreateListingPage() {
       navigate(`/listings/${data.id}`);
     },
     onError: (error: any) => {
+      // If server says phone not verified, open the WhatsApp modal
+      if (error?.phoneVerificationRequired || error?.message?.includes("Phone verification")) {
+        setPendingSubmitData(createMutation.variables ?? null);
+        setShowPhoneModal(true);
+        return;
+      }
       toast({ title: t("create.failedTitle"), description: error.message || t("common.somethingWentWrong"), variant: "destructive" });
     },
   });
 
-  const onSubmit = (data: CreateListingForm) => createMutation.mutate(data);
+  const onSubmit = (data: CreateListingForm) => {
+    // If user is already phone-verified (from auth context), skip the gate
+    if ((user as any)?.phoneVerified) {
+      createMutation.mutate(data);
+    } else {
+      // Optimistically try — server will 403 with phoneVerificationRequired if needed
+      createMutation.mutate(data);
+    }
+  };
 
   // ── Draft autosave ───────────────────────────────────────────────────────
   const draftIdRef = useRef<string | null>(null);
@@ -1113,6 +1132,19 @@ export function CreateListingPage() {
 
         </form>
       </Form>
+
+      <PhoneVerificationModal
+        open={showPhoneModal}
+        existingPhone={(user as any)?.phone}
+        onVerified={() => {
+          setShowPhoneModal(false);
+          if (pendingSubmitData) {
+            createMutation.mutate(pendingSubmitData);
+            setPendingSubmitData(null);
+          }
+        }}
+        onClose={() => { setShowPhoneModal(false); setPendingSubmitData(null); }}
+      />
     </div>
   );
 }

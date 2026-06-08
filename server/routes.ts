@@ -53,6 +53,7 @@ import {
   searchQueryHistory,
   engagementEvents,
   reviews as reviewsTable,
+  collabApplications,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -772,6 +773,28 @@ export async function registerRoutes(
         );
       }
 
+      // Send email verification link (fire-and-forget — never blocks registration)
+      ;(async () => {
+        try {
+          const verifyToken = crypto.randomBytes(32).toString("hex");
+          const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+          await db.update(users).set({
+            emailVerificationToken: verifyToken,
+            emailVerificationExpires: expires,
+          }).where(eq(users.id, user.id));
+          const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+          const host = req.headers["x-forwarded-host"] || req.headers.host;
+          const baseUrl = `${protocol}://${host}`;
+          const { sendEmailVerificationEmail } = await import("./emailService");
+          await sendEmailVerificationEmail(data.email, {
+            fullName: data.fullName,
+            verifyUrl: `${baseUrl}/api/auth/verify-email?token=${verifyToken}`,
+          });
+        } catch (err) {
+          console.error("[register] email verification send failed:", err);
+        }
+      })();
+
       req.session.userId = user.id;
       (req.session as any).uaFingerprint = uaFingerprint(req);
       // Explicitly save session before responding
@@ -788,6 +811,140 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Email verification ───────────────────────────────────────────────────
+  app.get("/api/auth/verify-email", async (req, res) => {
+    try {
+      const token = typeof req.query.token === "string" ? req.query.token.trim() : null;
+      if (!token) return res.status(400).send("Invalid verification link.");
+
+      const [user] = await db.select().from(users).where(eq(users.emailVerificationToken, token)).limit(1);
+      if (!user) return res.status(400).send("Verification link is invalid or has already been used.");
+      if (!user.emailVerificationExpires || user.emailVerificationExpires < new Date()) {
+        return res.status(400).send("Verification link has expired. Please request a new one from your profile settings.");
+      }
+
+      await db.update(users).set({
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      }).where(eq(users.id, user.id));
+
+      // Redirect to the app with a success flag the frontend can show
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      return res.redirect(`${protocol}://${host}/?email_verified=1`);
+    } catch (err) {
+      console.error("[verify-email]", err);
+      return res.status(500).send("Something went wrong. Please try again.");
+    }
+  });
+
+  // Resend verification email (for users who missed the first one)
+  app.post("/api/auth/resend-verification", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.emailVerified) return res.status(400).json({ message: "Email already verified" });
+
+      const verifyToken = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await db.update(users).set({
+        emailVerificationToken: verifyToken,
+        emailVerificationExpires: expires,
+      }).where(eq(users.id, userId));
+
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+      const { sendEmailVerificationEmail } = await import("./emailService");
+      await sendEmailVerificationEmail(user.email, {
+        fullName: user.fullName,
+        verifyUrl: `${baseUrl}/api/auth/verify-email?token=${verifyToken}`,
+      });
+      res.json({ message: "Verification email sent" });
+    } catch (err) {
+      console.error("[resend-verification]", err);
+      res.status(500).json({ message: "Failed to send verification email" });
+    }
+  });
+
+  // ── Phone OTP (WhatsApp) ─────────────────────────────────────────────────
+  app.post("/api/auth/phone/send-otp", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const phone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
+      if (!phone) return res.status(400).json({ message: "Phone number required" });
+      if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+        return res.status(400).json({ message: "Use international format, e.g. +971501234567" });
+      }
+
+      // Prevent one phone number being linked to multiple accounts
+      const existing = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.phone, phone), not(eq(users.id, userId)))).limit(1);
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "This phone number is already linked to another account" });
+      }
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await db.update(users).set({
+        phone,
+        phoneVerificationCode: code,
+        phoneVerificationExpires: expires,
+        phoneVerified: false,
+      }).where(eq(users.id, userId));
+
+      const { sendWhatsApp } = await import("./companyOs/twilio");
+      const body = `Your Bareter verification code is: ${code}\nValid for 10 minutes.\nDo not share this code.`;
+      const sent = await sendWhatsApp(phone, body);
+
+      if (!sent) {
+        // Log the code in dev so the flow can be tested without Twilio
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[phone-otp] DEV: code for ${phone} is ${code}`);
+        }
+        // Don't fail — return ok so UI can prompt for the code even in dev
+      }
+
+      res.json({ message: "Code sent via WhatsApp", dev: process.env.NODE_ENV !== "production" ? code : undefined });
+    } catch (err) {
+      console.error("[phone/send-otp]", err);
+      res.status(500).json({ message: "Failed to send verification code" });
+    }
+  });
+
+  app.post("/api/auth/phone/verify-otp", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const code: string | undefined = typeof req.body.code === "string" ? req.body.code.trim() : undefined;
+      if (!code) return res.status(400).json({ message: "Verification code required" });
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.phoneVerified) return res.json({ message: "Phone already verified", phoneVerified: true });
+
+      if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
+        return res.status(400).json({ message: "Invalid verification code" });
+      }
+      if (!user.phoneVerificationExpires || user.phoneVerificationExpires < new Date()) {
+        return res.status(400).json({ message: "Code has expired — please request a new one" });
+      }
+
+      await db.update(users).set({
+        phoneVerified: true,
+        phoneVerificationCode: null,
+        phoneVerificationExpires: null,
+      }).where(eq(users.id, userId));
+
+      res.json({ message: "Phone verified", phoneVerified: true });
+    } catch (err) {
+      console.error("[phone/verify-otp]", err);
+      res.status(500).json({ message: "Failed to verify code" });
     }
   });
 
@@ -1849,9 +2006,14 @@ export async function registerRoutes(
         } catch {}
       }
 
+      // Phone verification gate — must verify WhatsApp number before listing
+      if (!listingUser.phoneVerified) {
+        return res.status(403).json({ message: "Phone verification required to create a listing.", phoneVerificationRequired: true });
+      }
+
       // Business license gate
       if (listingUser.accountType === "business" && listingUser.kybStatus !== "APPROVED") {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: "Business accounts must have a verified trade license before creating listings.",
           requiresTradeLicense: true
         });
@@ -5189,27 +5351,74 @@ export async function registerRoutes(
           await db.update(users).set({ isBanned: false }).where(eq(users.id, userId));
         } else if (action === "delete") {
           await destroyUserSessions(userId);
+
+          // Collect parent content IDs owned by this user
           const userListingRows = await db.select({ id: listings.id }).from(listings).where(eq(listings.userId, userId));
           const listingIds = userListingRows.map(l => l.id);
-          await db.transaction(async (tx) => {
-            for (const lid of listingIds) {
-              await tx.delete(imageScans).where(eq(imageScans.listingId, lid));
-              await tx.delete(listingLikes).where(eq(listingLikes.listingId, lid));
-              await tx.delete(listingComments).where(eq(listingComments.listingId, lid));
-            }
-            if (listingIds.length > 0) await tx.delete(listings).where(eq(listings.userId, userId));
-            const userDealRows = await tx.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
-            for (const d of userDealRows) {
-              await tx.delete(messages).where(eq(messages.dealId, d.id));
-              await tx.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
-            }
-            await tx.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
-            await tx.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
-            await tx.delete(listingLikes).where(eq(listingLikes.userId, userId));
-            await tx.delete(listingComments).where(eq(listingComments.userId, userId));
-            await tx.delete(wishlists).where(eq(wishlists.userId, userId));
-            await tx.delete(users).where(eq(users.id, userId));
-          });
+          const userDealRows = await db.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+          const dealIds = userDealRows.map(d => d.id);
+          const userPostRows = await db.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+          const postIds = userPostRows.map(p => p.id);
+
+          // Phase 1: Deal children
+          if (dealIds.length > 0) {
+            await db.delete(messages).where(inArray(messages.dealId, dealIds));
+            await db.delete(dealMilestones).where(inArray(dealMilestones.dealId, dealIds));
+            await db.delete(ratings).where(inArray(ratings.dealId, dealIds));
+            await db.delete(notifications).where(inArray(notifications.relatedDealId, dealIds));
+          }
+
+          // Phase 2: Listing children — reviews before listingComments (FK listingCommentId)
+          if (listingIds.length > 0) {
+            await db.update(deals).set({ seekerListingId: null }).where(inArray(deals.seekerListingId, listingIds));
+            await db.update(deals).set({ providerListingId: null }).where(inArray(deals.providerListingId, listingIds));
+            await db.delete(reviewsTable).where(inArray(reviewsTable.listingId, listingIds));
+            await db.delete(listingComments).where(inArray(listingComments.listingId, listingIds));
+            await db.delete(engagementEvents).where(inArray(engagementEvents.listingId, listingIds));
+            await db.delete(listingLikes).where(inArray(listingLikes.listingId, listingIds));
+            await db.delete(wishlists).where(inArray(wishlists.listingId, listingIds));
+            await db.delete(quickInquiries).where(inArray(quickInquiries.listingId, listingIds));
+            await db.delete(collabApplications).where(inArray(collabApplications.listingId, listingIds));
+            await db.delete(imageScans).where(inArray(imageScans.listingId, listingIds));
+            await db.delete(notifications).where(inArray(notifications.relatedListingId, listingIds));
+          }
+
+          // Phase 3: Post children
+          if (postIds.length > 0) {
+            await db.delete(postLikes).where(inArray(postLikes.postId, postIds));
+            await db.delete(postComments).where(inArray(postComments.postId, postIds));
+            await db.delete(postBookmarks).where(inArray(postBookmarks.postId, postIds));
+            await db.delete(quickInquiries).where(inArray(quickInquiries.postId, postIds));
+            await db.delete(notifications).where(inArray(notifications.relatedPostId, postIds));
+          }
+
+          // Phase 4: Delete parent content tables
+          if (listingIds.length > 0) await db.delete(listings).where(eq(listings.userId, userId));
+          if (postIds.length > 0) await db.delete(posts).where(eq(posts.userId, userId));
+          if (dealIds.length > 0) await db.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+
+          // Phase 5: Remaining user-level FK references across all tables
+          await db.delete(messages).where(eq(messages.senderId, userId));
+          await db.delete(notifications).where(eq(notifications.userId, userId));
+          await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+          await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
+          await db.delete(listingComments).where(eq(listingComments.userId, userId));
+          await db.delete(postLikes).where(eq(postLikes.userId, userId));
+          await db.delete(postComments).where(eq(postComments.userId, userId));
+          await db.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
+          await db.delete(wishlists).where(eq(wishlists.userId, userId));
+          await db.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
+          await db.delete(savedSearches).where(eq(savedSearches.userId, userId));
+          await db.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
+          await db.delete(reviewsTable).where(or(eq(reviewsTable.reviewerId, userId), eq(reviewsTable.revieweeId, userId)));
+          await db.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
+          await db.delete(collabApplications).where(or(eq(collabApplications.creatorId, userId), eq(collabApplications.brandId, userId)));
+          await db.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
+          await db.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
+          await db.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
+
+          // Phase 6: Delete the user row
+          await db.delete(users).where(eq(users.id, userId));
         }
         await logAdminAction(req, `bulk_user_${action}` as any, "user", userId, {});
         affected++;

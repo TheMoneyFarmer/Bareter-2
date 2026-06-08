@@ -223,6 +223,37 @@ export async function sendPasswordChangedNotificationEmail(toEmail: string, full
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} password has been changed`, html, text });
 }
 
+export async function sendEmailVerificationEmail(toEmail: string, opts: { fullName?: string | null; verifyUrl: string }): Promise<boolean> {
+  const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Email verification for ${toEmail}: ${opts.verifyUrl}`);
+    return false;
+  }
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+    </div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Confirm your email</h2>
+    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">${greeting} click the button below to verify your ${APP_NAME} account. This link expires in <strong>24 hours</strong>.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${opts.verifyUrl}" style="display: inline-block; background: #136c68; color: white; text-decoration: none; padding: 13px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">Verify my email</a>
+    </div>
+    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
+      Or paste this link in your browser:<br/>
+      <a href="${opts.verifyUrl}" style="color: #136c68; font-size: 11px; word-break: break-all;">${opts.verifyUrl}</a>
+    </p>
+    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 16px;">If you did not create a ${APP_NAME} account, you can ignore this email.</p>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nVerify your ${APP_NAME} account by visiting:\n${opts.verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, ignore this email.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Verify your ${APP_NAME} email`, html, text });
+}
+
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
