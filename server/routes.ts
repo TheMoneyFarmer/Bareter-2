@@ -54,6 +54,10 @@ import {
   engagementEvents,
   reviews as reviewsTable,
   collabApplications,
+  broadcastJobs,
+  emailLogs,
+  supportTickets,
+  userBlocks,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -2019,20 +2023,9 @@ export async function registerRoutes(
         });
       }
 
-      const { isUserVerified } = await import("./diditClient");
-      const userVerified = isUserVerified(
-        listingUser.accountType || "individual",
-        listingUser.kycStatus || "NOT_STARTED",
-        listingUser.kybStatus || "NOT_STARTED",
-        listingUser.isVerified,
-      );
-
-      if (!userVerified) {
-        return res.status(403).json({ 
-          message: "You must be verified to create listings. Please complete identity verification first.",
-          requiresVerification: true
-        });
-      }
+      // DIDIT CODE ARCHIVED
+      // See _archived/didit/routes-verification-gates.ts
+      // Re-integrate when ENABLE_DIDIT needed
 
       const { isValueFlagged } = await import("./marketValues");
       const rawCategories = req.body.categories || [];
@@ -3244,20 +3237,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { isUserVerified } = await import("./diditClient");
-      const seekerVerified = isUserVerified(
-        seeker.accountType || "individual",
-        seeker.kycStatus || "NOT_STARTED",
-        seeker.kybStatus || "NOT_STARTED",
-        seeker.isVerified,
-      );
-
-      if (!seekerVerified) {
-        return res.status(403).json({ 
-          message: "You must be verified to start a trade. Please complete identity verification first.",
-          requiresVerification: true
-        });
-      }
+      // DIDIT CODE ARCHIVED
+      // See _archived/didit/routes-verification-gates.ts
+      // Re-integrate when ENABLE_DIDIT needed
 
       const listing = await storage.getListing(providerListingId);
       if (!listing) {
@@ -3745,241 +3727,11 @@ export async function registerRoutes(
     }
   });
 
-  // Verification routes (Didit KYC/KYB)
-  app.post("/api/verification/session", requireAuth, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const { accountType } = req.body;
-      const userAccountType = accountType || user.accountType || "individual";
-
-      const workflowId = userAccountType === "business"
-        ? process.env.DIDIT_KYB_WORKFLOW_ID
-        : process.env.DIDIT_KYC_WORKFLOW_ID;
-
-      if (!workflowId) {
-        return res.status(500).json({ message: "Verification workflow not configured" });
-      }
-
-      const { createVerificationSession, getSessionStatus } = await import("./diditClient");
-
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPLIT_DOMAINS
-          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
-          : "http://localhost:5000";
-
-      const callbackUrl = `${baseUrl}/profile`;
-
-      // ── Task #248: resume an in-flight Didit session instead of
-      // restarting from scratch. We resume only when the existing
-      // session is younger than 7 days, was not abandoned/expired on
-      // Didit's side, and matches the requested account type. Anything
-      // else falls through to a fresh session creation.
-      const RESUME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-      const sameAccountType = (user.accountType ?? "individual") === userAccountType;
-      const startedAt = user.verificationSessionStartedAt
-        ? new Date(user.verificationSessionStartedAt).getTime()
-        : 0;
-      const sessionFresh = startedAt > 0 && Date.now() - startedAt < RESUME_WINDOW_MS;
-
-      if (user.diditSessionId && sameAccountType && sessionFresh) {
-        try {
-          const liveStatus = await getSessionStatus(user.diditSessionId);
-          const isResumable = liveStatus &&
-            liveStatus !== "EXPIRED" &&
-            liveStatus !== "ABANDONED" &&
-            liveStatus !== "DECLINED" &&
-            liveStatus !== "REJECTED" &&
-            liveStatus !== "APPROVED" &&
-            liveStatus !== "PROCESSING";
-
-          if (isResumable) {
-            const { getSessionUrl } = await import("./diditClient");
-            const resumeUrl = await getSessionUrl(user.diditSessionId).catch(() => null);
-            if (resumeUrl) {
-              return res.json({
-                sessionId: user.diditSessionId,
-                verificationUrl: resumeUrl,
-                resumed: true,
-              });
-            }
-          }
-          // URL unavailable or status is terminal — clear stale session so
-          // Didit accepts a fresh creation below.
-          console.log(`[verification] clearing stale session ${user.diditSessionId} (status: ${liveStatus}) for user ${user.id}`);
-          await storage.updateUser(user.id, {
-            diditSessionId: null,
-            verificationSessionStartedAt: null,
-          });
-        } catch (err) {
-          console.warn("[verification] resume probe failed, clearing session and retrying:", err);
-          await storage.updateUser(user.id, { diditSessionId: null, verificationSessionStartedAt: null }).catch(() => {});
-        }
-      }
-
-      const session = await createVerificationSession(
-        workflowId,
-        user.id,
-        callbackUrl
-      );
-
-      if (!session) {
-        console.error("[verification] createVerificationSession returned null for user", user.id, "workflowId:", workflowId);
-        return res.status(500).json({ message: "Could not start verification. Please try again in a few minutes or contact support." });
-      }
-
-      await storage.updateUser(user.id, {
-        accountType: userAccountType,
-        diditSessionId: session.session_id,
-        verificationSessionStartedAt: new Date(),
-        ...(userAccountType === "business"
-          ? { kybStatus: "IN_PROGRESS" }
-          : { kycStatus: "IN_PROGRESS" }
-        ),
-      });
-
-      res.json({
-        sessionId: session.session_id,
-        verificationUrl: session.url,
-        resumed: false,
-      });
-    } catch (error) {
-      console.error("Create verification session error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.get("/api/verification/status", requireAuth, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const { getVerificationStatus, isUserVerified } = await import("./diditClient");
-      
-      const accountType = user.accountType || "individual";
-      const kycStatus = user.kycStatus || "NOT_STARTED";
-      const kybStatus = user.kybStatus || "NOT_STARTED";
-
-      const statusInfo = getVerificationStatus(accountType, kycStatus, kybStatus);
-      const verified = isUserVerified(accountType, kycStatus, kybStatus, user.isVerified);
-
-      res.json({
-        accountType,
-        kycStatus,
-        kybStatus,
-        isVerified: verified,
-        ...statusInfo,
-      });
-    } catch (error) {
-      console.error("Get verification status error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  const { verifyWebhookSignature: verifyDiditSignature } = await import(
-    "./diditClient"
-  );
-  const { makeDiditWebhookHandler } = await import("./handlers/diditWebhook");
-  const {
-    sendVerificationApprovedEmail,
-    sendVerificationDeclinedEmail,
-    sendVerificationUnderReviewEmail,
-  } = await import("./emailService");
-  const diditWebhookHandler = makeDiditWebhookHandler({
-    storage,
-    verifyWebhookSignature: verifyDiditSignature,
-    sendApprovedEmail: sendVerificationApprovedEmail,
-    sendDeclinedEmail: sendVerificationDeclinedEmail,
-    sendUnderReviewEmail: sendVerificationUnderReviewEmail,
-  });
-  app.post("/api/webhooks/didit", diditWebhookHandler);
-
-  // Manual verification status refresh — polls Didit API for the current user's
-  // session and syncs the status. Solves cases where the webhook never fired.
-  app.post("/api/verification/refresh", requireAuth, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) return res.status(404).json({ message: "User not found" });
-
-      if (!user.diditSessionId) {
-        return res.json({ synced: false, message: "No active verification session found. Please start verification first." });
-      }
-
-      const { getSessionStatus, getVerificationStatus, isUserVerified } = await import("./diditClient");
-      const latestStatus = await getSessionStatus(user.diditSessionId);
-
-      if (!latestStatus) {
-        return res.json({ synced: false, message: "Could not reach verification service. Please try again shortly." });
-      }
-
-      const isBusinessAccount = user.accountType === "business";
-      const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
-
-      // Only update if status actually changed
-      if (latestStatus === currentStatus) {
-        const statusInfo = getVerificationStatus(user.accountType || "individual", user.kycStatus || "NOT_STARTED", user.kybStatus || "NOT_STARTED");
-        return res.json({ synced: false, message: "Status is already up to date.", ...statusInfo, kycStatus: user.kycStatus, kybStatus: user.kybStatus, isVerified: user.isVerified });
-      }
-
-      const updateData: Record<string, unknown> = { updatedAt: new Date() };
-      if (isBusinessAccount) {
-        updateData.kybStatus = latestStatus;
-      } else {
-        updateData.kycStatus = latestStatus;
-      }
-
-      // Session expired — clear stale ID so user can restart
-      if (latestStatus === "EXPIRED") {
-        updateData.diditSessionId = null;
-        updateData.verificationStatus = "pending";
-        await storage.updateUser(user.id, updateData as Partial<typeof user>);
-        await storage.createNotification({
-          userId: user.id, type: "system",
-          title: "Verification Session Expired",
-          message: "Your verification session expired. Please start a new verification from your profile.",
-        });
-        return res.json({ synced: true, message: "Your previous verification session expired. Please start a new verification.", status: "EXPIRED", kycStatus: isBusinessAccount ? user.kycStatus : "EXPIRED", kybStatus: isBusinessAccount ? "EXPIRED" : user.kybStatus, isVerified: false });
-      }
-
-      if (latestStatus === "APPROVED") {
-        updateData.isVerified = true;
-        updateData.verificationStatus = "verified";
-        updateData.diditVerifiedAt = new Date();
-        await storage.createNotification({
-          userId: user.id, type: "system",
-          title: "Verification Approved!",
-          message: "Your identity has been verified. You can now create listings and start bartering!",
-        });
-        sendVerificationApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
-      } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
-        updateData.isVerified = false;
-        updateData.verificationStatus = "rejected";
-        sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
-      } else if (latestStatus === "IN_REVIEW" || latestStatus === "PENDING_REVIEW") {
-        updateData.verificationStatus = "submitted";
-        sendVerificationUnderReviewEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
-      }
-
-      await storage.updateUser(user.id, updateData as Partial<typeof user>);
-      const updatedUser = await storage.getUser(user.id);
-      const newKycStatus = updatedUser?.kycStatus || "NOT_STARTED";
-      const newKybStatus = updatedUser?.kybStatus || "NOT_STARTED";
-      const statusInfo = getVerificationStatus(user.accountType || "individual", newKycStatus, newKybStatus);
-      const verified = isUserVerified(user.accountType || "individual", newKycStatus, newKybStatus, updatedUser?.isVerified);
-
-      console.log(`[DIDIT] Manual refresh: userId=${user.id} ${currentStatus} → ${latestStatus}`);
-      return res.json({ synced: true, message: `Status updated to ${latestStatus}`, ...statusInfo, kycStatus: newKycStatus, kybStatus: newKybStatus, isVerified: verified });
-    } catch (error) {
-      console.error("Verification refresh error:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
+  // DIDIT CODE ARCHIVED
+  // See _archived/didit/routes-verification-endpoints.ts
+  // Re-integrate when ENABLE_DIDIT needed
+  // (POST /api/verification/session, GET /api/verification/status,
+  //  POST /api/webhooks/didit, POST /api/verification/refresh)
 
   // Sanity CMS webhook — flushes the in-memory content cache immediately on publish.
   // Sanity signs each request with HMAC-SHA256; the header format is:
@@ -5416,6 +5168,21 @@ export async function registerRoutes(
           await db.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
           await db.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
           await db.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
+          // Reports filed BY this user (reporterId NOT NULL — must delete, not null-out)
+          await db.delete(reports).where(eq(reports.reporterId, userId));
+          // Disputes this user was a party to (partyAId/partyBId NOT NULL — must delete)
+          await db.delete(disputes).where(or(eq(disputes.partyAId, userId), eq(disputes.partyBId, userId)));
+          // Admin audit log rows authored by this user (adminId NOT NULL — must delete)
+          await db.delete(adminAuditLogs).where(eq(adminAuditLogs.adminId, userId));
+          // userBlocks has onDelete:cascade but null-out explicitly for safety
+          await db.delete(userBlocks).where(or(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedId, userId)));
+          // Nullable FKs — null-out rather than delete to preserve audit history
+          await db.update(listings).set({ deletedByUserId: null }).where(eq(listings.deletedByUserId, userId));
+          await db.update(supportTickets).set({ userId: null }).where(eq(supportTickets.userId, userId));
+          await db.update(supportTickets).set({ assignedTo: null }).where(eq(supportTickets.assignedTo, userId));
+          await db.update(broadcastJobs).set({ sentBy: null }).where(eq(broadcastJobs.sentBy, userId));
+          await db.update(emailLogs).set({ sentBy: null }).where(eq(emailLogs.sentBy, userId));
+          await db.update(bannedEmails).set({ bannedBy: null }).where(eq(bannedEmails.bannedBy, userId));
 
           // Phase 6: Delete the user row
           await db.delete(users).where(eq(users.id, userId));
