@@ -19,10 +19,7 @@ export function ActionGuardProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [blockReason, setBlockReason] = useState<BlockReason>(null);
 
-  const isVerified = !!(
-    user &&
-    (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified)
-  );
+  const isVerified = !!(user && (user as any).phoneVerified);
 
   const guard = useCallback(
     (fn?: () => void): boolean => {

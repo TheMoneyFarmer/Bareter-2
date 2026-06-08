@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +26,7 @@ import {
   MapPin,
   Building2,
   Shield,
+  ShieldCheck,
   Star,
   Plus,
   X,
@@ -45,6 +47,10 @@ import {
   Settings,
   ChevronRight,
   ArrowLeft,
+  Mail,
+  MessageCircle,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { VerifiedBadge, TrustBadges, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -71,216 +77,213 @@ type User = {
 
 function VerificationSection({ user }: { user: User }) {
   const { toast } = useToast();
-  const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [selectedAccountType, setSelectedAccountType] = useState(user.accountType || "individual");
 
-  const { data: verificationStatus, isLoading: statusLoading } = useQuery<{
-    accountType: string;
-    kycStatus: string;
-    kybStatus: string;
-    isVerified: boolean;
-    status: string;
-    label: string;
-    color: string;
-  }>({
-    queryKey: ["/api/verification/status"],
-  });
+  const emailVerified = !!(user as any).emailVerified;
+  const phoneVerified = !!(user as any).phoneVerified;
+  const existingPhone: string = (user as any).phone || "";
 
-  const startVerificationMutation = useMutation({
-    mutationFn: async (accountType: string) => {
-      const res = await apiRequest("POST", "/api/verification/session", { accountType });
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [phone, setPhone] = useState(existingPhone);
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+
+  const handleSendOtp = async () => {
+    if (!phone.trim()) {
+      toast({ title: "Enter your WhatsApp number", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/phone/send-otp", { phone: phone.trim() });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || t("common.somethingWentWrong"));
-      return data;
-    },
-    onSuccess: (data) => {
-      if (data.verificationUrl) {
-        window.open(data.verificationUrl, "_blank");
-        toast({
-          title: t("profile.startVerification"),
-          description: t("profile.inProgress"),
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      if (!res.ok) {
+        toast({ title: data.message || "Failed to send code", variant: "destructive" });
+        return;
       }
-    },
-    onError: (err: Error) => {
-      toast({
-        title: t("common.error"),
-        description: err.message || t("common.somethingWentWrong"),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateAccountTypeMutation = useMutation({
-    mutationFn: async (accountType: string) => {
-      const res = await apiRequest("PATCH", "/api/users/account-type", { accountType });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-    },
-  });
-
-  const handleAccountTypeChange = (value: string) => {
-    setSelectedAccountType(value);
-    updateAccountTypeMutation.mutate(value);
-  };
-
-  const status = verificationStatus?.status || "NOT_STARTED";
-  const isVerified = verificationStatus?.isVerified || user.isVerified;
-  const canStartVerification = status === "NOT_STARTED" || status === "DECLINED" || status === "EXPIRED" || status === "ABANDONED";
-
-  const getStatusConfig = () => {
-    switch (status) {
-      case "APPROVED":
-        return { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50 dark:bg-green-950", text: t("profile.status.verified") };
-      case "IN_PROGRESS":
-        return { icon: Clock, color: "text-yellow-500", bgColor: "bg-yellow-50 dark:bg-yellow-950", text: t("profile.status.inProgress") };
-      case "IN_REVIEW":
-        return { icon: Clock, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950", text: t("profile.status.underReview") };
-      case "DECLINED":
-        return { icon: AlertCircle, color: "text-red-500", bgColor: "bg-red-50 dark:bg-red-950", text: t("profile.status.failed") };
-      case "EXPIRED":
-        return { icon: AlertCircle, color: "text-orange-500", bgColor: "bg-orange-50 dark:bg-orange-950", text: t("profile.status.expired") };
-      case "ABANDONED":
-        return { icon: AlertCircle, color: "text-gray-500", bgColor: "bg-gray-50 dark:bg-gray-950", text: t("profile.status.abandoned") };
-      default:
-        return { icon: Shield, color: "text-muted-foreground", bgColor: "bg-muted", text: t("profile.status.notVerified") };
+      if (data.dev) setDevCode(data.dev);
+      setStep("otp");
+      toast({ title: "Code sent", description: "Check your WhatsApp for the 6-digit code." });
+    } catch {
+      toast({ title: "Failed to send code", description: "Please check your number and try again.", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const statusConfig = getStatusConfig();
-  const StatusIcon = statusConfig.icon;
+  const handleVerifyOtp = async () => {
+    if (code.trim().length !== 6) {
+      toast({ title: "Enter the 6-digit code", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/phone/verify-otp", { code: code.trim() });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.message || "Invalid code", variant: "destructive" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "WhatsApp verified!", description: "You can now post listings and propose barters." });
+    } catch {
+      toast({ title: "Verification failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const handleResendEmail = async () => {
+    setResending(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/resend-verification", {});
+      if (res.ok) toast({ title: "Verification email resent", description: "Check your inbox." });
+      else toast({ title: "Failed to resend", variant: "destructive" });
+    } catch {
+      toast({ title: "Failed to resend", variant: "destructive" });
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const reset = () => { setStep("phone"); setCode(""); setDevCode(null); };
+
+  // Both verified — all done
+  if (emailVerified && phoneVerified) {
+    return (
+      <Card>
+        <CardContent className="pt-8 pb-8">
+          <div className="text-center">
+            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+              <ShieldCheck className="h-8 w-8 text-green-600" />
+            </div>
+            <h3 className="font-semibold text-lg">Fully Verified</h3>
+            <p className="text-muted-foreground mt-1 text-sm">Your email and WhatsApp are confirmed. You're all set to barter.</p>
+            <div className="flex justify-center gap-3 mt-5">
+              <Badge variant="outline" className="text-blue-600 border-blue-200 gap-1.5 px-3 py-1">
+                <Mail className="h-3.5 w-3.5" /> Email verified
+              </Badge>
+              <Badge variant="outline" className="text-green-600 border-green-200 gap-1.5 px-3 py-1">
+                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp verified
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Email not yet verified
+  if (!emailVerified) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-primary" />
+            Confirm your email
+          </CardTitle>
+          <CardDescription>Check your inbox for a verification link from Bareter.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800">
+            <Mail className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-700 dark:text-amber-300">Email not yet confirmed</AlertTitle>
+            <AlertDescription className="text-amber-600 dark:text-amber-400">
+              A verification link was sent to <strong>{user.email}</strong>. Click it to activate your account.
+            </AlertDescription>
+          </Alert>
+          <Button variant="outline" className="w-full gap-2" onClick={handleResendEmail} disabled={resending}>
+            {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Resend verification email
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Email verified, phone not verified — show inline phone verification
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-primary" />
-          {t("profile.identityVerification")}
+          <MessageCircle className="h-5 w-5 text-green-600" />
+          Verify your WhatsApp
         </CardTitle>
         <CardDescription>
-          {t("profile.verifyToStart")}
+          {step === "phone"
+            ? "Add your WhatsApp number to post listings and propose barters."
+            : `Enter the 6-digit code sent to ${phone}.`}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className={`flex items-start gap-4 p-4 rounded-lg ${statusConfig.bgColor}`}>
-          <div className={`p-2 rounded-full bg-background ${statusConfig.color}`}>
-            <StatusIcon className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-medium">{t("profile.statusLabel")} {statusConfig.text}</h4>
-            <p className="text-sm text-muted-foreground mt-1">
-              {status === "NOT_STARTED" && t("profile.notStarted")}
-              {status === "IN_PROGRESS" && t("profile.inProgress")}
-              {status === "IN_REVIEW" && t("profile.inReview")}
-              {status === "APPROVED" && t("profile.approved")}
-              {status === "DECLINED" && t("profile.declined")}
-              {status === "EXPIRED" && t("profile.expired")}
-              {status === "ABANDONED" && t("profile.abandoned")}
-            </p>
-          </div>
+      <CardContent className="space-y-5">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground pb-1">
+          <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+          Email verified
+          <span className="mx-2 text-border">·</span>
+          <MessageCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+          WhatsApp pending
         </div>
-
-        {!isVerified && (
-          <>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{t("profile.accountType")}</label>
-                <Select value={selectedAccountType} onValueChange={handleAccountTypeChange}>
-                  <SelectTrigger data-testid="select-account-type">
-                    <SelectValue placeholder={t("profile.selectAccountType")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="individual">{t("profile.individualAccount")}</SelectItem>
-                    <SelectItem value="business">{t("profile.businessAccount")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {selectedAccountType === "individual"
-                    ? t("profile.individualVerifyWith")
-                    : t("profile.businessVerifyWith")
-                  }
-                </p>
-              </div>
-            </div>
-
-            <Separator />
-
-            {canStartVerification && (
-              <Button
-                className="w-full gap-2"
-                size="lg"
-                onClick={() => startVerificationMutation.mutate(selectedAccountType)}
-                disabled={startVerificationMutation.isPending}
-                data-testid="button-start-verification"
-              >
-                {startVerificationMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Shield className="h-4 w-4" />
-                )}
-                {status === "NOT_STARTED" ? t("profile.startVerification") : t("profile.retryVerification")}
-              </Button>
-            )}
-
-            {status === "IN_PROGRESS" && (
-              <Alert>
-                <Clock className="h-4 w-4" />
-                <AlertTitle>{t("profile.verificationInProgress")}</AlertTitle>
-                <AlertDescription>
-                  {t("profile.verificationWindowClosed")}
-                  <Button
-                    variant="outline"
-                    className="mt-2 w-full"
-                    onClick={() => startVerificationMutation.mutate(selectedAccountType)}
-                    disabled={startVerificationMutation.isPending}
-                    data-testid="button-continue-verification"
-                  >
-                    {t("profile.continueVerification")}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-          </>
-        )}
-
-        {isVerified && (
-          <Alert className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <AlertTitle className="text-green-700 dark:text-green-300">{t("profile.verifiedAccount")}</AlertTitle>
-            <AlertDescription className="text-green-600 dark:text-green-400">
-              {t("profile.verifiedDesc")}
-            </AlertDescription>
-          </Alert>
-        )}
-
         <Separator />
-
-        <div className="space-y-3">
-          <h4 className="font-medium">{t("profile.whyVerification")}</h4>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {t("profile.mandatoryBartering")}
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {t("profile.buildsTrust")}
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {t("profile.uaeCompliance")}
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {t("profile.protectsAgainstFraud")}
-            </li>
-          </ul>
-        </div>
+        {step === "phone" ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="verify-phone">WhatsApp number</Label>
+              <Input
+                id="verify-phone"
+                type="tel"
+                placeholder="+971 50 123 4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
+              />
+              <p className="text-xs text-muted-foreground">Include country code, e.g. +971 for UAE</p>
+            </div>
+            <Button className="w-full gap-2" size="lg" onClick={handleSendOtp} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              Send code via WhatsApp
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="verify-otp">Verification code</Label>
+              <Input
+                id="verify-otp"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="123456"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                className="text-center text-xl tracking-[0.3em] font-mono"
+                autoFocus
+              />
+              {devCode && (
+                <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded border border-amber-200 dark:border-amber-800">
+                  Dev — code: <strong>{devCode}</strong>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={reset} disabled={loading}>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Change number
+              </Button>
+              <Button
+                className="flex-1 gap-2"
+                size="lg"
+                onClick={handleVerifyOtp}
+                disabled={loading || code.length !== 6}
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Verify
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -424,6 +424,7 @@ function App() {
                       <div className="min-h-screen flex flex-col bg-background">
                         <AnnouncementBanner />
                         <Header />
+                        <VerificationReminder />
                         <main className="flex-1 pb-20 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
@@ -441,7 +442,6 @@ function App() {
                       <BareterAiNotificationChat />
                       <LocationMismatchBanner />
                       <CookieConsent />
-                      <VerificationReminder />
                     </MaintenanceGate>
                   </ErrorBoundary>
                   </ActionGuardProvider>
