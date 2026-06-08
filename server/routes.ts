@@ -89,7 +89,7 @@ import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
-import { registerWaitlistRoutes } from "./waitlistRoutes";
+import { registerWaitlistRoutes, bustWaitlistEnabledCache } from "./waitlistRoutes";
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
 import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not } from "drizzle-orm";
 
@@ -5940,6 +5940,11 @@ export async function registerRoutes(
       }
       if (changedKeys.includes("maintenance_mode")) {
         maintenanceCache = { value: false, at: 0 };
+      }
+      // Bust the waitlist-enabled in-process cache immediately so the next
+      // request reads the new DB value instead of waiting up to 5 s.
+      if (changedKeys.includes("waitlist_enabled")) {
+        bustWaitlistEnabledCache();
       }
       await logAdminAction(req, "platform_settings_updated", "settings", "bulk", { keys: changedKeys });
       const all = await storage.getAllAppSettings();

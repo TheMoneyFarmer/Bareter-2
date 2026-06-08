@@ -10,6 +10,7 @@ export function isWaitlistMode(): boolean {
 
 const WAITLIST_ENABLED_TTL = 5_000;
 let waitlistEnabledCache = { value: true, at: 0 };
+export function bustWaitlistEnabledCache() { waitlistEnabledCache = { value: false, at: 0 }; }
 export async function isWaitlistEnabled(): Promise<boolean> {
   const now = Date.now();
   if (now - waitlistEnabledCache.at < WAITLIST_ENABLED_TTL) return waitlistEnabledCache.value;

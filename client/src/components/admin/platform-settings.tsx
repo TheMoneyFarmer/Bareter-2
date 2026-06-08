@@ -9,6 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -58,7 +63,8 @@ export function AdminPlatformSettings() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/settings/platform"] });
       queryClient.invalidateQueries({ queryKey: ["/api/public/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/config"] });
-      toast({ title: "Saved", description: "Platform settings updated successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/waitlist/mode"] });
+      toast({ title: "Saved", description: "Setting updated" });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
@@ -142,6 +148,78 @@ export function AdminPlatformSettings() {
   );
 }
 
+// Confirmation config for each feature flag toggle
+const FLAG_CONFIRM: Record<string, { onTitle: string; offTitle: string; onDesc: string; offDesc: string }> = {
+  maintenance_mode: {
+    onTitle:  "Enable Maintenance Mode?",
+    offTitle: "Disable Maintenance Mode?",
+    onDesc:   "All non-admin users will see a maintenance page. The site will be inaccessible until you turn this off.",
+    offDesc:  "The site will become accessible to all users immediately.",
+  },
+  registration_enabled: {
+    onTitle:  "Enable Registration?",
+    offTitle: "Disable Registration?",
+    onDesc:   "New users will be able to create accounts.",
+    offDesc:  "New users will not be able to register. Existing users are unaffected.",
+  },
+  invite_only_mode: {
+    onTitle:  "Enable Invite-Only Mode?",
+    offTitle: "Disable Invite-Only Mode?",
+    onDesc:   "Only users on the waitlist or with a valid invite code will be able to register.",
+    offDesc:  "Anyone can register without an invite code.",
+  },
+  waitlist_enabled: {
+    onTitle:  "Enable Waitlist?",
+    offTitle: "Disable Waitlist?",
+    onDesc:   "Visitors will be able to join the waitlist on the landing page.",
+    offDesc:  "The waitlist will be closed. The landing page will no longer show the waitlist form.",
+  },
+  disputes_enabled: {
+    onTitle:  "Enable Disputes?",
+    offTitle: "Disable Disputes?",
+    onDesc:   "Users will be able to open and manage disputes.",
+    offDesc:  "Dispute creation will be blocked for all users.",
+  },
+  ai_matching_enabled: {
+    onTitle:  "Enable Smart Matching?",
+    offTitle: "Disable Smart Matching?",
+    onDesc:   "Smart barter matching suggestions will be shown to users.",
+    offDesc:  "Smart matching suggestions will be hidden.",
+  },
+  reminders_enabled: {
+    onTitle:  "Enable Completion Reminders?",
+    offTitle: "Disable Completion Reminders?",
+    onDesc:   "Daily nudge emails will be sent to users who abandon verification, drafts, or messages.",
+    offDesc:  "All completion reminder emails will stop sending immediately.",
+  },
+  reminders_verification_enabled: {
+    onTitle:  "Enable Verification Reminders?",
+    offTitle: "Disable Verification Reminders?",
+    onDesc:   "Reminder emails will be sent at 24h, 72h, and 7d after a user leaves verification incomplete.",
+    offDesc:  "Verification reminder emails will stop sending.",
+  },
+  reminders_drafts_enabled: {
+    onTitle:  "Enable Draft Reminders?",
+    offTitle: "Disable Draft Reminders?",
+    onDesc:   "Reminder emails will be sent at 24h and 72h after a draft listing is saved but not published.",
+    offDesc:  "Draft reminder emails will stop sending.",
+  },
+  reminders_engagement_enabled: {
+    onTitle:  "Enable Engagement Reminders?",
+    offTitle: "Disable Engagement Reminders?",
+    onDesc:   "Reminder emails will be sent 48h after a user saves a listing or starts a message without completing.",
+    offDesc:  "Engagement reminder emails will stop sending.",
+  },
+  announcement_banner_enabled: {
+    onTitle:  "Show Announcement Banner?",
+    offTitle: "Hide Announcement Banner?",
+    onDesc:   "The banner will appear at the top of every page for all visitors.",
+    offDesc:  "The announcement banner will be hidden from all pages.",
+  },
+};
+
+type PendingToggle = { key: string; nextValue: boolean } | null;
+
 function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSettings; onSave: (u: Record<string, string>) => void; saving: boolean }) {
   const [maintenanceMode, setMaintenanceMode] = useState(settings.maintenance_mode === "true");
   const [registrationEnabled, setRegistrationEnabled] = useState(settings.registration_enabled !== "false");
@@ -149,7 +227,6 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [waitlistEnabled, setWaitlistEnabled] = useState(settings.waitlist_enabled !== "false");
   const [disputesEnabled, setDisputesEnabled] = useState(settings.disputes_enabled !== "false");
   const [aiMatchingEnabled, setAiMatchingEnabled] = useState(settings.ai_matching_enabled !== "false");
-  // Task #248 — completion-reminder gates
   const [remindersEnabled, setRemindersEnabled] = useState(settings.reminders_enabled !== "false");
   const [remindersVerification, setRemindersVerification] = useState(settings.reminders_verification_enabled !== "false");
   const [remindersDrafts, setRemindersDrafts] = useState(settings.reminders_drafts_enabled !== "false");
@@ -158,6 +235,8 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [bannerText, setBannerText] = useState(settings.announcement_banner_text || "");
   const [bannerLink, setBannerLink] = useState(settings.announcement_banner_link || "");
   const [maintenanceMessage, setMaintenanceMessage] = useState(settings.maintenance_message || "");
+
+  const [pendingToggle, setPendingToggle] = useState<PendingToggle>(null);
 
   useEffect(() => {
     setMaintenanceMode(settings.maintenance_mode === "true");
@@ -176,178 +255,128 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
     setMaintenanceMessage(settings.maintenance_message || "");
   }, [settings]);
 
-  const handleSave = () => {
-    onSave({
-      maintenance_mode: maintenanceMode ? "true" : "false",
-      maintenance_message: maintenanceMessage,
-      registration_enabled: registrationEnabled ? "true" : "false",
-      invite_only_mode: inviteOnly ? "true" : "false",
-      waitlist_enabled: waitlistEnabled ? "true" : "false",
-      disputes_enabled: disputesEnabled ? "true" : "false",
-      ai_matching_enabled: aiMatchingEnabled ? "true" : "false",
-      reminders_enabled: remindersEnabled ? "true" : "false",
-      reminders_verification_enabled: remindersVerification ? "true" : "false",
-      reminders_drafts_enabled: remindersDrafts ? "true" : "false",
-      reminders_engagement_enabled: remindersEngagement ? "true" : "false",
-      announcement_banner_enabled: bannerEnabled ? "true" : "false",
-      announcement_banner_text: bannerText,
-      announcement_banner_link: bannerLink,
-    });
+  // Request confirmation before saving — does NOT change state yet
+  const requestToggle = (key: string, nextValue: boolean) => {
+    setPendingToggle({ key, nextValue });
   };
+
+  // User confirmed — apply state + instantly save to DB
+  const confirmToggle = () => {
+    if (!pendingToggle) return;
+    const { key, nextValue } = pendingToggle;
+    const setters: Record<string, (v: boolean) => void> = {
+      maintenance_mode: setMaintenanceMode,
+      registration_enabled: setRegistrationEnabled,
+      invite_only_mode: setInviteOnly,
+      waitlist_enabled: setWaitlistEnabled,
+      disputes_enabled: setDisputesEnabled,
+      ai_matching_enabled: setAiMatchingEnabled,
+      reminders_enabled: setRemindersEnabled,
+      reminders_verification_enabled: setRemindersVerification,
+      reminders_drafts_enabled: setRemindersDrafts,
+      reminders_engagement_enabled: setRemindersEngagement,
+      announcement_banner_enabled: setBannerEnabled,
+    };
+    setters[key]?.(nextValue);
+    onSave({ [key]: nextValue ? "true" : "false" });
+    setPendingToggle(null);
+  };
+
+  const confirm = pendingToggle ? FLAG_CONFIRM[pendingToggle.key] : null;
+  const confirmTitle = confirm
+    ? (pendingToggle!.nextValue ? confirm.onTitle : confirm.offTitle)
+    : "";
+  const confirmDesc = confirm
+    ? (pendingToggle!.nextValue ? confirm.onDesc : confirm.offDesc)
+    : "";
+
+  const FlagRow = ({
+    flagKey, checked, label, description, indent = false,
+  }: { flagKey: string; checked: boolean; label: string; description: string; indent?: boolean }) => (
+    <div className={`flex items-center justify-between ${indent ? "ml-6 pl-4 border-l-2 border-primary/30" : ""}`}>
+      <div>
+        <p className={`font-medium ${indent ? "text-sm font-normal" : ""} flex items-center gap-2`}>
+          {flagKey === "maintenance_mode" && <AlertTriangle className="h-4 w-4 text-destructive" />}
+          {label}
+        </p>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={(next) => requestToggle(flagKey, next)}
+        disabled={saving}
+        data-testid={`switch-${flagKey.replace(/_/g, "-")}`}
+      />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
+      {/* Confirmation dialog — shared across all flags */}
+      <AlertDialog open={!!pendingToggle} onOpenChange={(open) => !open && setPendingToggle(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmToggle} disabled={saving}>
+              {saving ? "Saving…" : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
             Feature Flags
           </CardTitle>
-          <CardDescription>Control platform-wide behavior</CardDescription>
+          <CardDescription>Each toggle saves instantly and takes effect immediately on the live site.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                Maintenance Mode
-              </p>
-              <p className="text-sm text-muted-foreground">
-                When enabled, all non-admin API routes return 503. The site shows a maintenance page.
-              </p>
-            </div>
-            <Switch
-              checked={maintenanceMode}
-              onCheckedChange={setMaintenanceMode}
-              data-testid="switch-maintenance-mode"
-            />
-          </div>
+          <FlagRow
+            flagKey="maintenance_mode"
+            checked={maintenanceMode}
+            label="Maintenance Mode"
+            description="When enabled, all non-admin API routes return 503. The site shows a maintenance page."
+          />
           {maintenanceMode && (
-            <div className="ml-6 border-l-2 border-destructive/30 pl-4">
+            <div className="ml-6 border-l-2 border-destructive/30 pl-4 space-y-2">
               <Label htmlFor="maintenance-message">Maintenance Message</Label>
               <Input
                 id="maintenance-message"
                 value={maintenanceMessage}
                 onChange={(e) => setMaintenanceMessage(e.target.value)}
                 placeholder="We'll be back soon! We're performing scheduled maintenance."
-                className="mt-1.5"
                 data-testid="input-maintenance-message"
               />
-              <p className="text-xs text-muted-foreground mt-1">Custom message shown on the maintenance page</p>
+              <Button size="sm" variant="outline" className="gap-1.5" disabled={saving}
+                onClick={() => onSave({ maintenance_message: maintenanceMessage })}
+              >
+                <Save className="h-3.5 w-3.5" /> Save message
+              </Button>
             </div>
           )}
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Registration Enabled</p>
-              <p className="text-sm text-muted-foreground">Allow new users to register on the platform</p>
-            </div>
-            <Switch
-              checked={registrationEnabled}
-              onCheckedChange={setRegistrationEnabled}
-              data-testid="switch-registration-enabled"
-            />
-          </div>
+          <FlagRow flagKey="registration_enabled" checked={registrationEnabled} label="Registration Enabled" description="Allow new users to register on the platform." />
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Invite-Only Mode</p>
-              <p className="text-sm text-muted-foreground">
-                Only users who are on the waitlist or have a valid invite code can register
-              </p>
-            </div>
-            <Switch
-              checked={inviteOnly}
-              onCheckedChange={setInviteOnly}
-              data-testid="switch-invite-only"
-            />
-          </div>
+          <FlagRow flagKey="invite_only_mode" checked={inviteOnly} label="Invite-Only Mode" description="Only users on the waitlist or with a valid invite code can register." />
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Waitlist Enabled</p>
-              <p className="text-sm text-muted-foreground">
-                Allow new waitlist signups. Disable to close the waitlist.
-              </p>
-            </div>
-            <Switch
-              checked={waitlistEnabled}
-              onCheckedChange={setWaitlistEnabled}
-              data-testid="switch-waitlist-enabled"
-            />
-          </div>
+          <FlagRow flagKey="waitlist_enabled" checked={waitlistEnabled} label="Waitlist Enabled" description="Allow new waitlist signups. Disable to close the waitlist and hide the form from the landing page." />
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Disputes Enabled</p>
-              <p className="text-sm text-muted-foreground">
-                Allow creation and management of disputes
-              </p>
-            </div>
-            <Switch
-              checked={disputesEnabled}
-              onCheckedChange={setDisputesEnabled}
-              data-testid="switch-disputes-enabled"
-            />
-          </div>
+          <FlagRow flagKey="disputes_enabled" checked={disputesEnabled} label="Disputes Enabled" description="Allow creation and management of disputes." />
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">AI Matching Enabled</p>
-              <p className="text-sm text-muted-foreground">
-                Enable AI-powered barter matching suggestions
-              </p>
-            </div>
-            <Switch
-              checked={aiMatchingEnabled}
-              onCheckedChange={setAiMatchingEnabled}
-              data-testid="switch-ai-matching-enabled"
-            />
-          </div>
-          {/* Task #248 — Completion-reminder controls. Master toggle
-              short-circuits the cron entirely; per-channel toggles let
-              admins quiet just verification / drafts / engagement
-              independently. */}
+          <FlagRow flagKey="ai_matching_enabled" checked={aiMatchingEnabled} label="Smart Matching Enabled" description="Enable smart barter matching suggestions on listings." />
           <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Completion Reminders (master)</p>
-              <p className="text-sm text-muted-foreground">
-                Send daily nudge emails when users abandon verification, leave drafts unpublished, or stop short of messaging a lister.
-              </p>
-            </div>
-            <Switch
-              checked={remindersEnabled}
-              onCheckedChange={setRemindersEnabled}
-              data-testid="switch-reminders-enabled"
-            />
-          </div>
+          <FlagRow flagKey="reminders_enabled" checked={remindersEnabled} label="Completion Reminders (master)" description="Send daily nudge emails when users abandon verification, leave drafts unpublished, or stop short of messaging a lister." />
           {remindersEnabled && (
             <div className="ml-6 border-l-2 border-primary/30 pl-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm">Verification reminders (24h / 72h / 7d)</p>
-                <Switch
-                  checked={remindersVerification}
-                  onCheckedChange={setRemindersVerification}
-                  data-testid="switch-reminders-verification"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm">Saved-draft reminders (24h / 72h)</p>
-                <Switch
-                  checked={remindersDrafts}
-                  onCheckedChange={setRemindersDrafts}
-                  data-testid="switch-reminders-drafts"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm">Engagement reminders (48h after saving a listing or starting a message)</p>
-                <Switch
-                  checked={remindersEngagement}
-                  onCheckedChange={setRemindersEngagement}
-                  data-testid="switch-reminders-engagement"
-                />
-              </div>
+              <FlagRow flagKey="reminders_verification_enabled" checked={remindersVerification} label="Verification reminders (24h / 72h / 7d)" description="" indent />
+              <FlagRow flagKey="reminders_drafts_enabled" checked={remindersDrafts} label="Saved-draft reminders (24h / 72h)" description="" indent />
+              <FlagRow flagKey="reminders_engagement_enabled" checked={remindersEngagement} label="Engagement reminders (48h after saving a listing or starting a message)" description="" indent />
             </div>
           )}
         </CardContent>
@@ -362,45 +391,24 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
           <CardDescription>Display a site-wide announcement banner at the top of every page</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="banner-enabled">Banner Enabled</Label>
-            <Switch
-              id="banner-enabled"
-              checked={bannerEnabled}
-              onCheckedChange={setBannerEnabled}
-              data-testid="switch-banner-enabled"
-            />
-          </div>
+          <FlagRow flagKey="announcement_banner_enabled" checked={bannerEnabled} label="Banner Enabled" description="Show an announcement banner at the top of every page." />
           <div>
             <Label htmlFor="banner-text">Banner Text</Label>
-            <Input
-              id="banner-text"
-              value={bannerText}
-              onChange={(e) => setBannerText(e.target.value)}
-              placeholder="e.g. We're launching soon! Join the waitlist."
-              className="mt-1.5"
-              data-testid="input-banner-text"
-            />
+            <Input id="banner-text" value={bannerText} onChange={(e) => setBannerText(e.target.value)}
+              placeholder="e.g. We're launching soon! Join the waitlist." className="mt-1.5" data-testid="input-banner-text" />
           </div>
           <div>
             <Label htmlFor="banner-link">Banner Link (optional)</Label>
-            <Input
-              id="banner-link"
-              value={bannerLink}
-              onChange={(e) => setBannerLink(e.target.value)}
-              placeholder="e.g. /pricing or https://..."
-              className="mt-1.5"
-              data-testid="input-banner-link"
-            />
-            <p className="text-xs text-muted-foreground mt-1">Optional URL - makes the banner text clickable</p>
+            <Input id="banner-link" value={bannerLink} onChange={(e) => setBannerLink(e.target.value)}
+              placeholder="e.g. /pricing or https://..." className="mt-1.5" data-testid="input-banner-link" />
+            <p className="text-xs text-muted-foreground mt-1">Optional URL — makes the banner text clickable</p>
           </div>
+          <Button onClick={() => onSave({ announcement_banner_text: bannerText, announcement_banner_link: bannerLink })}
+            disabled={saving} size="sm" variant="outline" className="gap-1.5" data-testid="button-save-banner-text">
+            <Save className="h-3.5 w-3.5" /> Save banner text
+          </Button>
         </CardContent>
       </Card>
-
-      <Button onClick={handleSave} disabled={saving} className="gap-2" data-testid="button-save-general">
-        <Save className="h-4 w-4" />
-        {saving ? "Saving..." : "Save General Settings"}
-      </Button>
     </div>
   );
 }
