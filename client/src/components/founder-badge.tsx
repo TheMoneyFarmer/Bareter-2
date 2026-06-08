@@ -7,8 +7,8 @@ interface FounderBadgeProps {
   className?: string;
 }
 
-export function FounderBadge({ show, size = "sm", className = "" }: FounderBadgeProps) {
-  if (!show) return null;
+export function FounderBadge({ show: _show, size: _size, className: _className }: FounderBadgeProps) {
+  return null;
   const sizeCls = size === "md" ? "h-5 px-2 text-[11px]" : "h-4 px-1.5 text-[10px]";
   const iconCls = size === "md" ? "h-3 w-3" : "h-2.5 w-2.5";
   return (
