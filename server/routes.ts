@@ -355,6 +355,7 @@ export async function registerRoutes(
         clientSecret: GOOGLE_CLIENT_SECRET,
         callbackURL: `${baseUrl}/auth/google/callback`,
         scope: ["profile", "email"],
+        state: true,
       },
       async (_accessToken, _refreshToken, profile, done) => {
         try {
