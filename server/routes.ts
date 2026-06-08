@@ -57,7 +57,11 @@ import {
   broadcastJobs,
   emailLogs,
   supportTickets,
+  supportMessages,
   userBlocks,
+  listingDrafts,
+  reminderLog,
+  pushSubscriptions,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -5186,6 +5190,19 @@ export async function registerRoutes(
           await db.update(broadcastJobs).set({ sentBy: null }).where(eq(broadcastJobs.sentBy, userId));
           await db.update(emailLogs).set({ sentBy: null }).where(eq(emailLogs.sentBy, userId));
           await db.update(bannedEmails).set({ bannedBy: null }).where(eq(bannedEmails.bannedBy, userId));
+          // NOT NULL without cascade — must delete rows
+          await db.delete(listingDrafts).where(eq(listingDrafts.userId, userId));
+          await db.delete(reminderLog).where(eq(reminderLog.userId, userId));
+          await db.delete(salesReengagementEvents).where(eq(salesReengagementEvents.userId, userId));
+          await db.delete(salesLeads).where(eq(salesLeads.userId, userId));
+          // Has cascade but be explicit
+          await db.delete(searchQueryHistory).where(eq(searchQueryHistory.userId, userId));
+          await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+          // Nullable FKs — null-out
+          await db.update(agentInteractions).set({ userId: null }).where(eq(agentInteractions.userId, userId));
+          await db.update(consentLogs).set({ userId: null }).where(eq(consentLogs.userId, userId));
+          await db.update(supportMessages).set({ senderId: null }).where(eq(supportMessages.senderId, userId));
+          await db.update(portfolioItems).set({ completedBy: null }).where(eq(portfolioItems.completedBy, userId));
 
           // Phase 6: Delete the user row
           await db.delete(users).where(eq(users.id, userId));
