@@ -910,19 +910,26 @@ export async function registerRoutes(
         phoneVerified: false,
       }).where(eq(users.id, userId));
 
-      const { sendWhatsApp } = await import("./companyOs/twilio");
+      const { sendWhatsApp, isTwilioConfigured } = await import("./companyOs/twilio");
       const body = `Your Bareter verification code is: ${code}\nValid for 10 minutes.\nDo not share this code.`;
-      const sent = await sendWhatsApp(phone, body);
 
-      if (!sent) {
-        // Log the code in dev so the flow can be tested without Twilio
-        if (process.env.NODE_ENV !== "production") {
-          console.log(`[phone-otp] DEV: code for ${phone} is ${code}`);
-        }
-        // Don't fail — return ok so UI can prompt for the code even in dev
+      const isDev = process.env.NODE_ENV !== "production";
+
+      if (!isTwilioConfigured() && !isDev) {
+        return res.status(503).json({ message: "WhatsApp verification is not available yet. Please try again later or contact support." });
       }
 
-      res.json({ message: "Code sent via WhatsApp", dev: process.env.NODE_ENV !== "production" ? code : undefined });
+      const sent = await sendWhatsApp(phone, body);
+
+      if (!sent && !isDev) {
+        return res.status(503).json({ message: "Failed to send WhatsApp message. Please check your number and try again." });
+      }
+
+      if (!sent && isDev) {
+        console.log(`[phone-otp] DEV: Twilio not configured — code for ${phone} is ${code}`);
+      }
+
+      res.json({ message: "Code sent via WhatsApp", dev: isDev ? code : undefined });
     } catch (err) {
       console.error("[phone/send-otp]", err);
       res.status(500).json({ message: "Failed to send verification code" });

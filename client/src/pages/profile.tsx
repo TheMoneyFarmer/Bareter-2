@@ -89,8 +89,15 @@ function VerificationSection({ user }: { user: User }) {
   const [loading, setLoading] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
-  const handleSendOtp = async () => {
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  const sendOtp = async (isResend = false) => {
     if (!phone.trim()) {
       toast({ title: "Enter your WhatsApp number", variant: "destructive" });
       return;
@@ -104,8 +111,12 @@ function VerificationSection({ user }: { user: User }) {
         return;
       }
       if (data.dev) setDevCode(data.dev);
-      setStep("otp");
-      toast({ title: "Code sent", description: "Check your WhatsApp for the 6-digit code." });
+      if (!isResend) setStep("otp");
+      setCountdown(60);
+      toast({
+        title: isResend ? "Code resent" : "Code sent",
+        description: "Check your WhatsApp for the 6-digit code.",
+      });
     } catch {
       toast({ title: "Failed to send code", description: "Please check your number and try again.", variant: "destructive" });
     } finally {
@@ -148,144 +159,184 @@ function VerificationSection({ user }: { user: User }) {
     }
   };
 
-  const reset = () => { setStep("phone"); setCode(""); setDevCode(null); };
+  const reset = () => { setStep("phone"); setCode(""); setDevCode(null); setCountdown(0); };
 
-  // Both verified — all done
-  if (emailVerified && phoneVerified) {
-    return (
-      <Card>
-        <CardContent className="pt-8 pb-8">
-          <div className="text-center">
-            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-              <ShieldCheck className="h-8 w-8 text-green-600" />
-            </div>
-            <h3 className="font-semibold text-lg">Fully Verified</h3>
-            <p className="text-muted-foreground mt-1 text-sm">Your email and WhatsApp are confirmed. You're all set to barter.</p>
-            <div className="flex justify-center gap-3 mt-5">
-              <Badge variant="outline" className="text-blue-600 border-blue-200 gap-1.5 px-3 py-1">
-                <Mail className="h-3.5 w-3.5" /> Email verified
-              </Badge>
-              <Badge variant="outline" className="text-green-600 border-green-200 gap-1.5 px-3 py-1">
-                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp verified
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const completedSteps = (emailVerified ? 1 : 0) + (phoneVerified ? 1 : 0);
+  const totalSteps = 2;
 
-  // Email not yet verified
-  if (!emailVerified) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-primary" />
-            Confirm your email
-          </CardTitle>
-          <CardDescription>Check your inbox for a verification link from Bareter.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800">
-            <Mail className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-700 dark:text-amber-300">Email not yet confirmed</AlertTitle>
-            <AlertDescription className="text-amber-600 dark:text-amber-400">
-              A verification link was sent to <strong>{user.email}</strong>. Click it to activate your account.
-            </AlertDescription>
-          </Alert>
-          <Button variant="outline" className="w-full gap-2" onClick={handleResendEmail} disabled={resending}>
-            {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Resend verification email
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Email verified, phone not verified — show inline phone verification
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-green-600" />
-          Verify your WhatsApp
-        </CardTitle>
-        <CardDescription>
-          {step === "phone"
-            ? "Add your WhatsApp number to post listings and propose barters."
-            : `Enter the 6-digit code sent to ${phone}.`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground pb-1">
-          <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-          Email verified
-          <span className="mx-2 text-border">·</span>
-          <MessageCircle className="h-4 w-4 text-muted-foreground shrink-0" />
-          WhatsApp pending
-        </div>
-        <Separator />
-        {step === "phone" ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="verify-phone">WhatsApp number</Label>
-              <Input
-                id="verify-phone"
-                type="tel"
-                placeholder="+971 50 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
-              />
-              <p className="text-xs text-muted-foreground">Include country code, e.g. +971 for UAE</p>
+    <div className="space-y-3">
+      {/* Progress bar */}
+      <Card>
+        <CardContent className="pt-5 pb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="font-semibold text-sm">Verification progress</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {completedSteps === totalSteps
+                  ? "All done — you're fully verified"
+                  : `${completedSteps} of ${totalSteps} steps complete`}
+              </p>
             </div>
-            <Button className="w-full gap-2" size="lg" onClick={handleSendOtp} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-              Send code via WhatsApp
-            </Button>
+            {completedSteps === totalSteps && (
+              <div className="h-9 w-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5 text-green-600" />
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="verify-otp">Verification code</Label>
-              <Input
-                id="verify-otp"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="123456"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                className="text-center text-xl tracking-[0.3em] font-mono"
-                autoFocus
+          <div className="flex gap-1.5 mb-3">
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${i < completedSteps ? "bg-green-500" : "bg-muted"}`}
               />
-              {devCode && (
-                <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded border border-amber-200 dark:border-amber-800">
-                  Dev — code: <strong>{devCode}</strong>
-                </p>
+            ))}
+          </div>
+          <div className="flex gap-5">
+            <div className="flex items-center gap-1.5 text-xs">
+              {emailVerified
+                ? <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                : <div className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/40" />}
+              <span className={emailVerified ? "text-green-600 font-medium" : "text-muted-foreground"}>Email</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              {phoneVerified
+                ? <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                : <div className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/40" />}
+              <span className={phoneVerified ? "text-green-600 font-medium" : "text-muted-foreground"}>WhatsApp</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Email step */}
+      <Card className={emailVerified ? "border-green-200 dark:border-green-800/40" : "border-amber-200 dark:border-amber-800/40"}>
+        <CardContent className="pt-5 pb-5">
+          <div className="flex items-start gap-3">
+            <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${emailVerified ? "bg-green-100 dark:bg-green-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
+              <Mail className={`h-4 w-4 ${emailVerified ? "text-green-600" : "text-amber-600"}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-medium text-sm">Email address</p>
+                {emailVerified
+                  ? <Badge variant="outline" className="text-green-600 border-green-200 text-xs h-5 px-1.5">Verified</Badge>
+                  : <Badge variant="outline" className="text-amber-600 border-amber-200 text-xs h-5 px-1.5">Pending</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.email}</p>
+              {!emailVerified && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">A verification link was sent to your inbox. Click it to activate your account.</p>
+                  <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={handleResendEmail} disabled={resending}>
+                    {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Resend link
+                  </Button>
+                </div>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={reset} disabled={loading}>
-                <RefreshCw className="h-3.5 w-3.5" />
-                Change number
-              </Button>
-              <Button
-                className="flex-1 gap-2"
-                size="lg"
-                onClick={handleVerifyOtp}
-                disabled={loading || code.length !== 6}
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                Verify
-              </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* WhatsApp step */}
+      <Card className={
+        !emailVerified ? "opacity-60 pointer-events-none" :
+        phoneVerified ? "border-green-200 dark:border-green-800/40" : ""
+      }>
+        <CardContent className="pt-5 pb-5">
+          <div className="flex items-start gap-3">
+            <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${phoneVerified ? "bg-green-100 dark:bg-green-900/30" : emailVerified ? "bg-primary/10" : "bg-muted"}`}>
+              <MessageCircle className={`h-4 w-4 ${phoneVerified ? "text-green-600" : emailVerified ? "text-primary" : "text-muted-foreground"}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-medium text-sm">WhatsApp number</p>
+                {phoneVerified
+                  ? <Badge variant="outline" className="text-green-600 border-green-200 text-xs h-5 px-1.5">Verified</Badge>
+                  : emailVerified
+                    ? <Badge variant="outline" className="text-xs h-5 px-1.5">Required</Badge>
+                    : <Badge variant="outline" className="text-muted-foreground text-xs h-5 px-1.5">Locked</Badge>}
+              </div>
+              {phoneVerified ? (
+                <p className="text-xs text-muted-foreground mt-0.5">{existingPhone || "Verified"}</p>
+              ) : emailVerified ? (
+                <div className="mt-3">
+                  {step === "phone" ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">Add your WhatsApp number to post listings and propose barters.</p>
+                      <div className="flex gap-2">
+                        <Input
+                          type="tel"
+                          placeholder="+971 50 123 4567"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && sendOtp()}
+                          className="h-9 text-sm"
+                        />
+                        <Button size="sm" className="gap-1.5 h-9 shrink-0" onClick={() => sendOtp()} disabled={loading || !phone.trim()}>
+                          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                          Send code
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Include country code — e.g. +971 for UAE, +1 for US</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Enter the 6-digit code sent to <strong>{phone}</strong> via WhatsApp.
+                      </p>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="123456"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                        onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                        className="text-center text-2xl tracking-[0.4em] font-mono h-12"
+                        autoFocus
+                      />
+                      {devCode && (
+                        <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 rounded border border-amber-200 dark:border-amber-800">
+                          Dev mode — code: <strong>{devCode}</strong>
+                        </p>
+                      )}
+                      <div className="flex gap-2 flex-wrap">
+                        <Button variant="outline" size="sm" className="gap-1.5 h-9 text-xs" onClick={reset} disabled={loading}>
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Change number
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 h-9 text-xs"
+                          onClick={() => sendOtp(true)}
+                          disabled={loading || countdown > 0}
+                        >
+                          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                          {countdown > 0 ? `Resend (${countdown}s)` : "Resend code"}
+                        </Button>
+                        <Button
+                          className="flex-1 gap-1.5 h-9 min-w-[90px]"
+                          size="sm"
+                          onClick={handleVerifyOtp}
+                          disabled={loading || code.length !== 6}
+                        >
+                          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                          Verify
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">Verify your email first to unlock this step.</p>
+              )}
             </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
