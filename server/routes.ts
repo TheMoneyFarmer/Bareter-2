@@ -5218,9 +5218,10 @@ export async function registerRoutes(
         affected++;
       }
       res.json({ ok: true, affected });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Bulk user action error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      const detail = error?.detail || error?.message || String(error);
+      res.status(500).json({ message: `Bulk action failed: ${detail}` });
     }
   });
 
