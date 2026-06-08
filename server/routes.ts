@@ -179,6 +179,18 @@ function uaFingerprint(req: Request): string {
   return crypto.createHash("sha256").update(ua).digest("hex").slice(0, 16);
 }
 
+/**
+ * Read PUBLIC_APP_URL with defensive cleanup so a stray whitespace or trailing
+ * slash in the env var (or the Replit Secret) can never produce malformed
+ * absolute URLs in emails, contracts, or API responses. Falls back to the
+ * caller-supplied default (typically the dev localhost).
+ */
+export function appBaseUrl(fallback = "https://bareter.com"): string {
+  const raw = process.env.PUBLIC_APP_URL;
+  if (!raw) return fallback;
+  return raw.trim().replace(/\/+$/, "") || fallback;
+}
+
 // Module-level throttle: only update users.last_active_at at most once per
 // minute per user. Keeps requireAuth essentially free on hot paths while
 // still keeping the activeUsers7d KPI accurate. Entries older than the
@@ -1193,11 +1205,15 @@ export async function registerRoutes(
       isEmailConfigured(),
       storage.getAppSetting("maintenance_mode"),
     ]);
+    // Trim defensively — a stray space in PUBLIC_APP_URL produces malformed
+    // absolute URLs in emails (e.g. "https://bareter.com /reset-password").
+    const rawAppUrl = process.env.PUBLIC_APP_URL;
+    const appUrl = rawAppUrl ? rawAppUrl.trim().replace(/\/+$/, "") : null;
     res.json({
       passwordResetEnabled,
       cookiePolicyVersion: COOKIE_POLICY_VERSION,
       maintenanceMode: maintenanceMode === "true",
-      appUrl: process.env.PUBLIC_APP_URL || null,
+      appUrl,
     });
   });
 
@@ -8750,6 +8766,7 @@ export async function registerRoutes(
     { loc: "/login", priority: "0.7", changefreq: "monthly" },
     { loc: "/faq", priority: "0.6", changefreq: "monthly" },
     { loc: "/help", priority: "0.6", changefreq: "monthly" },
+    { loc: "/blog", priority: "0.7", changefreq: "weekly" },
     { loc: "/terms", priority: "0.4", changefreq: "monthly" },
     { loc: "/privacy", priority: "0.4", changefreq: "monthly" },
     { loc: "/legal/barter-rules", priority: "0.4", changefreq: "monthly" },

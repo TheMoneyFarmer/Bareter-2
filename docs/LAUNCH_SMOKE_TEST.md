@@ -33,8 +33,9 @@ commit it. That file is the go / no-go evidence.
   inboxes — Resend / spam-folder behavior won't reflect real users.
 - **Two phones**: one desktop browser + one mobile browser is the
   required surface (per task scope; broader cross-browser is out).
-- **Two real KYC documents** you're allowed to upload to Didit's live
-  workflow (your own passport / Emirates ID is the safest choice).
+- **Two real UAE mobile numbers** that can receive SMS — phone
+  verification has replaced Didit KYC as the primary identity gate
+  before listing creation.
 - **Founder admin login** to `https://bareter.com/admin`.
 - A way to capture screenshots on both desktop and mobile.
 
@@ -62,15 +63,17 @@ commit it. That file is the go / no-go evidence.
 - [ ] The email's "From" matches `RESEND_FROM_EMAIL`, the link host is
       `https://bareter.com`, and clicking the link opens the live site.
 
-### 3. KYC verification with Didit (account A)
-- [ ] Start the KYC flow from the profile / verification CTA.
-- [ ] Complete Didit on the same device; finish on Didit's "thanks"
-      screen.
-- [ ] Within ~60s the Bareter profile flips to **Verified** (badge
-      visible). This proves the webhook lands on production.
-- [ ] If it stays "Pending" for more than 5 min, check Didit's
-      dashboard → webhook deliveries: a 200 from
-      `https://bareter.com/api/webhooks/didit` should be there.
+### 3. Phone OTP verification (account A)
+- [ ] From the profile / "List a barter" CTA, the phone verification
+      modal opens (Didit KYC is archived — phone is the gate now).
+- [ ] Enter a real UAE mobile number. SMS arrives within ~30s.
+- [ ] Enter the 6-digit OTP. Bareter profile flips to **Phone
+      verified** (badge or attribute visible). This proves
+      `/api/auth/phone/send-otp` and `/api/auth/phone/verify-otp`
+      are reachable on production.
+- [ ] If the SMS does not arrive within 2 min, check Twilio →
+      Programmable Messaging → Logs for a delivery error and confirm
+      `TWILIO_*` Secrets are set on production.
 
 ### 4. Create a listing (account A)
 - [ ] `/create-listing` accepts a title, description, image, value,

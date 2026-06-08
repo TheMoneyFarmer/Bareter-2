@@ -110,35 +110,17 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Wipe ALL platform content (listings, posts, deals, comments, etc.) on first
-  // boot after this code is deployed. Runs once — subsequent boots are no-ops.
-  // User accounts are preserved; only content is removed.
-  try {
-    await wipePlatformContent();
-  } catch (err) {
-    console.error("[startup] wipePlatformContent failed:", err);
-  }
-
-  // Remove all seed/demo accounts and their data on every boot.
-  // Idempotent — no-ops once accounts are gone. Keeps all real users.
-  // Never touches protected founder accounts (thando@bareter.com, personal gmail).
-  try {
-    await purgeSeedUsers();
-  } catch (err) {
-    console.error("[startup] purgeSeedUsers failed:", err);
-  }
-
-  // Backfill country/city for legacy rows.
-  try {
-    await backfillLocationFields();
-  } catch (err) {
-    console.error("[startup] backfillLocationFields failed:", err);
-  }
-
   // DIDIT CODE ARCHIVED
   // See _archived/didit/misc-small-snippets.ts
   // Re-integrate when ENABLE_DIDIT needed
   // if (!process.env.DIDIT_WEBHOOK_SECRET) { console.warn(...) }
+
+  // NOTE: data-mutating startup tasks (wipePlatformContent, purgeSeedUsers,
+  // backfillLocationFields, bootstrapAdmin, seedLegalPages) are intentionally
+  // NOT invoked here. They live in the post-listen callback below so they
+  // run AFTER the server starts accepting requests and never block boot.
+  // Calling them in both places caused every cold start to do the same
+  // (idempotent but wasteful) DB work twice.
 
   // Register main routes — MUST happen before listen so session middleware
   // and all API handlers are in place before the first request arrives.
