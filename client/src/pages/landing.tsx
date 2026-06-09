@@ -84,7 +84,7 @@ function ListingCard({ listing }: { listing: ListingWithUser }) {
   return (
     <Link href={`/listings/${listing.id}`}>
       <article className="bareter-stagger-card group bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm hover:shadow-bareter-hover hover:-translate-y-2 transition-all duration-300 overflow-hidden h-full flex flex-col cursor-pointer bareter-card-hover">
-        <div className="relative h-44 bg-gradient-to-br from-bareter-teal/8 to-bareter-teal/3 overflow-hidden flex-shrink-0">
+        <div className="relative h-32 sm:h-40 lg:h-44 bg-gradient-to-br from-bareter-teal/8 to-bareter-teal/3 overflow-hidden flex-shrink-0">
           {images?.[0] ? (
             <img src={images[0]} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
           ) : (
@@ -101,8 +101,8 @@ function ListingCard({ listing }: { listing: ListingWithUser }) {
             </span>
           )}
         </div>
-        <div className="p-4 flex flex-col flex-1">
-          <h3 className="font-bold text-bareter-navy dark:text-foreground text-sm leading-snug line-clamp-2 mb-1.5">{listing.title}</h3>
+        <div className="p-3 sm:p-4 flex flex-col flex-1">
+          <h3 className="font-bold text-bareter-navy dark:text-foreground text-xs sm:text-sm leading-snug line-clamp-2 mb-1">{listing.title}</h3>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3 flex-shrink-0" /><span className="truncate">{city}</span>
           </div>
@@ -126,7 +126,7 @@ function ListingCard({ listing }: { listing: ListingWithUser }) {
 function SkeletonCard() {
   return (
     <div className="rounded-2xl border border-gray-100 overflow-hidden bg-white">
-      <div className="h-44 bareter-shimmer" />
+      <div className="h-32 sm:h-40 lg:h-44 bareter-shimmer" />
       <div className="p-4 space-y-2.5">
         <div className="h-3 bareter-shimmer rounded-full w-3/4" />
         <div className="h-3 bareter-shimmer rounded-full w-1/2" />
@@ -771,6 +771,13 @@ export function LandingPage() {
         .prop-card.is-in-view .barter-row:nth-child(1) { animation-delay: 0.20s; }
         .prop-card.is-in-view .barter-row:nth-child(2) { animation-delay: 0.42s; }
         .prop-card.is-in-view .barter-row:nth-child(3) { animation-delay: 0.64s; }
+        /* ── Hero carousel scale on smaller viewports ── */
+        @media (max-width: 1023px) {
+          .hc-tile { transform-origin: top center; scale: 0.82; }
+        }
+        @media (min-width: 1024px) {
+          .hc-tile { scale: 1; }
+        }
         /* ── Reduce motion ── */
         @media (prefers-reduced-motion: reduce) {
           .bareter-stagger-card,.prop-card,.feat-card,.cat-item,.step-item,.faq-item,.reveal-el,[data-reveal] {
@@ -795,20 +802,20 @@ export function LandingPage() {
         <div aria-hidden="true" className="absolute inset-0 -z-10 opacity-[0.03]"
           style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")" }} />
 
-        <div className="container relative z-10 mx-auto max-w-7xl pl-2 pr-6 md:pl-0 md:pr-6 pt-20 pb-16 md:pt-28 md:pb-20 flex-1">
-          <div className="flex flex-col md:flex-row items-center gap-8 md:gap-6 lg:gap-10">
+        <div className="container relative z-10 mx-auto max-w-7xl px-4 sm:px-6 pt-14 pb-10 sm:pt-20 sm:pb-14 md:pt-24 md:pb-16 lg:pt-28 lg:pb-20 flex-1">
+          <div className="flex flex-col md:flex-row items-start gap-8 md:gap-6 lg:gap-10">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
-            <div className="min-w-0 md:max-w-[380px] lg:max-w-[440px] xl:max-w-[520px]">
-              <h1 className="text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold text-white leading-[1.1] tracking-tight mb-6" data-testid="text-hero-headline">
+            <div className="min-w-0 w-full md:max-w-[420px] lg:max-w-[440px] xl:max-w-[540px] 2xl:max-w-[600px]">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.4rem] font-extrabold text-white leading-[1.1] tracking-tight mb-4 sm:mb-6" data-testid="text-hero-headline">
                 {heroHeadline}
               </h1>
-              <p className="text-base font-semibold text-white mb-10 sm:whitespace-nowrap" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
+              <p className="text-sm sm:text-base font-semibold text-white mb-7 sm:mb-10" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
                 {heroTagline}
               </p>
 
               {/* Search */}
-              <div ref={searchRef} className="relative mb-8">
+              <div ref={searchRef} className="relative mb-6 sm:mb-8">
                 <form onSubmit={handleSearch} className="flex items-stretch bg-white border border-gray-200 rounded-xl h-12 overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
                   <Search className="h-4 w-4 text-bareter-navy/40 self-center ml-4 flex-shrink-0" />
                   <input
@@ -840,7 +847,7 @@ export function LandingPage() {
               </div>
 
               {/* CTAs */}
-              <div className="flex flex-wrap gap-3 mb-10">
+              <div className="flex flex-wrap gap-3 mb-8 sm:mb-10">
                 <Button size="lg" className="h-12 px-7 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-2 shadow-lg active:scale-[0.98]"
                   onClick={() => { if (waitlistGate()) navigate("/browse"); }}>
                   Browse Listings <ArrowRight className="h-5 w-5" />
@@ -865,14 +872,14 @@ export function LandingPage() {
         </div>
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
-        <div className="hidden lg:flex absolute right-0 top-0 bottom-0 z-[5] w-[480px] xl:w-[560px]">
+        <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[280px] lg:w-[420px] xl:w-[520px] 2xl:w-[580px]">
           <HeroCarousel />
         </div>
 
         {/* ── Stats strip at hero bottom ── */}
         <div className="relative z-10 border-t border-white/10 w-full bg-bareter-navy/95">
-          <div className="container mx-auto max-w-7xl px-6 py-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               {[
                 { value: "500+", label: "Active members" },
                 { value: "400+", label: "Listings posted" },
@@ -880,8 +887,8 @@ export function LandingPage() {
                 { value: "$100k+", label: "In deal value" },
               ].map((s, i) => (
                 <div key={i} className="text-center">
-                  <p className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">{s.value}</p>
-                  <p className="text-white/50 text-xs mt-0.5">{s.label}</p>
+                  <p className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white leading-tight">{s.value}</p>
+                  <p className="text-white/50 text-[11px] sm:text-xs mt-0.5">{s.label}</p>
                 </div>
               ))}
             </div>
@@ -892,16 +899,16 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           PLATFORM MOCKUPS — acquire.com 3-column: List / Negotiate / Deal
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-[#f0f4f8] dark:bg-muted/30 py-24" data-testid="section-platform">
-        <div className="container mx-auto max-w-7xl px-6">
-          <div className="text-center mb-20" data-reveal>
+      <section className="bg-[#f0f4f8] dark:bg-muted/30 py-12 sm:py-16 lg:py-24" data-testid="section-platform">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-14 lg:mb-20" data-reveal>
             <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">How Bareter works</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight leading-[1.15] max-w-2xl mx-auto">
-              Bartering fast,safe,and easy
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight leading-[1.15] max-w-2xl mx-auto">
+              Bartering fast, safe, and easy
             </h2>
           </div>
 
-          <div ref={propCardsRef} className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch relative">
+          <div ref={propCardsRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 items-stretch relative">
             {/* Dashed connector (desktop) */}
             <div className="hidden lg:block absolute top-[112px] left-[34%] right-[34%] border-t-2 border-dashed border-bareter-navy/15 z-0" />
 
@@ -1039,14 +1046,14 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           THREE WAYS — feature cards with hover lift
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-white dark:bg-background py-24" data-testid="section-three-ways">
-        <div className="container mx-auto max-w-7xl px-6">
-          <div className="text-center mb-16" data-reveal>
+      <section className="bg-white dark:bg-background py-12 sm:py-16 lg:py-24" data-testid="section-three-ways">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-12 lg:mb-16" data-reveal>
             <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">What you can do</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight mb-4">One platform. Three ways to swap.</h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">Exchange goods, services, or content without spending a dirham.</p>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight mb-3 sm:mb-4">One platform. Three ways to swap.</h2>
+            <p className="text-muted-foreground text-base sm:text-lg max-w-xl mx-auto">Exchange goods, services, or content without spending a dirham.</p>
           </div>
-          <div ref={featureCardsRef} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div ref={featureCardsRef} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 sm:gap-6">
             {[
               {
                 icon: <ArrowLeftRight className="h-6 w-6 text-bareter-teal" />, badge: "Most popular",
@@ -1070,7 +1077,7 @@ export function LandingPage() {
                 href: "/browse", cta: "Coming Soon",
               },
             ].map((card, i) => (
-              <div key={i} className={`feat-card group rounded-2xl border shadow-sm hover:shadow-bareter-hover hover:-translate-y-2 transition-all duration-300 p-8 flex flex-col h-full ${card.accent ? "bg-bareter-navy text-white border-bareter-navy" : "bg-white dark:bg-card border-gray-100 dark:border-border"}`}>
+              <div key={i} className={`feat-card group rounded-2xl border shadow-sm hover:shadow-bareter-hover hover:-translate-y-2 transition-all duration-300 p-5 sm:p-6 lg:p-8 flex flex-col h-full ${card.accent ? "bg-bareter-navy text-white border-bareter-navy" : "bg-white dark:bg-card border-gray-100 dark:border-border"}`}>
                 <div className={`h-12 w-12 rounded-2xl flex items-center justify-center mb-5 flex-shrink-0 ${card.accent ? "bg-white/10" : "bg-bareter-teal/8"}`}>
                   {card.icon}
                 </div>
@@ -1103,19 +1110,19 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           LISTINGS GRID — Top Picks
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-gray-50 dark:bg-muted/20 py-24" data-testid="section-top-barters">
-        <div className="container mx-auto max-w-7xl px-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-12">
+      <section className="bg-gray-50 dark:bg-muted/20 py-12 sm:py-16 lg:py-24" data-testid="section-top-barters">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 mb-8 sm:mb-10 lg:mb-12">
             <div data-reveal>
               <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-1">Top Picks</p>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight">Handpicked barters</h2>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight">Handpicked barters</h2>
               <p className="text-muted-foreground mt-1.5"></p>
             </div>
             <Link href="/browse" className="inline-flex items-center gap-1.5 text-sm font-bold text-bareter-teal hover:text-bareter-teal/80 transition-colors whitespace-nowrap">
               View all listings <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-          <div ref={listingCardsRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          <div ref={listingCardsRef} className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {(loadingFeatured && loadingLatest)
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
               : displayListings.length === 0
@@ -1134,12 +1141,12 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           HOW IT WORKS — organic staggered layout on dark navy
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-bareter-navy overflow-hidden py-24" data-testid="section-how">
-        <div className="container mx-auto max-w-6xl px-6">
-          <div className="text-center mb-20" data-reveal>
+      <section className="bg-bareter-navy overflow-hidden py-12 sm:py-16 lg:py-24" data-testid="section-how">
+        <div className="container mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-14 lg:mb-20" data-reveal>
             <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">How it works</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">From listing to closed deal.</h2>
-            <p className="text-white/55 max-w-lg mx-auto text-lg">No cash. No waste. Just value for value. Matched and sealed with a contract.</p>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight mb-3 sm:mb-4">From listing to closed deal.</h2>
+            <p className="text-white/55 max-w-lg mx-auto text-base sm:text-lg">No cash. No waste. Just value for value. Matched and sealed with a contract.</p>
           </div>
 
           {/* Desktop: organic absolute positioning + SVG connector */}
@@ -1178,8 +1185,32 @@ export function LandingPage() {
             </div>
           </div>
 
+          {/* Tablet: 2x2 grid */}
+          <div className="hidden md:grid lg:hidden grid-cols-2 gap-6 mb-6">
+            {[
+              { Icon: LayoutList,    title: "List what you have",    desc: "Upload photos, set a value, describe what you want back.",    bg: "bg-bareter-teal",   tag: "2 min" },
+              { Icon: Sparkles,      title: "Instantly matched",      desc: "Our engine surfaces the most compatible barter partners.",   bg: "bg-teal-600",       tag: "Instant match" },
+              { Icon: MessageSquare, title: "Negotiate in-app",      desc: "Chat, counter-offer, and agree on terms inside Bareter.",    bg: "bg-bareter-teal",   tag: "No lawyers" },
+              { Icon: FileSignature, title: "Sign & exchange",       desc: "Auto-generated contract. Sign on-platform, deal complete.", bg: "bg-teal-700",       tag: "Legally binding" },
+            ].map((step, i) => (
+              <div key={step.title} className="flex flex-col items-center text-center p-6 rounded-2xl bg-white/5 border border-white/10">
+                <div className="relative mb-4">
+                  <div className={`h-14 w-14 rounded-2xl ${step.bg} flex items-center justify-center shadow-lg`}>
+                    <step.Icon className="h-6 w-6 text-white" />
+                  </div>
+                  <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-white text-bareter-navy text-[10px] font-extrabold flex items-center justify-center shadow">{i + 1}</span>
+                </div>
+                <h3 className="text-sm font-bold text-white mb-1.5">{step.title}</h3>
+                <p className="text-xs text-white/50 leading-relaxed mb-2">{step.desc}</p>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-white border border-white/20">
+                  <CheckCircle2 className="h-2.5 w-2.5" />{step.tag}
+                </span>
+              </div>
+            ))}
+          </div>
+
           {/* Mobile: vertical list with dashed connectors */}
-          <div className="lg:hidden space-y-7">
+          <div className="md:hidden space-y-7">
             {[
               { Icon: LayoutList,    title: "List what you have",    desc: "Upload photos, set a value, describe what you want back.",    bg: "bg-bareter-teal" },
               { Icon: Sparkles,      title: "Instantly matched",      desc: "Our engine surfaces the most compatible barter partners.",   bg: "bg-teal-600" },
@@ -1202,7 +1233,7 @@ export function LandingPage() {
             ))}
           </div>
 
-          <div className="mt-16 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="mt-10 sm:mt-14 lg:mt-16 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button size="lg" className="h-12 px-8 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold gap-2 rounded-xl shadow-lg active:scale-[0.98]"
               onClick={() => { if (waitlistGate()) navigate(user ? "/create-listing" : "/register"); }}>
               Start Bartering <ArrowRight className="h-4 w-4" />
@@ -1218,11 +1249,11 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           FAQ
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-gray-50 dark:bg-muted/20 py-24" data-testid="section-faq">
-        <div className="container mx-auto max-w-2xl px-6">
-          <div className="text-center mb-14" data-reveal>
+      <section className="bg-gray-50 dark:bg-muted/20 py-12 sm:py-16 lg:py-24" data-testid="section-faq">
+        <div className="container mx-auto max-w-2xl px-4 sm:px-6">
+          <div className="text-center mb-8 sm:mb-10 lg:mb-14" data-reveal>
             <p className="text-xs font-bold text-bareter-teal uppercase tracking-widest mb-3">FAQs</p>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight">Frequently asked questions</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-bareter-navy dark:text-foreground tracking-tight">Frequently asked questions</h2>
           </div>
           <div ref={faqRef} className="space-y-2">
             {FAQS.map((faq, i) => (
@@ -1249,15 +1280,15 @@ export function LandingPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           FINAL CTA — teal with radial light overlay
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="relative isolate overflow-hidden bg-bareter-teal py-24" data-testid="section-cta">
+      <section className="relative isolate overflow-hidden bg-bareter-teal py-12 sm:py-16 lg:py-24" data-testid="section-cta">
         <div className="absolute inset-0 -z-10 opacity-[0.12]"
           style={{ backgroundImage: "radial-gradient(circle at 25% 50%, white 0%, transparent 55%), radial-gradient(circle at 75% 50%, white 0%, transparent 55%)" }}
           aria-hidden="true" />
-        <div className="container mx-auto max-w-3xl px-6 text-center">
-          <h2 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
+        <div className="container mx-auto max-w-3xl px-4 sm:px-6 text-center">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight mb-3 sm:mb-4">
             Join the Bareter community
           </h2>
-          <p className="text-white/75 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
+          <p className="text-white/75 text-base sm:text-lg mb-8 sm:mb-10 max-w-xl mx-auto leading-relaxed">
             Join the UAE's fastest-growing barter marketplace.
           </p>
           {!user && (
