@@ -140,9 +140,9 @@ function SkeletonCard() {
 }
 
 // ── Hero two-column scroll carousel ──────────────────────────────────────────
-const CARD_H    = 220;
-const CARD_GAP  = 40;
-const CARD_STEP = CARD_H + CARD_GAP; // 260 px per step
+const CARD_H    = 290;
+const CARD_GAP  = 52;
+const CARD_STEP = CARD_H + CARD_GAP; // 342 px per step
 
 const CARD_BASE =
   "hc-tile rounded-2xl border border-white/30 bg-white/75 backdrop-blur-sm shadow-[0_8px_28px_rgba(0,0,0,0.25)] pointer-events-none select-none";
@@ -467,23 +467,25 @@ function VerifiedMemberCard() {
   );
 }
 
-// 3 tiles per column, 3-step cycle, JS-driven 5 s scroll, left then right (+30 ms)
+// 2 tiles per column, 4-step cycle, JS-driven 5 s scroll, left then right (+30 ms)
 type HCPhase = "idle" | "exit" | "enter";
 
 const LEFT_STEPS  = [
-  <><ChatDealCard /><DeviceSwapCard /><AnalyticsCard /></>,
-  <><CreateListingCard /><BrandCollabCard /><VerifiedMemberCard /></>,
-  <><BarterItemCard /><DealClosedCard /><ChatDealCard /></>,
+  <><ChatDealCard /><DeviceSwapCard /></>,
+  <><CreateListingCard /><AnalyticsCard /></>,
+  <><BrandCollabCard /><VerifiedMemberCard /></>,
+  <><BarterItemCard /><DealClosedCard /></>,
 ] as const;
 
 const RIGHT_STEPS = [
-  <><BarterItemCard /><DealClosedCard /><VerifiedMemberCard /></>,
-  <><ChatDealCard /><DeviceSwapCard /><AnalyticsCard /></>,
-  <><CreateListingCard /><BrandCollabCard /><DeviceSwapCard /></>,
+  <><BarterItemCard /><DealClosedCard /></>,
+  <><BrandCollabCard /><ChatDealCard /></>,
+  <><CreateListingCard /><DeviceSwapCard /></>,
+  <><AnalyticsCard /><VerifiedMemberCard /></>,
 ] as const;
 
 function HeroCarousel() {
-  const [step, setStep]     = useState(0);       // 0, 1 or 2
+  const [step, setStep]     = useState(0);       // 0, 1, 2 or 3
   const [phaseL, setPhaseL] = useState<HCPhase>("idle");
   const [phaseR, setPhaseR] = useState<HCPhase>("idle");
 
@@ -492,7 +494,7 @@ function HeroCarousel() {
       setPhaseL("exit");
       setTimeout(() => setPhaseR("exit"), 30);
       setTimeout(() => {
-        setStep(s => (s + 1) % 3);
+        setStep(s => (s + 1) % 4);
         setPhaseL("enter");
       }, 1950);
       setTimeout(() => setPhaseR("enter"), 1980);
@@ -508,11 +510,11 @@ function HeroCarousel() {
     p === "exit" ? "hc-col-exit" : p === "enter" ? "hc-col-enter" : "";
 
   return (
-    <div className="flex w-full h-full pt-4" style={{ gap: "16px" }}>
+    <div className="hc-inner flex w-full h-full pt-6" style={{ gap: "18px" }}>
       <div className={`flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
         {LEFT_STEPS[step]}
       </div>
-      <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 50 }}>
+      <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
         {RIGHT_STEPS[step]}
       </div>
     </div>
@@ -717,8 +719,8 @@ export function LandingPage() {
           transform: translateY(0);
         }
         /* ── Hero card evaporation + scroll ── */
-        @keyframes hcColExit  { from{transform:translateY(0)}    to{transform:translateY(-260px)} }
-        @keyframes hcColEnter { from{transform:translateY(260px)} to{transform:translateY(0)} }
+        @keyframes hcColExit  { from{transform:translateY(0)}    to{transform:translateY(-342px)} }
+        @keyframes hcColEnter { from{transform:translateY(342px)} to{transform:translateY(0)} }
         @keyframes hcTileEvap {
           0%   { opacity: 1;    transform: translateY(0px);   filter: blur(0px); }
           40%  { opacity: 0.55; transform: translateY(-7px);  filter: blur(3px); }
@@ -732,15 +734,20 @@ export function LandingPage() {
         /* Column scrolls while tiles evaporate/materialize individually */
         .hc-col-exit  { animation: hcColExit   1.9s ease-in-out                    forwards; }
         .hc-col-enter { animation: hcColEnter  1.9s cubic-bezier(0.22,1,0.36,1)    forwards; }
-        /* 3 tiles per column — each animates 0.6 s, staggered by 0.65 s */
-        .hc-col-exit  .hc-tile { animation: hcTileEvap   0.6s ease-out                    forwards; }
+        /* Each tile animates for 0.9 s — stagger = 0.95 s so tile 2 starts after tile 1 finishes */
+        .hc-col-exit  .hc-tile { animation: hcTileEvap   0.9s ease-out                    forwards; }
         .hc-col-exit  .hc-tile:nth-child(1) { animation-delay: 0ms; }
-        .hc-col-exit  .hc-tile:nth-child(2) { animation-delay: 650ms; }
-        .hc-col-exit  .hc-tile:nth-child(3) { animation-delay: 1300ms; }
-        .hc-col-enter .hc-tile { animation: hcTileAppear 0.6s cubic-bezier(0.22,1,0.36,1) forwards; }
+        .hc-col-exit  .hc-tile:nth-child(2) { animation-delay: 950ms; }
+        .hc-col-enter .hc-tile { animation: hcTileAppear 0.9s cubic-bezier(0.22,1,0.36,1) forwards; }
         .hc-col-enter .hc-tile:nth-child(1) { animation-delay: 0ms; }
-        .hc-col-enter .hc-tile:nth-child(2) { animation-delay: 650ms; }
-        .hc-col-enter .hc-tile:nth-child(3) { animation-delay: 1300ms; }
+        .hc-col-enter .hc-tile:nth-child(2) { animation-delay: 950ms; }
+        /* ── Carousel scale — grows on bigger screens so cards fill hero height ── */
+        @media (min-width: 1280px) {
+          .hc-inner { transform: scale(1.12); transform-origin: top right; }
+        }
+        @media (min-width: 1536px) {
+          .hc-inner { transform: scale(1.3); transform-origin: top right; }
+        }
         /* ── Platform section inner-item entrance ── */
         @keyframes itemFadeUp {
           from { opacity: 0; transform: translateY(10px); }
@@ -775,10 +782,7 @@ export function LandingPage() {
         .prop-card.is-in-view .barter-row:nth-child(3) { animation-delay: 0.64s; }
         /* ── Hero carousel scale on smaller viewports ── */
         @media (max-width: 1023px) {
-          .hc-tile { transform-origin: top center; scale: 0.82; }
-        }
-        @media (min-width: 1024px) {
-          .hc-tile { scale: 1; }
+          .hc-inner { transform: scale(0.78); transform-origin: top right; }
         }
         /* ── Reduce motion ── */
         @media (prefers-reduced-motion: reduce) {
@@ -807,17 +811,17 @@ export function LandingPage() {
         <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 flex-1 flex flex-col justify-center py-10 sm:py-14">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
-            <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[420px] lg:max-w-[460px] xl:max-w-[520px] 2xl:max-w-[580px]">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.4rem] font-extrabold text-white leading-[1.1] tracking-tight mb-4 sm:mb-6" data-testid="text-hero-headline">
+            <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[500px] md:max-w-[440px] lg:max-w-[520px] xl:max-w-[620px] 2xl:max-w-[720px]">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.6rem] xl:text-[4.5rem] 2xl:text-[5.5rem] font-extrabold text-white leading-[1.05] tracking-tight mb-4 sm:mb-5 lg:mb-6" data-testid="text-hero-headline">
                 {heroHeadline}
               </h1>
-              <p className="text-sm sm:text-base font-semibold text-white mb-7 sm:mb-10" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
+              <p className="text-sm sm:text-base lg:text-lg xl:text-xl font-semibold text-white mb-6 sm:mb-8 lg:mb-10" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
                 {heroTagline}
               </p>
 
               {/* Search */}
               <div ref={searchRef} className="relative mb-6 sm:mb-8">
-                <form onSubmit={handleSearch} className="flex items-stretch bg-white border border-gray-200 rounded-xl h-12 overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
+                <form onSubmit={handleSearch} className="flex items-stretch bg-white border border-gray-200 rounded-xl h-12 xl:h-14 overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
                   <Search className="h-4 w-4 text-bareter-navy/40 self-center ml-4 flex-shrink-0" />
                   <input
                     type="search"
@@ -849,11 +853,11 @@ export function LandingPage() {
 
               {/* CTAs */}
               <div className="flex flex-wrap gap-3 mb-8 sm:mb-10">
-                <Button size="lg" className="h-12 px-7 bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-2 shadow-lg active:scale-[0.98]"
+                <Button size="lg" className="h-12 xl:h-14 px-7 xl:px-9 text-base xl:text-lg bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-2 shadow-lg active:scale-[0.98]"
                   onClick={() => { if (waitlistGate()) navigate("/browse"); }}>
                   Browse Listings <ArrowRight className="h-5 w-5" />
                 </Button>
-                <Button size="lg" className="h-12 px-7 bg-white/15 hover:bg-white/25 text-white border border-white/25 font-semibold rounded-xl active:scale-[0.98]"
+                <Button size="lg" className="h-12 xl:h-14 px-7 xl:px-9 text-base xl:text-lg bg-white/15 hover:bg-white/25 text-white border border-white/25 font-semibold rounded-xl active:scale-[0.98]"
                   onClick={() => { if (waitlistGate()) navigate(user ? "/create-listing" : "/register"); }}>
                   List Your Barter
                 </Button>
@@ -871,8 +875,15 @@ export function LandingPage() {
 
         </div>
 
+        {/* ── Carousel glow shadows ── */}
+        <div aria-hidden="true" className="hidden md:block absolute right-0 top-0 bottom-0 z-[4] w-[420px] lg:w-[540px] xl:w-[680px] pointer-events-none overflow-hidden">
+          <div className="absolute right-10 top-16 w-48 lg:w-64 xl:w-80 h-56 lg:h-72 xl:h-96 rounded-3xl opacity-25 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.6) 0%,transparent 70%)" }} />
+          <div className="absolute right-36 top-1/2 -translate-y-1/2 w-40 lg:w-56 xl:w-72 h-48 lg:h-64 xl:h-80 rounded-3xl opacity-20 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(255,255,255,0.35) 0%,transparent 70%)" }} />
+          <div className="absolute right-6 bottom-12 w-44 lg:w-60 xl:w-72 h-44 lg:h-60 xl:h-72 rounded-3xl opacity-15 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.5) 0%,transparent 70%)" }} />
+        </div>
+
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
-        <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[260px] lg:w-[400px] xl:w-[480px] 2xl:w-[560px]">
+        <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[310px] lg:w-[440px] xl:w-[520px] 2xl:w-[620px]">
           <HeroCarousel />
         </div>
 
