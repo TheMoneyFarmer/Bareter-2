@@ -549,7 +549,7 @@ export function AdminPage() {
       setSelectedUserIds(new Set());
       toast({ title: "Done", description: `${data.affected} user(s) ${vars.action === "delete" ? "deleted" : vars.action === "ban" ? "banned" : "unbanned"}` });
     },
-    onError: () => toast({ title: "Error", description: "Bulk action failed", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Bulk action failed", description: err?.message?.slice(0, 200) || "Unknown error", variant: "destructive" }),
   });
 
   const bulkListingMutation = useMutation({

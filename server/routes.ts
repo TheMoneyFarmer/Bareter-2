@@ -5155,6 +5155,12 @@ export async function registerRoutes(
           if (listingIds.length > 0) {
             await db.update(deals).set({ seekerListingId: null }).where(inArray(deals.seekerListingId, listingIds));
             await db.update(deals).set({ providerListingId: null }).where(inArray(deals.providerListingId, listingIds));
+            // Null-out reviews that reference comments on this user's listings (FK listingCommentId)
+            const commentRows = await db.select({ id: listingComments.id }).from(listingComments).where(inArray(listingComments.listingId, listingIds));
+            if (commentRows.length > 0) {
+              const cIds = commentRows.map(r => r.id);
+              await db.update(reviewsTable).set({ listingCommentId: null }).where(inArray(reviewsTable.listingCommentId, cIds));
+            }
             await db.delete(reviewsTable).where(inArray(reviewsTable.listingId, listingIds));
             await db.delete(listingComments).where(inArray(listingComments.listingId, listingIds));
             await db.delete(engagementEvents).where(inArray(engagementEvents.listingId, listingIds));
@@ -5185,6 +5191,12 @@ export async function registerRoutes(
           await db.delete(notifications).where(eq(notifications.userId, userId));
           await db.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
           await db.delete(listingLikes).where(eq(listingLikes.userId, userId));
+          // Null-out reviews referencing listing comments made BY this user before deleting them
+          const userCommentRows = await db.select({ id: listingComments.id }).from(listingComments).where(eq(listingComments.userId, userId));
+          if (userCommentRows.length > 0) {
+            const ucIds = userCommentRows.map(r => r.id);
+            await db.update(reviewsTable).set({ listingCommentId: null }).where(inArray(reviewsTable.listingCommentId, ucIds));
+          }
           await db.delete(listingComments).where(eq(listingComments.userId, userId));
           await db.delete(postLikes).where(eq(postLikes.userId, userId));
           await db.delete(postComments).where(eq(postComments.userId, userId));
@@ -5214,6 +5226,9 @@ export async function registerRoutes(
           await db.update(broadcastJobs).set({ sentBy: null }).where(eq(broadcastJobs.sentBy, userId));
           await db.update(emailLogs).set({ sentBy: null }).where(eq(emailLogs.sentBy, userId));
           await db.update(bannedEmails).set({ bannedBy: null }).where(eq(bannedEmails.bannedBy, userId));
+          await db.update(disputes).set({ decisionBy: null }).where(eq(disputes.decisionBy, userId));
+          await db.update(disputes).set({ escalatedBy: null }).where(eq(disputes.escalatedBy, userId));
+          await db.update(dealMilestones).set({ completedBy: null }).where(eq(dealMilestones.completedBy, userId));
           // NOT NULL without cascade — must delete rows
           await db.delete(listingDrafts).where(eq(listingDrafts.userId, userId));
           await db.delete(reminderLog).where(eq(reminderLog.userId, userId));
