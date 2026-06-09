@@ -802,11 +802,11 @@ export function LandingPage() {
         <div aria-hidden="true" className="absolute inset-0 -z-10 opacity-[0.03]"
           style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")" }} />
 
-        <div className="container relative z-10 mx-auto max-w-7xl px-4 sm:px-6 pt-14 pb-10 sm:pt-20 sm:pb-14 md:pt-24 md:pb-16 lg:pt-28 lg:pb-20 flex-1">
-          <div className="flex flex-col md:flex-row items-start gap-8 md:gap-6 lg:gap-10">
+        <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 pt-14 pb-10 sm:pt-20 sm:pb-14 md:pt-24 md:pb-16 lg:pt-28 lg:pb-20 flex-1">
+          <div className="flex flex-col items-start">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
-            <div className="min-w-0 w-full md:max-w-[420px] lg:max-w-[440px] xl:max-w-[540px] 2xl:max-w-[600px]">
+            <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[420px] lg:max-w-[460px] xl:max-w-[520px] 2xl:max-w-[580px]">
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.4rem] font-extrabold text-white leading-[1.1] tracking-tight mb-4 sm:mb-6" data-testid="text-hero-headline">
                 {heroHeadline}
               </h1>
@@ -872,14 +872,14 @@ export function LandingPage() {
         </div>
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
-        <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[280px] lg:w-[420px] xl:w-[520px] 2xl:w-[580px]">
+        <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[260px] lg:w-[400px] xl:w-[480px] 2xl:w-[560px]">
           <HeroCarousel />
         </div>
 
         {/* ── Stats strip at hero bottom ── */}
         <div className="relative z-10 border-t border-white/10 w-full bg-bareter-navy/95">
-          <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 py-4 sm:py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 max-w-2xl">
               {[
                 { value: "500+", label: "Active members" },
                 { value: "400+", label: "Listings posted" },
