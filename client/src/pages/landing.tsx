@@ -553,7 +553,9 @@ export function LandingPage() {
 
   const { data: cmsSettings } = useQuery<Record<string, string | null>>({ queryKey: ["/api/public/settings"], staleTime: 60_000 });
   const heroHeadline = cmsSettings?.hero_headline || "Barter. Collab. Grow.";
-  const heroTagline = cmsSettings?.hero_tagline || "UAE's First smart barter marketplace. No cash. Just value.";
+  const heroTagline = (cmsSettings?.hero_tagline || "UAE's smart barter marketplace. No cash. Just value.")
+    .replace(/\bAI[-\s]powered\b/gi, "smart-matching")
+    .replace(/\bAI\b/g, "smart");
   const heroCta = cmsSettings?.hero_cta || null;
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
@@ -813,7 +815,7 @@ export function LandingPage() {
         <div aria-hidden="true" className="absolute inset-0 -z-10 opacity-[0.03]"
           style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")" }} />
 
-        <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 flex-1 flex flex-col justify-center py-10 sm:py-14">
+        <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 flex-1 flex flex-col justify-start pt-8 pb-6 sm:pt-12 sm:pb-8 md:justify-center md:py-14">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
             <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[400px] lg:max-w-[480px] xl:max-w-[620px] 2xl:max-w-[720px]">
