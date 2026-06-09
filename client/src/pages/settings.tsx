@@ -1532,175 +1532,58 @@ export function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Camera className="h-5 w-5 text-primary" />
-                    Creator Profile
+                    Creator Hub
                   </CardTitle>
                   <CardDescription>
-                    Set up your creator profile so brands can discover you and send collab opportunities.
+                    Connect with brands and close collab deals — launching soon.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Platform + stats */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Primary Platform</Label>
-                      <Select value={cpPlatform} onValueChange={setCpPlatform}>
-                        <SelectTrigger data-testid="select-cp-platform">
-                          <SelectValue placeholder="Select platform" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="instagram">Instagram</SelectItem>
-                          <SelectItem value="tiktok">TikTok</SelectItem>
-                          <SelectItem value="youtube">YouTube</SelectItem>
-                          <SelectItem value="twitter">X / Twitter</SelectItem>
-                          <SelectItem value="linkedin">LinkedIn</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                <CardContent>
+                  <div className="flex flex-col items-center text-center py-10 px-4 gap-5">
+                    <div className="h-16 w-16 rounded-2xl bg-violet-500/10 flex items-center justify-center">
+                      <Camera className="h-8 w-8 text-violet-500" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cp-followers">Follower Count <span className="text-xs text-muted-foreground font-normal">(min 2,000)</span></Label>
+                    <div>
+                      <p className="font-bold text-lg mb-1">Creator Hub — Coming Soon</p>
+                      <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+                        Browse brand deals, receive gifted products, and sign barter contracts — all in one place. No cold DMs. No agencies. Just real collabs.
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
                       <Input
-                        id="cp-followers"
-                        type="number"
-                        min="2000"
-                        placeholder="e.g. 5000"
+                        type="email"
+                        placeholder="your@email.com"
                         value={cpFollowers}
                         onChange={(e) => setCpFollowers(e.target.value)}
-                        data-testid="input-cp-followers"
+                        className="flex-1"
                       />
-                      {cpFollowers && parseInt(cpFollowers) < 2000 && (
-                        <p className="text-xs text-destructive">Minimum 2,000 followers required to create a creator profile.</p>
-                      )}
+                      <Button
+                        onClick={() => {
+                          if (!cpFollowers.trim()) return;
+                          fetch("/api/feature-waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: cpFollowers.trim(), feature: "creators" }) }).catch(() => {});
+                          toast({ title: "You're on the list!", description: "We'll notify you when Creator Hub launches." });
+                          setCpFollowers("");
+                        }}
+                        className="bg-violet-600 hover:bg-violet-700 text-white whitespace-nowrap"
+                      >
+                        Notify me
+                      </Button>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cp-engagement">Avg Engagement Rate (%)</Label>
-                      <Input
-                        id="cp-engagement"
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 3.5"
-                        value={cpEngagement}
-                        onChange={(e) => setCpEngagement(e.target.value)}
-                        data-testid="input-cp-engagement"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Social handles */}
-                  <div>
-                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Social Handles
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cp-instagram" className="flex items-center gap-1.5">
-                          <Instagram className="h-3.5 w-3.5" />Instagram
-                        </Label>
-                        <Input id="cp-instagram" placeholder="@handle" value={cpInstagram} onChange={(e) => setCpInstagram(e.target.value)} data-testid="input-cp-instagram" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cp-tiktok" className="flex items-center gap-1.5">
-                          <Camera className="h-3.5 w-3.5" />TikTok
-                        </Label>
-                        <Input id="cp-tiktok" placeholder="@handle" value={cpTiktok} onChange={(e) => setCpTiktok(e.target.value)} data-testid="input-cp-tiktok" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cp-youtube" className="flex items-center gap-1.5">
-                          <Youtube className="h-3.5 w-3.5" />YouTube
-                        </Label>
-                        <Input id="cp-youtube" placeholder="@channel" value={cpYoutube} onChange={(e) => setCpYoutube(e.target.value)} data-testid="input-cp-youtube" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Content niches */}
-                  <div>
-                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" />
-                      Content Niches
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {CREATOR_NICHES.map((niche) => (
-                        <Badge
-                          key={niche}
-                          variant={cpNiches.includes(niche) ? "default" : "outline"}
-                          className="cursor-pointer select-none"
-                          onClick={() => setCpNiches(prev => prev.includes(niche) ? prev.filter(n => n !== niche) : [...prev, niche])}
-                          data-testid={`niche-${niche.toLowerCase()}`}
-                        >
-                          {niche}
-                        </Badge>
+                    <div className="grid grid-cols-3 gap-4 w-full max-w-sm mt-2">
+                      {[
+                        { icon: "🎁", label: "Gifted products" },
+                        { icon: "📄", label: "Auto contracts" },
+                        { icon: "🤝", label: "Brand matching" },
+                      ].map(({ icon, label }) => (
+                        <div key={label} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/40">
+                          <span className="text-xl">{icon}</span>
+                          <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
+                        </div>
                       ))}
                     </div>
-                    {cpNiches.length === 0 && (
-                      <p className="text-xs text-muted-foreground mt-2">Select your content niches so brands can find you.</p>
-                    )}
                   </div>
-
-                  <Separator />
-
-                  {/* Open to collabs toggle */}
-                  <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div>
-                      <p className="font-medium">Open to Brand Collabs</p>
-                      <p className="text-sm text-muted-foreground">Brands can find and contact you for collab opportunities.</p>
-                    </div>
-                    <Switch
-                      checked={cpOpenToCollabs}
-                      onCheckedChange={setCpOpenToCollabs}
-                      data-testid="switch-open-to-collabs"
-                    />
-                  </div>
-
-                  <Button
-                    onClick={() => saveCreatorProfileMutation.mutate()}
-                    disabled={saveCreatorProfileMutation.isPending || (!!cpFollowers && parseInt(cpFollowers) < 2000)}
-                    data-testid="button-save-creator-profile"
-                  >
-                    {saveCreatorProfileMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    Save Creator Profile
-                  </Button>
                 </CardContent>
               </Card>
-
-              {/* Creator stats preview */}
-              {cpFollowers && (
-                <Card className="border-primary/20 bg-primary/5">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                      Your Creator Profile Preview
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-xl font-bold text-primary">
-                          {parseInt(cpFollowers) >= 1000000 ? `${(parseInt(cpFollowers)/1000000).toFixed(1)}M` : parseInt(cpFollowers) >= 1000 ? `${(parseInt(cpFollowers)/1000).toFixed(0)}K` : cpFollowers}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Followers</p>
-                      </div>
-                      <div>
-                        <p className="text-xl font-bold text-primary">{cpEngagement || "—"}%</p>
-                        <p className="text-xs text-muted-foreground">Engagement</p>
-                      </div>
-                      <div>
-                        <p className="text-xl font-bold text-primary capitalize">{cpPlatform}</p>
-                        <p className="text-xs text-muted-foreground">Platform</p>
-                      </div>
-                    </div>
-                    {cpNiches.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-3 justify-center">
-                        {cpNiches.map(n => <Badge key={n} variant="secondary" className="text-[10px] px-1.5 py-0">{n}</Badge>)}
-                      </div>
-                    )}
-                    <p className="text-xs text-center text-muted-foreground mt-3">
-                      Creator Discovery is launching soon — <a href="/creators" className="text-primary hover:underline">join the waitlist</a> to be first in.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </TabsContent>
         )}

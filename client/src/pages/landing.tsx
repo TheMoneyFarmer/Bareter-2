@@ -780,9 +780,14 @@ export function LandingPage() {
         .prop-card.is-in-view .barter-row:nth-child(1) { animation-delay: 0.20s; }
         .prop-card.is-in-view .barter-row:nth-child(2) { animation-delay: 0.42s; }
         .prop-card.is-in-view .barter-row:nth-child(3) { animation-delay: 0.64s; }
-        /* ── Hero carousel scale on smaller viewports ── */
-        @media (max-width: 1023px) {
-          .hc-inner { transform: scale(0.78); transform-origin: top right; }
+        /* ── Hero carousel — per-breakpoint scale ── */
+        /* tablet (md 768-1023): compact */
+        @media (min-width: 768px) and (max-width: 1023px) {
+          .hc-inner { transform: scale(0.72); transform-origin: top right; }
+        }
+        /* laptop (lg 1024-1279): slightly smaller than desktop */
+        @media (min-width: 1024px) and (max-width: 1279px) {
+          .hc-inner { transform: scale(0.90); transform-origin: top right; }
         }
         /* ── Reduce motion ── */
         @media (prefers-reduced-motion: reduce) {
@@ -811,8 +816,8 @@ export function LandingPage() {
         <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 flex-1 flex flex-col justify-center py-10 sm:py-14">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
-            <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[500px] md:max-w-[440px] lg:max-w-[520px] xl:max-w-[620px] 2xl:max-w-[720px]">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.6rem] xl:text-[4.5rem] 2xl:text-[5.5rem] font-extrabold text-white leading-[1.05] tracking-tight mb-4 sm:mb-5 lg:mb-6" data-testid="text-hero-headline">
+            <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[400px] lg:max-w-[480px] xl:max-w-[620px] 2xl:max-w-[720px]">
+              <h1 className="text-3xl sm:text-4xl md:text-[2.8rem] lg:text-[3.2rem] xl:text-[4.5rem] 2xl:text-[5.5rem] font-extrabold text-white leading-[1.05] tracking-tight mb-4 sm:mb-5 lg:mb-6" data-testid="text-hero-headline">
                 {heroHeadline}
               </h1>
               <p className="text-sm sm:text-base lg:text-lg xl:text-xl font-semibold text-white mb-6 sm:mb-8 lg:mb-10" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
