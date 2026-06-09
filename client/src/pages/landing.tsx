@@ -831,7 +831,7 @@ export function LandingPage() {
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
             <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[400px] lg:max-w-[480px] xl:max-w-[620px] 2xl:max-w-[720px]">
-              <h1 className="text-3xl sm:text-4xl md:text-[2.8rem] lg:text-[3.2rem] xl:text-[4.5rem] 2xl:text-[5.5rem] font-extrabold text-white leading-[1.05] tracking-tight mb-4 sm:mb-5 lg:mb-6" data-testid="text-hero-headline">
+              <h1 className="text-3xl sm:text-4xl md:text-[2.8rem] lg:text-[3.2rem] xl:text-[4.5rem] 2xl:text-[5.5rem] font-extrabold text-white leading-[1.18] lg:leading-[1.13] xl:leading-[1.08] 2xl:leading-[1.06] tracking-tight mb-4 sm:mb-5 lg:mb-6" data-testid="text-hero-headline">
                 {heroHeadline}
               </h1>
               <p className="text-sm sm:text-base lg:text-lg xl:text-xl font-semibold text-white mb-6 sm:mb-8 lg:mb-10" data-testid="text-hero-tagline" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.45)" }}>
