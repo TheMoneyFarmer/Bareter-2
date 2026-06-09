@@ -511,11 +511,13 @@ function HeroCarousel() {
 
   return (
     <div className="hc-inner flex w-full h-full pt-6" style={{ gap: "18px" }}>
-      <div className={`flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
+      <div className={`relative flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
         {LEFT_STEPS[step]}
+        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H, height: CARD_GAP }} />
       </div>
-      <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
+      <div className={`relative flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
         {RIGHT_STEPS[step]}
+        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H + 80, height: CARD_GAP }} />
       </div>
     </div>
   );
@@ -789,6 +791,17 @@ export function LandingPage() {
         @media (min-width: 1024px) and (max-width: 1279px) {
           .hc-inner { transform: scale(0.90); transform-origin: top right; }
         }
+        /* ── Carousel connector lines ── */
+        @keyframes dashFlow { from { background-position: 0 0; } to { background-position: 0 24px; } }
+        .hc-connector {
+          background: repeating-linear-gradient(
+            to bottom,
+            rgba(42,160,160,0.75) 0px, rgba(42,160,160,0.75) 5px,
+            transparent 5px, transparent 12px
+          );
+          animation: dashFlow 0.7s linear infinite;
+          pointer-events: none;
+        }
         /* ── Reduce motion ── */
         @media (prefers-reduced-motion: reduce) {
           .bareter-stagger-card,.prop-card,.feat-card,.cat-item,.step-item,.faq-item,.reveal-el,[data-reveal] {
@@ -796,6 +809,7 @@ export function LandingPage() {
           }
           .float-a,.float-b,.float-c,.float-d,.pulse-dot { animation: none !important; }
           .hc-col-exit .hc-tile, .hc-col-enter .hc-tile { animation: none !important; opacity: 1 !important; }
+          .hc-connector { animation: none !important; }
           .prop-card .chat-msg, .prop-card .chat-typing, .prop-card .feat-pill, .prop-card .barter-row {
             opacity: 1 !important; animation: none !important;
           }
@@ -882,9 +896,9 @@ export function LandingPage() {
 
         {/* ── Carousel glow shadows ── */}
         <div aria-hidden="true" className="hidden md:block absolute right-0 top-0 bottom-0 z-[4] w-[420px] lg:w-[540px] xl:w-[680px] pointer-events-none overflow-hidden">
-          <div className="absolute right-10 top-16 w-48 lg:w-64 xl:w-80 h-56 lg:h-72 xl:h-96 rounded-3xl opacity-25 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.6) 0%,transparent 70%)" }} />
-          <div className="absolute right-36 top-1/2 -translate-y-1/2 w-40 lg:w-56 xl:w-72 h-48 lg:h-64 xl:h-80 rounded-3xl opacity-20 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(255,255,255,0.35) 0%,transparent 70%)" }} />
-          <div className="absolute right-6 bottom-12 w-44 lg:w-60 xl:w-72 h-44 lg:h-60 xl:h-72 rounded-3xl opacity-15 blur-3xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.5) 0%,transparent 70%)" }} />
+          <div className="absolute right-10 top-16 w-52 lg:w-72 xl:w-96 h-64 lg:h-80 xl:h-[28rem] rounded-3xl opacity-55 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.85) 0%,transparent 65%)" }} />
+          <div className="absolute right-32 top-1/2 -translate-y-1/2 w-44 lg:w-60 xl:w-80 h-52 lg:h-72 xl:h-96 rounded-3xl opacity-45 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(255,255,255,0.55) 0%,transparent 65%)" }} />
+          <div className="absolute right-4 bottom-10 w-48 lg:w-64 xl:w-80 h-52 lg:h-64 xl:h-80 rounded-3xl opacity-50 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.8) 0%,transparent 65%)" }} />
         </div>
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
