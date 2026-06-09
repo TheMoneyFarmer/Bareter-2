@@ -547,29 +547,36 @@ function HeroCarousel() {
   return (
     <div className="hc-inner relative flex w-full h-full pt-6" style={{ gap: "18px" }}>
 
-      {/* ── Top peek row — offset above viewport, section overflow:hidden clips it ── */}
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 flex pointer-events-none z-0"
-        style={{ gap: "18px", transform: `translateY(${-(CARD_H - PEEK)}px)` }}>
-        <div className="flex-1 opacity-60"><PeekCard /></div>
-        <div className="flex-1 opacity-60"><PeekCard /></div>
-      </div>
-
-      {/* ── Left column ── */}
+      {/* ── Left column — peek cards inside so they animate with the column ── */}
       <div className={`relative flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
+        {/* Top peek — one CARD_STEP above first card, clipped by section overflow-hidden */}
+        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
+          style={{ top: -(CARD_H + CARD_GAP) }}>
+          <PeekCard />
+        </div>
         {LEFT_STEPS[step]}
         <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H, height: CARD_GAP }} />
-      </div>
-      {/* ── Right column ── */}
-      <div className={`relative flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
-        {RIGHT_STEPS[step]}
-        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H + 80, height: CARD_GAP }} />
+        {/* Bottom peek — one CARD_STEP below last card */}
+        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
+          style={{ top: CARD_H + CARD_GAP + CARD_H }}>
+          <PeekCard />
+        </div>
       </div>
 
-      {/* ── Bottom peek row — offset below viewport, section overflow:hidden clips it ── */}
-      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 flex pointer-events-none z-0"
-        style={{ gap: "18px", transform: `translateY(${CARD_H - PEEK}px)` }}>
-        <div className="flex-1 opacity-60"><PeekCard /></div>
-        <div className="flex-1 opacity-60"><PeekCard /></div>
+      {/* ── Right column (offset 80px down) ── */}
+      <div className={`relative flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
+        {/* Top peek — accounts for paddingTop: 80 */}
+        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
+          style={{ top: 80 - (CARD_H + CARD_GAP) }}>
+          <PeekCard />
+        </div>
+        {RIGHT_STEPS[step]}
+        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H + 80, height: CARD_GAP }} />
+        {/* Bottom peek — accounts for paddingTop: 80 */}
+        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
+          style={{ top: 80 + CARD_H + CARD_GAP + CARD_H }}>
+          <PeekCard />
+        </div>
       </div>
     </div>
   );
@@ -974,7 +981,7 @@ export function LandingPage() {
         </div>
 
         {/* ── Stats strip at hero bottom ── */}
-        <div className="relative z-10 border-t border-white/10 w-full bg-bareter-navy/95">
+        <div className="relative z-[3] border-t border-white/10 w-full bg-bareter-navy/95">
           <div className="container mx-auto max-w-4xl px-5 sm:px-10 py-4 sm:py-5">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8">
               {[
