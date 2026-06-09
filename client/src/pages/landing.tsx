@@ -894,11 +894,20 @@ export function LandingPage() {
 
         </div>
 
-        {/* ── Carousel glow shadows ── */}
-        <div aria-hidden="true" className="hidden md:block absolute right-0 top-0 bottom-0 z-[4] w-[420px] lg:w-[540px] xl:w-[680px] pointer-events-none overflow-hidden">
-          <div className="absolute right-10 top-16 w-52 lg:w-72 xl:w-96 h-64 lg:h-80 xl:h-[28rem] rounded-3xl opacity-55 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.85) 0%,transparent 65%)" }} />
-          <div className="absolute right-32 top-1/2 -translate-y-1/2 w-44 lg:w-60 xl:w-80 h-52 lg:h-72 xl:h-96 rounded-3xl opacity-45 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(255,255,255,0.55) 0%,transparent 65%)" }} />
-          <div className="absolute right-4 bottom-10 w-48 lg:w-64 xl:w-80 h-52 lg:h-64 xl:h-80 rounded-3xl opacity-50 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.8) 0%,transparent 65%)" }} />
+        {/* ── Carousel glow — teal wash + concentrated blobs around the cards ── */}
+        {/* Background teal wash on right side (z-[2], behind everything) */}
+        <div aria-hidden="true" className="hidden md:block absolute right-0 top-0 bottom-0 z-[2] w-[55%] pointer-events-none"
+          style={{ background: "linear-gradient(to left, rgba(42,160,160,0.18) 0%, rgba(42,160,160,0.06) 50%, transparent 100%)" }} />
+        {/* Concentrated glow blobs (z-[4], behind cards but in front of wash) */}
+        <div aria-hidden="true" className="hidden md:block absolute right-0 top-0 bottom-0 z-[4] w-[480px] lg:w-[580px] xl:w-[720px] pointer-events-none">
+          {/* Top-right bright teal spot */}
+          <div className="absolute right-4 top-10 w-56 lg:w-72 xl:w-96 h-56 lg:h-72 xl:h-96 opacity-70 blur-xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.9) 0%,transparent 60%)" }} />
+          {/* Centre white shimmer */}
+          <div className="absolute right-24 top-1/3 w-40 lg:w-56 xl:w-72 h-40 lg:h-56 xl:h-72 opacity-55 blur-xl" style={{ background: "radial-gradient(ellipse,rgba(180,240,240,0.7) 0%,transparent 60%)" }} />
+          {/* Bottom-right teal spot */}
+          <div className="absolute right-2 bottom-8 w-52 lg:w-64 xl:w-80 h-52 lg:h-64 xl:h-80 opacity-65 blur-xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.85) 0%,transparent 60%)" }} />
+          {/* Left-edge bleed so glow wraps around card edges */}
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-24 lg:w-32 h-96 opacity-40 blur-2xl" style={{ background: "radial-gradient(ellipse,rgba(42,160,160,0.6) 0%,transparent 70%)" }} />
         </div>
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
