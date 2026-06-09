@@ -5241,7 +5241,6 @@ export async function registerRoutes(
           await db.update(agentInteractions).set({ userId: null }).where(eq(agentInteractions.userId, userId));
           await db.update(consentLogs).set({ userId: null }).where(eq(consentLogs.userId, userId));
           await db.update(supportMessages).set({ senderId: null }).where(eq(supportMessages.senderId, userId));
-          await db.update(portfolioItems).set({ completedBy: null }).where(eq(portfolioItems.completedBy, userId));
 
           // Phase 6: Delete the user row
           await db.delete(users).where(eq(users.id, userId));
