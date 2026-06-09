@@ -509,9 +509,8 @@ function HeroCarousel() {
   const cls = (p: HCPhase) =>
     p === "exit" ? "hc-col-exit" : p === "enter" ? "hc-col-enter" : "";
 
-  // ── Fake half-card shown at top/bottom edges (peek effect) ────────────────
   const PeekCard = () => (
-    <div className={`${CARD_BASE} p-3.5`} style={{ height: CARD_H }}>
+    <div className={`${CARD_BASE} p-3.5 flex-shrink-0`} style={{ height: CARD_H }}>
       <div className="flex items-center gap-2 mb-3">
         <div className="h-7 w-7 rounded-full bg-bareter-teal/20 flex-shrink-0" />
         <div className="flex-1 space-y-1.5">
@@ -542,42 +541,61 @@ function HeroCarousel() {
     </div>
   );
 
-  const PEEK = 64; // px of peek card visible at edge
+  // Reel approach: each column is an overflow-hidden clipping window.
+  // The strip (peek + c1 + c2 + peek) shifts up by STRIP_OFF so only PEEK px of the
+  // top peek card is visible below the gradient. No absolute-inside-flex overlap possible.
+  const PEEK      = 64;
+  const STRIP_OFF = -(CARD_H - PEEK); // -226px
+
+  const peekCard = (
+    <div aria-hidden="true" className="flex-shrink-0 opacity-60 pointer-events-none">
+      <PeekCard />
+    </div>
+  );
+
+  // Fade gradient blended inside each overflow-hidden column so clipping is exact.
+  // h-24 at top blends the 64px peek card; h-56 at bottom covers the peek card AND
+  // the stats-strip overlap (carousel extends to hero bottom which includes the strip).
+  const colFades = (
+    <>
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-24 z-10 pointer-events-none"
+        style={{ background: "linear-gradient(to bottom, #1C2D4A 0%, transparent 100%)" }} />
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-56 z-10 pointer-events-none"
+        style={{ background: "linear-gradient(to top, #1C2D4A 0%, transparent 100%)" }} />
+    </>
+  );
 
   return (
     <div className="hc-inner relative flex w-full h-full pt-6" style={{ gap: "18px" }}>
 
-      {/* ── Left column — peek cards inside so they animate with the column ── */}
-      <div className={`relative flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
-        {/* Top peek — one CARD_STEP above first card, clipped by section overflow-hidden */}
-        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
-          style={{ top: -(CARD_H + CARD_GAP) }}>
-          <PeekCard />
+      {/* ── Left column ── */}
+      <div className="flex-1 overflow-hidden relative">
+        <div style={{ transform: `translateY(${STRIP_OFF}px)` }}>
+          <div className={`relative flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
+            {peekCard}
+            {LEFT_STEPS[step]}
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px"
+              style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
+            {peekCard}
+          </div>
         </div>
-        {LEFT_STEPS[step]}
-        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H, height: CARD_GAP }} />
-        {/* Bottom peek — one CARD_STEP below last card */}
-        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
-          style={{ top: CARD_H + CARD_GAP + CARD_H }}>
-          <PeekCard />
-        </div>
+        {colFades}
       </div>
 
-      {/* ── Right column (offset 80px down) ── */}
-      <div className={`relative flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
-        {/* Top peek — accounts for paddingTop: 80 */}
-        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
-          style={{ top: 80 - (CARD_H + CARD_GAP) }}>
-          <PeekCard />
+      {/* ── Right column (80px lower than left) ── */}
+      <div className="flex-1 overflow-hidden relative">
+        <div style={{ transform: `translateY(${STRIP_OFF + 80}px)` }}>
+          <div className={`relative flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP }}>
+            {peekCard}
+            {RIGHT_STEPS[step]}
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px"
+              style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
+            {peekCard}
+          </div>
         </div>
-        {RIGHT_STEPS[step]}
-        <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H + 80, height: CARD_GAP }} />
-        {/* Bottom peek — accounts for paddingTop: 80 */}
-        <div aria-hidden="true" className="absolute inset-x-0 pointer-events-none opacity-60"
-          style={{ top: 80 + CARD_H + CARD_GAP + CARD_H }}>
-          <PeekCard />
-        </div>
+        {colFades}
       </div>
+
     </div>
   );
 }
@@ -971,12 +989,6 @@ export function LandingPage() {
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
         <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[310px] lg:w-[440px] xl:w-[520px] 2xl:w-[620px]">
-          {/* Top fade — peek cards emerge from navy background */}
-          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-20 z-10 pointer-events-none"
-            style={{ background: "linear-gradient(to bottom, #1C2D4A 0%, transparent 100%)" }} />
-          {/* Bottom fade — cards melt back into navy background */}
-          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-20 z-10 pointer-events-none"
-            style={{ background: "linear-gradient(to top, #1C2D4A 0%, transparent 100%)" }} />
           <HeroCarousel />
         </div>
 
