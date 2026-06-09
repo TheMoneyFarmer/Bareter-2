@@ -873,7 +873,7 @@ export function LandingPage() {
         .hc-connector {
           background: repeating-linear-gradient(
             to bottom,
-            rgba(42,160,160,0.75) 0px, rgba(42,160,160,0.75) 5px,
+            rgba(255,255,255,0.55) 0px, rgba(255,255,255,0.55) 5px,
             transparent 5px, transparent 12px
           );
           animation: dashFlow 0.7s linear infinite;
