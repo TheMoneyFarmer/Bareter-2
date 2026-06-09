@@ -553,9 +553,7 @@ export function LandingPage() {
 
   const { data: cmsSettings } = useQuery<Record<string, string | null>>({ queryKey: ["/api/public/settings"], staleTime: 60_000 });
   const heroHeadline = cmsSettings?.hero_headline || "Barter. Collab. Grow.";
-  const heroTagline = (cmsSettings?.hero_tagline || "UAE's smart barter marketplace. No cash. Just value.")
-    .replace(/\bAI[-\s]powered\b/gi, "smart-matching")
-    .replace(/\bAI\b/g, "smart");
+  const heroTagline = cmsSettings?.hero_tagline || "UAE's AI-powered barter marketplace. No cash. Just value.";
   const heroCta = cmsSettings?.hero_cta || null;
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
@@ -859,12 +857,12 @@ export function LandingPage() {
               </div>
 
               {/* CTAs */}
-              <div className="flex flex-wrap gap-3 mb-8 sm:mb-10">
-                <Button size="lg" className="h-12 xl:h-14 px-7 xl:px-9 text-base xl:text-lg bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-2 shadow-lg active:scale-[0.98]"
+              <div className="flex gap-2 sm:gap-3 mb-8 sm:mb-10">
+                <Button size="lg" className="flex-1 h-10 sm:h-12 xl:h-14 px-3 sm:px-7 xl:px-9 text-sm sm:text-base xl:text-lg bg-bareter-teal hover:bg-bareter-teal/90 text-white font-bold rounded-xl gap-1.5 sm:gap-2 shadow-lg active:scale-[0.98]"
                   onClick={() => { if (waitlistGate()) navigate("/browse"); }}>
-                  Browse Listings <ArrowRight className="h-5 w-5" />
+                  Browse Listings <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
-                <Button size="lg" className="h-12 xl:h-14 px-7 xl:px-9 text-base xl:text-lg bg-white/15 hover:bg-white/25 text-white border border-white/25 font-semibold rounded-xl active:scale-[0.98]"
+                <Button size="lg" className="flex-1 h-10 sm:h-12 xl:h-14 px-3 sm:px-7 xl:px-9 text-sm sm:text-base xl:text-lg bg-white/15 hover:bg-white/25 text-white border border-white/25 font-semibold rounded-xl active:scale-[0.98]"
                   onClick={() => { if (waitlistGate()) navigate(user ? "/create-listing" : "/register"); }}>
                   List Your Barter
                 </Button>
