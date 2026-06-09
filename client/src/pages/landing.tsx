@@ -575,7 +575,11 @@ function HeroCarousel() {
             {peekCard}
             {LEFT_STEPS[step]}
             <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
-              style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
+              style={{ top: CARD_H, height: CARD_GAP }} />
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
+              style={{ top: CARD_H * 2 + CARD_GAP, height: CARD_GAP }} />
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
+              style={{ top: CARD_H * 3 + CARD_GAP * 2, height: CARD_GAP }} />
             {peekCard}
           </div>
         </div>
@@ -589,7 +593,11 @@ function HeroCarousel() {
             {peekCard}
             {RIGHT_STEPS[step]}
             <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
-              style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
+              style={{ top: CARD_H, height: CARD_GAP }} />
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
+              style={{ top: CARD_H * 2 + CARD_GAP, height: CARD_GAP }} />
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
+              style={{ top: CARD_H * 3 + CARD_GAP * 2, height: CARD_GAP }} />
             {peekCard}
           </div>
         </div>
