@@ -140,9 +140,9 @@ function SkeletonCard() {
 }
 
 // ── Hero two-column scroll carousel ──────────────────────────────────────────
-const CARD_H    = 280;
-const CARD_GAP  = 60;   // wide breathing room between cards
-const CARD_STEP = CARD_H + CARD_GAP; // 340 px per step
+const CARD_H    = 220;
+const CARD_GAP  = 40;
+const CARD_STEP = CARD_H + CARD_GAP; // 260 px per step
 
 const CARD_BASE =
   "hc-tile rounded-2xl border border-white/30 bg-white/75 backdrop-blur-sm shadow-[0_8px_28px_rgba(0,0,0,0.25)] pointer-events-none select-none";
@@ -467,19 +467,19 @@ function VerifiedMemberCard() {
   );
 }
 
-// 6 tiles — 2 per column, 3-step cycle, JS-driven 5 s scroll, left then right (+30 ms)
+// 3 tiles per column, 3-step cycle, JS-driven 5 s scroll, left then right (+30 ms)
 type HCPhase = "idle" | "exit" | "enter";
 
 const LEFT_STEPS  = [
-  <><ChatDealCard /><DeviceSwapCard /></>,
-  <><CreateListingCard /><BrandCollabCard /></>,
-  <><BarterItemCard /><DealClosedCard /></>,
+  <><ChatDealCard /><DeviceSwapCard /><AnalyticsCard /></>,
+  <><CreateListingCard /><BrandCollabCard /><VerifiedMemberCard /></>,
+  <><BarterItemCard /><DealClosedCard /><ChatDealCard /></>,
 ] as const;
 
 const RIGHT_STEPS = [
-  <><BarterItemCard /><DealClosedCard /></>,
-  <><ChatDealCard /><DeviceSwapCard /></>,
-  <><CreateListingCard /><BrandCollabCard /></>,
+  <><BarterItemCard /><DealClosedCard /><VerifiedMemberCard /></>,
+  <><ChatDealCard /><DeviceSwapCard /><AnalyticsCard /></>,
+  <><CreateListingCard /><BrandCollabCard /><DeviceSwapCard /></>,
 ] as const;
 
 function HeroCarousel() {
@@ -508,11 +508,11 @@ function HeroCarousel() {
     p === "exit" ? "hc-col-exit" : p === "enter" ? "hc-col-enter" : "";
 
   return (
-    <div className="flex w-full h-full" style={{ gap: "20px" }}>
+    <div className="flex w-full h-full pt-4" style={{ gap: "16px" }}>
       <div className={`flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
         {LEFT_STEPS[step]}
       </div>
-      <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 70 }}>
+      <div className={`flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 50 }}>
         {RIGHT_STEPS[step]}
       </div>
     </div>
@@ -717,8 +717,8 @@ export function LandingPage() {
           transform: translateY(0);
         }
         /* ── Hero card evaporation + scroll ── */
-        @keyframes hcColExit  { from{transform:translateY(0)}    to{transform:translateY(-340px)} }
-        @keyframes hcColEnter { from{transform:translateY(340px)} to{transform:translateY(0)} }
+        @keyframes hcColExit  { from{transform:translateY(0)}    to{transform:translateY(-260px)} }
+        @keyframes hcColEnter { from{transform:translateY(260px)} to{transform:translateY(0)} }
         @keyframes hcTileEvap {
           0%   { opacity: 1;    transform: translateY(0px);   filter: blur(0px); }
           40%  { opacity: 0.55; transform: translateY(-7px);  filter: blur(3px); }
@@ -732,13 +732,15 @@ export function LandingPage() {
         /* Column scrolls while tiles evaporate/materialize individually */
         .hc-col-exit  { animation: hcColExit   1.9s ease-in-out                    forwards; }
         .hc-col-enter { animation: hcColEnter  1.9s cubic-bezier(0.22,1,0.36,1)    forwards; }
-        /* Each tile animates for 0.9 s — stagger = 0.95 s so tile 2 starts after tile 1 finishes */
-        .hc-col-exit  .hc-tile { animation: hcTileEvap   0.9s ease-out                    forwards; }
+        /* 3 tiles per column — each animates 0.6 s, staggered by 0.65 s */
+        .hc-col-exit  .hc-tile { animation: hcTileEvap   0.6s ease-out                    forwards; }
         .hc-col-exit  .hc-tile:nth-child(1) { animation-delay: 0ms; }
-        .hc-col-exit  .hc-tile:nth-child(2) { animation-delay: 950ms; }
-        .hc-col-enter .hc-tile { animation: hcTileAppear 0.9s cubic-bezier(0.22,1,0.36,1) forwards; }
+        .hc-col-exit  .hc-tile:nth-child(2) { animation-delay: 650ms; }
+        .hc-col-exit  .hc-tile:nth-child(3) { animation-delay: 1300ms; }
+        .hc-col-enter .hc-tile { animation: hcTileAppear 0.6s cubic-bezier(0.22,1,0.36,1) forwards; }
         .hc-col-enter .hc-tile:nth-child(1) { animation-delay: 0ms; }
-        .hc-col-enter .hc-tile:nth-child(2) { animation-delay: 950ms; }
+        .hc-col-enter .hc-tile:nth-child(2) { animation-delay: 650ms; }
+        .hc-col-enter .hc-tile:nth-child(3) { animation-delay: 1300ms; }
         /* ── Platform section inner-item entrance ── */
         @keyframes itemFadeUp {
           from { opacity: 0; transform: translateY(10px); }
@@ -802,8 +804,7 @@ export function LandingPage() {
         <div aria-hidden="true" className="absolute inset-0 -z-10 opacity-[0.03]"
           style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")" }} />
 
-        <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 pt-14 pb-10 sm:pt-20 sm:pb-14 md:pt-24 md:pb-16 lg:pt-28 lg:pb-20 flex-1">
-          <div className="flex flex-col items-start">
+        <div className="relative z-10 w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 flex-1 flex flex-col justify-center py-10 sm:py-14">
 
             {/* ── LEFT — primary copy (carousel is absolute, so left copy owns the flex row) ── */}
             <div className="min-w-0 w-full max-w-[92vw] sm:max-w-[480px] md:max-w-[420px] lg:max-w-[460px] xl:max-w-[520px] 2xl:max-w-[580px]">
@@ -868,7 +869,6 @@ export function LandingPage() {
               </div>
             </div>
 
-          </div>
         </div>
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
@@ -878,8 +878,8 @@ export function LandingPage() {
 
         {/* ── Stats strip at hero bottom ── */}
         <div className="relative z-10 border-t border-white/10 w-full bg-bareter-navy/95">
-          <div className="w-full px-5 sm:px-10 md:px-14 lg:px-16 xl:px-20 2xl:px-24 py-4 sm:py-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 max-w-2xl">
+          <div className="container mx-auto max-w-4xl px-5 sm:px-10 py-4 sm:py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8">
               {[
                 { value: "500+", label: "Active members" },
                 { value: "400+", label: "Listings posted" },
