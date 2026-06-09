@@ -574,7 +574,7 @@ function HeroCarousel() {
           <div className={`relative flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
             {peekCard}
             {LEFT_STEPS[step]}
-            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px"
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
               style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
             {peekCard}
           </div>
@@ -588,7 +588,7 @@ function HeroCarousel() {
           <div className={`relative flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP }}>
             {peekCard}
             {RIGHT_STEPS[step]}
-            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px"
+            <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2"
               style={{ top: CARD_H + CARD_GAP + CARD_H, height: CARD_GAP }} />
             {peekCard}
           </div>
@@ -868,15 +868,23 @@ export function LandingPage() {
         @media (min-width: 1024px) and (max-width: 1279px) {
           .hc-inner { transform: scale(0.90); transform-origin: top right; }
         }
-        /* ── Carousel connector lines ── */
-        @keyframes dashFlow { from { background-position: 0 0; } to { background-position: 0 24px; } }
+        /* ── Carousel connector: ball rolling through a tube ── */
+        @keyframes ballRoll {
+          0%   { background-position: center -24px, center; }
+          100% { background-position: center calc(100% + 24px), center; }
+        }
         .hc-connector {
-          background: repeating-linear-gradient(
-            to bottom,
-            rgba(255,255,255,0.55) 0px, rgba(255,255,255,0.55) 5px,
-            transparent 5px, transparent 12px
-          );
-          animation: dashFlow 0.7s linear infinite;
+          width: 3px;
+          border-radius: 2px;
+          /* Layer 1: glowing ball  |  Layer 2: semi-transparent tube track */
+          background-image:
+            radial-gradient(ellipse 10px 18px at center, #fffde7 0%, rgba(255,255,255,0.85) 45%, transparent 100%),
+            linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.22) 50%, rgba(255,255,255,0.08) 100%);
+          background-size: 10px 24px, 100% 100%;
+          background-repeat: no-repeat, no-repeat;
+          background-position: center -24px, center;
+          box-shadow: 0 0 6px rgba(255,255,220,0.25);
+          animation: ballRoll 1.3s cubic-bezier(0.45,0,0.55,1) infinite;
           pointer-events: none;
         }
         /* ── Reduce motion ── */
