@@ -993,7 +993,7 @@ export function LandingPage() {
         </div>
 
         {/* ── Stats strip at hero bottom ── */}
-        <div className="relative z-[3] border-t border-white/10 w-full bg-bareter-navy/95">
+        <div className="relative z-[7] border-t border-white/10 w-full bg-bareter-navy/95">
           <div className="container mx-auto max-w-4xl px-5 sm:px-10 py-4 sm:py-5">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8">
               {[
