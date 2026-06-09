@@ -509,15 +509,67 @@ function HeroCarousel() {
   const cls = (p: HCPhase) =>
     p === "exit" ? "hc-col-exit" : p === "enter" ? "hc-col-enter" : "";
 
+  // ── Fake half-card shown at top/bottom edges (peek effect) ────────────────
+  const PeekCard = () => (
+    <div className={`${CARD_BASE} p-3.5`} style={{ height: CARD_H }}>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-7 w-7 rounded-full bg-bareter-teal/20 flex-shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-2 bg-slate-200 rounded-full w-3/4" />
+          <div className="h-1.5 bg-slate-100 rounded-full w-1/2" />
+        </div>
+        <div className="h-4 w-12 rounded-full bg-emerald-100 border border-emerald-200" />
+      </div>
+      <div className="space-y-1.5 mb-3">
+        <div className="h-1.5 bg-slate-100 rounded-full w-full" />
+        <div className="h-1.5 bg-slate-100 rounded-full w-10/12" />
+        <div className="h-1.5 bg-slate-100 rounded-full w-3/4" />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 mb-3">
+        <div className="h-16 rounded-xl bg-slate-50 border border-slate-100 p-2">
+          <div className="h-2 bg-slate-200 rounded-full w-3/4 mb-1.5" />
+          <div className="h-2.5 bg-bareter-teal/20 rounded-full w-1/2" />
+        </div>
+        <div className="h-16 rounded-xl bg-slate-50 border border-slate-100 p-2">
+          <div className="h-2 bg-slate-200 rounded-full w-3/4 mb-1.5" />
+          <div className="h-2.5 bg-bareter-teal/20 rounded-full w-1/2" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 bg-bareter-teal/8 rounded-xl px-3 py-2">
+        <div className="h-3 w-3 rounded-full bg-bareter-teal/40 flex-shrink-0" />
+        <div className="h-2 bg-bareter-teal/25 rounded-full flex-1" />
+      </div>
+    </div>
+  );
+
+  const PEEK = 64; // px of peek card visible at edge
+
   return (
-    <div className="hc-inner flex w-full h-full pt-6" style={{ gap: "18px" }}>
+    <div className="hc-inner relative flex w-full h-full pt-6" style={{ gap: "18px" }}>
+
+      {/* ── Top peek row — offset above viewport, section overflow:hidden clips it ── */}
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 flex pointer-events-none z-0"
+        style={{ gap: "18px", transform: `translateY(${-(CARD_H - PEEK)}px)` }}>
+        <div className="flex-1 opacity-60"><PeekCard /></div>
+        <div className="flex-1 opacity-60"><PeekCard /></div>
+      </div>
+
+      {/* ── Left column ── */}
       <div className={`relative flex-1 flex flex-col ${cls(phaseL)}`} style={{ gap: CARD_GAP }}>
         {LEFT_STEPS[step]}
         <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H, height: CARD_GAP }} />
       </div>
+      {/* ── Right column ── */}
       <div className={`relative flex-1 flex flex-col ${cls(phaseR)}`} style={{ gap: CARD_GAP, paddingTop: 80 }}>
         {RIGHT_STEPS[step]}
         <div aria-hidden="true" className="hc-connector absolute left-1/2 -translate-x-1/2 w-px" style={{ top: CARD_H + 80, height: CARD_GAP }} />
+      </div>
+
+      {/* ── Bottom peek row — offset below viewport, section overflow:hidden clips it ── */}
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 flex pointer-events-none z-0"
+        style={{ gap: "18px", transform: `translateY(${CARD_H - PEEK}px)` }}>
+        <div className="flex-1 opacity-60"><PeekCard /></div>
+        <div className="flex-1 opacity-60"><PeekCard /></div>
       </div>
     </div>
   );
@@ -912,6 +964,12 @@ export function LandingPage() {
 
         {/* ── Carousel — absolute right, full hero height; section overflow:hidden clips it ── */}
         <div className="hidden md:flex absolute right-0 top-0 bottom-0 z-[5] w-[310px] lg:w-[440px] xl:w-[520px] 2xl:w-[620px]">
+          {/* Top fade — peek cards emerge from navy background */}
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-20 z-10 pointer-events-none"
+            style={{ background: "linear-gradient(to bottom, #1C2D4A 0%, transparent 100%)" }} />
+          {/* Bottom fade — cards melt back into navy background */}
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-20 z-10 pointer-events-none"
+            style={{ background: "linear-gradient(to top, #1C2D4A 0%, transparent 100%)" }} />
           <HeroCarousel />
         </div>
 
