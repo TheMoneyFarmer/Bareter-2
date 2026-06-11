@@ -8,13 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { registerSchema, COUNTRIES, getCitiesForCountry } from "@shared/schema";
-import type { SocialProfile } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Handshake,
@@ -22,20 +20,10 @@ import {
   Eye,
   EyeOff,
   CheckCircle,
-  User,
-  Building2,
-  Camera,
   ArrowLeft,
   ArrowRight,
-  SkipForward,
   Mail,
   RefreshCw,
-  Instagram,
-  Youtube,
-  Linkedin,
-  Twitter,
-  Video,
-  Users,
 } from "lucide-react";
 import { z } from "zod";
 import { trackEvent } from "@/lib/posthog";
@@ -71,53 +59,6 @@ const extendedRegisterSchema = registerSchema.extend({
 
 type RegisterForm = z.infer<typeof extendedRegisterSchema>;
 
-type SignupType = "personal" | "business" | "creator";
-
-interface SocialFormState {
-  instagram: { username: string; followerCount: string };
-  tiktok: { username: string; followerCount: string };
-  youtube: { username: string; followerCount: string };
-  linkedin: { username: string };
-  x: { username: string };
-}
-
-const SOCIAL_PLATFORMS = [
-  {
-    key: "instagram" as const,
-    label: "Instagram",
-    icon: Instagram,
-    hasFollowers: true,
-    placeholder: "@username",
-  },
-  {
-    key: "tiktok" as const,
-    label: "TikTok",
-    icon: Video,
-    hasFollowers: true,
-    placeholder: "@username",
-  },
-  {
-    key: "youtube" as const,
-    label: "YouTube",
-    icon: Youtube,
-    hasFollowers: true,
-    placeholder: "Channel name",
-  },
-  {
-    key: "linkedin" as const,
-    label: "LinkedIn",
-    icon: Linkedin,
-    hasFollowers: false,
-    placeholder: "Profile URL or username",
-  },
-  {
-    key: "x" as const,
-    label: "X / Twitter",
-    icon: Twitter,
-    hasFollowers: false,
-    placeholder: "@handle",
-  },
-];
 
 export function RegisterPage() {
   const { register, user } = useAuth();
@@ -156,17 +97,9 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
-  const [signupType, setSignupType] = useState<SignupType | null>(null);
   const [registerError, setRegisterError] = useState<{ emailExists?: boolean; message?: string } | null>(null);
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [resendingVerification, setResendingVerification] = useState(false);
-  const [socialForm, setSocialForm] = useState<SocialFormState>({
-    instagram: { username: "", followerCount: "" },
-    tiktok: { username: "", followerCount: "" },
-    youtube: { username: "", followerCount: "" },
-    linkedin: { username: "" },
-    x: { username: "" },
-  });
 
   const benefits = [
     t("landing.freeForEveryone"),
@@ -212,69 +145,19 @@ export function RegisterPage() {
   const selectedCountry = form.watch("country") || "AE";
   const cityOptions = getCitiesForCountry(selectedCountry);
 
-  const buildSocialProfiles = (): SocialProfile[] => {
-    const profiles: SocialProfile[] = [];
-
-    if (socialForm.instagram.username.trim()) {
-      profiles.push({
-        platform: "instagram",
-        username: socialForm.instagram.username.trim(),
-        followerCount: socialForm.instagram.followerCount
-          ? parseInt(socialForm.instagram.followerCount, 10) || undefined
-          : undefined,
-      });
-    }
-    if (socialForm.tiktok.username.trim()) {
-      profiles.push({
-        platform: "tiktok",
-        username: socialForm.tiktok.username.trim(),
-        followerCount: socialForm.tiktok.followerCount
-          ? parseInt(socialForm.tiktok.followerCount, 10) || undefined
-          : undefined,
-      });
-    }
-    if (socialForm.youtube.username.trim()) {
-      profiles.push({
-        platform: "youtube",
-        username: socialForm.youtube.username.trim(),
-        followerCount: socialForm.youtube.followerCount
-          ? parseInt(socialForm.youtube.followerCount, 10) || undefined
-          : undefined,
-      });
-    }
-    if (socialForm.linkedin.username.trim()) {
-      profiles.push({
-        platform: "linkedin",
-        username: socialForm.linkedin.username.trim(),
-      });
-    }
-    if (socialForm.x.username.trim()) {
-      profiles.push({
-        platform: "x",
-        username: socialForm.x.username.trim(),
-      });
-    }
-
-    return profiles;
-  };
-
   const handleFinalSubmit = async () => {
     const formValues = form.getValues();
     setIsLoading(true);
     try {
-      const socialProfiles = buildSocialProfiles();
       await register({
         email: formValues.email,
         password: formValues.password,
         fullName: formValues.fullName,
         country: formValues.country,
         city: formValues.city,
-        signupType: signupType || undefined,
-        socialProfiles: socialProfiles.length > 0 ? socialProfiles : undefined,
         inviteCode: inviteCode.trim().toUpperCase().slice(0, 16) || undefined,
       });
       trackEvent("register", {
-        account_type: signupType || undefined,
         country: formValues.country,
       });
       // Show "check your email" step instead of navigating directly
@@ -304,27 +187,13 @@ export function RegisterPage() {
     }
   };
 
-  const onStep2Submit = async (data: RegisterForm) => {
-    setStep(3);
-  };
-
-  const handleSocialChange = (
-    platform: keyof SocialFormState,
-    field: string,
-    value: string,
-  ) => {
-    setSocialForm((prev) => ({
-      ...prev,
-      [platform]: {
-        ...prev[platform],
-        [field]: value,
-      },
-    }));
+  const onStep2Submit = async (_data: RegisterForm) => {
+    await handleFinalSubmit();
   };
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center gap-2 mb-6">
-      {[1, 2, 3].map((s) => (
+      {[1, 2].map((s) => (
         <div key={s} className="flex items-center gap-2">
           <div
             className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
@@ -338,7 +207,7 @@ export function RegisterPage() {
           >
             {s < step ? <CheckCircle className="h-4 w-4" /> : s}
           </div>
-          {s < 3 && (
+          {s < 2 && (
             <div
               className={`h-0.5 w-8 transition-colors ${
                 s < step ? "bg-primary" : "bg-muted"
@@ -352,114 +221,64 @@ export function RegisterPage() {
 
   const renderStep1 = () => (
     <>
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-xl">Create your account</CardTitle>
+      <CardHeader className="space-y-1 text-center pb-2">
+        <CardTitle className="text-2xl">Create your account</CardTitle>
         <CardDescription>
           Join Bareter — UAE's first smart barter marketplace
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {renderStepIndicator()}
-
-        {/* Social OAuth */}
-        {(googleEnabled || appleEnabled) && (
-          <>
-            <div className={`grid gap-3 ${googleEnabled && appleEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
-              {googleEnabled && (
-                <a
-                  href="/auth/google"
-                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
-                  data-testid="button-google-register"
-                >
-                  <GoogleSignInIcon />
-                  Google
-                </a>
-              )}
-              {appleEnabled && (
-                <a
-                  href="/auth/apple"
-                  className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
-                  data-testid="button-apple-register"
-                >
-                  <AppleSignInIcon />
-                  Apple
-                </a>
-              )}
-            </div>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200 dark:border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">or choose account type</span>
-              </div>
-            </div>
-          </>
+      <CardContent className="space-y-3 pt-4">
+        {googleEnabled && (
+          <a
+            href="/auth/google"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+            data-testid="button-google-register"
+          >
+            <GoogleSignInIcon />
+            Continue with Google
+          </a>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={() => { setSignupType("personal"); setStep(2); }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "personal" ? "border-primary bg-primary/5" : "border-border"}`}
-            data-testid="card-signup-personal"
+        {appleEnabled && (
+          <a
+            href="/auth/apple"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors shadow-sm"
+            data-testid="button-apple-register"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-              <User className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Personal</p>
-              <p className="text-xs text-muted-foreground mt-1">Individuals & sole traders</p>
-            </div>
-          </button>
+            <AppleSignInIcon />
+            Continue with Apple
+          </a>
+        )}
 
-          <button
-            type="button"
-            onClick={() => { setSignupType("business"); setStep(2); }}
-            className={`relative flex flex-col items-center gap-3 rounded-md border p-5 text-center transition-colors hover-elevate cursor-pointer ${signupType === "business" ? "border-primary bg-primary/5" : "border-border"}`}
-            data-testid="card-signup-business"
-          >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-              <Building2 className="h-5 w-5 text-primary" />
+        {(googleEnabled || appleEnabled) && (
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200 dark:border-border" />
             </div>
-            <div>
-              <p className="font-semibold text-sm">Business</p>
-              <p className="text-xs text-muted-foreground mt-1">Companies & agencies</p>
-            </div>
-          </button>
-
-          <div
-            className="relative flex flex-col items-center gap-3 rounded-md border border-border p-5 text-center overflow-hidden cursor-not-allowed opacity-60"
-            data-testid="card-signup-creator"
-          >
-            {/* diagonal "Coming Soon" ribbon */}
-            <div className="pointer-events-none absolute inset-0">
-              <div
-                className="absolute inset-0"
-                style={{
-                  background: "repeating-linear-gradient(135deg, transparent, transparent 18px, rgba(100,116,139,0.07) 18px, rgba(100,116,139,0.07) 20px)",
-                }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span
-                  className="text-[11px] font-bold tracking-widest uppercase text-slate-400 border border-slate-300 px-2 py-0.5 rounded"
-                  style={{ transform: "rotate(-25deg)", whiteSpace: "nowrap" }}
-                >
-                  Coming Soon
-                </span>
-              </div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-              <Camera className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Creator</p>
-              <p className="text-xs text-muted-foreground mt-1">Influencers & content creators</p>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">or</span>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-6 text-center text-sm">
+        <Button
+          variant="outline"
+          className="w-full h-11 font-semibold"
+          onClick={() => setStep(2)}
+          data-testid="button-continue-email"
+        >
+          <Mail className="mr-2 h-4 w-4" />
+          Continue with email
+        </Button>
+
+        <p className="text-center text-xs text-muted-foreground pt-1">
+          By continuing you agree to our{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms</a>
+          {" & "}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>
+        </p>
+
+        <div className="text-center text-sm pt-1">
           <span className="text-muted-foreground">{t("auth.haveAccount")} </span>
           <Link href="/login" className="text-primary hover:underline font-medium" data-testid="link-login">
             {t("auth.signIn")}
@@ -472,12 +291,7 @@ export function RegisterPage() {
   const renderStep2 = () => (
     <>
       <CardHeader className="space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <CardTitle className="text-xl">{t("auth.register")}</CardTitle>
-          <Badge variant="secondary" className="text-xs capitalize">
-            {signupType}
-          </Badge>
-        </div>
+        <CardTitle className="text-xl">{t("auth.register")}</CardTitle>
         <CardDescription>
           {t("auth.joinMargin")}
         </CardDescription>
@@ -690,10 +504,14 @@ export function RegisterPage() {
               <Button
                 type="submit"
                 className="flex-1"
-                data-testid="button-next-step3"
+                disabled={isLoading}
+                data-testid="button-create-account"
               >
-                Continue
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {isLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("common.loading")}</>
+                ) : (
+                  <>{t("auth.register")}<ArrowRight className="ml-2 h-4 w-4" /></>
+                )}
               </Button>
             </div>
           </form>
@@ -709,124 +527,6 @@ export function RegisterPage() {
     </>
   );
 
-  const renderStep3 = () => (
-    <>
-      <CardHeader className="space-y-1">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-xl">Social Media Presence</CardTitle>
-          <Badge variant="secondary" className="text-xs">Optional</Badge>
-        </div>
-        <CardDescription>
-          Add your social profiles to help partners find and verify you. You can skip this step.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {renderStepIndicator()}
-
-        {/* Email-already-exists inline banner */}
-        {registerError?.emailExists && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-4 py-3.5 flex flex-col gap-1">
-            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-              An account with this email already exists
-            </p>
-            <p className="text-sm text-amber-800 dark:text-amber-300">
-              Looks like you've already signed up. Please{" "}
-              <Link href="/login" className="font-semibold underline hover:no-underline">sign in to your account</Link>
-              {" "}instead, or use a different email address.
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {SOCIAL_PLATFORMS.map((platform) => {
-            const Icon = platform.icon;
-            const state = socialForm[platform.key];
-            return (
-              <div
-                key={platform.key}
-                className="rounded-md border p-4 space-y-3"
-              >
-                <div className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{platform.label}</span>
-                </div>
-                <div className={`grid gap-3 ${platform.hasFollowers ? "grid-cols-2" : "grid-cols-1"}`}>
-                  <Input
-                    placeholder={platform.placeholder}
-                    value={state.username}
-                    onChange={(e) =>
-                      handleSocialChange(platform.key, "username", e.target.value)
-                    }
-                    data-testid={`input-social-${platform.key}-username`}
-                  />
-                  {platform.hasFollowers && "followerCount" in state && (
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        placeholder="Followers"
-                        value={(state as { username: string; followerCount: string }).followerCount}
-                        onChange={(e) =>
-                          handleSocialChange(
-                            platform.key,
-                            "followerCount",
-                            e.target.value,
-                          )
-                        }
-                        data-testid={`input-social-${platform.key}-followers`}
-                      />
-                      <Users className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => { setStep(2); setRegisterError(null); }}
-            data-testid="button-back-step2"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={handleFinalSubmit}
-            disabled={isLoading || !!registerError?.emailExists}
-            data-testid="button-skip-social"
-          >
-            <SkipForward className="mr-2 h-4 w-4" />
-            Skip
-          </Button>
-          <Button
-            type="button"
-            className="flex-1"
-            onClick={handleFinalSubmit}
-            disabled={isLoading || !!registerError?.emailExists}
-            data-testid="button-submit-register"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t("common.loading")}
-              </>
-            ) : (
-              <>
-                {t("auth.register")}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </>
-  );
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 py-12">
@@ -918,7 +618,6 @@ export function RegisterPage() {
               <>
                 {step === 1 && renderStep1()}
                 {step === 2 && renderStep2()}
-                {step === 3 && renderStep3()}
               </>
             )}
           </Card>
