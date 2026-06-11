@@ -1,10 +1,7 @@
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  type WASocket,
-} from "@whiskeysockets/baileys";
+// Baileys is ESM-only. Dynamic import at runtime avoids the CJS bundling
+// issue where esbuild compiles `import makeWASocket from "..."` into
+// `ba.default()` which fails when the module's default export isn't hoisted.
+import type { WASocket } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import * as QRCode from "qrcode";
 import * as path from "path";
@@ -218,6 +215,12 @@ class WhatsAppService extends EventEmitter {
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
+      console.log("[whatsapp] Loading Baileys module…");
+      const baileys = await import("@whiskeysockets/baileys");
+      const makeWASocket = baileys.default ?? (baileys as any);
+      const { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, DisconnectReason: DR } = baileys;
+      console.log("[whatsapp] Baileys loaded, typeof makeWASocket:", typeof makeWASocket);
+
       console.log("[whatsapp] Loading auth state…");
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
@@ -289,7 +292,7 @@ class WhatsAppService extends EventEmitter {
       if (connection === "close") {
         clearTimeout(hardTimeout);
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
-        const loggedOut = code === DisconnectReason.loggedOut;
+        const loggedOut = code === 401; // DisconnectReason.loggedOut
 
         console.warn(`[whatsapp] Connection closed — code: ${code}, loggedOut: ${loggedOut}`);
 
