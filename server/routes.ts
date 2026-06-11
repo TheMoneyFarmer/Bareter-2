@@ -4166,9 +4166,22 @@ export async function registerRoutes(
     res.json({
       state: whatsappService.getState(),
       hasQr: !!whatsappService.getQR(),
+      pairingCode: whatsappService.getPairingCode(),
       lastError: whatsappService.getLastError(),
       connectAttempts: whatsappService.getConnectAttempts(),
     });
+  });
+
+  app.post("/api/admin/whatsapp/pairing-code", requireAdmin, async (req, res) => {
+    const phone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
+    if (!phone) return res.status(400).json({ message: "phone required" });
+    try {
+      const { whatsappService } = await import("./whatsappService");
+      const code = await whatsappService.requestPairingCode(phone);
+      res.json({ code });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to get pairing code" });
+    }
   });
 
   app.get("/api/admin/whatsapp/qr", requireAdmin, async (_req, res) => {

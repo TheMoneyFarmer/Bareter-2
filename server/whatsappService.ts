@@ -37,6 +37,7 @@ class WhatsAppService extends EventEmitter {
   private stopped = false;
   private lastError: string | null = null;
   private connectAttempts = 0;
+  private pairingCode: string | null = null;
 
   // Consecutive OTP failure tracking
   private consecutiveFailures = 0;
@@ -50,6 +51,10 @@ class WhatsAppService extends EventEmitter {
     return this.qrBase64;
   }
 
+  getPairingCode(): string | null {
+    return this.pairingCode;
+  }
+
   getLastError(): string | null {
     return this.lastError;
   }
@@ -60,6 +65,23 @@ class WhatsAppService extends EventEmitter {
 
   isReady(): boolean {
     return this.state === "connected";
+  }
+
+  async requestPairingCode(phone: string): Promise<string> {
+    if (!this.sock) throw new Error("Not connected — wait for the socket to initialise first");
+    if (this.state === "connected") throw new Error("Already linked — no pairing needed");
+    // Digits only, no + or spaces
+    const digits = phone.replace(/\D/g, "");
+    if (!digits) throw new Error("Invalid phone number");
+    try {
+      const code: string = await (this.sock as any).requestPairingCode(digits);
+      // Format as XXXX-XXXX for readability
+      this.pairingCode = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+      console.log("[whatsapp] Pairing code issued for", digits);
+      return this.pairingCode;
+    } catch (err: any) {
+      throw new Error(`Failed to get pairing code: ${err?.message ?? String(err)}`);
+    }
   }
 
   // Called by the OTP route after each send attempt
@@ -283,6 +305,7 @@ class WhatsAppService extends EventEmitter {
         wasConnected = true;
         this.state = "connected";
         this.qrBase64 = null;
+        this.pairingCode = null;
         this.consecutiveFailures = 0;
         this.alertSentAt = null;
         console.log("[whatsapp] Connected");

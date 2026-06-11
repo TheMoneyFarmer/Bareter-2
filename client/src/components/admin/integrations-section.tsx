@@ -84,8 +84,10 @@ function StatusBadge({ configured }: { configured: boolean }) {
 function WhatsAppConnectionCard() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [linkMode, setLinkMode] = useState<"qr" | "phone">("qr");
+  const [pairingPhone, setPairingPhone] = useState("");
 
-  const { data: status, isLoading } = useQuery<{ state: string; hasQr: boolean; lastError: string | null; connectAttempts: number }>({
+  const { data: status, isLoading } = useQuery<{ state: string; hasQr: boolean; pairingCode: string | null; lastError: string | null; connectAttempts: number }>({
     queryKey: ["/api/admin/whatsapp/status"],
     queryFn: () => fetch("/api/admin/whatsapp/status", { credentials: "include" }).then((r) => r.json()),
     refetchInterval: 3000,
@@ -95,7 +97,7 @@ function WhatsAppConnectionCard() {
   const { data: qrData } = useQuery<{ qr: string }>({
     queryKey: ["/api/admin/whatsapp/qr"],
     queryFn: () => fetch("/api/admin/whatsapp/qr", { credentials: "include" }).then((r) => r.json()),
-    enabled: status?.hasQr === true,
+    enabled: status?.hasQr === true && linkMode === "qr",
     refetchInterval: 20000,
     staleTime: 0,
   });
@@ -118,6 +120,12 @@ function WhatsAppConnectionCard() {
       toast({ title: "Restarting…", description: "QR code will appear shortly." });
     },
     onError: () => toast({ title: "Failed to restart", variant: "destructive" }),
+  });
+
+  const pairingMutation = useMutation({
+    mutationFn: (phone: string) => apiRequest("POST", "/api/admin/whatsapp/pairing-code", { phone }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/whatsapp/status"] }),
+    onError: (err: any) => toast({ title: "Failed to get code", description: err?.message, variant: "destructive" }),
   });
 
   const state = status?.state ?? "disconnected";
@@ -170,41 +178,95 @@ function WhatsAppConnectionCard() {
           <p className="text-xs text-green-600 font-medium">
             WhatsApp is connected. OTPs are being delivered via this number.
           </p>
-        ) : qrData?.qr ? (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Open WhatsApp on your phone → <strong>Linked Devices</strong> → <strong>Link a Device</strong> → scan this QR code.
-            </p>
-            <div className="flex justify-center">
-              <img src={qrData.qr} alt="WhatsApp QR Code" className="w-48 h-48 rounded-lg border" />
-            </div>
-            <p className="text-[11px] text-muted-foreground text-center">QR refreshes every 20 seconds</p>
-          </div>
         ) : (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Waiting for QR code… {status?.connectAttempts ? `(attempt ${status.connectAttempts})` : ""}
+          <>
+            {/* Mode toggle */}
+            <div className="flex gap-1 bg-muted rounded-md p-0.5 w-fit">
+              <button
+                onClick={() => setLinkMode("qr")}
+                className={`text-xs px-3 py-1 rounded transition-colors ${linkMode === "qr" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                QR Code
+              </button>
+              <button
+                onClick={() => setLinkMode("phone")}
+                className={`text-xs px-3 py-1 rounded transition-colors ${linkMode === "phone" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Phone number
+              </button>
             </div>
+
+            {linkMode === "qr" ? (
+              qrData?.qr ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Open WhatsApp → <strong>Linked Devices</strong> → <strong>Link a Device</strong> → scan this code.
+                  </p>
+                  <div className="flex justify-center">
+                    <img src={qrData.qr} alt="WhatsApp QR Code" className="w-48 h-48 rounded-lg border" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground text-center">QR refreshes every 20 seconds</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Waiting for QR code… {status?.connectAttempts ? `(attempt ${status.connectAttempts})` : ""}
+                </div>
+              )
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Enter the WhatsApp number you want to link. WhatsApp will show a prompt — tap <strong>Link with phone number</strong> and enter the code shown below.
+                </p>
+                {status?.pairingCode ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Enter this code in WhatsApp → Linked Devices → Link with phone number:</p>
+                    <div className="flex justify-center">
+                      <span className="text-3xl font-mono font-bold tracking-widest bg-muted px-6 py-3 rounded-lg border">
+                        {status.pairingCode}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground text-center">Code expires in ~2 minutes</p>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      type="tel"
+                      placeholder="+971 50 123 4567"
+                      value={pairingPhone}
+                      onChange={(e) => setPairingPhone(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 shrink-0"
+                      disabled={!pairingPhone.trim() || pairingMutation.isPending}
+                      onClick={() => pairingMutation.mutate(pairingPhone.trim())}
+                    >
+                      {pairingMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Get code"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {status?.lastError && (
               <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800 font-mono break-all">
                 Error: {status.lastError}
               </p>
             )}
-          </div>
-        )}
 
-        {state !== "connected" && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={() => restartMutation.mutate()}
-            disabled={restartMutation.isPending}
-          >
-            <RefreshCw className={`h-3 w-3 ${restartMutation.isPending ? "animate-spin" : ""}`} />
-            Restart connection
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => restartMutation.mutate()}
+              disabled={restartMutation.isPending}
+            >
+              <RefreshCw className={`h-3 w-3 ${restartMutation.isPending ? "animate-spin" : ""}`} />
+              Restart connection
+            </Button>
+          </>
         )}
       </CardContent>
     </Card>
