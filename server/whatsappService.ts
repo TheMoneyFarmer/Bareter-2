@@ -182,7 +182,20 @@ class WhatsAppService extends EventEmitter {
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+    // Fetch latest version with a timeout fallback — avoids hanging forever
+    // if WhatsApp's version endpoint is unreachable (common on some hosts)
+    const FALLBACK_VERSION: [number, number, number] = [2, 3000, 1023503901];
+    let version: [number, number, number] = FALLBACK_VERSION;
+    try {
+      const result = await Promise.race([
+        fetchLatestBaileysVersion(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]) as { version: [number, number, number] };
+      version = result.version;
+      console.log("[whatsapp] Using WA version:", version);
+    } catch (err) {
+      console.warn("[whatsapp] fetchLatestBaileysVersion failed — using fallback version:", FALLBACK_VERSION, err);
+    }
 
     this.sock = makeWASocket({
       version,
@@ -193,9 +206,23 @@ class WhatsAppService extends EventEmitter {
       },
       generateHighQualityLinkPreview: false,
       shouldIgnoreJid: () => false,
+      connectTimeoutMs: 30000,
+      retryRequestDelayMs: 2000,
     });
 
     this.sock.ev.on("creds.update", saveCreds);
+
+    // If no QR or connection within 40s, tear down and retry
+    const qrTimeout = setTimeout(() => {
+      if (this.state !== "connected") {
+        console.warn("[whatsapp] No QR/connection within 40s — restarting");
+        this.sock?.end(undefined);
+        this.sock = null;
+        this.state = "disconnected";
+        this.emit("state", this.state);
+        if (!this.stopped) this.connect();
+      }
+    }, 40000);
 
     // Track whether we were ever connected so we only alert on actual drops
     let wasConnected = false;
@@ -213,6 +240,7 @@ class WhatsAppService extends EventEmitter {
       }
 
       if (connection === "open") {
+        clearTimeout(qrTimeout);
         wasConnected = true;
         this.state = "connected";
         this.qrBase64 = null;
@@ -223,6 +251,7 @@ class WhatsAppService extends EventEmitter {
       }
 
       if (connection === "close") {
+        clearTimeout(qrTimeout);
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const loggedOut = code === DisconnectReason.loggedOut;
 
