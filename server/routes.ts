@@ -923,23 +923,30 @@ export async function registerRoutes(
         phoneVerified: false,
       }).where(eq(users.id, userId));
 
-      const { sendWhatsApp, isTwilioConfigured } = await import("./companyOs/twilio");
       const body = `Your Bareter verification code is: ${code}\nValid for 10 minutes.\nDo not share this code.`;
-
       const isDev = process.env.NODE_ENV !== "production";
 
-      if (!isTwilioConfigured() && !isDev) {
-        return res.status(503).json({ message: "WhatsApp verification is not available yet. Please try again later or contact support." });
+      // Try Baileys (self-hosted WhatsApp) first, fall back to Twilio
+      const { whatsappService } = await import("./whatsappService");
+      let sent = false;
+      if (whatsappService.isReady()) {
+        sent = await whatsappService.sendMessage(phone, body);
+        whatsappService.recordSendResult(sent);
       }
 
-      const sent = await sendWhatsApp(phone, body);
+      if (!sent) {
+        const { sendWhatsApp, isTwilioConfigured } = await import("./companyOs/twilio");
+        if (isTwilioConfigured()) {
+          sent = await sendWhatsApp(phone, body);
+        }
+      }
 
       if (!sent && !isDev) {
-        return res.status(503).json({ message: "Failed to send WhatsApp message. Please check your number and try again." });
+        return res.status(503).json({ message: "WhatsApp verification is not available right now. Please try again later." });
       }
 
       if (!sent && isDev) {
-        console.log(`[phone-otp] DEV: Twilio not configured — code for ${phone} is ${code}`);
+        console.log(`[phone-otp] DEV: WhatsApp not connected — code for ${phone} is ${code}`);
       }
 
       res.json({ message: "Code sent via WhatsApp", dev: isDev ? code : undefined });
@@ -4151,6 +4158,26 @@ export async function registerRoutes(
       console.error("Admin flag listing error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  // ── WhatsApp (Baileys) admin endpoints ───────────────────────────────────
+  app.get("/api/admin/whatsapp/status", requireAdmin, async (_req, res) => {
+    const { whatsappService } = await import("./whatsappService");
+    res.json({ state: whatsappService.getState(), hasQr: !!whatsappService.getQR() });
+  });
+
+  app.get("/api/admin/whatsapp/qr", requireAdmin, async (_req, res) => {
+    const { whatsappService } = await import("./whatsappService");
+    const qr = whatsappService.getQR();
+    if (!qr) return res.status(404).json({ message: "No QR code available — either already connected or still initialising" });
+    res.json({ qr });
+  });
+
+  app.post("/api/admin/whatsapp/logout", requireAdmin, async (_req, res) => {
+    const { whatsappService } = await import("./whatsappService");
+    await whatsappService.logout();
+    setTimeout(() => whatsappService.start(), 1000);
+    res.json({ ok: true, message: "Logged out — new QR code will appear shortly" });
   });
 
   // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle2, XCircle, Settings2, ExternalLink } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Settings2, ExternalLink, MessageCircle, RefreshCw, LogOut } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -78,6 +78,110 @@ function StatusBadge({ configured }: { configured: boolean }) {
     <Badge variant="secondary" className="gap-1 text-muted-foreground">
       <XCircle className="h-3 w-3" />Not connected
     </Badge>
+  );
+}
+
+function WhatsAppConnectionCard() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: status, isLoading } = useQuery<{ state: string; hasQr: boolean }>({
+    queryKey: ["/api/admin/whatsapp/status"],
+    queryFn: () => fetch("/api/admin/whatsapp/status", { credentials: "include" }).then((r) => r.json()),
+    refetchInterval: 3000,
+    staleTime: 0,
+  });
+
+  const { data: qrData } = useQuery<{ qr: string }>({
+    queryKey: ["/api/admin/whatsapp/qr"],
+    queryFn: () => fetch("/api/admin/whatsapp/qr", { credentials: "include" }).then((r) => r.json()),
+    enabled: status?.hasQr === true,
+    refetchInterval: 20000,
+    staleTime: 0,
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/whatsapp/logout"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/whatsapp/status"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/whatsapp/qr"] });
+      toast({ title: "Logged out", description: "New QR code will appear in a moment." });
+    },
+    onError: () => toast({ title: "Failed to logout", variant: "destructive" }),
+  });
+
+  const state = status?.state ?? "disconnected";
+
+  const stateBadge =
+    state === "connected" ? (
+      <Badge className="bg-green-100 text-green-700 border-green-200 gap-1">
+        <CheckCircle2 className="h-3 w-3" />Connected
+      </Badge>
+    ) : state === "connecting" ? (
+      <Badge variant="secondary" className="gap-1">
+        <Loader2 className="h-3 w-3 animate-spin" />Connecting…
+      </Badge>
+    ) : (
+      <Badge variant="secondary" className="gap-1 text-muted-foreground">
+        <XCircle className="h-3 w-3" />Disconnected
+      </Badge>
+    );
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <MessageCircle className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-base">WhatsApp (OTP delivery)</CardTitle>
+              {!isLoading && stateBadge}
+            </div>
+            <CardDescription className="text-xs leading-relaxed">
+              Self-hosted WhatsApp sender for user verification OTPs. Scan the QR code with a dedicated WhatsApp number.
+            </CardDescription>
+          </div>
+          {state === "connected" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground hover:text-destructive gap-1"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+            >
+              <LogOut className="h-3 w-3" />
+              Disconnect
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 pb-4">
+        {state === "connected" ? (
+          <p className="text-xs text-green-600 font-medium">
+            WhatsApp is connected. OTPs are being delivered via this number.
+          </p>
+        ) : qrData?.qr ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Open WhatsApp on your phone → <strong>Linked Devices</strong> → <strong>Link a Device</strong> → scan this QR code.
+            </p>
+            <div className="flex justify-center">
+              <img
+                src={qrData.qr}
+                alt="WhatsApp QR Code"
+                className="w-48 h-48 rounded-lg border"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground text-center">QR code refreshes automatically every 20 seconds</p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Waiting for QR code…
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -153,6 +257,7 @@ export function AdminIntegrationsSection() {
       </div>
 
       <div className="grid gap-4">
+        <WhatsAppConnectionCard />
         {INTEGRATIONS_CONFIG.map((config) => {
           const status = getStatus(config.service);
           const isConnected = status?.configured ?? false;

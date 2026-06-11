@@ -37,6 +37,41 @@ export function isTwilioConfigured(): boolean {
   );
 }
 
+export function isSmsConfigured(): boolean {
+  return Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_PHONE_FROM,
+  );
+}
+
+/**
+ * Send an SMS via Twilio. Returns true on success, false on any failure.
+ * Never throws. Use for OTP delivery — no opt-in required unlike WhatsApp sandbox.
+ */
+export async function sendSms(to: string, body: string): Promise<boolean> {
+  const client = getClient();
+  if (!client) {
+    console.warn("[companyOs.twilio] sendSms skipped — Twilio not configured");
+    return false;
+  }
+  const from = process.env.TWILIO_PHONE_FROM;
+  if (!from || !to) {
+    console.warn("[companyOs.twilio] sendSms skipped — missing from/to");
+    return false;
+  }
+  try {
+    await withRetry(
+      () => client.messages.create({ from, to, body: truncateBody(body) }),
+      { agentName: "twilio", opName: "sendSms" },
+    );
+    return true;
+  } catch (err) {
+    console.error("[companyOs.twilio] sendSms failed:", err);
+    return false;
+  }
+}
+
 export function isFounderConfigured(): boolean {
   return Boolean(process.env.FOUNDER_WHATSAPP_NUMBER);
 }

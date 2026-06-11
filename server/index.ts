@@ -282,6 +282,11 @@ app.use((req, res, next) => {
         .then(({ startScheduler }) => startScheduler())
         .catch((err) => console.error("[startup] scheduler failed:", err));
 
+      // 6b. Baileys WhatsApp service (OTP delivery).
+      import("./whatsappService")
+        .then(({ whatsappService }) => whatsappService.start())
+        .catch((err) => console.error("[startup] whatsappService failed:", err));
+
       // 6. Warm per-agent budget cache (degrades gracefully on miss).
       import("./companyOs/costTracker")
         .then(async ({ ensureAgentBudgetOverridesLoaded, seedAgentBudgetDefaults }) => {
