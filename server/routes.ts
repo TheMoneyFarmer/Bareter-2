@@ -4163,7 +4163,12 @@ export async function registerRoutes(
   // ── WhatsApp (Baileys) admin endpoints ───────────────────────────────────
   app.get("/api/admin/whatsapp/status", requireAdmin, async (_req, res) => {
     const { whatsappService } = await import("./whatsappService");
-    res.json({ state: whatsappService.getState(), hasQr: !!whatsappService.getQR() });
+    res.json({
+      state: whatsappService.getState(),
+      hasQr: !!whatsappService.getQR(),
+      lastError: whatsappService.getLastError(),
+      connectAttempts: whatsappService.getConnectAttempts(),
+    });
   });
 
   app.get("/api/admin/whatsapp/qr", requireAdmin, async (_req, res) => {
@@ -4178,6 +4183,13 @@ export async function registerRoutes(
     await whatsappService.logout();
     setTimeout(() => whatsappService.start(), 1000);
     res.json({ ok: true, message: "Logged out — new QR code will appear shortly" });
+  });
+
+  app.post("/api/admin/whatsapp/restart", requireAdmin, async (_req, res) => {
+    const { whatsappService } = await import("./whatsappService");
+    whatsappService.stop();
+    setTimeout(() => whatsappService.start(), 1000);
+    res.json({ ok: true, message: "Restarting WhatsApp connection…" });
   });
 
   // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.

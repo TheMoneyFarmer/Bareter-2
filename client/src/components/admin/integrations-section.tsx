@@ -85,7 +85,7 @@ function WhatsAppConnectionCard() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: status, isLoading } = useQuery<{ state: string; hasQr: boolean }>({
+  const { data: status, isLoading } = useQuery<{ state: string; hasQr: boolean; lastError: string | null; connectAttempts: number }>({
     queryKey: ["/api/admin/whatsapp/status"],
     queryFn: () => fetch("/api/admin/whatsapp/status", { credentials: "include" }).then((r) => r.json()),
     refetchInterval: 3000,
@@ -108,6 +108,16 @@ function WhatsAppConnectionCard() {
       toast({ title: "Logged out", description: "New QR code will appear in a moment." });
     },
     onError: () => toast({ title: "Failed to logout", variant: "destructive" }),
+  });
+
+  const restartMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/whatsapp/restart"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/whatsapp/status"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/whatsapp/qr"] });
+      toast({ title: "Restarting…", description: "QR code will appear shortly." });
+    },
+    onError: () => toast({ title: "Failed to restart", variant: "destructive" }),
   });
 
   const state = status?.state ?? "disconnected";
@@ -155,7 +165,7 @@ function WhatsAppConnectionCard() {
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-0 pb-4">
+      <CardContent className="pt-0 pb-4 space-y-3">
         {state === "connected" ? (
           <p className="text-xs text-green-600 font-medium">
             WhatsApp is connected. OTPs are being delivered via this number.
@@ -166,19 +176,35 @@ function WhatsAppConnectionCard() {
               Open WhatsApp on your phone → <strong>Linked Devices</strong> → <strong>Link a Device</strong> → scan this QR code.
             </p>
             <div className="flex justify-center">
-              <img
-                src={qrData.qr}
-                alt="WhatsApp QR Code"
-                className="w-48 h-48 rounded-lg border"
-              />
+              <img src={qrData.qr} alt="WhatsApp QR Code" className="w-48 h-48 rounded-lg border" />
             </div>
-            <p className="text-[11px] text-muted-foreground text-center">QR code refreshes automatically every 20 seconds</p>
+            <p className="text-[11px] text-muted-foreground text-center">QR refreshes every 20 seconds</p>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Waiting for QR code…
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Waiting for QR code… {status?.connectAttempts ? `(attempt ${status.connectAttempts})` : ""}
+            </div>
+            {status?.lastError && (
+              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800 font-mono break-all">
+                Error: {status.lastError}
+              </p>
+            )}
           </div>
+        )}
+
+        {state !== "connected" && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+          >
+            <RefreshCw className={`h-3 w-3 ${restartMutation.isPending ? "animate-spin" : ""}`} />
+            Restart connection
+          </Button>
         )}
       </CardContent>
     </Card>

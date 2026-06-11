@@ -22,6 +22,7 @@ const FAILURE_ALERT_THRESHOLD = 3;
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
+
 async function sendFounderAlert(subject: string, body: string) {
   try {
     const { sendAdminEmail } = await import("./emailService");
@@ -37,6 +38,8 @@ class WhatsAppService extends EventEmitter {
   private qrBase64: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private lastError: string | null = null;
+  private connectAttempts = 0;
 
   // Consecutive OTP failure tracking
   private consecutiveFailures = 0;
@@ -48,6 +51,14 @@ class WhatsAppService extends EventEmitter {
 
   getQR(): string | null {
     return this.qrBase64;
+  }
+
+  getLastError(): string | null {
+    return this.lastError;
+  }
+
+  getConnectAttempts(): number {
+    return this.connectAttempts;
   }
 
   isReady(): boolean {
@@ -177,7 +188,19 @@ class WhatsAppService extends EventEmitter {
   private async connect() {
     this.state = "connecting";
     this.qrBase64 = null;
+    this.connectAttempts++;
     this.emit("state", this.state);
+    console.log(`[whatsapp] connect() attempt #${this.connectAttempts}`);
+
+    try {
+      if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    } catch (err: any) {
+      this.lastError = `Cannot create auth dir: ${err?.message}`;
+      console.error("[whatsapp]", this.lastError);
+      this.state = "disconnected";
+      this.emit("state", this.state);
+      return;
+    }
 
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
