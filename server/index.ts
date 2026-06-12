@@ -223,6 +223,15 @@ app.use((req, res, next) => {
     next();
   });
 
+  // Redirect: www.bareter.com → bareter.com (production only, permanent).
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV !== "production") return next();
+    if (req.hostname === `www.${ADMIN_DOMAIN.replace(/^admin\./, "")}`) {
+      return res.redirect(301, `https://${req.hostname.replace(/^www\./, "")}${req.url}`);
+    }
+    next();
+  });
+
   // Redirect: bareter.com/admin/* → admin.bareter.com/admin/* (production only).
   // In dev both /admin routes work as normal so you can test without the subdomain.
   app.use((req: Request, res: Response, next: NextFunction) => {
