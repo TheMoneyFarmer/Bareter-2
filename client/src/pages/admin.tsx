@@ -850,6 +850,34 @@ export function AdminPage() {
     },
   });
 
+  const [sendingTestKey, setSendingTestKey] = useState<string | null>(null);
+  const sendTestEmailMutation = useMutation({
+    mutationFn: async (templateKey: string) => {
+      const res = await apiRequest("POST", `/api/admin/email/test/${templateKey}`, {});
+      return res.json() as Promise<{ ok: boolean; to: string; templateKey: string }>;
+    },
+    onSuccess: (data) => {
+      setSendingTestKey(null);
+      if (data.ok) {
+        toast({ title: "Test sent", description: `Email dispatched to ${data.to}` });
+      } else {
+        toast({ title: "Test failed", description: "Email provider not configured or send failed — check Email Logs", variant: "destructive" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/logs"] });
+    },
+    onError: () => {
+      setSendingTestKey(null);
+      toast({ title: "Error", description: "Failed to send test email", variant: "destructive" });
+    },
+  });
+
+  const { data: emailLogsData, refetch: refetchEmailLogs } = useQuery<any[]>({
+    queryKey: ["/api/admin/email/logs"],
+    queryFn: async () => { const r = await fetch("/api/admin/email/logs", { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+    staleTime: 0,
+    enabled: false,
+  });
+
   // NOTE: do NOT early-return here. There are more hooks declared further
   // down (useQuery for /api/admin/reports, /api/admin/behavioral-flags,
   // /api/admin/ai-logs and a few useState hooks) and an early return on
@@ -2241,9 +2269,21 @@ export function AdminPage() {
                       </Button>
                     </div>
                   ) : (
-                    <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingTemplateKey(key); setEditingTemplateValue(emailTemplates?.[key] || ""); }} data-testid={`button-edit-template-${key}`}>
-                      <Pencil className="h-3 w-3" /> Edit
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1 text-xs text-muted-foreground"
+                        disabled={sendingTestKey === key || sendTestEmailMutation.isPending}
+                        onClick={() => { setSendingTestKey(key); sendTestEmailMutation.mutate(key); }}
+                        data-testid={`button-test-template-${key}`}
+                      >
+                        {sendingTestKey === key ? "Sending…" : "Send Test"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingTemplateKey(key); setEditingTemplateValue(emailTemplates?.[key] || ""); }} data-testid={`button-edit-template-${key}`}>
+                        <Pencil className="h-3 w-3" /> Edit
+                      </Button>
+                    </div>
                   )}
                 </div>
                 {editingTemplateKey === key ? (
@@ -2256,7 +2296,7 @@ export function AdminPage() {
                       data-testid={`textarea-template-${key}`}
                     />
                     <div className="flex flex-wrap gap-1.5" data-testid={`template-vars-${key}`}>
-                      {vars.map((v) => (
+                      {[...vars, "{{actionUrl}}"].map((v) => (
                         <button
                           key={v}
                           type="button"
@@ -2383,6 +2423,60 @@ export function AdminPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Email Logs */}
+      <Card data-testid="card-email-logs">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base">Email Logs</CardTitle>
+            <CardDescription>Every transactional and test email sent — success and failures</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => refetchEmailLogs()} data-testid="button-refresh-email-logs">
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {!emailLogsData ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Click Refresh to load logs</p>
+          ) : emailLogsData.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No email logs yet — send a test to see entries here</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 pr-3">Time</th>
+                    <th className="pb-2 pr-3">Template</th>
+                    <th className="pb-2 pr-3">To</th>
+                    <th className="pb-2 pr-3">Subject</th>
+                    <th className="pb-2 pr-3">Status</th>
+                    <th className="pb-2">Source</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {emailLogsData.slice(0, 100).map((log: any) => (
+                    <tr key={log.id} className="hover:bg-muted/30">
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">{log.createdAt ? new Date(log.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                      <td className="py-1.5 pr-3 font-mono">{log.templateKey ? log.templateKey.replace("email_template_", "") : "—"}</td>
+                      <td className="py-1.5 pr-3 max-w-[160px] truncate">{log.recipientEmail}</td>
+                      <td className="py-1.5 pr-3 max-w-[200px] truncate text-muted-foreground">{log.subject}</td>
+                      <td className="py-1.5 pr-3">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${log.status === "sent" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                          {log.status === "sent" ? "✓ sent" : "✗ failed"}
+                        </span>
+                      </td>
+                      <td className="py-1.5">
+                        <span className="text-muted-foreground">{log.source}</span>
+                        {log.errorMessage && <p className="text-red-500 mt-0.5 max-w-[200px] truncate" title={log.errorMessage}>{log.errorMessage}</p>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 

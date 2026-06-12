@@ -80,6 +80,13 @@ export function RegisterPage() {
     } catch { return ""; }
   });
 
+  const redirectTo = (() => {
+    try {
+      const r = new URL(window.location.href).searchParams.get("redirect") || "";
+      return r.startsWith("/") ? r : "/browse";
+    } catch { return "/browse"; }
+  })();
+
   // Only bounce visitors to the waitlist when they DON'T have an invite
   // code. Friends who open an invite link must be able to reach the
   // registration form even while waitlist mode is on — the server still
@@ -592,7 +599,7 @@ export function RegisterPage() {
                   <p>3. You're all set — start bartering</p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Button onClick={() => navigate("/browse")} className="w-full">
+                  <Button onClick={() => navigate(redirectTo)} className="w-full">
                     Continue to Bareter
                   </Button>
                   <Button

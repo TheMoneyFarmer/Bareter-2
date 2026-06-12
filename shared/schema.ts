@@ -2134,15 +2134,20 @@ export const emailLogs = pgTable("email_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   recipientEmail: text("recipient_email").notNull(),
   subject: text("subject").notNull(),
-  status: text("status").notNull().default("sent"),
-  source: text("source").notNull().default("admin"),
+  status: text("status").notNull().default("sent"), // "sent" | "failed"
+  source: text("source").notNull().default("transactional"), // "transactional" | "broadcast" | "test"
+  templateKey: text("template_key"),               // e.g. "email_template_welcome"
+  userId: varchar("user_id", { length: 36 }).references(() => users.id), // recipient user if known
   broadcastId: varchar("broadcast_id", { length: 36 }),
+  resendMessageId: text("resend_message_id"),       // from Resend API response
   errorMessage: text("error_message"),
   sentBy: varchar("sent_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   statusIdx: index("email_logs_status_idx").on(table.status),
   broadcastIdx: index("email_logs_broadcast_idx").on(table.broadcastId),
+  templateKeyIdx: index("email_logs_template_key_idx").on(table.templateKey),
+  userIdIdx: index("email_logs_user_id_idx").on(table.userId),
   createdAtIdx: index("email_logs_created_at_idx").on(table.createdAt),
 }));
 

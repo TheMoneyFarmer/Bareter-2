@@ -2314,7 +2314,7 @@ export function FeedPage() {
               The Bareter Feed is a private space for verified members to share offers, requests, and updates. Sign in to continue, or join the waitlist if you are new.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button onClick={() => navigate("/login")} data-testid="button-feed-gate-login">
+              <Button onClick={() => navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`)} data-testid="button-feed-gate-login">
                 Sign In
               </Button>
               <Button variant="outline" onClick={() => navigate("/register")} data-testid="button-feed-gate-register">

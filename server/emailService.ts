@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer";
 import { getUncachableResendClient, isResendReady } from "./resendClient";
 import { storage } from "./storage";
+import { db } from "./db";
+import { emailLogs } from "@shared/schema";
 
 function createSmtpTransport() {
   const host = process.env.SMTP_HOST;
@@ -52,9 +54,11 @@ interface MailOptions {
   html: string;
   text: string;
   attachments?: MailAttachment[];
+  templateKey?: string;
+  userId?: string;
 }
 
-async function sendViaResend(opts: MailOptions): Promise<boolean> {
+async function sendViaResend(opts: MailOptions): Promise<{ ok: boolean; messageId?: string }> {
   const { client, fromEmail } = await getUncachableResendClient();
   const from = `${APP_NAME} <${fromEmail || process.env.FROM_EMAIL || FALLBACK_FROM}>`;
   const result = await client.emails.send({
@@ -71,9 +75,9 @@ async function sendViaResend(opts: MailOptions): Promise<boolean> {
   });
   if (result.error) {
     console.error("[EMAIL] Resend error:", result.error);
-    return false;
+    return { ok: false };
   }
-  return true;
+  return { ok: true, messageId: (result.data as any)?.id };
 }
 
 async function sendViaSmtp(opts: MailOptions): Promise<boolean> {
@@ -94,15 +98,49 @@ async function sendViaSmtp(opts: MailOptions): Promise<boolean> {
   return true;
 }
 
+async function logEmailAttempt(opts: {
+  to: string;
+  subject: string;
+  status: "sent" | "failed";
+  source: "transactional" | "broadcast" | "test";
+  templateKey?: string;
+  userId?: string;
+  resendMessageId?: string;
+  errorMessage?: string;
+}) {
+  try {
+    await db.insert(emailLogs).values({
+      recipientEmail: opts.to,
+      subject: opts.subject,
+      status: opts.status,
+      source: opts.source,
+      templateKey: opts.templateKey ?? null,
+      userId: opts.userId ?? null,
+      resendMessageId: opts.resendMessageId ?? null,
+      errorMessage: opts.errorMessage ?? null,
+    });
+  } catch (logErr) {
+    console.error("[EMAIL] Failed to write to email_logs:", logErr);
+  }
+}
+
 async function sendMail(opts: MailOptions): Promise<boolean> {
+  console.log(`[EMAIL] Attempting ${opts.templateKey ?? "unknown"} → ${opts.to} | "${opts.subject}"`);
   let resendAttempted = false;
   if (await isResendReady()) {
     resendAttempted = true;
     try {
-      const ok = await sendViaResend(opts);
-      if (ok) return true;
+      const { ok, messageId } = await sendViaResend(opts);
+      if (ok) {
+        console.log(`[EMAIL] ✓ Resend OK ${opts.templateKey ?? ""} → ${opts.to} | msgId=${messageId ?? "?"}`);
+        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, resendMessageId: messageId });
+        return true;
+      }
+      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: "Resend returned error" });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error("[EMAIL] Resend send failed:", err);
+      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: `Resend exception: ${msg}` });
     }
     // Resend failed — fall through to SMTP if configured.
   }
@@ -113,11 +151,18 @@ async function sendMail(opts: MailOptions): Promise<boolean> {
         if (resendAttempted) {
           console.warn("[EMAIL] Delivered via SMTP after Resend failure.");
         }
+        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source: "transactional", templateKey: opts.templateKey, userId: opts.userId });
         return true;
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error("[EMAIL] SMTP send failed:", err);
+      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: `SMTP exception: ${msg}` });
     }
+  }
+  if (!resendAttempted && !hasSmtpConfig()) {
+    console.error(`[EMAIL] ✗ No mail provider configured — dropped ${opts.templateKey ?? ""} → ${opts.to}`);
+    await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: "No mail provider configured" });
   }
   return false;
 }
@@ -312,6 +357,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
     subject: `Reset your ${APP_NAME} password`,
     html,
     text,
+    templateKey: "email_template_password_reset",
   });
 
   if (!sent) {
@@ -413,6 +459,7 @@ export async function sendDealCompletedEmail(
     subject: `Your ${APP_NAME} trade with ${opts.counterpartyName} is complete`,
     html,
     text,
+    templateKey: "email_template_deal_completed",
   });
 }
 
@@ -437,6 +484,7 @@ export async function sendReEngagementEmail(
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    templateKey: "email_template_re_engagement",
   });
 }
 
@@ -631,7 +679,7 @@ export async function sendListingRejectionEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" was reviewed and could not be approved.\n\nReason: ${opts.reason}\n\nYou can update your listing and resubmit it for review.\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text });
+  return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text, templateKey: "email_template_listing_rejected" });
 }
 
 export async function sendWaitlistLaunchEmail(
@@ -865,6 +913,7 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
     subject: `Welcome to ${APP_NAME}!`,
     html,
     text,
+    templateKey: "email_template_welcome",
   });
 }
 
@@ -908,7 +957,7 @@ export async function sendVerificationApprovedEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nCongratulations! Your ${verType} verification has been approved. You can now start bartering on ${APP_NAME}.\n\nVisit ${baseUrl}/browse to get started.\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Verification Approved — Welcome to ${APP_NAME}!`, html, text });
+  return sendMail({ to: toEmail, subject: `Verification Approved — Welcome to ${APP_NAME}!`, html, text, templateKey: "email_template_verification_approved" });
 }
 
 export async function sendVerificationDeclinedEmail(
@@ -1227,7 +1276,7 @@ export async function sendListingPublishedEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nCongratulations! Your listing "${opts.listingTitle}" is now live on ${APP_NAME}.\n\nView it here: ${listingUrl}\n\nYou will be notified when someone sends a barter offer.\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" is live on ${APP_NAME}!`, html, text });
+  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" is live on ${APP_NAME}!`, html, text, templateKey: "email_template_listing_approved" });
 }
 
 // ─── New Barter Proposal Notification ────────────────────────────────────────
@@ -1255,7 +1304,7 @@ export async function sendNewProposalEmail(
     const baseUrl = opts.listingUrl.replace(/\/listings\/.*$/, "");
     const html = applyTemplateVars(customTemplate, { greeting, proposerName: safeProposer, listingTitle: safeTitle, senderName: safeProposer, appName: APP_NAME, baseUrl });
     const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
-    return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text });
+    return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text, templateKey: "email_template_proposal_received" });
   }
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
@@ -1282,7 +1331,7 @@ export async function sendNewProposalEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\n${opts.proposerName} proposed a barter on your listing "${opts.listingTitle}".\n\nThey're offering: ${opts.offerItemName} — AED ${parseFloat(opts.offerItemValue).toLocaleString()}\n\nView the proposal: ${opts.listingUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `${opts.proposerName} proposed a barter on "${opts.listingTitle}"`, html, text });
+  return sendMail({ to: toEmail, subject: `${opts.proposerName} proposed a barter on "${opts.listingTitle}"`, html, text, templateKey: "email_template_new_proposal" });
 }
 
 // ─── Deal Status Emails ───────────────────────────────────────────────────────
@@ -1390,7 +1439,7 @@ export async function sendDealStatusEmail(
       const safeCounterparty = opts.counterpartyName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const html = applyTemplateVars(customTemplate, { greeting, counterpartyName: safeCounterparty, listingTitle: opts.counterpartyName, dealUrl, appName: APP_NAME, baseUrl: opts.baseUrl });
       const text = `${greeting}\n\n${opts.counterpartyName} accepted your barter offer. View deal: ${dealUrl}\n\n— ${APP_NAME}`;
-      return sendMail({ to: toEmail, subject: config.subject, html, text });
+      return sendMail({ to: toEmail, subject: config.subject, html, text, templateKey: "email_template_proposal_accepted" });
     }
   }
 
@@ -1412,7 +1461,7 @@ export async function sendDealStatusEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\n${config.title}\n\n${config.body.replace(/<[^>]+>/g, "")}\n\n${config.cta}: ${config.ctaUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: config.subject, html, text });
+  return sendMail({ to: toEmail, subject: config.subject, html, text, templateKey: opts.status === "accepted" ? "email_template_proposal_accepted" : undefined });
 }
 
 // ─── Profile Updated ──────────────────────────────────────────────────────────
@@ -1538,7 +1587,7 @@ export async function sendMatchFoundEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" has a new match: "${opts.matchedListingTitle}" (${scoreStr}% match).\n\nView your matches: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `New match for your listing "${opts.listingTitle}"`, html, text });
+  return sendMail({ to: toEmail, subject: `New match for your listing "${opts.listingTitle}"`, html, text, templateKey: "email_template_match_found" });
 }
 
 // ─── New Deal Message ─────────────────────────────────────────────────────────
@@ -1568,7 +1617,7 @@ export async function sendNewMessageEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\n${opts.senderName} sent you a message about "${opts.listingTitle}".\n\nReply: ${dealUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `New message from ${opts.senderName} on "${opts.listingTitle}"`, html, text });
+  return sendMail({ to: toEmail, subject: `New message from ${opts.senderName} on "${opts.listingTitle}"`, html, text, templateKey: "email_template_new_message" });
 }
 
 // ─── Proposal Received (template-driven alias for sendNewProposalEmail) ────────
@@ -1597,7 +1646,7 @@ export async function sendProposalReceivedEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text });
+  return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text, templateKey: "email_template_proposal_received" });
 }
 
 // ─── Contract Ready for Signature ─────────────────────────────────────────────
@@ -1629,7 +1678,7 @@ export async function sendContractReadyEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nYour barter contract for "${opts.listingTitle}" is ready. Sign it here: ${dealUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Action required: sign your barter contract for "${opts.listingTitle}"`, html, text });
+  return sendMail({ to: toEmail, subject: `Action required: sign your barter contract for "${opts.listingTitle}"`, html, text, templateKey: "email_template_contract_ready" });
 }
 
 // ─── Proposal Declined ────────────────────────────────────────────────────────
@@ -1658,7 +1707,7 @@ export async function sendProposalDeclinedEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nYour proposal on "${opts.listingTitle}" was declined. Browse other listings: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" was not accepted`, html, text });
+  return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" was not accepted`, html, text, templateKey: "email_template_proposal_declined" });
 }
 
 // ─── Listing Expiring Soon ────────────────────────────────────────────────────
@@ -1689,5 +1738,9 @@ export async function sendListingExpiringEmail(
   </div>
 </body></html>`;
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}. Renew it here: ${listingUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}`, html, text });
+  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}`, html, text, templateKey: "email_template_listing_expiring" });
+}
+
+export async function sendRawEmail(opts: { to: string; subject: string; html: string; text: string; templateKey?: string; userId?: string }): Promise<boolean> {
+  return sendMail(opts);
 }

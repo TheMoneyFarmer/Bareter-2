@@ -4639,6 +4639,82 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Email Logs ──────────────────────────────────────────────────────────────
+  app.get("/api/admin/email/logs", requireAdmin, async (req, res) => {
+    try {
+      const { emailLogs } = await import("@shared/schema");
+      const { db: dbInst } = await import("./db");
+      const { desc, eq, and, gte } = await import("drizzle-orm");
+      const { templateKey, status, since } = req.query as Record<string, string | undefined>;
+      const conditions: Parameters<typeof and>[0][] = [];
+      if (templateKey) conditions.push(eq(emailLogs.templateKey, templateKey));
+      if (status) conditions.push(eq(emailLogs.status, status));
+      if (since) conditions.push(gte(emailLogs.createdAt, new Date(since)));
+      const rows = await dbInst
+        .select()
+        .from(emailLogs)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(emailLogs.createdAt))
+        .limit(200);
+      res.json(rows);
+    } catch (err) {
+      console.error("Email logs error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/admin/email/test/:templateKey — send a test email to the admin
+  app.post("/api/admin/email/test/:templateKey", requireAdmin, async (req, res) => {
+    try {
+      const { templateKey } = req.params;
+      const { emailLogs: emailLogsTable } = await import("@shared/schema");
+      const { db: dbInst } = await import("./db");
+      const baseUrl = process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://bareter.com";
+      const adminUser = await storage.getUser(req.session.userId!);
+      const toEmail = adminUser?.email || "thandolwenkosimceeyah@gmail.com";
+
+      // Sample variable sets per template
+      const sampleVars: Record<string, Record<string, string>> = {
+        email_template_welcome: { fullName: adminUser?.fullName || "Founder", appName: "Bareter", email: toEmail, actionUrl: `${baseUrl}/browse` },
+        email_template_password_reset: { resetUrl: `${baseUrl}/reset-password?token=test`, appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/reset-password?token=test` },
+        email_template_deal_completed: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, counterpartyName: "Test Company", dealUrl: `${baseUrl}/deals/test-123`, appName: "Bareter", actionUrl: `${baseUrl}/deals/test-123` },
+        email_template_listing_rejected: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", reason: "Test rejection reason", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/my-listings` },
+        email_template_listing_approved: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", listingUrl: `${baseUrl}/listings/test-123`, appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
+        email_template_new_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, proposerName: "Test Co", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
+        email_template_proposal_received: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, proposerName: "Test Co", listingTitle: "Test Listing", senderName: "Test Co", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
+        email_template_proposal_accepted: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, counterpartyName: "Test Co", listingTitle: "Test Listing", dealUrl: `${baseUrl}/deals/test-123`, appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
+        email_template_verification_approved: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/browse` },
+        email_template_re_engagement: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/browse` },
+        email_template_match_found: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", matchedListingTitle: "Matched Listing", matchScore: "87", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
+        email_template_new_message: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, senderName: "Test Co", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
+        email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
+        email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
+        email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", daysLeft: "3", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
+      };
+
+      const vars = sampleVars[templateKey] || { appName: "Bareter", baseUrl, actionUrl: baseUrl };
+      const customHtml = await storage.getAppSetting(templateKey);
+      const { applyTemplateVars, sendRawEmail } = await import("./emailService");
+
+      if (!customHtml || !customHtml.trim()) {
+        const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f4f4f5;"><div style="max-width:520px;margin:0 auto;background:white;border-radius:12px;padding:32px;"><h2 style="color:#136c68;">Test: ${templateKey}</h2><p>This is a test send for template <strong>${templateKey}</strong>. No custom HTML has been saved yet — the default template is used in code.</p><p>Sent to: ${toEmail}</p></div></body></html>`;
+        const text = `Test email for template: ${templateKey}\n\nNo custom HTML saved yet. Default template used.\n\nSent to: ${toEmail}`;
+        const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
+        await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+        return res.json({ ok, to: toEmail, templateKey });
+      }
+
+      const html = applyTemplateVars(customHtml, vars);
+      const text = `Test email for template: ${templateKey}\n\nSent to: ${toEmail}`;
+      const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
+      await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+      return res.json({ ok, to: toEmail, templateKey });
+    } catch (err) {
+      console.error("Email test error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Agent Health Dashboard — for each canonical agent, surface
   // last-call timestamp, recent activity counts, status (healthy /
   // never_called / errored), enabled flag, and budget row presence.

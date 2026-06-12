@@ -852,7 +852,7 @@ export function ListingDetailPage() {
                     size="icon"
                     onClick={() => {
                       if (!gate()) return;
-                      if (!user) { navigate("/login"); return; }
+                      if (!user) { navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`); return; }
                       setShowReport(true);
                     }}
                     data-testid="button-report-listing"
