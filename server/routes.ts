@@ -716,20 +716,30 @@ export async function registerRoutes(
     try {
       const data = res.locals.registerData as ReturnType<typeof registerSchema.parse>;
 
-      const regEnabled = await storage.getAppSetting("registration_enabled");
+      // Run all independent pre-flight checks in parallel to cut latency from
+      // ~4s (8 sequential NeonDB WebSocket round-trips) down to ~1s.
+      const regPhone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
+      if (regPhone && !/^\+[1-9]\d{7,14}$/.test(regPhone)) {
+        return res.status(400).json({ message: "Invalid phone number format. Use international format e.g. +971501234567" });
+      }
+
+      const [regEnabled, inviteOnly, existingUser, isBanned, waitlistEntry, phoneUser] = await Promise.all([
+        storage.getAppSetting("registration_enabled"),
+        storage.getAppSetting("invite_only_mode"),
+        storage.getUserByEmail(data.email),
+        storage.isBannedEmail(data.email),
+        storage.getWaitlistEntryByEmail(data.email).catch(() => null),
+        regPhone ? storage.getUserByPhone(regPhone) : Promise.resolve(null),
+      ]);
+
       if (regEnabled === "false") {
         return res.status(403).json({ message: "Registration is currently disabled. Please check back later." });
       }
 
-      const inviteOnly = await storage.getAppSetting("invite_only_mode");
       if (inviteOnly === "true") {
         const inviteCode = data.inviteCode;
-        let invited = false;
-        const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => null);
-        if (waitlistEntry) {
-          invited = true;
-        } else if (inviteCode) {
-          // Check beta invite code first (fastest path for testers)
+        let invited = !!waitlistEntry;
+        if (!invited && inviteCode) {
           const betaCode = await storage.getAppSetting("beta_invite_code").catch(() => null);
           if (betaCode && inviteCode === betaCode) {
             invited = true;
@@ -743,38 +753,25 @@ export async function registerRoutes(
         }
       }
 
-      const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      // Block duplicate phone numbers — same phone can't be used for multiple accounts
-      const regPhone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
-      if (regPhone) {
-        // E.164 validation: +<country code><number>, 8-15 digits total
-        if (!/^\+[1-9]\d{7,14}$/.test(regPhone)) {
-          return res.status(400).json({ message: "Invalid phone number format. Use international format e.g. +971501234567" });
-        }
-        const phoneUser = await storage.getUserByPhone(regPhone);
-        if (phoneUser) {
-          return res.status(400).json({ message: "An account with this phone number already exists" });
-        }
+      if (phoneUser) {
+        return res.status(400).json({ message: "An account with this phone number already exists" });
       }
+
+      if (isBanned) {
+        return res.status(403).json({ message: "This email address has been suspended from the platform" });
+      }
+
       const allowedSignupTypes = ["personal", "business"] as const;
       const rawSignupType = req.body.signupType;
       if (rawSignupType && !allowedSignupTypes.includes(rawSignupType)) {
         return res.status(400).json({ message: "Invalid account type" });
       }
 
-      const isBanned = await storage.isBannedEmail(data.email);
-      if (isBanned) {
-        return res.status(403).json({ message: "This email address has been suspended from the platform" });
-      }
-
       const hashedPassword = await hashPassword(data.password);
-
-      // Auto-grant Founder Badge if email matches a waitlist entry
-      const waitlistEntry = await storage.getWaitlistEntryByEmail(data.email).catch(() => undefined);
       const founderBadge = !!waitlistEntry;
 
       const user = await storage.createUser({
@@ -822,17 +819,18 @@ export async function registerRoutes(
 
       req.session.userId = user.id;
       (req.session as any).uaFingerprint = uaFingerprint(req);
-      // Explicitly save session before responding
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).json({ message: "Session error" });
-        }
-        const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword)
-          .then((safe) => res.json(safe))
-          .catch(() => res.json(userWithoutPassword));
-      });
+      const { password, ...userWithoutPassword } = user;
+      // Parallelize session save + admin-flag sanitization so neither blocks the other
+      const [, safeUser] = await Promise.all([
+        new Promise<void>((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) { console.error("Session save error:", err); reject(err); }
+            else resolve();
+          });
+        }),
+        sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
+      ]);
+      res.json(safeUser);
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
