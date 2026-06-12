@@ -301,9 +301,15 @@ app.use((req, res, next) => {
         .catch((err) => console.error("[startup] scheduler failed:", err));
 
       // 6b. Baileys WhatsApp service (OTP delivery).
-      import("./whatsappService")
-        .then(({ whatsappService }) => whatsappService.start())
-        .catch((err) => console.error("[startup] whatsappService failed:", err));
+      // Only start on Replit — locally there's no Object Storage proxy (port 1106)
+      // so session restore always fails and creates a useless retry loop.
+      if (process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT) {
+        import("./whatsappService")
+          .then(({ whatsappService }) => whatsappService.start())
+          .catch((err) => console.error("[startup] whatsappService failed:", err));
+      } else {
+        console.log("[whatsapp] Skipped — not running on Replit (no Object Storage available)");
+      }
 
       // 6. Warm per-agent budget cache (degrades gracefully on miss).
       import("./companyOs/costTracker")
