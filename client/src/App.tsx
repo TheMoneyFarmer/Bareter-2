@@ -21,6 +21,7 @@ import BareterAiNotificationChat from "@/components/bareter-ai-notification-chat
 import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { HandshakeLoader, FullPageLoader } from "@/components/handshake-loader";
 
 // Route-level code splitting — each page loads only when navigated to
 const LandingPage = lazy(() => import("@/pages/landing").then((m) => ({ default: m.LandingPage })));
@@ -158,7 +159,7 @@ function AdminSubdomainRedirect() {
   }, []);
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="h-8 w-8 rounded-full border-2 border-bareter-teal border-t-transparent animate-spin" />
+      <HandshakeLoader size="md" />
     </div>
   );
 }
@@ -242,11 +243,7 @@ function AdminApp() {
   const isAdmin = user?.isAdmin === true || user?.role === "admin" || user?.role === "super_admin";
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" />
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   // Not logged in → show admin login form (not a generic 404, so admin can authenticate here)
@@ -268,7 +265,7 @@ function AdminApp() {
   }
 
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-gray-900 animate-spin" aria-label="Loading…" /></div>}>
+    <Suspense fallback={<FullPageLoader />}>
       <Switch>
         <Route path="/" component={AdminPage} />
         <Route path="/admin" component={AdminPage} />
@@ -373,8 +370,8 @@ function WarmupBanner() {
   if (!show || !isLoading) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] bg-bareter-teal text-white text-sm py-2 px-4 flex items-center justify-center gap-2 shadow-md">
-      <div className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin flex-shrink-0" />
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-bareter-teal text-white text-sm py-2 px-4 flex items-center justify-center gap-3 shadow-md">
+      <HandshakeLoader size="sm" white />
       <span>Starting up, please wait a moment…</span>
     </div>
   );
