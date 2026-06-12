@@ -880,7 +880,11 @@ export async function sendVerificationApprovedEmail(
   }
   const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
   const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
-  const html = `<!DOCTYPE html>
+  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const customTemplate = await getCustomTemplate("email_template_verification_approved");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl })
+    : `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
   <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -896,15 +900,15 @@ export async function sendVerificationApprovedEmail(
       Congratulations — your <strong>${verType}</strong> verification has been <strong>approved</strong>.
       Your account is now fully verified and you can start creating listings, accepting barter deals, and trading on ${APP_NAME}.
     </p>
-    <a href="https://bareter.com/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
+    <a href="${baseUrl}/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
       Start Bartering
     </a>
     <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
   </div>
 </body></html>`;
-  const text = `${greeting}\n\nCongratulations! Your ${verType} verification has been approved. You can now start bartering on ${APP_NAME}.\n\nVisit https://bareter.com/browse to get started.\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `✓ Verification Approved — Welcome to ${APP_NAME}!`, html, text });
+  const text = `${greeting}\n\nCongratulations! Your ${verType} verification has been approved. You can now start bartering on ${APP_NAME}.\n\nVisit ${baseUrl}/browse to get started.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Verification Approved — Welcome to ${APP_NAME}!`, html, text });
 }
 
 export async function sendVerificationDeclinedEmail(
@@ -1163,6 +1167,12 @@ export async function sendEngagementReminderEmail(
   const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=engagement`;
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
   const safeTitle = opts.listingTitle?.slice(0, 80) || (opts.language === "ar" ? "إعلان" : "a listing");
+  const reEngagementTemplate = await getCustomTemplate("email_template_re_engagement");
+  if (reEngagementTemplate) {
+    const html = applyTemplateVars(reEngagementTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base });
+    const text = `${greeting}\n\nCome back and check your listing "${safeTitle}" — you may have new activity.\n\n${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+    return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+  }
   const html = reminderShell({
     language: opts.language,
     heading: copy.h,
@@ -1189,7 +1199,10 @@ export async function sendListingPublishedEmail(
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   const listingUrl = `${opts.baseUrl}/listings/${opts.listingId}`;
   const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const html = `<!DOCTYPE html>
+  const customTemplate = await getCustomTemplate("email_template_listing_approved");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, listingUrl, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
   <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
@@ -1235,6 +1248,15 @@ export async function sendNewProposalEmail(
     return false;
   }
   const greeting = opts.ownerName ? `Hi ${opts.ownerName},` : "Hi there,";
+  const customTemplate = await getCustomTemplate("email_template_proposal_received") || await getCustomTemplate("email_template_new_proposal");
+  if (customTemplate) {
+    const safeProposer = opts.proposerName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const baseUrl = opts.listingUrl.replace(/\/listings\/.*$/, "");
+    const html = applyTemplateVars(customTemplate, { greeting, proposerName: safeProposer, listingTitle: safeTitle, senderName: safeProposer, appName: APP_NAME, baseUrl });
+    const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
+    return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text });
+  }
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
@@ -1361,6 +1383,17 @@ export async function sendDealStatusEmail(
   };
 
   const config = configs[opts.status];
+
+  if (opts.status === "accepted") {
+    const customTemplate = await getCustomTemplate("email_template_proposal_accepted");
+    if (customTemplate) {
+      const safeCounterparty = opts.counterpartyName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const html = applyTemplateVars(customTemplate, { greeting, counterpartyName: safeCounterparty, listingTitle: opts.counterpartyName, dealUrl, appName: APP_NAME, baseUrl: opts.baseUrl });
+      const text = `${greeting}\n\n${opts.counterpartyName} accepted your barter offer. View deal: ${dealUrl}\n\n— ${APP_NAME}`;
+      return sendMail({ to: toEmail, subject: config.subject, html, text });
+    }
+  }
+
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
@@ -1471,4 +1504,190 @@ export async function sendFeatureWaitlistEmail(
     html,
     text,
   });
+}
+
+// ─── Match Found ──────────────────────────────────────────────────────────────
+
+export async function sendMatchFoundEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; matchedListingTitle: string; matchScore: number; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeMatch = opts.matchedListingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const scoreStr = String(Math.round(opts.matchScore));
+  const customTemplate = await getCustomTemplate("email_template_match_found");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, matchedListingTitle: safeMatch, matchScore: scoreStr, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #136c68; margin-bottom: 8px;">We found a strong match for you</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your listing <strong>"${safeTitle}"</strong> has a new potential match.</p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">Matched with</p>
+      <p style="margin: 0; color: #166534; font-size: 15px; font-weight: 700;">${safeMatch}</p>
+      <p style="margin: 6px 0 0; color: #15803d; font-size: 12px;">Match score: ${scoreStr}%</p>
+    </div>
+    <a href="${opts.baseUrl}/feed" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Your Matches</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour listing "${opts.listingTitle}" has a new match: "${opts.matchedListingTitle}" (${scoreStr}% match).\n\nView your matches: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `New match for your listing "${opts.listingTitle}"`, html, text });
+}
+
+// ─── New Deal Message ─────────────────────────────────────────────────────────
+
+export async function sendNewMessageEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; senderName: string; listingTitle: string; dealId: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeSender = opts.senderName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const dealUrl = `${opts.baseUrl}/deals/${opts.dealId}`;
+  const customTemplate = await getCustomTemplate("email_template_new_message");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, senderName: safeSender, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">New message from ${safeSender}</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} <strong>${safeSender}</strong> sent you a message about <strong>"${safeTitle}"</strong>.</p>
+    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Read Message</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${opts.senderName} sent you a message about "${opts.listingTitle}".\n\nReply: ${dealUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `New message from ${opts.senderName} on "${opts.listingTitle}"`, html, text });
+}
+
+// ─── Proposal Received (template-driven alias for sendNewProposalEmail) ────────
+
+export async function sendProposalReceivedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; proposerName: string; listingTitle: string; listingUrl: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeProposer = opts.proposerName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const customTemplate = await getCustomTemplate("email_template_proposal_received");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, proposerName: safeProposer, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #136c68; margin-bottom: 8px;">New proposal on your listing</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} <strong>${safeProposer}</strong> has sent a barter proposal on your listing <strong>"${safeTitle}"</strong>.</p>
+    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Review Proposal</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text });
+}
+
+// ─── Contract Ready for Signature ─────────────────────────────────────────────
+
+export async function sendContractReadyEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; dealId: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const dealUrl = `${opts.baseUrl}/deals/${opts.dealId}`;
+  const customTemplate = await getCustomTemplate("email_template_contract_ready");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Your contract is ready to sign</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} the barter agreement for <strong>"${safeTitle}"</strong> is ready and waiting for your signature.</p>
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.5;">Sign the contract to finalise your deal and start the exchange.</p>
+    </div>
+    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Sign Contract</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour barter contract for "${opts.listingTitle}" is ready. Sign it here: ${dealUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Action required: sign your barter contract for "${opts.listingTitle}"`, html, text });
+}
+
+// ─── Proposal Declined ────────────────────────────────────────────────────────
+
+export async function sendProposalDeclinedEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const customTemplate = await getCustomTemplate("email_template_proposal_declined");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Your proposal was not accepted</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your barter proposal on <strong>"${safeTitle}"</strong> was declined by the listing owner.</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Don't give up — browse other listings or post your offer as a listing of your own to reach more traders.</p>
+    <a href="${opts.baseUrl}/feed" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Browse Listings</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour proposal on "${opts.listingTitle}" was declined. Browse other listings: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" was not accepted`, html, text });
+}
+
+// ─── Listing Expiring Soon ────────────────────────────────────────────────────
+
+export async function sendListingExpiringEmail(
+  toEmail: string,
+  opts: { recipientName?: string | null; listingTitle: string; daysLeft: number; listingId: string; baseUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const daysLeftStr = String(opts.daysLeft);
+  const listingUrl = `${opts.baseUrl}/listings/${opts.listingId}`;
+  const customTemplate = await getCustomTemplate("email_template_listing_expiring");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, daysLeft: daysLeftStr, appName: APP_NAME, baseUrl: opts.baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <h2 style="font-size: 18px; color: #92400e; margin-bottom: 8px;">Your listing expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your listing <strong>"${safeTitle}"</strong> will expire in <strong>${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</strong>.</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Renew it to keep receiving barter proposals and stay visible to traders.</p>
+    <a href="${listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Renew Listing</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}. Renew it here: ${listingUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}`, html, text });
 }

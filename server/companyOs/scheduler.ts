@@ -43,8 +43,8 @@ import { withRetry } from "./retry";
 import { storage } from "../storage";
 import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 import { db } from "../db";
-import { deals, users } from "@shared/schema";
-import { and, inArray, lt, sql as drizzleSql } from "drizzle-orm";
+import { deals, users, listings } from "@shared/schema";
+import { and, inArray, lt, gte, sql as drizzleSql } from "drizzle-orm";
 
 const AGENT_JOB_MAP: Record<string, string> = {
   // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
@@ -63,6 +63,7 @@ const AGENT_JOB_MAP: Record<string, string> = {
   // "engagement" agent toggle so admins can pause it from the agent
   // dashboard without redeploying.
   dailyProgressReminders: "engagement",
+  listingExpiringReminders: "engagement",
 };
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -606,6 +607,41 @@ async function dealInactivityReminderJob(): Promise<void> {
   }
 }
 
+async function listingExpiringReminderJob(): Promise<void> {
+  try {
+    const { sendListingExpiringEmail } = await import("../emailService");
+    const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+    const LISTING_LIFETIME_DAYS = 90;
+    const WARN_DAYS_BEFORE = 3;
+    const now = new Date();
+    // Window: listings created between (LIFETIME - WARN_DAYS_BEFORE) and (LIFETIME - WARN_DAYS_BEFORE + 1) days ago
+    const windowStart = new Date(now.getTime() - (LISTING_LIFETIME_DAYS - WARN_DAYS_BEFORE + 1) * 86_400_000);
+    const windowEnd   = new Date(now.getTime() - (LISTING_LIFETIME_DAYS - WARN_DAYS_BEFORE) * 86_400_000);
+    const expiringListings = await db
+      .select({ id: listings.id, title: listings.title, userId: listings.userId, createdAt: listings.createdAt })
+      .from(listings)
+      .where(and(gte(listings.createdAt, windowStart), lt(listings.createdAt, windowEnd), drizzleSql`${listings.deletedAt} IS NULL`));
+    if (expiringListings.length === 0) return;
+    const ownerIds = Array.from(new Set(expiringListings.map((l) => l.userId)));
+    const owners = await db.select({ id: users.id, email: users.email, fullName: users.fullName }).from(users).where(inArray(users.id, ownerIds));
+    const ownerMap = new Map(owners.map((u) => [u.id, u]));
+    for (const listing of expiringListings) {
+      const owner = ownerMap.get(listing.userId);
+      if (!owner?.email) continue;
+      await sendListingExpiringEmail(owner.email, {
+        recipientName: owner.fullName,
+        listingTitle: listing.title,
+        daysLeft: WARN_DAYS_BEFORE,
+        listingId: listing.id,
+        baseUrl,
+      }).catch(() => {});
+    }
+    console.log(`[listingExpiring] Sent ${expiringListings.length} expiry reminder(s)`);
+  } catch (err) {
+    console.error("[listingExpiring] job failed:", err);
+  }
+}
+
 /**
  * Mount all scheduled jobs. Idempotent — safe to call once at boot
  * (subsequent calls become no-ops).
@@ -678,6 +714,9 @@ export function startScheduler(): void {
   // in any deal that has been stuck (no updatedAt change) for ≥36 hours
   // and is still in an actionable state (proposed/negotiating/accepted).
   schedule("dealInactivityReminders", "0 9 * * *", dealInactivityReminderJob);
+
+  // 10:00 Dubai daily — warn listing owners 3 days before the 90-day expiry
+  schedule("listingExpiringReminders", "0 10 * * *", listingExpiringReminderJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

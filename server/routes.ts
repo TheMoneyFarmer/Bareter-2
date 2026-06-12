@@ -797,7 +797,7 @@ export async function registerRoutes(
         );
       }
 
-      // Send email verification link (fire-and-forget — never blocks registration)
+      // Send email verification link + welcome email (fire-and-forget — never blocks registration)
       ;(async () => {
         try {
           const verifyToken = crypto.randomBytes(32).toString("hex");
@@ -809,11 +809,12 @@ export async function registerRoutes(
           const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
           const host = req.headers["x-forwarded-host"] || req.headers.host;
           const baseUrl = `${protocol}://${host}`;
-          const { sendEmailVerificationEmail } = await import("./emailService");
+          const { sendEmailVerificationEmail, sendWelcomeEmail } = await import("./emailService");
           await sendEmailVerificationEmail(data.email, {
             fullName: data.fullName,
             verifyUrl: `${baseUrl}/api/auth/verify-email?token=${verifyToken}`,
           });
+          sendWelcomeEmail(data.email, data.fullName).catch(() => {});
         } catch (err) {
           console.error("[register] email verification send failed:", err);
         }
@@ -2468,6 +2469,17 @@ export async function registerRoutes(
           message: `Your barter proposal on "${listing.title}" was declined. Consider turning your offer into a listing!`,
           relatedListingId: listingId,
         });
+        // Fire-and-forget email to proposer
+        storage.getUser(updated.userId).then(async (proposer) => {
+          if (!proposer?.email) return;
+          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const { sendProposalDeclinedEmail } = await import("./emailService");
+          sendProposalDeclinedEmail(proposer.email, {
+            recipientName: proposer.fullName,
+            listingTitle: listing.title,
+            baseUrl,
+          }).catch(() => {});
+        }).catch(() => {});
       }
 
       // When accepted: create a deal (or reactivate an existing one) + send emails to both parties
@@ -3257,6 +3269,18 @@ export async function registerRoutes(
         const otherUserId = isSeeker ? deal.providerId : deal.seekerId;
         const signerName = isSeeker ? (deal.seeker?.fullName || "Party A") : (deal.provider?.fullName || "Party B");
         await storage.createNotification({ userId: otherUserId, type: "deal_update", title: "Contract ready for your signature", message: `${signerName} signed deal ${deal.dealNumber}. It's your turn to sign.`, relatedDealId: deal.id });
+        // Fire-and-forget contract-ready email to the other party
+        storage.getUser(otherUserId).then(async (otherUser) => {
+          if (!otherUser?.email) return;
+          const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+          const { sendContractReadyEmail } = await import("./emailService");
+          sendContractReadyEmail(otherUser.email, {
+            recipientName: otherUser.fullName,
+            listingTitle: deal.providerOffer || "your barter deal",
+            dealId: deal.id,
+            baseUrl,
+          }).catch(() => {});
+        }).catch(() => {});
       }
 
       res.json({ success: true, bothSigned });
@@ -3645,6 +3669,23 @@ export async function registerRoutes(
         message: "You have a new message in your trade deal",
         relatedDealId: deal.id,
       });
+
+      // Fire-and-forget email to the recipient
+      Promise.all([
+        storage.getUser(req.session.userId!),
+        storage.getUser(recipientId),
+      ]).then(async ([sender, recipient]) => {
+        if (!recipient?.email) return;
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const { sendNewMessageEmail } = await import("./emailService");
+        sendNewMessageEmail(recipient.email, {
+          recipientName: recipient.fullName,
+          senderName: sender?.fullName || "Someone",
+          listingTitle: deal.providerOffer || "your barter deal",
+          dealId: deal.id,
+          baseUrl,
+        }).catch(() => {});
+      }).catch(() => {});
 
       res.json(message);
     } catch (error) {
@@ -4566,7 +4607,7 @@ export async function registerRoutes(
   app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
     try {
       const templates: Record<string, string> = {};
-      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected"];
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring"];
       for (const key of keys) {
         const val = await storage.getAppSetting(key);
         templates[key] = val || "";
@@ -4584,7 +4625,7 @@ export async function registerRoutes(
       if (!templates || typeof templates !== "object") {
         return res.status(400).json({ message: "Templates object is required" });
       }
-      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected"];
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring"];
       for (const [key, value] of Object.entries(templates)) {
         if (validKeys.includes(key) && typeof value === "string") {
           await storage.setAppSetting(key, value, req.session.userId);
@@ -5401,6 +5442,48 @@ export async function registerRoutes(
       });
       await logAdminAction(req, "listing_approved", "listing", listingId, { title: listing.title });
       res.json(listing);
+
+      // Fire-and-forget: scan for listings with overlapping categories and email their owners
+      if (listing.categories && (listing.categories as string[]).length > 0) {
+        const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
+        const cats = listing.categories as string[];
+        import("./emailService").then(async ({ sendMatchFoundEmail }) => {
+          try {
+            const { eq, and, ne, sql: drizzleSqlLocal } = await import("drizzle-orm");
+            const { listings: listingsTable } = await import("@shared/schema");
+            const candidates = await db
+              .select({ id: listingsTable.id, title: listingsTable.title, userId: listingsTable.userId, categories: listingsTable.categories })
+              .from(listingsTable)
+              .where(and(eq(listingsTable.moderationStatus, "approved"), eq(listingsTable.isActive, true), ne(listingsTable.userId, listing.userId), drizzleSqlLocal`${listingsTable.deletedAt} IS NULL`))
+              .limit(200);
+            const matches = candidates
+              .map((c) => {
+                const overlap = (c.categories as string[] || []).filter((cat) => cats.includes(cat)).length;
+                return { ...c, overlap };
+              })
+              .filter((c) => c.overlap > 0)
+              .sort((a, b) => b.overlap - a.overlap)
+              .slice(0, 5);
+            const ownerIds = matches.map((m) => m.userId);
+            if (ownerIds.length === 0) return;
+            const { inArray: inArr } = await import("drizzle-orm");
+            const { users: usersTable } = await import("@shared/schema");
+            const owners = await db.select({ id: usersTable.id, email: usersTable.email, fullName: usersTable.fullName }).from(usersTable).where(inArr(usersTable.id, ownerIds));
+            const ownerMap = new Map(owners.map((u) => [u.id, u]));
+            for (const match of matches) {
+              const owner = ownerMap.get(match.userId);
+              if (!owner?.email) continue;
+              sendMatchFoundEmail(owner.email, {
+                recipientName: owner.fullName,
+                listingTitle: match.title,
+                matchedListingTitle: listing.title,
+                matchScore: Math.min(100, Math.round((match.overlap / Math.max(cats.length, 1)) * 100)),
+                baseUrl,
+              }).catch(() => {});
+            }
+          } catch { /* best-effort */ }
+        }).catch(() => {});
+      }
     } catch (error) {
       console.error("Admin approve listing error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6050,6 +6133,7 @@ export async function registerRoutes(
   // ── Waitlist launch email ─────────────────────────────────────────
   app.post("/api/admin/waitlist/launch-email", requireAdmin, async (req, res) => {
     try {
+      const { subject: customSubject, body: customBody } = req.body || {};
       const entries = await storage.listWaitlistEntries({ limit: 10000 });
       const eligible = entries.filter(e => e.confirmedAt && !e.convertedUserId);
       let sent = 0;
@@ -6064,9 +6148,36 @@ export async function registerRoutes(
           : devDomain
             ? `https://${devDomain}`
             : "http://localhost:5000";
+
+      const { applyTemplateVars, sendWaitlistLaunchEmail: defaultSend } = await import("./emailService");
+
       for (const entry of eligible) {
         try {
-          const ok = await sendWaitlistLaunchEmail(entry.email, { name: entry.name, baseUrl });
+          let ok: boolean;
+          if (customBody && customBody.trim()) {
+            const vars = { name: entry.name || "there", email: entry.email, appName: "Bareter", baseUrl };
+            const html = applyTemplateVars(customBody, vars);
+            const subject = customSubject?.trim() || "We're live — you're invited to Bareter!";
+            const { sendMail: _ignored, ...emailSvc } = await import("./emailService") as any;
+            const { default: nodemailer } = await import("nodemailer") as any;
+            const resendModule = await import("./resendClient");
+            const isReady = await resendModule.isResendReady();
+            if (isReady) {
+              const { client, fromEmail } = await resendModule.getUncachableResendClient();
+              const result = await client.emails.send({
+                from: `Bareter <${fromEmail || "noreply@bareter.com"}>`,
+                to: entry.email,
+                subject,
+                html,
+                text: html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(),
+              });
+              ok = !result.error;
+            } else {
+              ok = false;
+            }
+          } else {
+            ok = await defaultSend(entry.email, { name: entry.name, baseUrl });
+          }
           if (ok) sent++; else failed++;
         } catch {
           failed++;

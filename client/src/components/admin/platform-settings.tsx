@@ -71,9 +71,12 @@ export function AdminPlatformSettings() {
     },
   });
 
+  const [launchSubject, setLaunchSubject] = useState("We're live — claim your Founder Badge on Bareter!");
+  const [launchBody, setLaunchBody] = useState("");
+
   const launchEmailMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/waitlist/launch-email");
+    mutationFn: async (payload: { subject: string; body: string }) => {
+      const res = await apiRequest("POST", "/api/admin/waitlist/launch-email", payload);
       return res.json();
     },
     onSuccess: (data: { sent: number; failed: number; total: number }) => {
@@ -139,8 +142,12 @@ export function AdminPlatformSettings() {
         <TabsContent value="waitlist">
           <WaitlistSettings
             settings={settings || {}}
-            onLaunchEmail={() => launchEmailMutation.mutate()}
+            onLaunchEmail={(subject, body) => launchEmailMutation.mutate({ subject, body })}
             launchEmailPending={launchEmailMutation.isPending}
+            launchSubject={launchSubject}
+            launchBody={launchBody}
+            onLaunchSubjectChange={setLaunchSubject}
+            onLaunchBodyChange={setLaunchBody}
           />
         </TabsContent>
       </Tabs>
@@ -930,12 +937,17 @@ function ContactSettings({ settings, onSave, saving }: { settings: PlatformSetti
   );
 }
 
-function WaitlistSettings({ settings, onLaunchEmail, launchEmailPending }: {
+function WaitlistSettings({ settings, onLaunchEmail, launchEmailPending, launchSubject, launchBody, onLaunchSubjectChange, onLaunchBodyChange }: {
   settings: PlatformSettings;
-  onLaunchEmail: () => void;
+  onLaunchEmail: (subject: string, body: string) => void;
   launchEmailPending: boolean;
+  launchSubject: string;
+  launchBody: string;
+  onLaunchSubjectChange: (v: string) => void;
+  onLaunchBodyChange: (v: string) => void;
 }) {
   const lastSent = settings.waitlist_launch_email_sent_at;
+  const VARS = ["{{name}}", "{{email}}", "{{appName}}", "{{baseUrl}}"];
 
   return (
     <div className="space-y-4">
@@ -946,8 +958,9 @@ function WaitlistSettings({ settings, onLaunchEmail, launchEmailPending }: {
             Launch Email
           </CardTitle>
           <CardDescription>
-            Send a launch notification email to all confirmed waitlist entries who haven't yet registered.
-            This is a one-time action — use with care.
+            Send a launch notification to all confirmed waitlist entries who haven't registered yet.
+            Write your subject and email body below — use variable chips to personalise.
+            This is a one-time blast — use with care.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -956,9 +969,44 @@ function WaitlistSettings({ settings, onLaunchEmail, launchEmailPending }: {
               <Badge variant="outline">Last sent: {new Date(lastSent).toLocaleString()}</Badge>
             </div>
           )}
+          <div className="space-y-2">
+            <Label>Subject line</Label>
+            <Input
+              placeholder="e.g. We're live — claim your Founder Badge on Bareter!"
+              value={launchSubject}
+              onChange={(e) => onLaunchSubjectChange(e.target.value)}
+              data-testid="input-launch-subject"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Email body (HTML or plain text)</Label>
+            <Textarea
+              placeholder={`Hi {{name}},\n\nThe wait is over — Bareter is live! As an early supporter, you've earned a Founder Badge on your profile.\n\nCreate your account now: {{baseUrl}}/register\n\n— The Bareter Team`}
+              rows={10}
+              value={launchBody}
+              onChange={(e) => onLaunchBodyChange(e.target.value)}
+              className="font-mono text-xs"
+              data-testid="textarea-launch-body"
+            />
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {VARS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => onLaunchBodyChange(launchBody + v)}
+                  className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Leave body blank to use the system default launch email template.
+            </p>
+          </div>
           <Button
-            onClick={onLaunchEmail}
-            disabled={launchEmailPending}
+            onClick={() => onLaunchEmail(launchSubject, launchBody)}
+            disabled={launchEmailPending || !launchSubject.trim()}
             variant="default"
             className="gap-2"
             data-testid="button-send-launch-email"
