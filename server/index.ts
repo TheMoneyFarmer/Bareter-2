@@ -4,6 +4,7 @@ import { securityHeaders, originCsrfGuard } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { pool } from "./db";
 import { backfillLocationFields, purgeSeedUsers, wipePlatformContent } from "./seed";
 import { bootstrapAdmin } from "./bootstrapAdmin";
 import { seedLegalPages } from "./seedLegalPages";
@@ -256,6 +257,14 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+
+      // 0. Verify DB is reachable — if this fails every request returns 500
+      //    because the session store can't connect.
+      pool.query("SELECT 1").then(() => {
+        log("database connection OK", "db");
+      }).catch((err: Error) => {
+        console.error("[startup] DATABASE CONNECTION FAILED — check DATABASE_URL in Replit Secrets:", err.message);
+      });
 
       // ── Background startup tasks ─────────────────────────────────────────
       // These run AFTER the server is already accepting requests so they
