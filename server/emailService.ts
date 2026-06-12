@@ -1744,3 +1744,74 @@ export async function sendListingExpiringEmail(
 export async function sendRawEmail(opts: { to: string; subject: string; html: string; text: string; templateKey?: string; userId?: string }): Promise<boolean> {
   return sendMail(opts);
 }
+
+// ─── Email Address Verified Confirmation ──────────────────────────────────────
+
+export async function sendEmailVerifiedEmail(toEmail: string, fullName?: string | null): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
+  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const customTemplate = await getCustomTemplate("email_template_email_verified");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; font-size: 28px;">✓</div>
+    </div>
+    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Email verified</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Your email address has been successfully verified. One more step — verify your WhatsApp number to unlock your full account and start trading on ${APP_NAME}.
+    </p>
+    <a href="${baseUrl}/profile?tab=verify" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Complete Verification</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour email address has been successfully verified. Complete your WhatsApp verification to unlock your full account.\n\nGo to: ${baseUrl}/profile?tab=verify\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Email verified — one more step`, html, text, templateKey: "email_template_email_verified" });
+}
+
+// ─── Account Fully Ready (email + WhatsApp both verified) ────────────────────
+
+export async function sendAccountReadyEmail(toEmail: string, fullName?: string | null): Promise<boolean> {
+  if (!(await isEmailConfigured())) return false;
+  const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
+  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const customTemplate = await getCustomTemplate("email_template_account_ready");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })
+    : `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /></head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
+  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 64px; height: 64px; line-height: 64px; font-size: 32px;">🎉</div>
+    </div>
+    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">You're all set!</h2>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
+    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
+      Your account is fully verified — email and WhatsApp are both confirmed. You're ready to explore the marketplace, post your first listing, and start making deals with UAE businesses.
+    </p>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+      <p style="margin: 0 0 8px; color: #166534; font-size: 13px; font-weight: 600;">What you can do now:</p>
+      <ul style="margin: 0; padding-left: 18px; color: #166534; font-size: 13px; line-height: 1.8;">
+        <li>Browse listings and find what your business needs</li>
+        <li>Post your own listing and attract barter proposals</li>
+        <li>Send proposals and start trading</li>
+      </ul>
+    </div>
+    <a href="${baseUrl}/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Explore the Marketplace</a>
+    <a href="${baseUrl}/listings/new" style="display: block; text-align: center; background: white; color: #136c68; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1.5px solid #136c68; margin-bottom: 24px;">Post Your First Listing</a>
+    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
+  </div>
+</body></html>`;
+  const text = `${greeting}\n\nYour account is fully verified — email and WhatsApp are both confirmed.\n\nBrowse the marketplace: ${baseUrl}/browse\nPost your first listing: ${baseUrl}/listings/new\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your ${APP_NAME} account is ready — let's trade!`, html, text, templateKey: "email_template_account_ready" });
+}

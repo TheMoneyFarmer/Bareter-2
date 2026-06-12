@@ -857,6 +857,11 @@ export async function registerRoutes(
         emailVerificationExpires: null,
       }).where(eq(users.id, user.id));
 
+      // Confirm email verified and nudge them to verify WhatsApp next
+      import("./emailService").then(({ sendEmailVerifiedEmail }) => {
+        sendEmailVerifiedEmail(user.email, user.fullName).catch(() => {});
+      });
+
       // Redirect to the app with a success flag the frontend can show
       const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
       const host = req.headers["x-forwarded-host"] || req.headers.host;
@@ -979,6 +984,13 @@ export async function registerRoutes(
         phoneVerificationCode: null,
         phoneVerificationExpires: null,
       }).where(eq(users.id, userId));
+
+      // If email is also verified, both channels are confirmed — account is fully ready
+      if (user.emailVerified) {
+        import("./emailService").then(({ sendAccountReadyEmail }) => {
+          sendAccountReadyEmail(user.email, user.fullName).catch(() => {});
+        });
+      }
 
       res.json({ message: "Phone verified", phoneVerified: true });
     } catch (err) {
@@ -5207,6 +5219,14 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       await logAdminAction(req, "verification_tier_changed", "user", user.id, { tier, email: user.email });
+
+      // Notify user of their new verification status
+      if (user.email && (tier === "verified" || tier === "business")) {
+        import("./emailService").then(({ sendVerificationApprovedEmail }) => {
+          sendVerificationApprovedEmail(user.email!, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        });
+      }
+
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
