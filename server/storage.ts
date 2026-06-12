@@ -1288,7 +1288,7 @@ export class DatabaseStorage implements IStorage {
         eq(listings.moderationStatus, "approved"),
       ))
       .orderBy(desc(listings.createdAt))
-      .limit(100);
+      .limit(30);
 
     const mapped = result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
 

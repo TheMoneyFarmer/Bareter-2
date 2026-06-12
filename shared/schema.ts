@@ -567,6 +567,7 @@ export const users = pgTable("users", {
   phoneIdx: index("users_phone_idx").on(table.phone),
   googleIdIdx: index("users_google_id_idx").on(table.googleId),
   appleIdIdx: index("users_apple_id_idx").on(table.appleId),
+  emailIdx: uniqueIndex("users_email_idx").on(table.email),
 }));
 
 // Waitlist entries (pre-launch email collection)
@@ -706,6 +707,8 @@ export const listings = pgTable("listings", {
   index("listings_is_bulk_idx").on(table.isBulkDeal),
   index("listings_city_idx").on(table.city),
   index("listings_deleted_at_idx").on(table.deletedAt),
+  // Composite for the most common browse/feed query: active + approved + sorted by date
+  index("listings_active_approved_created_idx").on(table.isActive, table.moderationStatus, table.createdAt),
 ]);
 
 // Banned emails table - prevents re-registration of banned users

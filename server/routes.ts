@@ -1077,8 +1077,7 @@ export async function registerRoutes(
             return `${protocol}://${host}`;
           })();
 
-        const { sendPasswordResetEmail } = await import("./emailService");
-        await sendPasswordResetEmail(user.email, token, baseUrl);
+        import("./emailService").then(({ sendPasswordResetEmail }) => sendPasswordResetEmail(user.email, token, baseUrl)).catch(() => {});
       }
 
       res.json({ message: "If an account exists for that email, a reset link has been sent." });
@@ -5090,8 +5089,7 @@ export async function registerRoutes(
       const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
       const host = req.headers["x-forwarded-host"] || req.headers.host;
       const baseUrl = `${protocol}://${host}`;
-      const { sendPasswordResetEmail } = await import("./emailService");
-      await sendPasswordResetEmail(user.email, token, baseUrl);
+      import("./emailService").then(({ sendPasswordResetEmail }) => sendPasswordResetEmail(user.email, token, baseUrl)).catch(() => {});
       await logAdminAction(req, "password_reset_sent", "user", user.id, { email: user.email });
       res.json({ message: "Password reset email sent" });
     } catch (error) {
