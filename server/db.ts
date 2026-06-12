@@ -5,8 +5,6 @@ import * as schema from "@shared/schema";
 
 // Use WebSocket for Node.js environments (required by @neondatabase/serverless)
 neonConfig.webSocketConstructor = ws;
-// Cache the WebSocket connection between requests to avoid per-request handshake latency
-neonConfig.fetchConnectionCache = true;
 
 // Strip parameters that are not supported by the Neon serverless WebSocket
 // driver. `channel_binding=require` is a TLS feature used by standard libpq

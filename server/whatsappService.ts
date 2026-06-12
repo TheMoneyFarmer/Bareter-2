@@ -279,7 +279,11 @@ class WhatsAppService extends EventEmitter {
         this.sock = null;
         this.state = "disconnected";
         this.emit("state", this.state);
-        if (!this.stopped) setTimeout(() => this.connect(), 3000);
+        if (!this.stopped) {
+          const backoff = Math.min(15000 * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
+          console.log(`[whatsapp] Hard timeout — retrying in ${Math.round(backoff / 1000)}s`);
+          setTimeout(() => this.connect(), backoff);
+        }
       }
     }, 90000);
 
@@ -337,7 +341,11 @@ class WhatsAppService extends EventEmitter {
       console.error("[whatsapp]", this.lastError);
       this.state = "disconnected";
       this.emit("state", this.state);
-      if (!this.stopped) setTimeout(() => this.connect(), 10000);
+      if (!this.stopped) {
+        const backoff = Math.min(10000 * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
+        console.log(`[whatsapp] Socket init failed — retrying in ${Math.round(backoff / 1000)}s`);
+        setTimeout(() => this.connect(), backoff);
+      }
       return;
     }
 
@@ -394,8 +402,11 @@ class WhatsAppService extends EventEmitter {
         }
 
         if (!this.stopped) {
-          const delay = loggedOut ? 2000 : 8000;
-          this.reconnectTimer = setTimeout(() => this.connect(), delay);
+          // Exponential backoff: 8s → 16s → 32s … capped at 5 minutes
+          const baseDelay = loggedOut ? 2000 : 8000;
+          const backoff = Math.min(baseDelay * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
+          console.log(`[whatsapp] Reconnecting in ${Math.round(backoff / 1000)}s (attempt #${this.connectAttempts})`);
+          this.reconnectTimer = setTimeout(() => this.connect(), backoff);
         }
       }
     });
