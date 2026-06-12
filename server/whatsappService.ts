@@ -8,8 +8,55 @@ import * as path from "path";
 import * as fs from "fs";
 import { EventEmitter } from "events";
 import P from "pino";
+import { objectStorageClient } from "./replit_integrations/object_storage/objectStorage";
 
 const AUTH_DIR = path.join(process.cwd(), "whatsapp-auth");
+const BUCKET = process.env.REPLIT_OBJECT_STORE_BUCKET ?? "replit-objstore-7e5628f2-57c3-4e06-a847-99cef1d8fb27";
+const SESSION_PREFIX = "whatsapp-session/";
+
+async function restoreSessionFromStorage(): Promise<void> {
+  try {
+    const bucket = objectStorageClient.bucket(BUCKET);
+    const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
+    if (files.length === 0) return;
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    await Promise.all(files.map(async (file) => {
+      const localName = file.name.slice(SESSION_PREFIX.length);
+      if (!localName) return;
+      const [contents] = await file.download();
+      fs.writeFileSync(path.join(AUTH_DIR, localName), contents);
+    }));
+    console.log(`[whatsapp] Restored ${files.length} session file(s) from Object Storage`);
+  } catch (err: any) {
+    console.warn("[whatsapp] Could not restore session from Object Storage:", err?.message);
+  }
+}
+
+async function backupSessionToStorage(): Promise<void> {
+  try {
+    if (!fs.existsSync(AUTH_DIR)) return;
+    const bucket = objectStorageClient.bucket(BUCKET);
+    const files = fs.readdirSync(AUTH_DIR);
+    await Promise.all(files.map(async (name) => {
+      const contents = fs.readFileSync(path.join(AUTH_DIR, name));
+      await bucket.file(`${SESSION_PREFIX}${name}`).save(contents, { resumable: false });
+    }));
+    console.log(`[whatsapp] Backed up ${files.length} session file(s) to Object Storage`);
+  } catch (err: any) {
+    console.warn("[whatsapp] Could not backup session to Object Storage:", err?.message);
+  }
+}
+
+async function clearSessionFromStorage(): Promise<void> {
+  try {
+    const bucket = objectStorageClient.bucket(BUCKET);
+    const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
+    await Promise.all(files.map(f => f.delete()));
+    console.log("[whatsapp] Cleared session from Object Storage");
+  } catch (err: any) {
+    console.warn("[whatsapp] Could not clear session from Object Storage:", err?.message);
+  }
+}
 const logger = P({ level: "silent" });
 
 const FOUNDER_EMAIL = process.env.FOUNDER_EMAIL || "thandolwenkosimceeyah@gmail.com";
@@ -154,6 +201,7 @@ class WhatsAppService extends EventEmitter {
     if (fs.existsSync(AUTH_DIR)) {
       fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     }
+    await clearSessionFromStorage();
   }
 
   async sendMessage(to: string, body: string): Promise<boolean> {
@@ -213,6 +261,7 @@ class WhatsAppService extends EventEmitter {
 
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+      await restoreSessionFromStorage();
     } catch (err: any) {
       this.lastError = `Cannot create auth dir: ${err?.message}`;
       console.error("[whatsapp]", this.lastError);
@@ -278,7 +327,10 @@ class WhatsAppService extends EventEmitter {
       });
       console.log("[whatsapp] Socket created — waiting for QR or connection…");
 
-      this.sock.ev.on("creds.update", saveCreds);
+      this.sock.ev.on("creds.update", async () => {
+        await saveCreds();
+        backupSessionToStorage().catch(() => {});
+      });
     } catch (err: any) {
       clearTimeout(hardTimeout);
       this.lastError = `Socket init failed: ${err?.message ?? String(err)}`;
@@ -338,6 +390,7 @@ class WhatsAppService extends EventEmitter {
           if (fs.existsSync(AUTH_DIR)) {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           }
+          clearSessionFromStorage().catch(() => {});
         }
 
         if (!this.stopped) {
