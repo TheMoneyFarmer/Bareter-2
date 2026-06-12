@@ -221,10 +221,10 @@ class WhatsAppService extends EventEmitter {
       return;
     }
 
-    // Hard timeout: if connect() hangs at any point, force a retry after 45s
+    // Hard timeout: if connect() hangs at any point, force a retry after 90s
     const hardTimeout = setTimeout(() => {
       if (this.state !== "connected") {
-        this.lastError = `Connection timed out after 45s on attempt #${this.connectAttempts}`;
+        this.lastError = `Connection timed out after 90s on attempt #${this.connectAttempts}`;
         console.warn("[whatsapp]", this.lastError);
         this.sock?.end(undefined);
         this.sock = null;
@@ -232,7 +232,7 @@ class WhatsAppService extends EventEmitter {
         this.emit("state", this.state);
         if (!this.stopped) setTimeout(() => this.connect(), 3000);
       }
-    }, 45000);
+    }, 90000);
 
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -269,8 +269,12 @@ class WhatsAppService extends EventEmitter {
         },
         generateHighQualityLinkPreview: false,
         shouldIgnoreJid: () => false,
-        connectTimeoutMs: 30000,
+        connectTimeoutMs: 60000,
         retryRequestDelayMs: 2000,
+        // Send a ping every 15s to keep the WS alive through Replit's proxy
+        keepAliveIntervalMs: 15000,
+        // Don't mark messages as read — this is a send-only OTP account
+        markOnlineOnConnect: false,
       });
       console.log("[whatsapp] Socket created — waiting for QR or connection…");
 
@@ -306,9 +310,10 @@ class WhatsAppService extends EventEmitter {
         this.state = "connected";
         this.qrBase64 = null;
         this.pairingCode = null;
+        this.lastError = null;
         this.consecutiveFailures = 0;
         this.alertSentAt = null;
-        console.log("[whatsapp] Connected");
+        console.log("[whatsapp] Connected and stable");
         this.emit("state", this.state);
       }
 
