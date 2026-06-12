@@ -30,7 +30,7 @@ externalPort = 3000
 PORT = "5000"
 
 [deployment]
-deploymentTarget = "reserved-vm"
+deploymentTarget = "autoscale"
 run = ["node", "./dist/index.cjs"]
 build = ["npm", "run", "build"]
 
