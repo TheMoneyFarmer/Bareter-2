@@ -103,9 +103,21 @@ export function RegisterPage() {
   const appleEnabled = appleStatus?.enabled ?? false;
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(() => {
+    try {
+      return new URL(window.location.href).searchParams.get("step") === "verify" ? 0 : 1;
+    } catch { return 1; }
+  });
   const [registerError, setRegisterError] = useState<{ emailExists?: boolean; message?: string } | null>(null);
-  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("step") === "verify") {
+        return decodeURIComponent(url.searchParams.get("email") || "");
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
   const [resendingVerification, setResendingVerification] = useState(false);
 
   const benefits = [
@@ -155,6 +167,7 @@ export function RegisterPage() {
   const handleFinalSubmit = async () => {
     const formValues = form.getValues();
     setIsLoading(true);
+    setRegisterError(null);
     try {
       await register({
         email: formValues.email,
@@ -167,12 +180,20 @@ export function RegisterPage() {
       trackEvent("register", {
         country: formValues.country,
       });
-      // Show "check your email" step instead of navigating directly
+      // Store email then navigate so the success screen survives any
+      // auth-context re-render that would otherwise reset component state.
       setRegisteredEmail(formValues.email);
+      navigate(`/register?step=verify&email=${encodeURIComponent(formValues.email)}`);
     } catch (error: any) {
       const raw = (error?.message || "").toLowerCase();
       if (raw.includes("already registered") || raw.includes("already exists") || raw.includes("email already") || raw.includes("duplicate")) {
         setRegisterError({ emailExists: true });
+        // Also show toast so the user cannot miss it
+        toast({
+          title: "Email already registered",
+          description: "An account with this email already exists. Sign in instead.",
+          variant: "destructive",
+        });
         return;
       }
       const friendlyMessage =
@@ -182,6 +203,8 @@ export function RegisterPage() {
           ? "Your password is too weak. Please use at least 8 characters with a mix of letters and numbers."
           : raw.includes("rate") || raw.includes("too many")
           ? "Too many attempts. Please wait a few minutes and try again."
+          : raw.includes("city") || raw.includes("please select")
+          ? "Please select your city before continuing."
           : "Something went wrong while creating your account. Please try again.";
       setRegisterError({ message: friendlyMessage });
       toast({
@@ -337,6 +360,7 @@ export function RegisterPage() {
                       placeholder="name@company.com"
                       data-testid="input-email"
                       {...field}
+                      onChange={(e) => { field.onChange(e); setRegisterError(null); }}
                     />
                   </FormControl>
                   <FormMessage />
@@ -498,11 +522,23 @@ export function RegisterPage() {
               )}
             />
 
+            {registerError && (
+              <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive" data-testid="register-error">
+                {registerError.emailExists ? (
+                  <>An account with this email already exists.{" "}
+                    <Link href="/login" className="underline font-medium">Sign in instead</Link>
+                  </>
+                ) : (
+                  registerError.message
+                )}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setStep(1)}
+                onClick={() => { setStep(1); setRegisterError(null); }}
                 data-testid="button-back-step1"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -623,8 +659,8 @@ export function RegisterPage() {
               </div>
             ) : (
               <>
-                {step === 1 && renderStep1()}
-                {step === 2 && renderStep2()}
+                {(step === 1 || step === 0) && !registeredEmail && renderStep1()}
+                {step === 2 && !registeredEmail && renderStep2()}
               </>
             )}
           </Card>
