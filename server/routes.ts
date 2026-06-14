@@ -9711,5 +9711,36 @@ export async function registerRoutes(
     }
   });
 
+  // ONE-TIME backfill: stamp country/city on listings + users that have NULL values.
+  // Call once from admin, then it's safe to leave — re-running is idempotent.
+  app.post("/api/admin/backfill-countries", requireAdmin, async (_req, res) => {
+    try {
+      const listingResult = await db.execute(sqlOperator`
+        UPDATE listings l
+        SET country = COALESCE(l.country, u.country, 'AE'),
+            city    = COALESCE(l.city, u.city)
+        FROM users u
+        WHERE l.user_id = u.id
+          AND l.deleted_at IS NULL
+          AND (l.country IS NULL OR l.country = '')
+        RETURNING l.id
+      `);
+      const userResult = await db.execute(sqlOperator`
+        UPDATE users
+        SET country = 'AE'
+        WHERE (country IS NULL OR country = '')
+        RETURNING id
+      `);
+      res.json({
+        listingsUpdated: listingResult.rows.length,
+        usersUpdated: userResult.rows.length,
+        message: "Backfill complete",
+      });
+    } catch (error) {
+      console.error("Backfill countries error:", error);
+      res.status(500).json({ message: "Backfill failed", error: String(error) });
+    }
+  });
+
   return httpServer;
 }
