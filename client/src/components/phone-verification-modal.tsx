@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { MessageCircle, ShieldCheck, Loader2, ArrowRight, RefreshCw } from "lucide-react";
 
 interface PhoneVerificationModalProps {
@@ -29,13 +29,18 @@ export function PhoneVerificationModal({ open, onVerified, onClose, existingPhon
     }
     setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/phone/send-otp", { phone: phone.trim() });
+      const res = await fetch("/api/auth/phone/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.trim() }),
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) {
         toast({ title: data.message || "Failed to send code", variant: "destructive" });
         return;
       }
-      if (data.dev) setDevCode(data.dev); // show code in dev builds
+      if (data.dev) setDevCode(data.dev);
       setStep("otp");
       toast({ title: "Code sent", description: "Check your WhatsApp for the 6-digit code." });
     } catch {
@@ -52,13 +57,17 @@ export function PhoneVerificationModal({ open, onVerified, onClose, existingPhon
     }
     setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/phone/verify-otp", { code: code.trim() });
+      const res = await fetch("/api/auth/phone/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) {
         toast({ title: data.message || "Invalid code", variant: "destructive" });
         return;
       }
-      // Refresh user data so phoneVerified flag updates everywhere
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "Phone verified!", description: "Your WhatsApp number is now confirmed." });
       onVerified();

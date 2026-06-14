@@ -927,7 +927,18 @@ export async function registerRoutes(
         phoneVerified: false,
       }).where(eq(users.id, userId));
 
-      const body = `Your Bareter verification code is: ${code}\nValid for 10 minutes.\nDo not share this code.`;
+      const body = [
+        `Hi! Here is your Bareter verification code:`,
+        ``,
+        `*${code}*`,
+        ``,
+        `This code is valid for 10 minutes.`,
+        `For your security, do not share this code with anyone — Bareter will never ask for it.`,
+        ``,
+        `If you did not request this code, please ignore this message or contact us at hello@bareter.com`,
+        ``,
+        `— Team Bareter`,
+      ].join("\n");
       const isDev = process.env.NODE_ENV !== "production";
 
       // Try Baileys (self-hosted WhatsApp) first, fall back to Twilio

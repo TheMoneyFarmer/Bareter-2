@@ -184,6 +184,85 @@ export function applyTemplateVars(template: string, vars: Record<string, string>
   return result;
 }
 
+function emailShell(content: string, opts?: { rtl?: boolean }): string {
+  const dir = opts?.rtl ? "rtl" : "ltr";
+  const align = opts?.rtl ? "right" : "left";
+  const year = new Date().getFullYear();
+  const BASE_URL = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  return `<!DOCTYPE html>
+<html lang="${opts?.rtl ? "ar" : "en"}" dir="${dir}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>${APP_NAME}</title>
+</head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f2f5;min-height:100%;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+        <tr>
+          <td style="background:#0f5f5a;border-radius:12px 12px 0 0;padding:22px 32px;text-align:center;">
+            <a href="${BASE_URL}" style="text-decoration:none;">
+              <span style="font-size:28px;font-weight:900;letter-spacing:0.14em;color:#ffffff;font-family:Arial,sans-serif;">${APP_NAME.toUpperCase()}</span>
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;padding:36px 32px 28px;text-align:${align};">
+            ${content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1a2035;border-radius:0 0 12px 12px;padding:24px 28px 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" style="padding-bottom:18px;">
+                  <a href="https://www.instagram.com/bareterapp" target="_blank" style="display:inline-block;width:34px;height:34px;line-height:34px;background:rgba(255,255,255,0.1);border-radius:50%;text-align:center;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;margin:0 4px;font-family:Arial,sans-serif;">IG</a>
+                  <a href="https://www.linkedin.com/company/bareter" target="_blank" style="display:inline-block;width:34px;height:34px;line-height:34px;background:rgba(255,255,255,0.1);border-radius:50%;text-align:center;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;margin:0 4px;font-family:Arial,sans-serif;">in</a>
+                  <a href="https://x.com/bareterapp" target="_blank" style="display:inline-block;width:34px;height:34px;line-height:34px;background:rgba(255,255,255,0.1);border-radius:50%;text-align:center;color:#ffffff;text-decoration:none;font-size:14px;font-weight:900;margin:0 4px;font-family:Arial,sans-serif;">X</a>
+                  <a href="https://www.tiktok.com/@bareter" target="_blank" style="display:inline-block;width:34px;height:34px;line-height:34px;background:rgba(255,255,255,0.1);border-radius:50%;text-align:center;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;margin:0 4px;font-family:Arial,sans-serif;">TT</a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-bottom:8px;">
+                  <span style="color:#9ca3af;font-size:12px;">Need help? </span><a href="mailto:hello@bareter.com" style="color:#34d399;font-size:12px;text-decoration:none;">hello@bareter.com</a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-bottom:14px;">
+                  <span style="color:#6b7280;font-size:11px;">Dubai, United Arab Emirates</span>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-bottom:10px;">
+                  <a href="${BASE_URL}/privacy" style="color:#6b7280;font-size:11px;text-decoration:none;">Privacy Policy</a>
+                  <span style="color:#4b5563;font-size:11px;"> &nbsp;&middot;&nbsp; </span>
+                  <a href="${BASE_URL}/terms" style="color:#6b7280;font-size:11px;text-decoration:none;">Terms of Service</a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-bottom:8px;">
+                  <span style="color:#4b5563;font-size:11px;">&copy; ${year} ${APP_NAME}. All rights reserved.</span>
+                </td>
+              </tr>
+              <tr>
+                <td align="center">
+                  <span style="color:#374151;font-size:10px;">This is an automated message &mdash; please do not reply to this email directly.</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+}
+
 export function renderBroadcastEmailHtml(opts: {
   recipientName?: string | null;
   body: string;
@@ -196,19 +275,10 @@ export function renderBroadcastEmailHtml(opts: {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br />");
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${escapedBody}</p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  return emailShell(`
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
+    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0;">${escapedBody}</p>
+  `);
 }
 
 export async function sendPasswordChangeOtpEmail(toEmail: string, otp: string, fullName?: string | null): Promise<boolean> {
@@ -217,26 +287,16 @@ export async function sendPasswordChangeOtpEmail(toEmail: string, otp: string, f
     return false;
   }
   const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Password change request</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 22px;">${greeting} use the code below to confirm your password change. It expires in <strong>15 minutes</strong>.</p>
+    <div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:12px;padding:28px 24px;text-align:center;margin:0 0 22px;">
+      <p style="margin:0 0 10px;color:#64748b;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Verification Code</p>
+      <p style="margin:0;font-size:44px;font-weight:700;letter-spacing:0.3em;color:#0f5f5a;font-family:'Courier New',Courier,monospace;">${otp}</p>
+      <p style="margin:12px 0 0;color:#64748b;font-size:12px;">Valid for <strong>15 minutes</strong> &nbsp;&middot;&nbsp; Do not share this code</p>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Password change request</h2>
-    <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">${greeting} use the code below to confirm your password change. It expires in <strong>15 minutes</strong>.</p>
-    <div style="text-align: center; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 20px; margin: 20px 0;">
-      <p style="margin: 0 0 6px; color: #134e4a; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;">VERIFICATION CODE</p>
-      <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 0.12em; color: #136c68;">${otp}</p>
-    </div>
-    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
-      If you did not request this change, your password has not been changed.<br/>Please contact support if you're concerned.
-    </p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
-  </div>
-</body></html>`;
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0;text-align:center;">If you did not request this change, your password has not been changed. Contact <a href="mailto:hello@bareter.com" style="color:#136c68;text-decoration:none;">hello@bareter.com</a> if you have concerns.</p>
+  `);
   const text = `${greeting}\n\nYour ${APP_NAME} password change verification code is: ${otp}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, your password has not been changed.`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} password change code`, html, text });
 }
@@ -247,23 +307,14 @@ export async function sendPasswordChangedNotificationEmail(toEmail: string, full
     return false;
   }
   const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Password changed successfully</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} your ${APP_NAME} account password was just changed.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 18px;">
+      <p style="margin:0;color:#166534;font-size:13px;line-height:1.5;">Password updated successfully. All other active sessions have been signed out for your security.</p>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Password changed successfully</h2>
-    <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">${greeting} your ${APP_NAME} account password was just changed.</p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0; color: #166534; font-size: 13px; line-height: 1.5;">✓ Password updated successfully. All other active sessions have been signed out for your security.</p>
-    </div>
-    <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">If you did not make this change, please <a href="mailto:hello@bareter.com" style="color: #136c68;">contact support immediately</a>.</p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
-  </div>
-</body></html>`;
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0;">If you did not make this change, <a href="mailto:hello@bareter.com" style="color:#136c68;text-decoration:none;">contact support immediately</a>.</p>
+  `);
   const text = `${greeting}\n\nYour ${APP_NAME} account password was just changed successfully. All other active sessions have been signed out.\n\nIf you did not make this change, contact support immediately at hello@bareter.com.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} password has been changed`, html, text });
 }
@@ -274,27 +325,16 @@ export async function sendEmailVerificationEmail(toEmail: string, opts: { fullNa
     console.log(`[EMAIL] Email verification for ${toEmail}: ${opts.verifyUrl}`);
     return false;
   }
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Confirm your email address</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${greeting} click the button below to verify your ${APP_NAME} account. This link expires in <strong>24 hours</strong>.</p>
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${opts.verifyUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Verify my email</a>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Confirm your email</h2>
-    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">${greeting} click the button below to verify your ${APP_NAME} account. This link expires in <strong>24 hours</strong>.</p>
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="${opts.verifyUrl}" style="display: inline-block; background: #136c68; color: white; text-decoration: none; padding: 13px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">Verify my email</a>
-    </div>
-    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-      Or paste this link in your browser:<br/>
-      <a href="${opts.verifyUrl}" style="color: #136c68; font-size: 11px; word-break: break-all;">${opts.verifyUrl}</a>
-    </p>
-    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 16px;">If you did not create a ${APP_NAME} account, you can ignore this email.</p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
-  </div>
-</body></html>`;
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0 0 6px;">Or paste this link in your browser:</p>
+    <p style="text-align:center;margin:0 0 18px;"><a href="${opts.verifyUrl}" style="color:#136c68;font-size:11px;word-break:break-all;">${opts.verifyUrl}</a></p>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">If you did not create a ${APP_NAME} account, you can safely ignore this email.</p>
+  `);
   const text = `${greeting}\n\nVerify your ${APP_NAME} account by visiting:\n${opts.verifyUrl}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, ignore this email.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Verify your ${APP_NAME} email`, html, text });
 }
@@ -316,40 +356,14 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
   const customTemplate = await getCustomTemplate("email_template_password_reset");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { resetUrl, appName: APP_NAME, baseUrl })
-    : `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8" /></head>
-      <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-        <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <img src="${baseUrl}/logo-icon.png" alt="${APP_NAME}" width="52" height="52" style="display: inline-block; width: 52px; height: 52px; border-radius: 12px; margin-bottom: 12px; border: 0;" />
-            <h1 style="margin: 0; font-size: 22px; color: #1a1a2e;">${APP_NAME}</h1>
-          </div>
-
-          <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Reset your password</h2>
-          <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">
-            We received a request to reset your password. Click the button below to create a new one.
-            This link expires in <strong>1 hour</strong>.
-          </p>
-
-          <a href="${resetUrl}" style="display: block; text-align: center; background: #1a1a2e; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin-bottom: 24px;">
-            Reset Password
-          </a>
-
-          <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
-            If you didn't request this, you can safely ignore this email.<br />
-            The link will expire in 1 hour.
-          </p>
-
-          <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-          <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">
-            ${APP_NAME} · UAE Barter Marketplace
-          </p>
-        </div>
-      </body>
-      </html>
-    `;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Reset your password</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">We received a request to reset your ${APP_NAME} password. Click below to create a new one. This link expires in <strong>1 hour</strong>.</p>
+      <div style="text-align:center;margin:0 0 24px;">
+        <a href="${resetUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Reset Password</a>
+      </div>
+      <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">If you didn't request this, you can safely ignore this email. The link will expire in 1 hour.</p>
+    `);
   const text = `Reset your ${APP_NAME} password\n\nClick this link to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`;
 
   const sent = await sendMail({
@@ -381,31 +395,18 @@ export async function sendWaitlistWelcomeEmail(
     return;
   }
 
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <a href="${opts.baseUrl}/" style="text-decoration: none;">
-        <img src="${opts.baseUrl}/logo-full-color.png" alt="${APP_NAME}" width="160" height="auto" style="display: inline-block; max-width: 160px; height: auto; border: 0;" />
-      </a>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">You're on the list!</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} thanks for joining the ${APP_NAME} waitlist. You're <strong>#${opts.position}</strong> in line, and as an early supporter you'll receive a <strong>Founder Badge</strong> on your profile when ${APP_NAME} launches.</p>
+    <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:16px;margin:0 0 20px;">
+      <p style="margin:0 0 6px;color:#115e59;font-size:13px;font-weight:700;">Skip the line</p>
+      <p style="margin:0 0 8px;color:#134e4a;font-size:13px;line-height:1.5;">Every friend who joins through your link moves you up the queue.</p>
+      <a href="${refUrl}" style="color:#136c68;font-weight:600;text-decoration:none;font-size:13px;word-break:break-all;">${refUrl}</a>
     </div>
-    <h2 style="font-size: 20px; color: #111; margin-bottom: 8px;">You're on the list! 🎉</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      ${greeting} thanks for joining the ${APP_NAME} waitlist. You're <strong>#${opts.position}</strong> in line, and as an early supporter you'll receive a <strong>Founder Badge</strong> on your profile when ${APP_NAME} launches.
-    </p>
-    <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 16px; margin: 20px 0;">
-      <p style="margin: 0 0 6px; color: #115e59; font-size: 13px; font-weight: 600;">Skip the line</p>
-      <p style="margin: 0; color: #134e4a; font-size: 13px; line-height: 1.5;">Every friend who joins through your link moves you up the queue.</p>
-      <a href="${refUrl}" style="display: inline-block; margin-top: 10px; color: #136c68; font-weight: 600; text-decoration: none; word-break: break-all; font-size: 13px;">${refUrl}</a>
+    <div style="text-align:center;">
+      <a href="${opts.baseUrl}/" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Visit ${APP_NAME}</a>
     </div>
-    <a href="${opts.baseUrl}/" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Visit ${APP_NAME}
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting}\n\nYou're on the ${APP_NAME} waitlist — position #${opts.position}.\n\nAs an early supporter you'll get a Founder Badge on your profile at launch.\n\nSkip the line — share your invite link:\n${refUrl}\n\n— ${APP_NAME}`;
 
   await sendMail({
@@ -431,27 +432,14 @@ export async function sendDealCompletedEmail(
   const customTemplate = await getCustomTemplate("email_template_deal_completed");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, counterpartyName: opts.counterpartyName, dealUrl, appName: APP_NAME })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 20px; color: #111; margin-bottom: 8px;">Your trade is complete 🎉</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      ${greeting} your trade with <strong>${opts.counterpartyName}</strong> has been marked complete by both sides.
-    </p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      Take a moment to leave a rating — it helps build trust on ${APP_NAME} and improves your reputation as a trader.
-    </p>
-    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Leave a rating
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Your trade is complete!</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} your trade with <strong>${opts.counterpartyName}</strong> has been marked complete by both sides.</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Take a moment to leave a rating — it helps build trust on ${APP_NAME} and strengthens your reputation as a trader.</p>
+      <div style="text-align:center;">
+        <a href="${dealUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Leave a Rating</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour trade with ${opts.counterpartyName} on ${APP_NAME} is complete.\n\nLeave a rating to help build trust on the platform:\n${dealUrl}\n\n— ${APP_NAME}`;
 
   await sendMail({
@@ -653,31 +641,18 @@ export async function sendListingRejectionEmail(
   const customTemplate = await getCustomTemplate("email_template_listing_rejected");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: escapedTitle, reason: escapedReason, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Listing Not Approved</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      ${greeting} your listing <strong>"${escapedTitle}"</strong> was reviewed by our moderation team and could not be approved at this time.
-    </p>
-    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #991b1b; font-size: 13px; font-weight: 600;">Reason</p>
-      <p style="margin: 0; color: #7f1d1d; font-size: 13px; line-height: 1.5;">${escapedReason}</p>
-    </div>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      You can update your listing and resubmit it for review. If you believe this was a mistake, please contact our support team.
-    </p>
-    <a href="${opts.baseUrl}/my-listings" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      View My Listings
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Listing Not Approved</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} your listing <strong>"${escapedTitle}"</strong> was reviewed by our moderation team and could not be approved at this time.</p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:16px;margin:0 0 16px;">
+        <p style="margin:0 0 4px;color:#991b1b;font-size:13px;font-weight:700;">Reason</p>
+        <p style="margin:0;color:#7f1d1d;font-size:13px;line-height:1.5;">${escapedReason}</p>
+      </div>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">You can update your listing and resubmit it for review. If you believe this was a mistake, contact our support team.</p>
+      <div style="text-align:center;">
+        <a href="${opts.baseUrl}/my-listings" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View My Listings</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" was reviewed and could not be approved.\n\nReason: ${opts.reason}\n\nYou can update your listing and resubmit it for review.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text, templateKey: "email_template_listing_rejected" });
 }
@@ -691,29 +666,14 @@ export async function sendWaitlistLaunchEmail(
     return false;
   }
   const greeting = opts.name ? `Hi ${opts.name},` : "Hi there,";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <a href="${opts.baseUrl}/" style="text-decoration: none;">
-        <img src="${opts.baseUrl}/logo-full-color.png" alt="${APP_NAME}" width="160" height="auto" style="display: inline-block; max-width: 160px; height: auto; border: 0;" />
-      </a>
+  const html = emailShell(`
+    <h2 style="font-size:21px;font-weight:700;color:#1a2035;margin:0 0 12px;">We're live!</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} the wait is over — <strong>${APP_NAME}</strong> is now open for business!</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">As an early supporter, you've earned a <strong>Founder Badge</strong> on your profile. Create your account now and start bartering with verified businesses worldwide.</p>
+    <div style="text-align:center;margin:0 0 4px;">
+      <a href="${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Create Your Account</a>
     </div>
-    <h2 style="font-size: 22px; color: #111; margin-bottom: 8px;">We're live! 🚀</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      ${greeting} the wait is over — <strong>${APP_NAME}</strong> is now open for business! As an early supporter, you've earned a <strong>Founder Badge</strong> on your profile.
-    </p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">
-      Create your account now and start bartering with verified businesses across the UAE.
-    </p>
-    <a href="${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Create Your Account
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting}\n\nThe wait is over — ${APP_NAME} is now open for business!\n\nAs an early supporter, you've earned a Founder Badge on your profile.\n\nCreate your account: ${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `${APP_NAME} is live — claim your Founder Badge!`, html, text });
 }
@@ -724,26 +684,19 @@ export async function sendSupportTicketConfirmationEmail(
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Support Ticket Created</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} we've received your support request and a ticket has been created.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;color:#166534;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Ticket Reference</p>
+      <p style="margin:0 0 2px;color:#15803d;font-size:16px;font-weight:700;">${opts.ticketNumber}</p>
+      <p style="margin:0;color:#374151;font-size:13px;">${opts.subject}</p>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Support Ticket Created</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} we've received your support request and a ticket has been created.</p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">Ticket Reference</p>
-      <p style="margin: 0; color: #15803d; font-size: 15px; font-weight: 700;">${opts.ticketNumber}</p>
-      <p style="margin: 4px 0 0; color: #374151; font-size: 13px;">${opts.subject}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Our team will review your request and respond as soon as possible. You'll receive an email when we reply.</p>
+    <div style="text-align:center;">
+      <a href="${opts.baseUrl}/help" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Support &amp; Help</a>
     </div>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Our team will review your request and respond as soon as possible. You'll receive an email when we reply.</p>
-    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Support &amp; Help</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting} your support ticket ${opts.ticketNumber} has been created: ${opts.subject}. We'll reply soon.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Support Ticket Created: ${opts.subject}`, html, text });
 }
@@ -755,24 +708,17 @@ export async function sendSupportReplyEmail(
   if (!(await isEmailConfigured())) return false;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   const safeReply = opts.replyContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br />");
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 4px;">New Reply on Your Support Ticket</h2>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 16px;">${opts.ticketNumber} &mdash; ${opts.subject}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} our support team has replied to your ticket:</p>
+    <div style="background:#f9fafb;border-left:4px solid #0f5f5a;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 24px;">
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;">${safeReply}</p>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 4px;">New Reply on Your Support Ticket</h2>
-    <p style="color: #6b7280; font-size: 13px; margin: 0 0 16px;">${opts.ticketNumber} — ${opts.subject}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} our support team has replied to your ticket:</p>
-    <div style="background: #f9fafb; border-left: 4px solid #136c68; border-radius: 0 8px 8px 0; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.6;">${safeReply}</p>
+    <div style="text-align:center;">
+      <a href="${opts.baseUrl}/help" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Support &amp; Help</a>
     </div>
-    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Support &amp; Help</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting} a support agent replied to ticket ${opts.ticketNumber}:\n\n${opts.replyContent}\n\nVisit help & support: ${opts.baseUrl}/help\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] New Reply: ${opts.subject}`, html, text });
 }
@@ -803,26 +749,19 @@ export async function sendSupportEscalationEmail(
       }).join("\n\n")}`
     : "";
 
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Support Ticket Escalated</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} a support ticket has been escalated and requires human attention.</p>
-    <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #92400e; font-size: 13px; font-weight: 600;">${opts.ticketNumber}</p>
-      <p style="margin: 0 0 4px; color: #78350f; font-size: 14px; font-weight: 700;">${opts.subject}</p>
-      <p style="margin: 0; color: #92400e; font-size: 13px;">From: ${opts.userName} (${opts.userEmail})</p>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Support Ticket Escalated</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} a support ticket has been escalated and requires human attention.</p>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 2px;color:#92400e;font-size:13px;font-weight:700;">${opts.ticketNumber}</p>
+      <p style="margin:0 0 4px;color:#78350f;font-size:15px;font-weight:700;">${opts.subject}</p>
+      <p style="margin:0;color:#92400e;font-size:13px;">From: ${opts.userName} (${opts.userEmail})</p>
     </div>
     ${transcriptHtml}
-    <a href="${opts.baseUrl}/admin" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Review in Admin Panel</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Admin Notification</p>
-  </div>
-</body></html>`;
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${opts.baseUrl}/admin" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Review in Admin Panel</a>
+    </div>
+  `);
   const text = `${greeting}\n\nTicket ${opts.ticketNumber} has been escalated.\nSubject: ${opts.subject}\nUser: ${opts.userName} (${opts.userEmail})${transcriptText}\n\nReview: ${opts.baseUrl}/admin\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[ESCALATED] ${opts.ticketNumber}: ${opts.subject}`, html, text });
 }
@@ -850,26 +789,19 @@ export async function sendTicketClosedEmail(
     ? `\n\nConversation Transcript:\n${opts.transcript.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n")}`
     : "";
 
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Ticket Resolved</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your support ticket has been resolved and closed.</p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">${opts.ticketNumber}</p>
-      <p style="margin: 0; color: #374151; font-size: 14px;">${opts.subject}</p>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Ticket Resolved</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} your support ticket has been resolved and closed.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin:0 0 16px;">
+      <p style="margin:0 0 2px;color:#166534;font-size:13px;font-weight:700;">${opts.ticketNumber}</p>
+      <p style="margin:0;color:#374151;font-size:14px;">${opts.subject}</p>
     </div>
     ${transcriptHtml}
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">If you have any further questions, feel free to open a new ticket. We're always here to help.</p>
-    <a href="${opts.baseUrl}/help" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Visit Help Centre</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Support</p>
-  </div>
-</body></html>`;
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:16px 0 24px;">If you have any further questions, feel free to open a new ticket. We're always here to help.</p>
+    <div style="text-align:center;">
+      <a href="${opts.baseUrl}/help" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Visit Help Centre</a>
+    </div>
+  `);
   const text = `${greeting} your support ticket ${opts.ticketNumber} has been resolved and closed.${transcriptText}\n\nIf you need more help, visit ${opts.baseUrl}/help\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `[${opts.ticketNumber}] Ticket Resolved`, html, text });
 }
@@ -883,29 +815,13 @@ export async function sendWelcomeEmail(toEmail: string, fullName: string): Promi
   const customTemplate = await getCustomTemplate("email_template_welcome");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { fullName, appName: APP_NAME, email: toEmail })
-    : `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8" /></head>
-      <body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-        <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="margin: 0; font-size: 22px; color: #1a1a2e;">${APP_NAME}</h1>
-          </div>
-          <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Welcome, ${fullName}!</h2>
-          <p style="color: #6b7280; font-size: 14px;">
-            Your account is ready. Start browsing listings and connect with UAE businesses to trade your products and services.
-          </p>
-          <a href="https://bareter.com/browse" style="display: block; text-align: center; background: #1a1a2e; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0;">
-            Explore Listings
-          </a>
-          <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">
-            ${APP_NAME} · UAE Barter Marketplace
-          </p>
-        </div>
-      </body>
-      </html>
-    `;
+    : emailShell(`
+      <h2 style="font-size:21px;font-weight:700;color:#1a2035;margin:0 0 12px;">Welcome to ${APP_NAME}, ${fullName}!</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 20px;">Your account is ready. Start browsing listings and connect with businesses worldwide to trade your products and services.</p>
+      <div style="text-align:center;margin:0 0 4px;">
+        <a href="https://bareter.com/browse" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Explore Listings</a>
+      </div>
+    `);
   const text = `Welcome to ${APP_NAME}, ${fullName}! Your account is ready. Start browsing at https://bareter.com/browse`;
 
   await sendMail({
@@ -933,29 +849,14 @@ export async function sendVerificationApprovedEmail(
   const customTemplate = await getCustomTemplate("email_template_verification_approved");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <div style="text-align: center; margin-bottom: 20px;">
-      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; font-size: 28px;">✓</div>
-    </div>
-    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Verification Approved!</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      Congratulations — your <strong>${verType}</strong> verification has been <strong>approved</strong>.
-      Your account is now fully verified and you can start creating listings, accepting barter deals, and trading on ${APP_NAME}.
-    </p>
-    <a href="${baseUrl}/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Start Bartering
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#065f46;margin:0 0 10px;">Verification Approved!</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 18px;">Congratulations — your <strong>${verType}</strong> verification has been <strong>approved</strong>. Your account is now fully verified and you can start creating listings, accepting barter deals, and trading on ${APP_NAME}.</p>
+      <div style="text-align:center;">
+        <a href="${baseUrl}/browse" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Start Bartering</a>
+      </div>
+    `);
   const text = `${greeting}\n\nCongratulations! Your ${verType} verification has been approved. You can now start bartering on ${APP_NAME}.\n\nVisit ${baseUrl}/browse to get started.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Verification Approved — Welcome to ${APP_NAME}!`, html, text, templateKey: "email_template_verification_approved" });
 }
@@ -973,29 +874,16 @@ export async function sendVerificationDeclinedEmail(
   const reasonHtml = opts.reason
     ? `<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px; margin: 16px 0;"><p style="margin: 0 0 4px; color: #991b1b; font-size: 13px; font-weight: 600;">Reason</p><p style="margin: 0; color: #7f1d1d; font-size: 13px;">${opts.reason}</p></div>`
     : "";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 18px; color: #991b1b; margin-bottom: 8px;">Verification Not Approved</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      Unfortunately, your <strong>${verType}</strong> verification was not approved. This can happen if documents were unclear, expired, or did not match our requirements.
-    </p>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#991b1b;margin:0 0 10px;">Verification Not Approved</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">Unfortunately, your <strong>${verType}</strong> verification was not approved. This can happen if documents were unclear, expired, or did not match our requirements.</p>
     ${reasonHtml}
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      You can try again by visiting your profile and restarting the verification process. If you believe this is an error, please contact our support team.
-    </p>
-    <a href="https://bareter.com/profile" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Try Again
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:16px 0 24px;">You can try again by visiting your profile and restarting the verification process. If you believe this is an error, please contact <a href="mailto:hello@bareter.com" style="color:#136c68;text-decoration:none;">hello@bareter.com</a>.</p>
+    <div style="text-align:center;">
+      <a href="https://bareter.com/profile" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Try Again</a>
+    </div>
+  `);
   const text = `${greeting}\n\nYour ${verType} verification was not approved. You can try again at https://bareter.com/profile\n\n${opts.reason ? `Reason: ${opts.reason}\n\n` : ""}Contact support if you believe this is an error.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Verification Update — Action Required`, html, text });
 }
@@ -1010,29 +898,15 @@ export async function sendVerificationUnderReviewEmail(
   }
   const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
   const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Documents Received — Under Review</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">We have received your <strong>${verType}</strong> verification documents. Our team is currently reviewing them — this usually takes just a few minutes. We will email you as soon as a decision has been made.</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">You can check your current verification status at any time by visiting your settings.</p>
+    <div style="text-align:center;">
+      <a href="https://bareter.com/settings" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Check Status</a>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Documents Received — Under Review</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      We have received your <strong>${verType}</strong> verification documents. Our team is currently reviewing them — this usually takes just a few minutes.
-      We will email you as soon as a decision has been made.
-    </p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      You can check your current verification status at any time by visiting your settings.
-    </p>
-    <a href="https://bareter.com/settings" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      Check Status
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting}\n\nWe received your ${verType} documents and are reviewing them. This usually takes just a few minutes. We'll email you when a decision is made.\n\nCheck your status at https://bareter.com/settings\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Verification Documents Received — Under Review`, html, text });
 }
@@ -1078,22 +952,16 @@ function reminderShell(opts: {
   const ctaUrl = escapeReminderHtml(opts.ctaUrl);
   const unsubscribeUrl = escapeReminderHtml(opts.unsubscribeUrl);
   const unsubscribeLabel = escapeReminderHtml(opts.unsubscribeLabel);
-  return `<!DOCTYPE html>
-<html dir="${dir}"><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px; text-align: ${align};">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  return emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 12px;">${heading}</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${body}</p>
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${ctaUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">${ctaText}</a>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin: 0 0 12px;">${heading}</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">${body}</p>
-    <a href="${ctaUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 8px 0 24px;">${ctaText}</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">
-      <a href="${unsubscribeUrl}" style="color: #9ca3af;">${unsubscribeLabel}</a> · ${APP_NAME}
+    <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0;">
+      <a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline;">${unsubscribeLabel}</a>
     </p>
-  </div>
-</body></html>`;
+  `, { rtl: opts.language === "ar" });
 }
 
 const REMINDER_COPY = {
@@ -1251,30 +1119,17 @@ export async function sendListingPublishedEmail(
   const customTemplate = await getCustomTemplate("email_template_listing_approved");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, listingUrl, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
-    </div>
-    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Your listing is live! Congratulations!</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      Congratulations! Your listing <strong>"${safeTitle}"</strong> is now published on ${APP_NAME} and visible to verified traders worldwide. You will be notified as soon as someone sends you a barter offer.
-    </p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0; color: #166534; font-size: 13px; line-height: 1.5;">
-        Tip: Share your listing link with your network to get more visibility and faster offers.
-      </p>
-    </div>
-    <a href="${listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      View My Listing
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#065f46;margin:0 0 10px;">Your listing is live!</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">Congratulations! Your listing <strong>"${safeTitle}"</strong> is now published on ${APP_NAME} and visible to verified traders worldwide. You will be notified as soon as someone sends you a barter offer.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin:0 0 24px;">
+        <p style="margin:0;color:#166534;font-size:13px;line-height:1.5;">Tip: Share your listing link with your network to get more visibility and faster offers.</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View My Listing</a>
+      </div>
+    `);
   const text = `${greeting}\n\nCongratulations! Your listing "${opts.listingTitle}" is now live on ${APP_NAME}.\n\nView it here: ${listingUrl}\n\nYou will be notified when someone sends a barter offer.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" is live on ${APP_NAME}!`, html, text, templateKey: "email_template_listing_approved" });
 }
@@ -1306,30 +1161,19 @@ export async function sendNewProposalEmail(
     const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
     return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text, templateKey: "email_template_proposal_received" });
   }
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">New Barter Proposal</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;"><strong>${opts.proposerName}</strong> has proposed a barter on your listing <strong>"${opts.listingTitle}"</strong>.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 16px;">
+      <p style="margin:0 0 4px;color:#166534;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">They're offering</p>
+      <p style="margin:0;color:#166534;font-size:16px;font-weight:700;">${opts.offerItemName} &mdash; AED ${parseFloat(opts.offerItemValue).toLocaleString()}</p>
     </div>
-    <h2 style="font-size: 20px; color: #136c68; margin-bottom: 8px; text-align: center;">🤝 New Barter Proposal!</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      <strong>${opts.proposerName}</strong> has proposed a barter on your listing <strong>"${opts.listingTitle}"</strong>.
-    </p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">They're offering:</p>
-      <p style="margin: 0; color: #166534; font-size: 16px; font-weight: 700;">${opts.offerItemName} — AED ${parseFloat(opts.offerItemValue).toLocaleString()}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Head to your listing to review the proposal and accept or decline.</p>
+    <div style="text-align:center;">
+      <a href="${opts.listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Proposal</a>
     </div>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">Head to your listing to review the proposal and accept or decline.</p>
-    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      View Proposal
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting}\n\n${opts.proposerName} proposed a barter on your listing "${opts.listingTitle}".\n\nThey're offering: ${opts.offerItemName} — AED ${parseFloat(opts.offerItemValue).toLocaleString()}\n\nView the proposal: ${opts.listingUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `${opts.proposerName} proposed a barter on "${opts.listingTitle}"`, html, text, templateKey: "email_template_new_proposal" });
 }
@@ -1367,19 +1211,14 @@ export async function sendCounterOfferEmail(
     : opts.response === "accepted"
       ? `${opts.counterpartyName} accepted your counter-offer`
       : `${opts.counterpartyName} declined your counter-offer`;
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 20px; color: ${color}; margin-bottom: 8px; text-align: center;">${emoji} ${title}</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${body}</p>
-    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Listing</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:${color};margin:0 0 10px;">${title}</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${body}</p>
+    <div style="text-align:center;">
+      <a href="${opts.listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Listing</a>
+    </div>
+  `);
   const text = `${greeting}\n\n${title}\n\n${body.replace(/<[^>]+>/g, "")}\n\nView listing: ${opts.listingUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject, html, text });
 }
@@ -1443,23 +1282,14 @@ export async function sendDealStatusEmail(
     }
   }
 
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:${config.color};margin:0 0 10px;">${config.title}</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${config.body}</p>
+    <div style="text-align:center;">
+      <a href="${config.ctaUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">${config.cta}</a>
     </div>
-    <h2 style="font-size: 20px; color: ${config.color}; margin-bottom: 8px; text-align: center;">${config.emoji} ${config.title}</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${config.body}</p>
-    <a href="${config.ctaUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">
-      ${config.cta}
-    </a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+  `);
   const text = `${greeting}\n\n${config.title}\n\n${config.body.replace(/<[^>]+>/g, "")}\n\n${config.cta}: ${config.ctaUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: config.subject, html, text, templateKey: opts.status === "accepted" ? "email_template_proposal_accepted" : undefined });
 }
@@ -1472,23 +1302,14 @@ export async function sendProfileUpdatedEmail(
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1>
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Profile updated</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} your ${APP_NAME} profile has been updated successfully.</p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin:0 0 16px;">
+      <p style="margin:0;color:#166534;font-size:13px;line-height:1.5;">Your profile changes have been saved and are now visible to other traders.</p>
     </div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Profile updated</h2>
-    <p style="color: #6b7280; font-size: 14px; line-height: 1.55;">${greeting} your ${APP_NAME} profile has been updated successfully.</p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0; color: #166534; font-size: 13px;">Your profile changes have been saved and are now visible to other traders.</p>
-    </div>
-    <p style="color: #6b7280; font-size: 13px; margin-top: 16px;">If you did not make this change, please <a href="mailto:hello@bareter.com" style="color: #136c68;">contact support</a> immediately.</p>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #d1d5db; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0;">If you did not make this change, <a href="mailto:hello@bareter.com" style="color:#136c68;text-decoration:none;">contact support</a> immediately.</p>
+  `);
   const text = `${greeting}\n\nYour ${APP_NAME} profile has been updated successfully.\n\nIf you did not make this change, contact support at hello@bareter.com.\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} profile has been updated`, html, text });
 }
@@ -1569,23 +1390,18 @@ export async function sendMatchFoundEmail(
   const customTemplate = await getCustomTemplate("email_template_match_found");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, matchedListingTitle: safeMatch, matchScore: scoreStr, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #136c68; margin-bottom: 8px;">We found a strong match for you</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your listing <strong>"${safeTitle}"</strong> has a new potential match.</p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
-      <p style="margin: 0 0 4px; color: #166534; font-size: 13px; font-weight: 600;">Matched with</p>
-      <p style="margin: 0; color: #166534; font-size: 15px; font-weight: 700;">${safeMatch}</p>
-      <p style="margin: 6px 0 0; color: #15803d; font-size: 12px;">Match score: ${scoreStr}%</p>
-    </div>
-    <a href="${opts.baseUrl}/feed" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">View Your Matches</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">We found a strong match for you</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} your listing <strong>"${safeTitle}"</strong> has a new potential match.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 24px;">
+        <p style="margin:0 0 2px;color:#166534;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Matched with</p>
+        <p style="margin:0 0 4px;color:#166534;font-size:16px;font-weight:700;">${safeMatch}</p>
+        <p style="margin:0;color:#15803d;font-size:12px;">Match score: ${scoreStr}%</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${opts.baseUrl}/feed" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Your Matches</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" has a new match: "${opts.matchedListingTitle}" (${scoreStr}% match).\n\nView your matches: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `New match for your listing "${opts.listingTitle}"`, html, text, templateKey: "email_template_match_found" });
 }
@@ -1604,18 +1420,13 @@ export async function sendNewMessageEmail(
   const customTemplate = await getCustomTemplate("email_template_new_message");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, senderName: safeSender, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">New message from ${safeSender}</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} <strong>${safeSender}</strong> sent you a message about <strong>"${safeTitle}"</strong>.</p>
-    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Read Message</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">New message from ${safeSender}</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${greeting} <strong>${safeSender}</strong> sent you a message about <strong>"${safeTitle}"</strong>.</p>
+      <div style="text-align:center;">
+        <a href="${dealUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Read Message</a>
+      </div>
+    `);
   const text = `${greeting}\n\n${opts.senderName} sent you a message about "${opts.listingTitle}".\n\nReply: ${dealUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `New message from ${opts.senderName} on "${opts.listingTitle}"`, html, text, templateKey: "email_template_new_message" });
 }
@@ -1633,18 +1444,13 @@ export async function sendProposalReceivedEmail(
   const customTemplate = await getCustomTemplate("email_template_proposal_received");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, proposerName: safeProposer, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #136c68; margin-bottom: 8px;">New proposal on your listing</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} <strong>${safeProposer}</strong> has sent a barter proposal on your listing <strong>"${safeTitle}"</strong>.</p>
-    <a href="${opts.listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Review Proposal</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">New Proposal on Your Listing</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">${greeting} <strong>${safeProposer}</strong> has sent a barter proposal on your listing <strong>"${safeTitle}"</strong>.</p>
+      <div style="text-align:center;">
+        <a href="${opts.listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Review Proposal</a>
+      </div>
+    `);
   const text = `${greeting}\n\n${opts.proposerName} sent a barter proposal on your listing "${opts.listingTitle}".\n\nReview it here: ${opts.listingUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `${opts.proposerName} sent a proposal on "${opts.listingTitle}"`, html, text, templateKey: "email_template_proposal_received" });
 }
@@ -1662,21 +1468,16 @@ export async function sendContractReadyEmail(
   const customTemplate = await getCustomTemplate("email_template_contract_ready");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Your contract is ready to sign</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} the barter agreement for <strong>"${safeTitle}"</strong> is ready and waiting for your signature.</p>
-    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin: 16px 0;">
-      <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.5;">Sign the contract to finalise your deal and start the exchange.</p>
-    </div>
-    <a href="${dealUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Sign Contract</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Your contract is ready to sign</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">${greeting} the barter agreement for <strong>"${safeTitle}"</strong> is ready and waiting for your signature.</p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin:0 0 24px;">
+        <p style="margin:0;color:#92400e;font-size:13px;line-height:1.5;">Sign the contract to finalise your deal and start the exchange.</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${dealUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Sign Contract</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour barter contract for "${opts.listingTitle}" is ready. Sign it here: ${dealUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Action required: sign your barter contract for "${opts.listingTitle}"`, html, text, templateKey: "email_template_contract_ready" });
 }
@@ -1693,19 +1494,14 @@ export async function sendProposalDeclinedEmail(
   const customTemplate = await getCustomTemplate("email_template_proposal_declined");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #1a1a2e; margin-bottom: 8px;">Your proposal was not accepted</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your barter proposal on <strong>"${safeTitle}"</strong> was declined by the listing owner.</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Don't give up — browse other listings or post your offer as a listing of your own to reach more traders.</p>
-    <a href="${opts.baseUrl}/feed" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Browse Listings</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Your proposal was not accepted</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} your barter proposal on <strong>"${safeTitle}"</strong> was declined by the listing owner.</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Don't give up — browse other listings or post your offer as a listing of your own to reach more traders.</p>
+      <div style="text-align:center;">
+        <a href="${opts.baseUrl}/feed" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Browse Listings</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour proposal on "${opts.listingTitle}" was declined. Browse other listings: ${opts.baseUrl}/feed\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" was not accepted`, html, text, templateKey: "email_template_proposal_declined" });
 }
@@ -1724,19 +1520,14 @@ export async function sendListingExpiringEmail(
   const customTemplate = await getCustomTemplate("email_template_listing_expiring");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, daysLeft: daysLeftStr, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <h2 style="font-size: 18px; color: #92400e; margin-bottom: 8px;">Your listing expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">${greeting} your listing <strong>"${safeTitle}"</strong> will expire in <strong>${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</strong>.</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.55;">Renew it to keep receiving barter proposals and stay visible to traders.</p>
-    <a href="${listingUrl}" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Renew Listing</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · Worldwide Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#92400e;margin:0 0 10px;">Your listing expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} your listing <strong>"${safeTitle}"</strong> will expire in <strong>${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</strong>.</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Renew it to keep receiving barter proposals and stay visible to traders.</p>
+      <div style="text-align:center;">
+        <a href="${listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Renew Listing</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}. Renew it here: ${listingUrl}\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}`, html, text, templateKey: "email_template_listing_expiring" });
 }
@@ -1754,24 +1545,14 @@ export async function sendEmailVerifiedEmail(toEmail: string, fullName?: string 
   const customTemplate = await getCustomTemplate("email_template_email_verified");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <div style="text-align: center; margin-bottom: 20px;">
-      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; font-size: 28px;">✓</div>
-    </div>
-    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">Email verified</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      Your email address has been successfully verified. One more step — verify your WhatsApp number to unlock your full account and start trading on ${APP_NAME}.
-    </p>
-    <a href="${baseUrl}/profile?tab=verify" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Complete Verification</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#065f46;margin:0 0 10px;">Email verified</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Your email address has been successfully verified. One more step — verify your WhatsApp number to unlock your full account and start trading on ${APP_NAME}.</p>
+      <div style="text-align:center;">
+        <a href="${baseUrl}/profile?tab=verify" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Complete Verification</a>
+      </div>
+    `);
   const text = `${greeting}\n\nYour email address has been successfully verified. Complete your WhatsApp verification to unlock your full account.\n\nGo to: ${baseUrl}/profile?tab=verify\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Email verified — one more step`, html, text, templateKey: "email_template_email_verified" });
 }
@@ -1785,33 +1566,29 @@ export async function sendAccountReadyEmail(toEmail: string, fullName?: string |
   const customTemplate = await getCustomTemplate("email_template_account_ready");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })
-    : `<!DOCTYPE html>
-<html><head><meta charset="utf-8" /></head>
-<body style="font-family: Arial, sans-serif; background: #f4f4f5; margin: 0; padding: 24px;">
-  <div style="max-width: 520px; margin: 0 auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="text-align: center; margin-bottom: 24px;"><h1 style="margin: 0; font-size: 22px; color: #136c68;">${APP_NAME}</h1></div>
-    <div style="text-align: center; margin-bottom: 20px;">
-      <div style="display: inline-block; background: #d1fae5; border-radius: 50%; width: 64px; height: 64px; line-height: 64px; font-size: 32px;">🎉</div>
-    </div>
-    <h2 style="font-size: 20px; color: #065f46; margin-bottom: 8px; text-align: center;">You're all set!</h2>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">${greeting}</p>
-    <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">
-      Your account is fully verified — email and WhatsApp are both confirmed. You're ready to explore the marketplace, post your first listing, and start making deals with UAE businesses.
-    </p>
-    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
-      <p style="margin: 0 0 8px; color: #166534; font-size: 13px; font-weight: 600;">What you can do now:</p>
-      <ul style="margin: 0; padding-left: 18px; color: #166534; font-size: 13px; line-height: 1.8;">
-        <li>Browse listings and find what your business needs</li>
-        <li>Post your own listing and attract barter proposals</li>
-        <li>Send proposals and start trading</li>
-      </ul>
-    </div>
-    <a href="${baseUrl}/browse" style="display: block; text-align: center; background: #136c68; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 24px 0 8px;">Explore the Marketplace</a>
-    <a href="${baseUrl}/listings/new" style="display: block; text-align: center; background: white; color: #136c68; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1.5px solid #136c68; margin-bottom: 24px;">Post Your First Listing</a>
-    <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 24px 0;" />
-    <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 0;">${APP_NAME} · UAE Barter Marketplace</p>
-  </div>
-</body></html>`;
+    : emailShell(`
+      <h2 style="font-size:21px;font-weight:700;color:#065f46;margin:0 0 12px;">You're all set!</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">Your account is fully verified — email and WhatsApp are both confirmed. You're ready to explore the marketplace, post your first listing, and start making deals.</p>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 24px;">
+        <p style="margin:0 0 8px;color:#166534;font-size:13px;font-weight:700;">What you can do now:</p>
+        <ul style="margin:0;padding-left:18px;color:#166534;font-size:13px;line-height:1.9;">
+          <li>Browse listings and find what your business needs</li>
+          <li>Post your own listing and attract barter proposals</li>
+          <li>Send proposals and start trading</li>
+        </ul>
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding-right:6px;">
+            <a href="${baseUrl}/browse" style="display:block;text-align:center;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:13px 20px;border-radius:8px;font-size:14px;font-weight:700;">Explore the Marketplace</a>
+          </td>
+          <td style="padding-left:6px;">
+            <a href="${baseUrl}/listings/new" style="display:block;text-align:center;background:#ffffff;color:#0f5f5a;text-decoration:none;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;border:1.5px solid #0f5f5a;">Post a Listing</a>
+          </td>
+        </tr>
+      </table>
+    `);
   const text = `${greeting}\n\nYour account is fully verified — email and WhatsApp are both confirmed.\n\nBrowse the marketplace: ${baseUrl}/browse\nPost your first listing: ${baseUrl}/listings/new\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} account is ready — let's trade!`, html, text, templateKey: "email_template_account_ready" });
 }
