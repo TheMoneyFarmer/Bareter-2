@@ -2133,6 +2133,10 @@ export async function registerRoutes(
         ...valuationFields,
         userId: req.session.userId,
         valueFlagged,
+        // Always stamp country/city from the poster's profile so location filtering works.
+        // Body values take precedence if explicitly provided.
+        country: listingBody.country || listingUser.country || null,
+        city: listingBody.city || listingUser.city || null,
       });
       const listing = await storage.createListing(data);
       res.json(listing);
