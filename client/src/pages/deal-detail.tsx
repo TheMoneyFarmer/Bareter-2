@@ -904,15 +904,48 @@ export function DealDetailPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {canAccept && (
-                <Button
-                  className="w-full gap-2"
-                  onClick={() => updateDealMutation.mutate({ state: "accepted" })}
-                  disabled={updateDealMutation.isPending}
-                  data-testid="button-accept-deal"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  {t("dealDetail.acceptBarter")}
-                </Button>
+                <>
+                  <Button
+                    className="w-full gap-2"
+                    onClick={() => updateDealMutation.mutate({ state: "accepted" })}
+                    disabled={updateDealMutation.isPending}
+                    data-testid="button-accept-deal"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    {t("dealDetail.acceptBarter")}
+                  </Button>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/5"
+                        disabled={updateDealMutation.isPending}
+                        data-testid="button-decline-deal"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Decline Offer
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Decline this offer?</DialogTitle>
+                        <DialogDescription>
+                          The proposer will be notified that their offer was declined. This cannot be undone.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline">Keep It</Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => updateDealMutation.mutate({ state: "cancelled" })}
+                          disabled={updateDealMutation.isPending}
+                        >
+                          Decline Offer
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {canMarkInProgress && (
@@ -996,7 +1029,7 @@ export function DealDetailPage() {
                 </Button>
               )}
 
-              {deal.state !== "completed" && deal.state !== "cancelled" && (
+              {deal.state !== "completed" && deal.state !== "cancelled" && deal.state !== "proposed" && (
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="w-full gap-2 text-destructive" data-testid="button-cancel-deal">

@@ -2413,15 +2413,22 @@ export async function registerRoutes(
       ]).then(async ([proposer, owner]) => {
         const proposerName = proposer?.fullName || "Someone";
         // In-app bell notification for the listing owner
-        await storage.createNotification({
-          userId: listing.userId,
-          type: "new_proposal",
-          title: `New barter proposal from ${proposerName}`,
-          message: `${proposerName} offered "${parsed.offerItemName}" (AED ${Number(parsed.offerItemValue).toLocaleString()}) for your listing "${listing.title}". Tap to review and respond.`,
-          relatedListingId: listingId,
-        } as any);
-        // Email
-        if (!owner?.email) return;
+        try {
+          await storage.createNotification({
+            userId: listing.userId,
+            type: "new_proposal",
+            title: `New barter proposal from ${proposerName}`,
+            message: `${proposerName} offered "${parsed.offerItemName}" (AED ${Number(parsed.offerItemValue).toLocaleString()}) for your listing "${listing.title}". Tap to review and respond.`,
+            relatedListingId: listingId,
+          } as any);
+        } catch (err) {
+          console.error("[PROPOSAL] Failed to create notification:", err);
+        }
+        // Email to listing owner
+        if (!owner?.email) {
+          console.warn("[PROPOSAL] Listing owner has no email, skipping proposal notification");
+          return;
+        }
         const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
         const { sendNewProposalEmail } = await import("./emailService");
         sendNewProposalEmail(owner.email, {
@@ -2431,14 +2438,20 @@ export async function registerRoutes(
           offerItemName: parsed.offerItemName,
           offerItemValue: parsed.offerItemValue,
           listingUrl: `${baseUrl}/listings/${listingId}`,
-        }).catch(() => {});
+        }).then((ok) => {
+          if (!ok) console.warn(`[PROPOSAL] sendNewProposalEmail returned false for ${owner.email}`);
+        }).catch((err) => {
+          console.error(`[PROPOSAL] sendNewProposalEmail threw for ${owner.email}:`, err);
+        });
         // Push notification
         sendPushToUser(listing.userId, {
           title: "New barter proposal!",
           body: `${proposerName} wants to barter on "${listing.title}"`,
           url: `/listings/${listingId}`,
         }).catch(() => {});
-      }).catch(() => {});
+      }).catch((err) => {
+        console.error("[PROPOSAL] Failed to send post-proposal notifications:", err);
+      });
 
       // Async AI valuation on proposal images — best-effort, does not block response
       if (parsed.images && parsed.images.length > 0) {

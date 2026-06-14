@@ -305,17 +305,30 @@ export function ListingDetailPage() {
     };
   }, [listing, user]);
 
+  // Reset deliverables when modal opens/closes
   useEffect(() => {
-    if (proposeOpen && listing) {
-      const items = getDeliverablesForListing(
-        listing.title ?? "",
-        listing.description ?? "",
-        (listing.categories as string[]) ?? [],
-      );
-      setDeliverables(items);
+    if (!proposeOpen) {
+      setDeliverables([]);
       setNewDeliverable("");
     }
-  }, [proposeOpen, listing]);
+  }, [proposeOpen]);
+
+  // Debounced dynamic deliverables — generated from what the proposer types, not the listing
+  const deliverableDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (deliverableDebounceRef.current) clearTimeout(deliverableDebounceRef.current);
+    if (!counterOffer.trim()) {
+      setDeliverables([]);
+      return;
+    }
+    deliverableDebounceRef.current = setTimeout(() => {
+      const items = getDeliverablesForListing(counterOffer, counterOffer, []);
+      setDeliverables(items);
+    }, 500);
+    return () => {
+      if (deliverableDebounceRef.current) clearTimeout(deliverableDebounceRef.current);
+    };
+  }, [counterOffer]);
 
   const toggleDeliverable = (index: number) => {
     setDeliverables(prev => prev.map((item, i) =>
@@ -1855,13 +1868,15 @@ export function ListingDetailPage() {
                           {t("listingDetail.deliverablesChecklist")}
                         </Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          Suggested based on what's being bartered. Check, uncheck, or add your own.
+                          {counterOffer.trim()
+                            ? "Suggested based on what you're offering. Check, uncheck, or add your own."
+                            : "Start typing what you're offering above to see smart suggestions."}
                         </p>
                       </div>
 
                       {/* Checklist */}
                       {deliverables.length > 0 && (
-                        <div className="space-y-2.5 rounded-lg border p-3">
+                        <div className="space-y-2.5 rounded-lg border p-3 max-h-52 overflow-y-auto">
                           {deliverables.map((item, index) => (
                             <div key={index} className="flex items-start gap-2.5">
                               <Checkbox
