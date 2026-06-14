@@ -1861,7 +1861,9 @@ export async function registerRoutes(
       const queryCountry = req.query.country as string | undefined;
       const queryCity = req.query.city as string | undefined;
       const country = worldwide ? undefined : queryCountry || sessionUser?.country || undefined;
-      const city = worldwide ? undefined : queryCity || (queryCountry ? undefined : sessionUser?.city || undefined);
+      // Only apply city filter when the client explicitly passes one — never infer it
+      // from the user's profile, otherwise listings without a city become invisible.
+      const city = worldwide ? undefined : queryCity || undefined;
 
       const listings = await storage.getListingsFiltered({
         search: typeof search === "string" ? search : undefined,

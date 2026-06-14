@@ -541,8 +541,13 @@ export class DatabaseStorage implements IStorage {
     if (type && type !== "all") conditions.push(eq(listings.type, type));
     if (category) conditions.push(sql`${listings.categories} @> ${JSON.stringify([category])}::jsonb`);
     if (location && location !== "all") conditions.push(eq(listings.location, location));
-    if (country && country !== "all") conditions.push(sql`UPPER(${listings.country}) = ${country.toUpperCase()}`);
-    if (city && city !== "all") conditions.push(eq(listings.city, city));
+    if (country && country !== "all") conditions.push(
+      or(sql`UPPER(${listings.country}) = ${country.toUpperCase()}`, isNull(listings.country))!
+    );
+    // City is a preference filter — include listings with no city so they are visible in their country
+    if (city && city !== "all") conditions.push(
+      or(eq(listings.city, city), isNull(listings.city))!
+    );
     if (minValue !== undefined) conditions.push(sql`${listings.retailValue}::numeric >= ${minValue}`);
     if (maxValue !== undefined) conditions.push(sql`${listings.retailValue}::numeric <= ${maxValue}`);
     if (verified) {
