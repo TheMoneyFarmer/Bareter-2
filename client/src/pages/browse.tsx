@@ -311,6 +311,7 @@ export function BrowsePage() {
       return res.json();
     },
     staleTime: 0,
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const { data: featuredListings } = useQuery<ListingWithUser[]>({

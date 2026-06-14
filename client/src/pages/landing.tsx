@@ -644,8 +644,22 @@ export function LandingPage() {
   const heroCta = cmsSettings?.hero_cta || null;
   const heroCtaUrl = cmsSettings?.hero_cta_url || null;
 
-  const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings/featured"] });
-  const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({ queryKey: ["/api/listings"] });
+  // Daily rotation seed — changes every 24 h so a different set of 8 listings surfaces each day
+  const daySeed = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+
+  const { data: featuredListings, isLoading: loadingFeatured } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings/featured"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+  const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings", { seed: daySeed }],
+    queryFn: async () => {
+      const res = await fetch(`/api/listings?seed=${daySeed}&limit=24`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch listings");
+      return res.json();
+    },
+    refetchInterval: 5 * 60 * 1000,
+  });
 
   const displayListings = ((featuredListings && featuredListings.length > 0 ? featuredListings : latestListings) || []).slice(0, 8);
 

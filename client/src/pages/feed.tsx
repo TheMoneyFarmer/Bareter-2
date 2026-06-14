@@ -2278,6 +2278,7 @@ export function FeedPage() {
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const handleRefreshFeed = () => {
@@ -2395,39 +2396,22 @@ export function FeedPage() {
             </div>
 
             {listingsLoading ? (
-              <>
-                {/* Mobile skeleton */}
-                <div className="grid grid-cols-2 gap-2 px-3 sm:hidden">
-                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
-                </div>
-                {/* Desktop skeleton */}
-                <div className="hidden sm:block space-y-4">
-                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-80 rounded-xl" />)}
-                </div>
-              </>
+              <div className="space-y-4 px-3 sm:px-0">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-80 rounded-xl" />)}
+              </div>
             ) : feedListings && feedListings.length > 0 ? (
-              <>
-                {/* ── Mobile: 2-column compact grid ── */}
-                <div className="grid grid-cols-2 gap-2 px-3 sm:hidden">
-                  {feedListings.slice(0, 12).map((listing) => (
-                    <CompactListingCard key={listing.id} listing={listing} />
-                  ))}
-                </div>
-
-                {/* ── Desktop: full Instagram-style single column ── */}
-                <div className="hidden sm:block space-y-4">
-                  {feedListings.slice(0, 10).map((listing, idx) => (
-                    <div key={listing.id}>
-                      <ListingFeedCard listing={listing} />
-                      {posts && posts[Math.floor(idx / 3)] && idx % 3 === 2 && (
-                        <div className="mt-4">
-                          <FeedCard post={posts[Math.floor(idx / 3)]} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div className="space-y-4 px-3 sm:px-0">
+                {feedListings.slice(0, 10).map((listing, idx) => (
+                  <div key={listing.id}>
+                    <ListingFeedCard listing={listing} />
+                    {posts && posts[Math.floor(idx / 3)] && idx % 3 === 2 && (
+                      <div className="mt-4">
+                        <FeedCard post={posts[Math.floor(idx / 3)]} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : (
               <Card className="mx-3 sm:mx-0">
                 <CardContent className="py-10 text-center">
