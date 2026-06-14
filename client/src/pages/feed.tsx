@@ -2267,12 +2267,18 @@ export function FeedPage() {
   });
 
   // Listings feed — Instagram-style listing cards
+  // Discover only filters by country, never city — city-level filtering belongs in Browse.
+  // A user in Dubai should discover listings from Abu Dhabi too.
   const listingsParams = new URLSearchParams({ limit: "20", sort: "newest", seed: String(feedSeed) });
-  Object.entries(locationParams(activeLocation)).forEach(([k, v]) => listingsParams.set(k, v));
+  if (activeLocation.worldwide) {
+    listingsParams.set("worldwide", "true");
+  } else if (activeLocation.country) {
+    listingsParams.set("country", activeLocation.country);
+  }
   if (activeCategory !== "All") listingsParams.set("category", activeCategory);
 
   const { data: feedListings, isLoading: listingsLoading, refetch: refetchListings } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings/feed", activeCategory, activeLocation.country, activeLocation.city, feedSeed],
+    queryKey: ["/api/listings/feed", activeCategory, activeLocation.country, activeLocation.worldwide, feedSeed],
     queryFn: async () => {
       const res = await fetch(`/api/listings?${listingsParams.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");

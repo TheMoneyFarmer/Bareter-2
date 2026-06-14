@@ -301,10 +301,16 @@ export function BrowsePage() {
   };
 
   const activeLocation = useActiveLocation();
-  const listingsParams = new URLSearchParams(locationParams(activeLocation));
-  const listingsQs = listingsParams.toString();
+  // Browse filters by country only — city is an explicit user-chosen filter, not auto-applied from profile
+  const browseParams = new URLSearchParams();
+  if (activeLocation.worldwide) {
+    browseParams.set("worldwide", "true");
+  } else if (activeLocation.country) {
+    browseParams.set("country", activeLocation.country);
+  }
+  const listingsQs = browseParams.toString();
   const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings", { country: activeLocation.country, city: activeLocation.city, worldwide: activeLocation.worldwide }],
+    queryKey: ["/api/listings", { country: activeLocation.country, worldwide: activeLocation.worldwide }],
     queryFn: async () => {
       const res = await fetch(`/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
