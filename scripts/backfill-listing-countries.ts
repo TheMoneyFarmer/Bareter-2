@@ -1,20 +1,13 @@
 /**
- * One-time backfill: set country/city on listings that have country = NULL
+ * One-time backfill: set country/city on listings where country IS NULL
  * by inheriting from the listing owner's user profile.
  *
  * Run once after deploying the listing-creation fix:
  *   npx tsx scripts/backfill-listing-countries.ts
  */
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+
+import { db } from "../server/db";
 import { sql } from "drizzle-orm";
-import "dotenv/config";
-
-const dbUrl = process.env.DATABASE_URL;
-if (!dbUrl) { console.error("DATABASE_URL not set"); process.exit(1); }
-
-const client = neon(dbUrl);
-const db = drizzle(client);
 
 async function run() {
   const result = await db.execute(sql`
@@ -30,8 +23,9 @@ async function run() {
     RETURNING l.id, l.title, u.country
   `);
 
-  console.log(`Backfilled ${result.rows.length} listing(s):`);
-  result.rows.forEach((r: any) => console.log(`  ${r.id} — "${r.title}" → ${r.country}`));
+  const rows = result.rows as Array<{ id: string; title: string; country: string }>;
+  console.log(`Backfilled ${rows.length} listing(s):`);
+  rows.forEach((r) => console.log(`  ${r.id} — "${r.title}" → ${r.country}`));
   console.log("Done.");
   process.exit(0);
 }
