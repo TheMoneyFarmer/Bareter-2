@@ -30,71 +30,96 @@ function getBaseUrl(): string {
   return (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
 }
 
-// Keyword → platform path map for smart CTA injection
+// Keyword → platform path map for smart CTA injection.
+// ORDER MATTERS: the first pattern that matches the button text wins, so the
+// most specific intents must come first. (e.g. "Post a Listing" must hit
+// /listings/new before the generic "listing" → /browse rule; "Create Your
+// Account" must hit /register before the generic "account" → /settings rule.)
 const CTA_KEYWORD_MAP: [RegExp, string][] = [
-  [/claim.*spot|join.*now|get.*access|early.*access/i, "/?src=email"],
-  [/sign.*up|register/i, "/register"],
-  [/browse|explore|discover|listing|marketplace/i, "/browse"],
+  [/post.*listing|add.*listing|create.*listing|list.*(item|product|service)/i, "/listings/new"],
+  [/sign.*up|register|create.*(your.*)?account|join.*now|get.*started|early.*access|claim/i, "/register"],
+  [/sign.*in|log.*in|login/i, "/login"],
   [/deal|swap|barter|trade/i, "/deals"],
   [/verify|verification|identity/i, "/settings"],
+  [/browse|explore|discover|listing|marketplace|how.*it.*works|learn.*more/i, "/browse"],
   [/profile|account|my.*setting/i, "/settings"],
-  [/post.*listing|add.*listing|create.*listing/i, "/listings/new"],
-  [/sign.*in|log.*in|login/i, "/login"],
-  [/how.*it.*works|learn.*more/i, "/browse"],
 ];
 
-/**
- * Replaces href="#", href="", or relative hrefs in HTML with smart platform URLs
- * inferred from the anchor's text content. Call this before rendering pasted HTML.
- */
 /** Returns true if the string is already a full HTML document (has DOCTYPE or html tag). */
 export function isFullHtmlDocument(html: string): boolean {
   return /^\s*<!DOCTYPE\s+html/i.test(html) || /^\s*<html[\s>]/i.test(html);
 }
 
-/** Wraps a destination path in the email warm-up redirect URL. */
-function emailRedirectUrl(BASE: string, dest: string): string {
-  // dest is already absolute (starts with http) or a path (starts with /)
-  let path: string;
-  if (dest.startsWith(BASE)) {
-    path = dest.slice(BASE.length) || "/";
-  } else if (dest.startsWith("/")) {
-    path = dest;
-  } else {
-    path = "/register";
+/** Infers the intended platform path from a button's visible text. */
+function inferPathFromText(text: string): string {
+  for (const [pattern, path] of CTA_KEYWORD_MAP) {
+    if (pattern.test(text)) return path;
   }
-  return `${BASE}/?src=email&to=${encodeURIComponent(path)}`;
+  return "/register";
 }
 
+/**
+ * Rewrites internal email links so every CTA lands on the hero page first
+ * (?src=email) and then silently redirects to the intended page after ~5s
+ * (handled in client/src/pages/landing.tsx). Produces EXACTLY ONE warm-up
+ * wrapper per link — it strips any pre-existing wrapper so links are never
+ * double-wrapped (a double wrap leaves the visitor stranded on the hero because
+ * the landing redirect effect only runs once on mount). External links
+ * (other domains, mailto:, tel:) are left untouched so unsubscribe / social
+ * links keep working.
+ */
 export function injectSmartCtaUrls(html: string): string {
   const BASE = getBaseUrl();
-
-  // Step 1: resolve empty / placeholder / unresolved-template hrefs from anchor text
-  let result = html.replace(
-    /<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank|\{\{[^}]*\}\}[^"']*)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
-    (_match, pre, _href, post, inner) => {
-      const text = inner.replace(/<[^>]+>/g, "").trim();
-      for (const [pattern, path] of CTA_KEYWORD_MAP) {
-        if (pattern.test(text)) return `<a${pre}href="${emailRedirectUrl(BASE, path)}"${post}>${inner}</a>`;
-      }
-      return `<a${pre}href="${emailRedirectUrl(BASE, "/register")}"${post}>${inner}</a>`;
-    }
-  );
-
-  // Step 2: fix relative hrefs (starting with "/") → wrap through email redirect
-  result = result.replace(/href="(\/[^"]+)"/gi, (_m, path) => `href="${emailRedirectUrl(BASE, path)}"`);
-
-  // Step 3: wrap already-absolute bareter.com links through email redirect
   const escapedBase = BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  result = result.replace(
-    new RegExp(`href="${escapedBase}(/[^"]*)"`, "gi"),
-    (_m, path) => `href="${emailRedirectUrl(BASE, path)}"`
-  );
+  const baseRe = new RegExp(`^${escapedBase}`, "i");
 
-  // Step 4: fix any remaining unresolved template vars in hrefs
-  result = result.replace(/href="[^"]*\{\{[^}]+\}\}[^"]*"/gi, `href="${emailRedirectUrl(BASE, "/register")}"`);
+  return html.replace(/<a\b([^>]*?)>([\s\S]*?)<\/a>/gi, (match, attrs, inner) => {
+    const hrefMatch = attrs.match(/\shref=["']([^"']*)["']/i);
+    const rawHref = (hrefMatch ? hrefMatch[1] : "").trim();
+    const text = inner.replace(/<[^>]+>/g, "").trim();
 
-  return result;
+    // Leave external / special links alone (unsubscribe, mailto, tel, social…).
+    if (/^(mailto:|tel:|sms:)/i.test(rawHref)) return match;
+
+    const isPlaceholder =
+      rawHref === "" ||
+      rawHref === "#" ||
+      /^javascript:/i.test(rawHref) ||
+      /^about:blank$/i.test(rawHref) ||
+      /\{\{[^}]*\}\}/.test(rawHref); // unresolved template variable
+    const isInternalPath = rawHref.startsWith("/");
+    const isOwnDomain = baseRe.test(rawHref);
+    if (!isPlaceholder && !isInternalPath && !isOwnDomain) return match; // external
+
+    // Work out the real destination path.
+    let dest: string;
+    if (isInternalPath || isOwnDomain) {
+      let path = isOwnDomain ? rawHref.replace(baseRe, "") : rawHref;
+      // Strip any existing warm-up wrapper so we never nest them.
+      const warm = path.match(/^\/?\?[^#]*\bto=([^&#]*)/i);
+      if (warm) {
+        try { path = decodeURIComponent(warm[1]); } catch { path = warm[1]; }
+      }
+      // Homepage / bare domain / leftover src=email → infer from button text
+      // instead of redirecting back to the hero (which would loop silently).
+      if (!path || path === "/" || /^\/?\?src=email/i.test(path)) {
+        dest = inferPathFromText(text);
+      } else {
+        dest = path.startsWith("/") ? path : `/${path}`;
+      }
+    } else {
+      dest = inferPathFromText(text);
+    }
+
+    // Safety: a warm-up that points back at the hero would never move on.
+    if (dest === "/" || /^\/?\?src=email/i.test(dest)) dest = "/register";
+
+    const finalHref = `${BASE}/?src=email&to=${encodeURIComponent(dest)}`;
+    const newAttrs = hrefMatch
+      ? attrs.replace(/(\shref=)["'][^"']*["']/i, `$1"${finalHref}"`)
+      : `${attrs} href="${finalHref}"`;
+    return `<a${newAttrs}>${inner}</a>`;
+  });
 }
 
 function smtpFromAddress() {
