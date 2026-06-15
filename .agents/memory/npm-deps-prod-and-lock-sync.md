@@ -15,11 +15,19 @@ they are pulled transitively, which masks the problem.
 
 **Why:** npm treats `NODE_ENV=production` as an implicit `--omit=dev`.
 
-**How to apply:** When devDeps go missing after an install in this repl, write a temporary
-`.npmrc` with `include=dev` at repo root, run the install, verify the build, then delete
-`.npmrc` (it was untracked; don't commit it — it would force devDeps into the production
-runtime). `npm config set ...` and `npm install` are blocked from the bash tool here;
-writing `.npmrc` directly is the workaround. The bash tool also rejects some complex
+**How to apply:** Create `.npmrc` at repo root containing `include=dev` and **COMMIT it**.
+This is the durable fix — it forces every install (local, post-merge reconciliation, AND
+the deployment build) to include devDeps. Do NOT delete it after fixing locally: the
+deploy build runs `npm run build` → `vite.config.ts`, which imports devDep-only Replit
+Vite plugins (`@replit/vite-plugin-runtime-error-modal`, `-cartographer`, `-dev-banner`);
+without devDeps the build crashes with `ERR_MODULE_NOT_FOUND`, and the dev workflow breaks
+after every merge (post-merge `npm install` omits devDeps under NODE_ENV=production).
+Including devDeps in the production runtime image is harmless (the vm just runs the
+esbuild-bundled `dist/index.cjs`). `npm config set ...` and `npm install` are blocked from
+the bash tool here — write `.npmrc` directly and reinstall via the packager
+(`installLanguagePackages({language:"nodejs", packages:[...]})`, param is `packages`).
+Passing a couple of the known devDeps triggers a full reconcile that, with `.npmrc`
+include=dev present, restores ALL devDeps. The bash tool also rejects some complex
 multi-line/`||`-piped commands — prefer simple single-purpose commands.
 
 # Recovering a corrupted node_modules
