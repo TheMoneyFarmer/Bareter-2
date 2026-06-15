@@ -260,6 +260,8 @@ export function AdminPage() {
   const [broadcastJobId, setBroadcastJobId] = useState<string | null>(null);
   const [broadcastPreviewHtml, setBroadcastPreviewHtml] = useState<string | null>(null);
   const [broadcastTestEmails, setBroadcastTestEmails] = useState("");
+  const [broadcastAudience, setBroadcastAudience] = useState("users");
+  const [broadcastBodyMode, setBroadcastBodyMode] = useState<"text" | "html">("text");
   const [aiDraftPrompt, setAiDraftPrompt] = useState("");
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [broadcastPreviewOpen, setBroadcastPreviewOpen] = useState(false);
@@ -767,7 +769,7 @@ export function AdminPage() {
   });
 
   const broadcastMutation = useMutation({
-    mutationFn: async (data: { subject: string; body: string; filter?: { city?: string; accountType?: string; verificationStatus?: string } }) => {
+    mutationFn: async (data: { subject: string; body: string; filter?: { audience?: string; city?: string; accountType?: string; verificationStatus?: string; bodyMode?: string } }) => {
       const res = await apiRequest("POST", "/api/admin/email/broadcast", data);
       return res.json();
     },
@@ -829,7 +831,7 @@ export function AdminPage() {
   }, [broadcastJobStatus?.status]);
 
   const previewMutation = useMutation({
-    mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string>; mode?: "broadcast" | "template" }) => {
+    mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string>; mode?: "broadcast" | "template" | "html" }) => {
       const res = await apiRequest("POST", "/api/admin/email/preview", data);
       return res.json() as Promise<{ html: string }>;
     },
@@ -2071,41 +2073,70 @@ export function AdminPage() {
           <CardDescription>Send bulk emails to filtered user groups</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>City filter</Label>
-              <Input placeholder="e.g. Dubai (leave empty for all)" value={broadcastCityFilter} onChange={(e) => setBroadcastCityFilter(e.target.value)} data-testid="input-broadcast-city" />
-            </div>
-            <div className="space-y-2">
-              <Label>Account type</Label>
-              <Select value={broadcastAccountType} onValueChange={setBroadcastAccountType}>
-                <SelectTrigger data-testid="select-broadcast-account-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="individual">Individual</SelectItem>
-                  <SelectItem value="business">Business</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Verification</Label>
-              <Select value={broadcastVerification} onValueChange={setBroadcastVerification}>
-                <SelectTrigger data-testid="select-broadcast-verification"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                  <SelectItem value="unverified">Unverified</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Audience */}
+          <div className="space-y-2">
+            <Label>Audience</Label>
+            <Select value={broadcastAudience} onValueChange={(v) => { setBroadcastAudience(v); }} data-testid="select-broadcast-audience">
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="users">Registered Users</SelectItem>
+                <SelectItem value="waitlist-main">Waitlist — Main</SelectItem>
+                <SelectItem value="waitlist-creators">Waitlist — Creators</SelectItem>
+                <SelectItem value="waitlist-brand-collabs">Waitlist — Brand Collabs</SelectItem>
+                <SelectItem value="waitlist-international">Waitlist — International</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+
+          {/* User-only filters */}
+          {broadcastAudience === "users" && (
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>City filter</Label>
+                <Input placeholder="e.g. Dubai (leave empty for all)" value={broadcastCityFilter} onChange={(e) => setBroadcastCityFilter(e.target.value)} data-testid="input-broadcast-city" />
+              </div>
+              <div className="space-y-2">
+                <Label>Account type</Label>
+                <Select value={broadcastAccountType} onValueChange={setBroadcastAccountType}>
+                  <SelectTrigger data-testid="select-broadcast-account-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Verification</Label>
+                <Select value={broadcastVerification} onValueChange={setBroadcastVerification}>
+                  <SelectTrigger data-testid="select-broadcast-verification"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="unverified">Unverified</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Subject</Label>
             <Input placeholder="Email subject..." value={broadcastSubject} onChange={(e) => setBroadcastSubject(e.target.value)} data-testid="input-broadcast-subject" />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <Label>Body</Label>
+              <div className="flex items-center gap-2">
+                <Label>Body</Label>
+                <button
+                  type="button"
+                  onClick={() => setBroadcastBodyMode((m) => m === "text" ? "html" : "text")}
+                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${broadcastBodyMode === "html" ? "bg-bareter-teal/10 border-bareter-teal text-bareter-teal font-medium" : "border-muted-foreground/30 text-muted-foreground hover:text-foreground"}`}
+                  data-testid="button-body-mode-toggle"
+                >
+                  {broadcastBodyMode === "html" ? "HTML" : "Text"}
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -2116,16 +2147,26 @@ export function AdminPage() {
                   data-testid="button-ai-draft-open"
                 >
                   <Sparkles className="h-3 w-3 text-bareter-teal" />
-                  AI Draft
+                  Draft
                 </Button>
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                   onClick={async () => {
-                    const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
-                    const result = await previewMutation.mutateAsync({ body: broadcastBody || "Hello {{name}}, welcome to {{appName}}!", recipientName: "Sarah Al-Hassan", vars: sampleVars });
-                    setBroadcastPreviewHtml(result.html);
-                    setBroadcastPreviewOpen(true);
+                    try {
+                      const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
+                      const previewBody = broadcastBody || (broadcastBodyMode === "html" ? "<p>Hello, welcome to <strong>Bareter</strong>!</p>" : "Hello {{name}}, welcome to {{appName}}!");
+                      const result = await previewMutation.mutateAsync({
+                        body: previewBody,
+                        recipientName: "Sarah Al-Hassan",
+                        vars: sampleVars,
+                        mode: broadcastBodyMode === "html" ? "html" : undefined,
+                      });
+                      setBroadcastPreviewHtml(result.html);
+                      setBroadcastPreviewOpen(true);
+                    } catch (err: unknown) {
+                      toast({ title: "Preview failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+                    }
                   }}
                   disabled={previewMutation.isPending}
                   data-testid="button-broadcast-preview"
@@ -2135,20 +2176,29 @@ export function AdminPage() {
                 </button>
               </div>
             </div>
-            <Textarea placeholder="Email body... Use {{name}}, {{email}}, {{city}}, {{businessName}}, {{accountType}}, {{appName}} for personalisation." rows={6} value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} data-testid="input-broadcast-body" />
-            <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
-              {["{{name}}", "{{email}}", "{{city}}", "{{businessName}}", "{{accountType}}", "{{appName}}"].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setBroadcastBody((prev) => prev + v)}
-                  className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid={`chip-var-${v.replace(/\{|\}/g, "")}`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            <Textarea
+              placeholder={broadcastBodyMode === "html" ? "Paste raw HTML here…" : "Email body... Use {{name}}, {{email}}, {{appName}} for personalisation."}
+              rows={8}
+              value={broadcastBody}
+              onChange={(e) => setBroadcastBody(e.target.value)}
+              className={broadcastBodyMode === "html" ? "font-mono text-xs" : ""}
+              data-testid="input-broadcast-body"
+            />
+            {broadcastBodyMode === "text" && (
+              <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
+                {["{{name}}", "{{email}}", "{{appName}}"].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setBroadcastBody((prev) => prev + v)}
+                    className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid={`chip-var-${v.replace(/\{|\}/g, "")}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
@@ -2171,9 +2221,11 @@ export function AdminPage() {
                     subject: broadcastSubject,
                     body: broadcastBody,
                     filter: {
-                      city: broadcastCityFilter || undefined,
-                      accountType: broadcastAccountType,
-                      verificationStatus: broadcastVerification,
+                      audience: broadcastAudience,
+                      city: broadcastAudience === "users" ? (broadcastCityFilter || undefined) : undefined,
+                      accountType: broadcastAudience === "users" ? broadcastAccountType : undefined,
+                      verificationStatus: broadcastAudience === "users" ? broadcastVerification : undefined,
+                      bodyMode: broadcastBodyMode === "html" ? "html" : undefined,
                     },
                   });
                 }}

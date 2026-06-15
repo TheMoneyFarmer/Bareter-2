@@ -67,6 +67,8 @@ import {
   insertDisputeSchema,
   DISPUTE_OUTCOMES,
   featureWaitlists,
+  waitlistEntries,
+  internationalWaitlist,
 } from "@shared/schema";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
@@ -3642,14 +3644,15 @@ export async function registerRoutes(
         message: `${filer?.fullName || "Your barter partner"} raised a dispute on your deal. An admin will review shortly.`,
       });
       // Notify admin via email
-      import("./emailService").then(({ sendAdminEmail }) => {
+      import("./emailService").then(({ sendCriticalAlertEmail }) => {
         const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
-        sendAdminEmail(`Dispute filed on Deal #${deal.dealNumber}`,
-          `<p><strong>${filer?.fullName}</strong> filed a dispute on deal <strong>#${deal.dealNumber}</strong>.</p>
-           <p><strong>Subject:</strong> ${body.subject}</p>
-           <p><strong>Description:</strong> ${body.description}</p>
-           <p><a href="${baseUrl}/admin">Review in Admin Panel</a></p>`
-        ).catch(() => {});
+        const adminEmail = process.env.ADMIN_ALERT_EMAIL || "hello@bareter.com";
+        sendCriticalAlertEmail(adminEmail, {
+          title: `Dispute filed on Deal #${deal.dealNumber}`,
+          body: `${filer?.fullName} filed a dispute.\n\nSubject: ${body.subject}\n\nDescription: ${body.description}\n\nReview: ${baseUrl}/admin`,
+          alertType: "dispute",
+          alertId: dispute.id,
+        }).catch(() => {});
       }).catch(() => {});
       res.status(201).json(dispute);
     } catch (error) {
@@ -4546,21 +4549,46 @@ export async function registerRoutes(
       if (!subject || !body) {
         return res.status(400).json({ message: "Subject and body are required" });
       }
-      const allUsers = await storage.getAllUsers();
-      let recipients = allUsers.filter(u => !u.isBanned);
-      if (filter?.city) {
-        recipients = recipients.filter(u => u.city?.toLowerCase() === filter.city.toLowerCase());
-      }
-      if (filter?.accountType && filter.accountType !== "all") {
-        recipients = recipients.filter(u => u.accountType === filter.accountType);
-      }
-      if (filter?.verificationStatus && filter.verificationStatus !== "all") {
-        if (filter.verificationStatus === "verified") {
-          recipients = recipients.filter(u => u.kycStatus === "APPROVED" || u.kybStatus === "APPROVED");
-        } else if (filter.verificationStatus === "unverified") {
-          recipients = recipients.filter(u => u.kycStatus !== "APPROVED" && u.kybStatus !== "APPROVED");
+
+      const audience: string = filter?.audience || "users";
+      const rawHtml: boolean = filter?.bodyMode === "html";
+
+      // Build recipient list depending on audience type
+      type Recipient = { email: string; name: string | null };
+      let recipients: Recipient[] = [];
+
+      if (audience === "waitlist-main") {
+        const rows = await db.select({ email: waitlistEntries.email, name: waitlistEntries.name }).from(waitlistEntries);
+        recipients = rows.map(r => ({ email: r.email, name: r.name ?? null }));
+      } else if (audience === "waitlist-creators") {
+        const rows = await db.select({ email: featureWaitlists.email }).from(featureWaitlists).where(eq(featureWaitlists.feature, "creators"));
+        recipients = rows.map(r => ({ email: r.email, name: null }));
+      } else if (audience === "waitlist-brand-collabs") {
+        const rows = await db.select({ email: featureWaitlists.email }).from(featureWaitlists).where(eq(featureWaitlists.feature, "brand-collabs"));
+        recipients = rows.map(r => ({ email: r.email, name: null }));
+      } else if (audience === "waitlist-international") {
+        const rows = await db.select({ email: internationalWaitlist.email, name: internationalWaitlist.fullName }).from(internationalWaitlist);
+        recipients = rows.map(r => ({ email: r.email, name: r.name ?? null }));
+      } else {
+        // Default: registered users with optional filters
+        const allUsers = await storage.getAllUsers();
+        let filtered = allUsers.filter(u => !u.isBanned);
+        if (filter?.city) {
+          filtered = filtered.filter(u => u.city?.toLowerCase() === filter.city.toLowerCase());
         }
+        if (filter?.accountType && filter.accountType !== "all") {
+          filtered = filtered.filter(u => u.accountType === filter.accountType);
+        }
+        if (filter?.verificationStatus && filter.verificationStatus !== "all") {
+          if (filter.verificationStatus === "verified") {
+            filtered = filtered.filter(u => u.kycStatus === "APPROVED" || u.kybStatus === "APPROVED");
+          } else if (filter.verificationStatus === "unverified") {
+            filtered = filtered.filter(u => u.kycStatus !== "APPROVED" && u.kybStatus !== "APPROVED");
+          }
+        }
+        recipients = filtered.map(u => ({ email: u.email, name: u.fullName ?? null }));
       }
+
       const broadcastId = crypto.randomUUID();
       const adminUserId = req.session.userId;
 
@@ -4588,15 +4616,16 @@ export async function registerRoutes(
             await Promise.all(batch.map(async (recipient) => {
               try {
                 const ok = await sendAdminEmail(recipient.email, {
-                  recipientName: recipient.fullName,
+                  recipientName: recipient.name,
                   subject,
                   body,
+                  rawHtml,
                   vars: {
-                    name: recipient.fullName || "",
+                    name: recipient.name || "",
                     email: recipient.email,
-                    city: recipient.city || "",
-                    businessName: recipient.businessName || "",
-                    accountType: recipient.accountType || "individual",
+                    city: "",
+                    businessName: "",
+                    accountType: "",
                     appName: "Bareter",
                   },
                 });
@@ -4669,6 +4698,9 @@ export async function registerRoutes(
       if (mode === "template") {
         // System templates are full HTML — just substitute vars, no wrapping or escaping
         html = vars ? applyTemplateVars(body, vars) : body;
+      } else if (mode === "html") {
+        // Raw HTML body wrapped in the branded shell without escaping
+        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, rawHtml: true, vars: vars || {} });
       } else {
         // Broadcast mode: plain text body wrapped in the branded shell
         html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });

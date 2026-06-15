@@ -271,10 +271,14 @@ function emailShell(content: string, opts?: { rtl?: boolean }): string {
 export function renderBroadcastEmailHtml(opts: {
   recipientName?: string | null;
   body: string;
+  rawHtml?: boolean;
   vars?: Record<string, string>;
 }): string {
   const substituted = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  if (opts.rawHtml) {
+    return emailShell(substituted);
+  }
   const escapedBody = substituted
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -619,13 +623,13 @@ export async function sendCriticalAlertEmail(
 
 export async function sendAdminEmail(
   toEmail: string,
-  opts: { recipientName?: string | null; subject: string; body: string; vars?: Record<string, string> },
+  opts: { recipientName?: string | null; subject: string; body: string; rawHtml?: boolean; vars?: Record<string, string> },
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Admin email to ${toEmail} skipped (email not configured). Subject: ${opts.subject}`);
     return false;
   }
-  const html = renderBroadcastEmailHtml({ recipientName: opts.recipientName, body: opts.body, vars: opts.vars });
+  const html = renderBroadcastEmailHtml({ recipientName: opts.recipientName, body: opts.body, rawHtml: opts.rawHtml, vars: opts.vars });
   const substitutedBody = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   const text = `${greeting}\n\n${substitutedBody}\n\n— ${APP_NAME}`;
