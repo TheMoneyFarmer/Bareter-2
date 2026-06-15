@@ -353,10 +353,39 @@ export function renderBroadcastEmailHtml(opts: {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br />");
-  return emailShell(`
-    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 12px;">${greeting}</p>
-    <p style="color:#374151;font-size:14px;line-height:1.7;margin:0;">${escapedBody}</p>
-  `);
+  const BASE_URL = getBaseUrl();
+  // Plain personal-style layout — no branded header/footer to avoid Promotions tab
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+          <tr>
+            <td style="padding-bottom:28px;">
+              <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${greeting}</p>
+              <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${escapedBody}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #f3f4f6;padding-top:20px;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
+                — The Bareter Team &nbsp;&middot;&nbsp;
+                <a href="${BASE_URL}" style="color:#9ca3af;text-decoration:none;">bareter.com</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
 export async function sendPasswordChangeOtpEmail(toEmail: string, otp: string, fullName?: string | null): Promise<boolean> {
