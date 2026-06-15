@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle2, XCircle, Settings2, ExternalLink, MessageCircle, RefreshCw, LogOut } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Settings2, ExternalLink, MessageCircle, RefreshCw, LogOut, Bell } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -81,6 +81,35 @@ function StatusBadge({ configured }: { configured: boolean }) {
   );
 }
 
+interface WhatsAppEvent {
+  id: number;
+  at: string;
+  type: "connected" | "disconnected" | "logged_out" | "otp_failed" | "reconnecting" | "error";
+  message: string;
+}
+
+function eventStyle(type: WhatsAppEvent["type"]) {
+  switch (type) {
+    case "connected":    return { dot: "bg-green-500",  badge: "text-green-700 bg-green-50 border-green-200" };
+    case "disconnected": return { dot: "bg-amber-500",  badge: "text-amber-700 bg-amber-50 border-amber-200" };
+    case "logged_out":   return { dot: "bg-red-500",    badge: "text-red-700 bg-red-50 border-red-200" };
+    case "otp_failed":   return { dot: "bg-red-500",    badge: "text-red-700 bg-red-50 border-red-200" };
+    case "reconnecting": return { dot: "bg-blue-400",   badge: "text-blue-700 bg-blue-50 border-blue-200" };
+    default:             return { dot: "bg-gray-400",   badge: "text-gray-600 bg-gray-50 border-gray-200" };
+  }
+}
+
+function eventLabel(type: WhatsAppEvent["type"]) {
+  switch (type) {
+    case "connected":    return "Connected";
+    case "disconnected": return "Dropped";
+    case "logged_out":   return "Logged out";
+    case "otp_failed":   return "OTP failed";
+    case "reconnecting": return "Reconnecting";
+    default:             return type;
+  }
+}
+
 function WhatsAppConnectionCard() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -91,6 +120,13 @@ function WhatsAppConnectionCard() {
     queryKey: ["/api/admin/whatsapp/status"],
     queryFn: () => fetch("/api/admin/whatsapp/status", { credentials: "include" }).then((r) => r.json()),
     refetchInterval: 3000,
+    staleTime: 0,
+  });
+
+  const { data: events = [] } = useQuery<WhatsAppEvent[]>({
+    queryKey: ["/api/admin/whatsapp/events"],
+    queryFn: () => fetch("/api/admin/whatsapp/events", { credentials: "include" }).then((r) => r.json()),
+    refetchInterval: 5000,
     staleTime: 0,
   });
 
@@ -268,6 +304,40 @@ function WhatsAppConnectionCard() {
             </Button>
           </>
         )}
+
+        {/* Event log — always visible regardless of connected state */}
+        <div className="border-t pt-3 mt-1">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Bell className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Activity log</span>
+            {events.some((e) => e.type === "otp_failed" || e.type === "logged_out") && (
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 font-medium">
+                Needs attention
+              </span>
+            )}
+          </div>
+          {events.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground italic">No events yet since last server restart.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {events.slice(0, 20).map((ev) => {
+                const s = eventStyle(ev.type);
+                return (
+                  <div key={ev.id} className="flex items-start gap-2 text-[11px]">
+                    <span className={`mt-1.5 flex-shrink-0 h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                    <span className={`flex-shrink-0 px-1 py-0.5 rounded border text-[10px] font-medium ${s.badge}`}>
+                      {eventLabel(ev.type)}
+                    </span>
+                    <span className="text-muted-foreground leading-tight flex-1 min-w-0 break-words">{ev.message}</span>
+                    <span className="flex-shrink-0 text-muted-foreground/60 tabular-nums">
+                      {new Date(ev.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

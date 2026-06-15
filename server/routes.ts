@@ -4287,6 +4287,11 @@ export async function registerRoutes(
     res.json({ ok: true, message: "Restarting WhatsApp connection…" });
   });
 
+  app.get("/api/admin/whatsapp/events", requireAdmin, async (_req, res) => {
+    const { getWhatsAppEvents } = await import("./whatsappService");
+    res.json(getWhatsAppEvents());
+  });
+
   // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.
   // Idempotent: returns {deleted:0} when already clean.
   app.get("/api/admin/run-cleanup", requireAdmin, async (req, res) => {

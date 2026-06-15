@@ -61,10 +61,30 @@ async function clearSessionFromStorage(): Promise<void> {
 
 const logger = P({ level: "silent" });
 
-const FOUNDER_EMAIL = process.env.FOUNDER_EMAIL || "thandolwenkosimceeyah@gmail.com";
-
-// How many consecutive OTP send failures before we alert
+// How many consecutive OTP send failures before we log an alert event
 const FAILURE_ALERT_THRESHOLD = 3;
+
+// In-memory circular event log — keeps the last MAX_EVENTS entries
+const MAX_EVENTS = 100;
+
+export interface WhatsAppEvent {
+  id: number;
+  at: string;   // ISO timestamp
+  type: "connected" | "disconnected" | "logged_out" | "otp_failed" | "reconnecting" | "error";
+  message: string;
+}
+
+let _eventSeq = 0;
+const _eventLog: WhatsAppEvent[] = [];
+
+function addEvent(type: WhatsAppEvent["type"], message: string) {
+  _eventLog.push({ id: ++_eventSeq, at: new Date().toISOString(), type, message });
+  if (_eventLog.length > MAX_EVENTS) _eventLog.shift();
+}
+
+export function getWhatsAppEvents(): WhatsAppEvent[] {
+  return [..._eventLog].reverse(); // newest first
+}
 
 // Reconnect backoff: 5s → 10s → 20s → 30s → 60s (max). Resets to 5s after
 // a successful connection so a single drop never waits more than 5 seconds.
@@ -81,15 +101,6 @@ const SESSION_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
-
-async function sendFounderAlert(subject: string, body: string) {
-  try {
-    const { sendAdminEmail } = await import("./emailService");
-    await sendAdminEmail(FOUNDER_EMAIL, { subject, body });
-  } catch (err) {
-    console.error("[whatsapp-alert] Failed to send founder alert:", err);
-  }
-}
 
 class WhatsAppService extends EventEmitter {
   private sock: WASocket | null = null;
@@ -161,34 +172,14 @@ class WhatsAppService extends EventEmitter {
     }
   }
 
-  private async triggerFailureAlert() {
+  private triggerFailureAlert() {
     const now = Date.now();
     if (this.alertSentAt && now - this.alertSentAt < 60 * 60 * 1000) return;
     this.alertSentAt = now;
 
-    const subject = "⚠️ Bareter: WhatsApp OTP delivery is failing";
-    const body = [
-      `${this.consecutiveFailures} consecutive WhatsApp OTP messages have failed to send.`,
-      "",
-      "This means users are not receiving their verification codes and cannot complete sign-up.",
-      "",
-      "Possible causes:",
-      "  • The WhatsApp number was banned by WhatsApp",
-      "  • The session was logged out from the phone",
-      "  • The server lost its WhatsApp connection",
-      "",
-      "What to do:",
-      "  1. Go to Admin → Settings → Integrations",
-      "  2. Check the WhatsApp connection status",
-      "  3. If disconnected, scan the new QR code with your WhatsApp number",
-      "  4. If the number is banned, use a different number and re-scan",
-      "",
-      `Current connection state: ${this.state}`,
-      `Time: ${new Date().toUTCString()}`,
-    ].join("\n");
-
-    console.error(`\n⚠️  WHATSAPP OTP ALERT\n${body}\n`);
-    await sendFounderAlert(subject, body);
+    const msg = `${this.consecutiveFailures} consecutive OTP messages failed — connection state: ${this.state}`;
+    console.error(`\n⚠️  WHATSAPP OTP ALERT: ${msg}\n`);
+    addEvent("otp_failed", msg);
   }
 
   async start() {
@@ -299,31 +290,13 @@ class WhatsAppService extends EventEmitter {
     }, delay);
   }
 
-  private async notifyDisconnect(reason: string, loggedOut: boolean) {
-    const subject = loggedOut
-      ? "⚠️ Bareter: WhatsApp number logged out / possibly banned"
-      : "⚠️ Bareter: WhatsApp connection dropped";
-
-    const body = [
-      loggedOut
-        ? "Your WhatsApp number was logged out. This can happen if WhatsApp banned the number for automated messaging, or if you manually logged out on the phone."
-        : "The WhatsApp connection dropped unexpectedly. The server will attempt to reconnect automatically.",
-      "",
-      `Reason code: ${reason}`,
-      `Time: ${new Date().toUTCString()}`,
-      "",
-      "What to do:",
-      "  1. Go to Admin → Settings → Integrations",
-      "  2. Check the WhatsApp status card",
-      loggedOut
-        ? "  3. Scan the new QR code — use a different number if the original was banned"
-        : "  3. If still disconnected after 2 minutes, click Disconnect and re-scan the QR",
-      "",
-      "Until reconnected, users cannot receive WhatsApp verification codes.",
-    ].join("\n");
-
-    console.error(`\n⚠️  WHATSAPP DISCONNECT\n${body}\n`);
-    await sendFounderAlert(subject, body);
+  private notifyDisconnect(reason: string, loggedOut: boolean) {
+    const type: WhatsAppEvent["type"] = loggedOut ? "logged_out" : "disconnected";
+    const msg = loggedOut
+      ? `Logged out / possibly banned (code ${reason})`
+      : `Connection dropped (code ${reason}) — reconnecting automatically`;
+    console.error(`\n⚠️  WHATSAPP DISCONNECT: ${msg}\n`);
+    addEvent(type, msg);
   }
 
   private async connect() {
@@ -460,6 +433,7 @@ class WhatsAppService extends EventEmitter {
         this.alertSentAt = null;
         this.disconnectedSince = null;
         console.log("[whatsapp] Connected and stable");
+        addEvent("connected", "WhatsApp connected and stable");
         this.emit("state", this.state);
         this.startSessionBackup();
       }
@@ -482,7 +456,7 @@ class WhatsAppService extends EventEmitter {
         // Only alert if we were previously connected — skip alerts on first-boot
         // before scan (which always closes with code 515 or similar).
         if (wasConnected) {
-          this.notifyDisconnect(String(code), loggedOut).catch(() => {});
+          this.notifyDisconnect(String(code), loggedOut);
         }
 
         if (loggedOut) {
