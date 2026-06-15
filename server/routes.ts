@@ -4507,9 +4507,9 @@ export async function registerRoutes(
         accountType: admin.accountType || "individual",
         appName: "Bareter",
         baseUrl: BASE,
-        signupUrl: `${BASE}/?src=email`,
-        loginUrl: `${BASE}/login`,
-        browseUrl: `${BASE}/browse`,
+        signupUrl: `${BASE}/?src=email&to=%2Fregister`,
+        loginUrl: `${BASE}/?src=email&to=%2Flogin`,
+        browseUrl: `${BASE}/?src=email&to=%2Fbrowse`,
       };
 
       // Treat as HTML if the frontend explicitly set bodyMode=html OR if the body looks like HTML.
@@ -4650,9 +4650,9 @@ export async function registerRoutes(
                     accountType: "",
                     appName: "Bareter",
                     baseUrl: (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, ""),
-                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email`,
-                    loginUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/login`,
-                    browseUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/browse`,
+                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Fregister`,
+                    loginUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Flogin`,
+                    browseUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Fbrowse`,
                   },
                 });
                 await storage.createEmailLog({

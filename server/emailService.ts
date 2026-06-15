@@ -52,22 +52,49 @@ export function isFullHtmlDocument(html: string): boolean {
   return /^\s*<!DOCTYPE\s+html/i.test(html) || /^\s*<html[\s>]/i.test(html);
 }
 
+/** Wraps a destination path in the email warm-up redirect URL. */
+function emailRedirectUrl(BASE: string, dest: string): string {
+  // dest is already absolute (starts with http) or a path (starts with /)
+  let path: string;
+  if (dest.startsWith(BASE)) {
+    path = dest.slice(BASE.length) || "/";
+  } else if (dest.startsWith("/")) {
+    path = dest;
+  } else {
+    path = "/register";
+  }
+  return `${BASE}/?src=email&to=${encodeURIComponent(path)}`;
+}
+
 export function injectSmartCtaUrls(html: string): string {
   const BASE = getBaseUrl();
-  return html
-    // Replace empty / placeholder / unresolved-template hrefs based on anchor text
-    .replace(/<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank|\{\{[^}]*\}\}[^"']*)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
-      (_match, pre, _href, post, inner) => {
-        const text = inner.replace(/<[^>]+>/g, "").trim();
-        for (const [pattern, path] of CTA_KEYWORD_MAP) {
-          if (pattern.test(text)) return `<a${pre}href="${BASE}${path}"${post}>${inner}</a>`;
-        }
-        return `<a${pre}href="${BASE}"${post}>${inner}</a>`;
-      })
-    // Fix relative hrefs that start with "/" (not yet absolute)
-    .replace(/href="(\/[^"]+)"/gi, `href="${BASE}$1"`)
-    // Fix any remaining unresolved template vars in hrefs
-    .replace(/href="[^"]*\{\{[^}]+\}\}[^"]*"/gi, `href="${BASE}/register"`);
+
+  // Step 1: resolve empty / placeholder / unresolved-template hrefs from anchor text
+  let result = html.replace(
+    /<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank|\{\{[^}]*\}\}[^"']*)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
+    (_match, pre, _href, post, inner) => {
+      const text = inner.replace(/<[^>]+>/g, "").trim();
+      for (const [pattern, path] of CTA_KEYWORD_MAP) {
+        if (pattern.test(text)) return `<a${pre}href="${emailRedirectUrl(BASE, path)}"${post}>${inner}</a>`;
+      }
+      return `<a${pre}href="${emailRedirectUrl(BASE, "/register")}"${post}>${inner}</a>`;
+    }
+  );
+
+  // Step 2: fix relative hrefs (starting with "/") → wrap through email redirect
+  result = result.replace(/href="(\/[^"]+)"/gi, (_m, path) => `href="${emailRedirectUrl(BASE, path)}"`);
+
+  // Step 3: wrap already-absolute bareter.com links through email redirect
+  const escapedBase = BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  result = result.replace(
+    new RegExp(`href="${escapedBase}(/[^"]*)"`, "gi"),
+    (_m, path) => `href="${emailRedirectUrl(BASE, path)}"`
+  );
+
+  // Step 4: fix any remaining unresolved template vars in hrefs
+  result = result.replace(/href="[^"]*\{\{[^}]+\}\}[^"]*"/gi, `href="${emailRedirectUrl(BASE, "/register")}"`);
+
+  return result;
 }
 
 function smtpFromAddress() {
