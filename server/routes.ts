@@ -4614,11 +4614,12 @@ export async function registerRoutes(
       // Background worker — runs after response is sent
       setImmediate(async () => {
         try {
-          const { sendAdminEmail, injectSmartCtaUrls } = await import("./emailService");
-          // For HTML bodies (pasted from Claude), inject smart CTA URLs before sending
+          const { sendAdminEmail, injectSmartCtaUrls, isFullHtmlDocument } = await import("./emailService");
           const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
-          const sendBody = (rawHtml || looksLikeHtml) ? injectSmartCtaUrls(body) : body;
-          const sendRawHtml = rawHtml || looksLikeHtml;
+          const isFullDoc = isFullHtmlDocument(body);
+          // Inject correct URLs into any HTML body; full docs pass through as-is (rawHtml=true returns body directly)
+          const sendBody = (rawHtml || looksLikeHtml || isFullDoc) ? injectSmartCtaUrls(body) : body;
+          const sendRawHtml = rawHtml || looksLikeHtml || isFullDoc;
           await storage.updateBroadcastJob(broadcastId, { status: "processing", startedAt: new Date() });
           let sent = 0, failed = 0;
           const BATCH_SIZE = 10;
@@ -4710,20 +4711,22 @@ export async function registerRoutes(
       if (typeof body !== "string") {
         return res.status(400).json({ message: "body (string) is required" });
       }
-      const { renderBroadcastEmailHtml, applyTemplateVars, injectSmartCtaUrls } = await import("./emailService");
+      const { renderBroadcastEmailHtml, applyTemplateVars, injectSmartCtaUrls, isFullHtmlDocument } = await import("./emailService");
 
-      // Auto-detect HTML: if body contains tags, always treat as raw HTML regardless of mode
-      const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
+      const substituted = vars ? applyTemplateVars(body, vars) : body;
 
       let html: string;
       if (mode === "template") {
-        html = vars ? applyTemplateVars(body, vars) : body;
-      } else if (mode === "html" || looksLikeHtml) {
-        // Raw HTML — substitute vars, inject smart CTAs, then wrap in branded shell
-        const substituted = vars ? applyTemplateVars(body, vars) : body;
-        const withUrls = injectSmartCtaUrls(substituted);
-        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body: withUrls, rawHtml: true, vars: {} });
+        // System template — full HTML, just substitute vars
+        html = substituted;
+      } else if (isFullHtmlDocument(body)) {
+        // Pasted complete HTML email — fix URLs but don't wrap in shell
+        html = injectSmartCtaUrls(substituted);
+      } else if (mode === "html" || /<[a-z][\s\S]*>/i.test(body)) {
+        // HTML snippet — inject CTAs and wrap in branded shell
+        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body: injectSmartCtaUrls(substituted), rawHtml: true, vars: {} });
       } else {
+        // Plain text
         html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });
       }
       res.json({ html });

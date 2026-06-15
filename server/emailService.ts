@@ -46,6 +46,11 @@ const CTA_KEYWORD_MAP: [RegExp, string][] = [
  * Replaces href="#", href="", or relative hrefs in HTML with smart platform URLs
  * inferred from the anchor's text content. Call this before rendering pasted HTML.
  */
+/** Returns true if the string is already a full HTML document (has DOCTYPE or html tag). */
+export function isFullHtmlDocument(html: string): boolean {
+  return /^\s*<!DOCTYPE\s+html/i.test(html) || /^\s*<html[\s>]/i.test(html);
+}
+
 export function injectSmartCtaUrls(html: string): string {
   const BASE = getBaseUrl();
   return html
