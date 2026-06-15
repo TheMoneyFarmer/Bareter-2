@@ -4495,23 +4495,26 @@ export async function registerRoutes(
           : [];
       const recipients = [...new Set([admin.email, ...extraEmails])];
 
-      // Use a realistic sample name — admin's own DB name may not reflect real recipients
-      const sampleFirstName = "Sarah";
-      const sampleFullName = "Sarah Al-Hassan";
       const BASE = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
-      const sampleVars: Record<string, string> = {
-        name: sampleFullName,
-        firstName: sampleFirstName,
-        lastName: "Al-Hassan",
-        email: admin.email,
-        city: admin.city || "Dubai",
-        businessName: admin.businessName || "Acme Trading LLC",
-        accountType: admin.accountType || "individual",
-        appName: "Bareter",
-        baseUrl: BASE,
-        signupUrl: `${BASE}/?src=email&to=%2Fregister`,
-        loginUrl: `${BASE}/?src=email&to=%2Flogin`,
-        browseUrl: `${BASE}/?src=email&to=%2Fbrowse`,
+
+      // Resolve each recipient's REAL name so the test mirrors a real broadcast:
+      // logged-in admin → their own signup name, other addresses → registered
+      // user's name, else waitlist entry's name, else null → greeting "Hi there,".
+      const resolveRecipientName = async (email: string): Promise<string | null> => {
+        if (email === admin.email) return admin.fullName ?? null;
+        const user = await storage.getUserByEmail(email).catch(() => null);
+        if (user?.fullName) return user.fullName;
+        const wl = await storage.getWaitlistEntryByEmail(email).catch(() => null);
+        if (wl?.name) return wl.name;
+        try {
+          const intl = await db
+            .select({ fullName: internationalWaitlist.fullName })
+            .from(internationalWaitlist)
+            .where(eq(internationalWaitlist.email, email))
+            .limit(1);
+          if (intl[0]?.fullName) return intl[0].fullName;
+        } catch { /* ignore lookup failures — fall back to "there" */ }
+        return null;
       };
 
       // Treat as HTML if the frontend explicitly set bodyMode=html OR if the body looks like HTML.
@@ -4521,15 +4524,33 @@ export async function registerRoutes(
       console.log(`[BROADCAST TEST] isHtml=${isHtml} bodyMode=${bodyMode} bodyLength=${body?.length}`);
 
       const results = await Promise.all(
-        recipients.map((email) =>
-          sendAdminEmail(email, {
-            recipientName: email === admin.email ? (admin.fullName ?? undefined) : undefined,
+        recipients.map(async (email) => {
+          // Personalise exactly like the real broadcast: real first name + "there" fallback.
+          const fullName = await resolveRecipientName(email);
+          const firstName = fullName?.trim().split(/\s+/)[0] || "there";
+          const lastName = fullName?.trim().split(/\s+/).slice(1).join(" ") || "";
+          const vars: Record<string, string> = {
+            name: fullName || "there",
+            firstName,
+            lastName,
+            email,
+            city: "",
+            businessName: "",
+            accountType: "",
+            appName: "Bareter",
+            baseUrl: BASE,
+            signupUrl: `${BASE}/?src=email&to=%2Fregister`,
+            loginUrl: `${BASE}/?src=email&to=%2Flogin`,
+            browseUrl: `${BASE}/?src=email&to=%2Fbrowse`,
+          };
+          return sendAdminEmail(email, {
+            recipientName: fullName,
             subject: `[TEST] ${subject}`,
             body: sendBody,
             rawHtml: isHtml,
-            vars: sampleVars,
-          })
-        )
+            vars,
+          });
+        })
       );
       const sentCount = results.filter(Boolean).length;
       if (sentCount > 0) {
