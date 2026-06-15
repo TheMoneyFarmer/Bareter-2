@@ -35,6 +35,7 @@ import {
   CreditCard,
   Shield,
   HelpCircle,
+  Paperclip,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -63,6 +64,40 @@ const HELP_ICON_MAP: Record<HelpIconName, typeof UserPlus> = {
 };
 
 type PublicSettings = Record<string, string | null>;
+
+// Attachment helpers
+type Attachment = { name: string; url: string; isImage: boolean };
+const ATTACHMENT_PREFIX = "📎 ";
+const ATTACH_RE = /📎 \[([^\]]+)\]\(([^)]+)\)/g;
+
+function formatAttachmentsForContent(attachments: Attachment[]): string {
+  return attachments.map(a => `📎 [${a.name}](${a.url})`).join("\n");
+}
+
+function parseMessageContent(content: string): { text: string; attachments: { name: string; url: string; isImage: boolean }[] } {
+  const attachments: { name: string; url: string; isImage: boolean }[] = [];
+  let match;
+  ATTACH_RE.lastIndex = 0;
+  while ((match = ATTACH_RE.exec(content)) !== null) {
+    const [, name, url] = match;
+    attachments.push({ name, url, isImage: /\.(jpe?g|png|gif|webp)$/i.test(url) });
+  }
+  const text = content.replace(ATTACH_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+  return { text, attachments };
+}
+
+async function uploadSupportFile(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("type", "support");
+  const res = await fetch("/api/upload", { method: "POST", credentials: "include", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Upload failed");
+  }
+  const data = await res.json();
+  return data.url as string;
+}
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   open: { label: "Open", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -309,6 +344,9 @@ function TicketThread({
   const { toast } = useToast();
   const qc = useQueryClient();
   const [reply, setReply] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: messages = [], isLoading } = useQuery<SupportMessageWithSender[]>({
@@ -367,10 +405,33 @@ function TicketThread({
     },
   });
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(
+        files.map(async (f) => {
+          const url = await uploadSupportFile(f);
+          return { name: f.name, url, isImage: f.type.startsWith("image/") };
+        })
+      );
+      setAttachments((prev) => [...prev, ...uploaded]);
+    } catch (err: any) {
+      toast({ title: err?.message ?? "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const handleSend = () => {
     const msg = reply.trim();
-    if (!msg || replyMutation.isPending) return;
-    replyMutation.mutate(msg);
+    const attachStr = attachments.length ? formatAttachmentsForContent(attachments) : "";
+    const fullContent = [msg, attachStr].filter(Boolean).join("\n\n");
+    if (!fullContent || replyMutation.isPending) return;
+    replyMutation.mutate(fullContent);
+    setAttachments([]);
   };
 
   const isClosed = ticket.status === "closed" || ticket.status === "resolved";
@@ -440,7 +501,29 @@ function TicketThread({
                       {isAi ? "BarterBot" : (msg.sender?.fullName ?? "Support Agent")}
                     </p>
                   )}
-                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                  {(() => {
+                    const { text, attachments: msgAttachments } = parseMessageContent(msg.content);
+                    return (
+                      <>
+                        {text && <span className="whitespace-pre-wrap">{text}</span>}
+                        {msgAttachments.length > 0 && (
+                          <div className={`${text ? "mt-2" : ""} space-y-1.5`}>
+                            {msgAttachments.map((a, ai) =>
+                              a.isImage ? (
+                                <a key={ai} href={a.url} target="_blank" rel="noopener noreferrer">
+                                  <img src={a.url} alt={a.name} className="max-w-[180px] rounded-md border object-cover" />
+                                </a>
+                              ) : (
+                                <a key={ai} href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[11px] underline underline-offset-2 opacity-90 hover:opacity-100">
+                                  <FileText className="h-3 w-3 flex-shrink-0" />{a.name}
+                                </a>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -450,7 +533,49 @@ function TicketThread({
 
       {!isClosed ? (
         <div className="p-3 border-t space-y-2 flex-shrink-0">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((a, i) => (
+                <div key={i} className="relative group">
+                  {a.isImage ? (
+                    <img src={a.url} alt={a.name} className="h-14 w-14 object-cover rounded-md border" />
+                  ) : (
+                    <div className="h-14 w-14 flex flex-col items-center justify-center rounded-md border bg-muted text-center px-1">
+                      <FileText className="h-5 w-5 text-muted-foreground mb-0.5" />
+                      <span className="text-[9px] text-muted-foreground leading-tight truncate w-full text-center">{a.name}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 flex-shrink-0 self-end"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach image or document"
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+            </Button>
             <Textarea
               data-testid="input-support-reply"
               placeholder="Type your reply…"
@@ -468,7 +593,7 @@ function TicketThread({
               data-testid="btn-support-send-reply"
               size="icon"
               className="self-end h-9 w-9 flex-shrink-0"
-              disabled={!reply.trim() || replyMutation.isPending}
+              disabled={(!reply.trim() && !attachments.length) || replyMutation.isPending || uploading}
               onClick={handleSend}
             >
               {replyMutation.isPending ? (
@@ -605,13 +730,38 @@ function NewTicketForm({
   const [message, setMessage] = useState("");
   const [guestName, setGuestName] = useState(prefillName ?? "");
   const [guestEmail, setGuestEmail] = useState(prefillEmail ?? "");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canSubmit = subject.trim() && message.trim() &&
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(
+        files.map(async (f) => {
+          const url = await uploadSupportFile(f);
+          return { name: f.name, url, isImage: f.type.startsWith("image/") };
+        })
+      );
+      setAttachments((prev) => [...prev, ...uploaded]);
+    } catch (err: any) {
+      toast({ title: err?.message ?? "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const canSubmit = subject.trim() && (message.trim() || attachments.length > 0) &&
     (!isGuest || (guestName.trim() && guestEmail.trim()));
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, string> = { subject, category, message };
+      const attachStr = attachments.length ? formatAttachmentsForContent(attachments) : "";
+      const fullMessage = [message.trim(), attachStr].filter(Boolean).join("\n\n");
+      const body: Record<string, string> = { subject, category, message: fullMessage };
       if (isGuest) {
         body.requesterName = guestName.trim();
         body.requesterEmail = guestEmail.trim().toLowerCase();
@@ -720,6 +870,48 @@ function NewTicketForm({
             onChange={(e) => setMessage(e.target.value)}
             className="text-xs min-h-[100px] resize-none"
           />
+        </div>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((a, i) => (
+                <div key={i} className="relative group">
+                  {a.isImage ? (
+                    <img src={a.url} alt={a.name} className="h-14 w-14 object-cover rounded-md border" />
+                  ) : (
+                    <div className="h-14 w-14 flex flex-col items-center justify-center rounded-md border bg-muted px-1">
+                      <FileText className="h-5 w-5 text-muted-foreground mb-0.5" />
+                      <span className="text-[9px] text-muted-foreground leading-tight truncate w-full text-center">{a.name}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+            {uploading ? "Uploading…" : "Attach images or documents"}
+          </button>
         </div>
         <p className="text-[11px] text-muted-foreground">
           BarterBot will respond immediately. You can request a support representative at any time.
