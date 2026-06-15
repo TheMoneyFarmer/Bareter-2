@@ -4495,7 +4495,7 @@ export async function registerRoutes(
           : [];
       const recipients = [...new Set([admin.email, ...extraEmails])];
 
-      const adminFirstName = admin.fullName?.split(" ")[0] || "Admin";
+      const adminFirstName = admin.fullName?.split(" ")[0] || "there";
       const BASE = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
       const sampleVars: Record<string, string> = {
         name: admin.fullName || "Admin",
@@ -4641,8 +4641,8 @@ export async function registerRoutes(
                   body: sendBody,
                   rawHtml: sendRawHtml,
                   vars: {
-                    name: recipient.name || "",
-                    firstName: recipient.name?.split(" ")[0] || "",
+                    name: recipient.name || "there",
+                    firstName: recipient.name?.split(" ")[0] || "there",
                     lastName: recipient.name?.split(" ").slice(1).join(" ") || "",
                     email: recipient.email,
                     city: "",
