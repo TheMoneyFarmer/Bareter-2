@@ -785,7 +785,7 @@ export function AdminPage() {
   });
 
   const broadcastTestMutation = useMutation({
-    mutationFn: async (data: { subject: string; body: string; to?: string }) => {
+    mutationFn: async (data: { subject: string; body: string; to?: string; bodyMode?: string }) => {
       const res = await apiRequest("POST", "/api/admin/email/broadcast/test", data);
       return res.json();
     },
@@ -2237,7 +2237,7 @@ export function AdminPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => broadcastTestMutation.mutate({ subject: broadcastSubject, body: broadcastBody, to: broadcastTestEmails || undefined })}
+                onClick={() => broadcastTestMutation.mutate({ subject: broadcastSubject, body: broadcastBody, to: broadcastTestEmails || undefined, bodyMode: broadcastBodyMode === "html" ? "html" : undefined })}
                 disabled={!broadcastSubject || !broadcastBody || broadcastTestMutation.isPending}
                 className="gap-2"
                 data-testid="button-send-test-broadcast"

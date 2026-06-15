@@ -4475,7 +4475,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/email/broadcast/test", requireAdmin, async (req, res) => {
     try {
-      const { subject, body, to } = req.body;
+      const { subject, body, to, bodyMode } = req.body;
       if (!subject || !body) {
         return res.status(400).json({ message: "Subject and body are required" });
       }
@@ -4504,8 +4504,11 @@ export async function registerRoutes(
         appName: "Bareter",
       };
 
-      const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
-      const sendBody = looksLikeHtml ? injectSmartCtaUrls(body) : body;
+      // Treat as HTML if the frontend explicitly set bodyMode=html OR if the body looks like HTML.
+      const isHtml = bodyMode === "html" || /<[a-z][\s\S]*>/i.test(body);
+      const sendBody = isHtml ? injectSmartCtaUrls(body) : body;
+
+      console.log(`[BROADCAST TEST] isHtml=${isHtml} bodyMode=${bodyMode} bodyLength=${body?.length}`);
 
       const results = await Promise.all(
         recipients.map((email) =>
@@ -4513,7 +4516,7 @@ export async function registerRoutes(
             recipientName: email === admin.email ? (admin.fullName ?? undefined) : undefined,
             subject: `[TEST] ${subject}`,
             body: sendBody,
-            rawHtml: looksLikeHtml,
+            rawHtml: isHtml,
             vars: sampleVars,
           })
         )
