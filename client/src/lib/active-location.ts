@@ -47,10 +47,14 @@ export function useActiveLocation(): ActiveLocation & {
   const stored = readStored() || {};
   const worldwide = stored.worldwide === true;
 
+  // Browse default is always 'AE'. We intentionally do NOT fall back to user.country
+  // because a user whose profile has a non-AE country would otherwise be silently
+  // excluded from seeing all UAE listings. Users can change location explicitly via
+  // the location picker, which writes to localStorage (stored.country).
   const country = worldwide
     ? ""
-    : (user?.country || stored.country || "AE").toUpperCase();
-  const city = worldwide ? null : (user?.city || stored.city || null);
+    : (stored.country || "AE").toUpperCase();
+  const city = worldwide ? null : (stored.city || null);
 
   const setWorldwide = useCallback((on: boolean) => {
     const prev = readStored() || {};

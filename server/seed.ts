@@ -14,12 +14,9 @@ export async function backfillLocationFields() {
     await db.execute(sql`UPDATE users SET country = 'AE' WHERE country IS NULL`);
     await db.execute(sql`UPDATE users SET city = location WHERE city IS NULL AND location IS NOT NULL`);
     await db.execute(sql`UPDATE listings SET city = location WHERE city IS NULL AND location IS NOT NULL`);
-    await db.execute(sql`
-      UPDATE listings AS l
-      SET country = COALESCE(u.country, 'AE')
-      FROM users AS u
-      WHERE l.user_id = u.id AND l.country IS NULL
-    `);
+    // Force ALL active listings to country='AE' so any listing posted while the owner had
+    // a non-AE profile country is self-corrected on every startup. Idempotent.
+    await db.execute(sql`UPDATE listings SET country = 'AE' WHERE deleted_at IS NULL`);
     await db.execute(sql`UPDATE posts SET city = location WHERE city IS NULL AND location IS NOT NULL`);
     await db.execute(sql`
       UPDATE posts AS p

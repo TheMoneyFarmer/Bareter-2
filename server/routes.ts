@@ -1860,9 +1860,9 @@ export async function registerRoutes(
       const sessionUser = req.session?.userId ? await storage.getUser(req.session.userId) : null;
       const queryCountry = req.query.country as string | undefined;
       const queryCity = req.query.city as string | undefined;
-      const country = worldwide ? undefined : queryCountry || sessionUser?.country || undefined;
-      // Only apply city filter when the client explicitly passes one — never infer it
-      // from the user's profile, otherwise listings without a city become invisible.
+      // Never fall back to sessionUser.country — only filter by what the client explicitly sent.
+      // Falling back would silently hide all AE listings for any user whose profile has a non-AE country.
+      const country = worldwide ? undefined : queryCountry || undefined;
       const city = worldwide ? undefined : queryCity || undefined;
 
       const listings = await storage.getListingsFiltered({
@@ -6438,12 +6438,9 @@ export async function registerRoutes(
         : null;
       const queryCountryPosts = (req.query.country as string | undefined)?.toUpperCase();
       const queryCityPosts = req.query.city as string | undefined;
-      const country = worldwide
-        ? undefined
-        : queryCountryPosts || sessionUserPosts?.country?.toUpperCase() || undefined;
-      const city = worldwide
-        ? undefined
-        : queryCityPosts || (queryCountryPosts ? undefined : sessionUserPosts?.city || undefined);
+      // Only filter by what the client explicitly sent — never infer from the session user's profile.
+      const country = worldwide ? undefined : queryCountryPosts || undefined;
+      const city = worldwide ? undefined : queryCityPosts || undefined;
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
       const currentUserId = req.session?.userId;
       // Legacy-tolerant filter: posts without country/city are kept (legacy/seed
