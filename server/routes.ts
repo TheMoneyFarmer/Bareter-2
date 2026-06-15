@@ -4495,13 +4495,21 @@ export async function registerRoutes(
           : [];
       const recipients = [...new Set([admin.email, ...extraEmails])];
 
+      const adminFirstName = admin.fullName?.split(" ")[0] || "Admin";
+      const BASE = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
       const sampleVars: Record<string, string> = {
         name: admin.fullName || "Admin",
+        firstName: adminFirstName,
+        lastName: admin.fullName?.split(" ").slice(1).join(" ") || "",
         email: admin.email,
         city: admin.city || "Dubai",
         businessName: admin.businessName || "Acme Trading LLC",
         accountType: admin.accountType || "individual",
         appName: "Bareter",
+        baseUrl: BASE,
+        signupUrl: `${BASE}/register`,
+        loginUrl: `${BASE}/login`,
+        browseUrl: `${BASE}/browse`,
       };
 
       // Treat as HTML if the frontend explicitly set bodyMode=html OR if the body looks like HTML.
