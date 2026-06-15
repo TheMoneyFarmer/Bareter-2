@@ -22,8 +22,15 @@ const SIZES = {
 export function isUserVerified(
   kycStatus?: string | null,
   kybStatus?: string | null,
+  phoneVerified?: boolean | null,
+  isVerified?: boolean | null,
 ): boolean {
-  return kycStatus === "APPROVED" || kybStatus === "APPROVED";
+  return (
+    kycStatus === "APPROVED" ||
+    kybStatus === "APPROVED" ||
+    !!isVerified ||
+    !!phoneVerified
+  );
 }
 
 // ── Email / Phone trust badges ───────────────────────────────────────────────

@@ -619,11 +619,11 @@ export function DealDetailPage() {
                   </button>
                 </div>
               )}
-              {user && !(user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified) ? (
+              {user && !(user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified || !!(user as any).phoneVerified) ? (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-dashed">
                   <Shield className="h-4 w-4 text-primary flex-shrink-0" />
-                  <p className="text-xs text-muted-foreground flex-1">Verify your identity to send messages.</p>
-                  <Link href="/profile" className="text-xs font-semibold text-primary hover:underline">Verify now</Link>
+                  <p className="text-xs text-muted-foreground flex-1">Add your WhatsApp to send messages.</p>
+                  <Link href="/settings" className="text-xs font-semibold text-primary hover:underline">Verify now</Link>
                 </div>
               ) : (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
