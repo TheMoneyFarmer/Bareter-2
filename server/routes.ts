@@ -2139,7 +2139,7 @@ export async function registerRoutes(
         valueFlagged,
         // Always stamp country/city from the poster's profile so location filtering works.
         // Body values take precedence if explicitly provided.
-        country: listingBody.country || listingUser.country || null,
+        country: listingBody.country || listingUser.country || "AE",
         city: listingBody.city || listingUser.city || null,
       });
       const listing = await storage.createListing(data);
@@ -9725,6 +9725,35 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Force ALL active listings to country='AE' — use when platform is UAE-only and listings
+  // have been stamped with wrong countries from user profiles.
+  app.post("/api/admin/force-listings-ae", requireAdmin, async (_req, res) => {
+    try {
+      const result = await db.execute(sqlOperator`
+        UPDATE listings
+        SET country = 'AE'
+        WHERE deleted_at IS NULL
+          AND (country IS NULL OR country != 'AE')
+        RETURNING id
+      `);
+      const userResult = await db.execute(sqlOperator`
+        UPDATE users
+        SET country = 'AE'
+        WHERE (country IS NULL OR country = '' OR country != 'AE')
+          AND is_banned = false
+        RETURNING id
+      `);
+      res.json({
+        listingsFixed: result.rows.length,
+        usersFixed: userResult.rows.length,
+        message: "All listings and users set to AE",
+      });
+    } catch (error) {
+      console.error("Force AE error:", error);
+      res.status(500).json({ message: "Failed", error: String(error) });
     }
   });
 
