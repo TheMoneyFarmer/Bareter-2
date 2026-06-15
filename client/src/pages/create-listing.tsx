@@ -442,16 +442,30 @@ export function CreateListingPage() {
     );
   }
 
-  const isVerified = user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified;
-  if (!isVerified) {
+  const isPersonalAccount = !user.accountType || user.accountType === "personal";
+  const isVerified =
+    user.kycStatus === "APPROVED" ||
+    user.kybStatus === "APPROVED" ||
+    user.isVerified ||
+    (isPersonalAccount && !!(user as any).phoneVerified);
+  const needsBusinessLicense = !isPersonalAccount && user.kybStatus !== "APPROVED" && !user.isVerified;
+
+  if (!isVerified || needsBusinessLicense) {
+    const isBusiness = !isPersonalAccount;
     return (
       <div className="container px-4 py-12 mx-auto max-w-2xl text-center space-y-4">
         <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
         </div>
-        <h2 className="text-xl font-bold">Verify your identity first</h2>
-        <p className="text-muted-foreground">You need to verify your identity before creating listings.</p>
-        <a href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">Verify now</a>
+        <h2 className="text-xl font-bold">{isBusiness ? "Trade licence required" : "Add your WhatsApp first"}</h2>
+        <p className="text-muted-foreground">
+          {isBusiness
+            ? "Business accounts must have a verified trade licence before creating listings."
+            : "Add and verify your WhatsApp number on your profile to start posting listings."}
+        </p>
+        <a href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">
+          {isBusiness ? "Upload trade licence" : "Add WhatsApp"}
+        </a>
       </div>
     );
   }

@@ -1435,18 +1435,18 @@ export function ListingDetailPage() {
                 </div>
               )}
 
-              {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED" && !user.isVerified) && (
+              {user && !isOwnListing && (user.kycStatus !== "APPROVED" && user.kybStatus !== "APPROVED" && !user.isVerified && !(user as any).phoneVerified) && (
                 <div className="pt-3 border-t space-y-2 text-center" data-testid="proposal-verify-prompt">
                   <div className="flex items-center justify-center gap-1.5">
                     <Shield className="h-3.5 w-3.5 text-primary" />
-                    <p className="text-sm font-medium">Verify your identity to propose a barter</p>
+                    <p className="text-sm font-medium">Add your WhatsApp to propose a barter</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">Identity verification protects both sides of every deal.</p>
-                  <Link href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-4 hover:bg-primary/90 transition-colors">Verify now</Link>
+                  <p className="text-xs text-muted-foreground">Verify your WhatsApp number to unlock proposals and protect both sides of every deal.</p>
+                  <Link href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-4 hover:bg-primary/90 transition-colors">Add WhatsApp</Link>
                 </div>
               )}
 
-              {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified) && (
+              {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified || !!(user as any).phoneVerified) && (
                 <div className="space-y-4 pt-3 border-t">
                   <p className="text-sm font-semibold flex items-center gap-2">
                     <ArrowRightLeft className="h-4 w-4 text-primary" />

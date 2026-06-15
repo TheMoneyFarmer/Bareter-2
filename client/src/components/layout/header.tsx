@@ -187,7 +187,7 @@ export function Header() {
     navigate(`/browse?q=${encodeURIComponent(q)}`);
   };
 
-  const showVerifyBanner = user && !user.isVerified && !bannerDismissed;
+  const showVerifyBanner = user && !user.isVerified && !(user as any).phoneVerified && !bannerDismissed;
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMobileMenu = () => setMobileMenuOpen(false);
