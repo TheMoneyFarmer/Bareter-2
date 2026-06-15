@@ -4484,7 +4484,7 @@ export async function registerRoutes(
       if (!admin) {
         return res.status(404).json({ message: "Admin user not found" });
       }
-      const { sendAdminEmail } = await import("./emailService");
+      const { sendAdminEmail, injectSmartCtaUrls } = await import("./emailService");
 
       // Build the list of recipients: always include the logged-in admin,
       // plus any custom addresses supplied in `to` (comma-sep string or array).
@@ -4504,12 +4504,16 @@ export async function registerRoutes(
         appName: "Bareter",
       };
 
+      const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
+      const sendBody = looksLikeHtml ? injectSmartCtaUrls(body) : body;
+
       const results = await Promise.all(
         recipients.map((email) =>
           sendAdminEmail(email, {
             recipientName: email === admin.email ? (admin.fullName ?? undefined) : undefined,
             subject: `[TEST] ${subject}`,
-            body,
+            body: sendBody,
+            rawHtml: looksLikeHtml,
             vars: sampleVars,
           })
         )
