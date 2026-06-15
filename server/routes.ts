@@ -4757,8 +4757,9 @@ export async function registerRoutes(
       await logAdminAction(req, "email_templates_updated", "system", "templates", { keys: Object.keys(templates) });
       res.json({ message: "Templates updated" });
     } catch (error) {
-      console.error("Update email templates error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Update email templates error:", msg, error);
+      res.status(500).json({ message: `Failed to save: ${msg}` });
     }
   });
 

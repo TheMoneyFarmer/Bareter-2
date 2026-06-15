@@ -847,8 +847,9 @@ export function AdminPage() {
       setEditingTemplateValue("");
       toast({ title: "Template saved" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save template", variant: "destructive" });
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to save template";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
