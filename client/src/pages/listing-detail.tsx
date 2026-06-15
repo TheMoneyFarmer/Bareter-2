@@ -458,10 +458,17 @@ export function ListingDetailPage() {
     },
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings", id, "comments"] });
-      toast({ title: vars.status === "accepted" ? "Proposal accepted!" : "Proposal declined" });
       if (vars.status === "accepted") {
-        const comment = listingComments?.find(c => c.id === vars.commentId);
-        setReviewProposal({ id: vars.commentId, otherPartyName: comment?.user?.fullName || "Proposer" });
+        toast({ title: "Proposal accepted! Taking you to the deal…" });
+        setTimeout(() => {
+          if (data?.dealId) {
+            navigate(`/deals/${data.dealId}`);
+          } else {
+            navigate("/deals");
+          }
+        }, 800);
+      } else {
+        toast({ title: "Proposal declined" });
       }
     },
     onError: (err: any) => toast({ title: err?.message || "Failed to respond", variant: "destructive" }),

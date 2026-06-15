@@ -3,7 +3,7 @@ import { db } from "../db";
 import { agentInteractions } from "@shared/schema";
 
 const SAFE_FALLBACK_REPLY =
-  "Sorry, I can't answer that right now. Please email support@bareter.com and a human will help you out.";
+  "Sorry, I'm not able to help with that one right now — but our support team is on it! Please reach out to support@bareter.com with screenshots or any relevant details, and one of our support representatives will assist you shortly.";
 
 const SECRET_PATTERNS: RegExp[] = [
   /sk-[A-Za-z0-9_-]{16,}/,
@@ -103,8 +103,8 @@ Important facts:
 - Users should never take communication off-platform
 - Contracts are auto-generated and e-signed inside the platform — no external tools needed
 
-Keep responses concise (2-3 sentences max), friendly, and helpful. If you don't know something, say so and suggest contacting support@bareter.com.
-Do NOT make up features that don't exist. Answer in the same language the user writes in (English or Arabic).`;
+Keep responses concise (2-3 sentences max), friendly, and helpful. If you don't know something, say so honestly and let them know a support representative can assist.
+Never say "human" — always say "support representative". Do NOT make up features that don't exist. Answer in the same language the user writes in (English or Arabic).`;
 
 function buildSystemPrompt(userContext?: SupportUserContext): string {
   let prompt = BASE_SYSTEM_PROMPT;
@@ -208,7 +208,7 @@ export async function getSupportResponse(
   } catch (error) {
     console.error("Support agent error:", error);
     return {
-      response: "I'm having trouble right now. Please try again or email support@bareter.com for help.",
+      response: "I'm having a little trouble right now. Please try again in a moment, or email support@bareter.com — a support representative will get back to you shortly.",
       tokensUsed: 0,
     };
   }

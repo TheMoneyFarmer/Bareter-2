@@ -1920,7 +1920,9 @@ export async function registerRoutes(
   app.get("/api/listings/user/:userId", requireAuth, async (req, res) => {
     try {
       const listings = await storage.getListingsByUser(param(req.params.userId));
-      res.json(listings);
+      const commentCounts = await storage.getListingCommentCounts();
+      const enriched = listings.map(l => ({ ...l, commentCount: commentCounts.get(l.id) || 0 }));
+      res.json(enriched);
     } catch (error) {
       console.error("Get user listings error:", error);
       res.status(500).json({ message: "Internal server error" });

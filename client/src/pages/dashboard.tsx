@@ -53,6 +53,7 @@ import {
   Package,
   ChevronRight,
   PlusCircle,
+  ArrowRightLeft,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import {
@@ -605,6 +606,16 @@ export default function DashboardPage() {
                               <Calendar className="h-3 w-3" />
                               {new Date(listing.createdAt).toLocaleDateString()}
                             </span>
+                          )}
+                          {(listing as any).commentCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/listings/${listing.id}#proposals`)}
+                              className="flex items-center gap-1 text-bareter-teal font-semibold hover:underline"
+                            >
+                              <ArrowRightLeft className="h-3 w-3" />
+                              {(listing as any).commentCount} proposal{(listing as any).commentCount !== 1 ? "s" : ""}
+                            </button>
                           )}
                         </div>
                         {(listing.wantedCategories as string[] | null)?.length ? (

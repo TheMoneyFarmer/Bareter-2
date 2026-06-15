@@ -351,7 +351,7 @@ function TicketThread({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/support/tickets", ticket.id, "messages"] });
       qc.invalidateQueries({ queryKey: ["/api/support/tickets"] });
-      toast({ title: "Escalated", description: "A human agent will respond shortly." });
+      toast({ title: "Escalated", description: "A support representative will respond shortly." });
     },
   });
 
@@ -489,7 +489,7 @@ function TicketThread({
                 onClick={() => escalateMutation.mutate()}
               >
                 <AlertTriangle className="h-3 w-3 mr-1" />
-                Talk to human
+                Talk to a support representative
               </Button>
             )}
             <Button
@@ -722,7 +722,7 @@ function NewTicketForm({
           />
         </div>
         <p className="text-[11px] text-muted-foreground">
-          BarterBot will respond immediately. You can request a human agent at any time.
+          BarterBot will respond immediately. You can request a support representative at any time.
         </p>
       </div>
       <div className="p-3 border-t flex-shrink-0">
