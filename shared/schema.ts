@@ -2388,6 +2388,25 @@ export const userBlocks = pgTable("user_blocks", {
 
 export type UserBlock = typeof userBlocks.$inferSelect;
 
+// ─── International Waitlist ───────────────────────────────────────────────────
+// Users who registered with a non-UAE country are automatically added here.
+// Admin can view them grouped by country to track expansion demand.
+export const internationalWaitlist = pgTable("international_waitlist", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  fullName: text("full_name"),
+  country: text("country").notNull(),
+  city: text("city"),
+  signupType: text("signup_type"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  countryIdx: index("intl_waitlist_country_idx").on(table.country),
+  userIdx: uniqueIndex("intl_waitlist_user_idx").on(table.userId),
+}));
+
+export type InternationalWaitlistEntry = typeof internationalWaitlist.$inferSelect;
+
 // ─── Push Subscriptions ───────────────────────────────────────────────────────
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

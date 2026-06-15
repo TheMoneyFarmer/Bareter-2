@@ -54,7 +54,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report, DisputeWithParties, AdminAuditLog, FailedLoginAttempt } from "@shared/schema";
-import { CATEGORIES } from "@shared/schema";
+import { CATEGORIES, COUNTRIES } from "@shared/schema";
 import {
   Users,
   Package,
@@ -141,7 +141,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -956,6 +956,7 @@ export function AdminPage() {
     { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
     { id: "feature-waitlist" as const, label: "Feature Waitlists", icon: Sparkles },
+    { id: "intl-waitlist" as const, label: "Intl. Waitlist", icon: Globe },
     { id: "legal" as const, label: "Legal", icon: ScrollText },
     { id: "email" as const, label: "Email", icon: Mail },
     { id: "support" as const, label: "Support", icon: MessageSquare },
@@ -3730,6 +3731,8 @@ export function AdminPage() {
         return renderWaitlist();
       case "feature-waitlist":
         return <FeatureWaitlistAdminSection />;
+      case "intl-waitlist":
+        return <InternationalWaitlistSection />;
       case "legal":
         return <AdminLegalSection />;
       case "email":
@@ -5775,6 +5778,104 @@ function FeatureWaitlistAdminSection() {
         <div className="space-y-5">
           {renderTable(creators, "Creators Hub", "bg-violet-600")}
           {renderTable(brandCollabs, "Brand Collabs", "bg-bareter-teal")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InternationalWaitlistSection() {
+  const { data: groups = [], isLoading } = useQuery<{ country: string; count: number; entries: { id: number; email: string; fullName: string | null; country: string; city: string | null; signupType: string | null; createdAt: string | null }[] }[]>({
+    queryKey: ["/api/admin/international-waitlist"],
+    staleTime: 30_000,
+  });
+
+  const totalCount = groups.reduce((s, g) => s + g.count, 0);
+
+  const getCountryName = (code: string) =>
+    COUNTRIES.find((c) => c.code === code.toUpperCase())?.name ?? code;
+
+  const downloadCsv = () => {
+    const all = groups.flatMap((g) => g.entries);
+    const header = "id,email,fullName,country,city,signupType,createdAt";
+    const rows = all.map((e) =>
+      [e.id, e.email, e.fullName ?? "", getCountryName(e.country), e.city ?? "", e.signupType ?? "", e.createdAt ?? ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "international-waitlist.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl font-bold mb-0.5">International Waitlist</h2>
+          <p className="text-sm text-muted-foreground">
+            Users who signed up from outside UAE — sorted by country demand.
+            {totalCount > 0 && <span className="ml-1 font-medium text-foreground">{totalCount} total across {groups.length} countr{groups.length === 1 ? "y" : "ies"}.</span>}
+          </p>
+        </div>
+        {totalCount > 0 && (
+          <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-muted-foreground text-sm">Loading…</div>
+      ) : groups.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Globe className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p>No international signups yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <Card key={group.country}>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <span className="text-lg">{group.country}</span>
+                    {getCountryName(group.country)}
+                    <Badge variant="secondary" className="ml-1">{group.count}</Badge>
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="text-left py-1.5 pr-3 font-medium">Name</th>
+                        <th className="text-left py-1.5 pr-3 font-medium">Email</th>
+                        <th className="text-left py-1.5 pr-3 font-medium">City</th>
+                        <th className="text-left py-1.5 pr-3 font-medium">Type</th>
+                        <th className="text-left py-1.5 font-medium">Signed up</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.entries.map((e) => (
+                        <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40">
+                          <td className="py-1.5 pr-3">{e.fullName ?? "—"}</td>
+                          <td className="py-1.5 pr-3 font-mono text-[11px]">{e.email}</td>
+                          <td className="py-1.5 pr-3">{e.city ?? "—"}</td>
+                          <td className="py-1.5 pr-3 capitalize">{e.signupType ?? "—"}</td>
+                          <td className="py-1.5 text-muted-foreground">{e.createdAt ? new Date(e.createdAt).toLocaleDateString() : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
     </div>

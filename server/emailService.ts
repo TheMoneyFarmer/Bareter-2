@@ -1597,3 +1597,36 @@ export async function sendAccountReadyEmail(toEmail: string, fullName?: string |
   const text = `${greeting}\n\nYour account is fully verified — email and WhatsApp are both confirmed.\n\nBrowse the marketplace: ${baseUrl}/browse\nPost your first listing: ${baseUrl}/listings/new\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} account is ready — let's trade!`, html, text, templateKey: "email_template_account_ready" });
 }
+
+export async function sendInternationalWaitlistEmail(
+  toEmail: string,
+  opts: { fullName?: string | null; country: string; countryName: string },
+): Promise<boolean> {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const baseUrl = getBaseUrl();
+  const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
+  const html = emailShell(`
+    <h2 style="color:#1a1a2e;font-size:22px;font-weight:700;margin:0 0 16px;">We're coming to ${esc(opts.countryName)}! 🌍</h2>
+    <p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0 0 16px;">${esc(greeting)}</p>
+    <p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0 0 16px;">
+      Thank you for signing up! Right now, <strong>${APP_NAME}</strong> is live exclusively in the <strong>United Arab Emirates</strong> — but we're expanding fast and <strong>${esc(opts.countryName)} is on our radar</strong>.
+    </p>
+    <p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0 0 16px;">
+      You've been added to our early-access list for ${esc(opts.countryName)}. The moment we launch there, you'll be the <strong>first to know</strong> — and the first to trade.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:18px 20px;margin:24px 0;">
+      <p style="color:#166534;font-size:14px;font-weight:600;margin:0 0 6px;">Want to start now?</p>
+      <p style="color:#166534;font-size:14px;margin:0;">
+        You can browse and barter with UAE listings right now by switching your location to UAE in your settings. Just head to <strong>Settings → Location</strong> or use the location selector at the top of any page.
+      </p>
+    </div>
+    <a href="${baseUrl}/browse" style="display:block;text-align:center;background:#136c68;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;margin:24px 0;">
+      Explore UAE Listings →
+    </a>
+    <p style="color:#9ca3af;font-size:13px;text-align:center;margin:0;">
+      We'll email you as soon as ${esc(opts.countryName)} launches. No action needed.
+    </p>
+  `);
+  const text = `${greeting}\n\nBareter is coming to ${opts.countryName}!\n\nRight now we're live exclusively in the UAE, but you've been added to our early-access list for ${opts.countryName}. You'll be the first to know when we launch there.\n\nWant to start now? You can browse UAE listings immediately — just change your location to UAE in Settings.\n\nExplore UAE listings: ${baseUrl}/browse\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `${APP_NAME} is coming to ${opts.countryName} — you're on the list!`, html, text });
+}

@@ -122,6 +122,8 @@ import {
   collabApplications,
   type CollabApplication,
   type InsertCollabApplication,
+  internationalWaitlist,
+  type InternationalWaitlistEntry,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -1876,6 +1878,38 @@ export class DatabaseStorage implements IStorage {
       .update(waitlistEntries)
       .set({ confirmedAt: new Date() })
       .where(eq(waitlistEntries.email, email.trim().toLowerCase()));
+  }
+
+  // ── International Waitlist ─────────────────────────────────────────────
+  async addToInternationalWaitlist(data: {
+    userId: string;
+    email: string;
+    fullName?: string | null;
+    country: string;
+    city?: string | null;
+    signupType?: string | null;
+  }): Promise<void> {
+    await db.insert(internationalWaitlist).values({
+      userId: data.userId,
+      email: data.email,
+      fullName: data.fullName ?? null,
+      country: data.country.toUpperCase(),
+      city: data.city ?? null,
+      signupType: data.signupType ?? null,
+    }).onConflictDoNothing();
+  }
+
+  async getInternationalWaitlistGrouped(): Promise<{ country: string; count: number; entries: InternationalWaitlistEntry[] }[]> {
+    const rows = await db.select().from(internationalWaitlist).orderBy(sql`country ASC, created_at DESC`);
+    const map = new Map<string, InternationalWaitlistEntry[]>();
+    for (const row of rows) {
+      const key = row.country;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(row);
+    }
+    return Array.from(map.entries())
+      .map(([country, entries]) => ({ country, count: entries.length, entries }))
+      .sort((a, b) => b.count - a.count);
   }
 
   // ── Legal pages ────────────────────────────────────────────────────────

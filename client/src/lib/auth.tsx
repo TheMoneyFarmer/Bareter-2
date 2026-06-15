@@ -19,7 +19,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<{ onInternationalWaitlist?: boolean }>;
   logout: () => Promise<void>;
   refetch: () => Promise<unknown>;
 }
@@ -86,8 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loginMutation.mutateAsync({ email, password });
   };
 
-  const register = async (data: RegisterData) => {
-    await registerMutation.mutateAsync(data);
+  const register = async (data: RegisterData): Promise<{ onInternationalWaitlist?: boolean }> => {
+    const result = await registerMutation.mutateAsync(data);
+    return { onInternationalWaitlist: !!(result as any)?.onInternationalWaitlist };
   };
 
   const logout = async () => {

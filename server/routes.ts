@@ -794,6 +794,30 @@ export async function registerRoutes(
         );
       }
 
+      // Non-UAE users → add to international waitlist (fire-and-forget)
+      const isNonUAE = data.country && data.country.toUpperCase() !== "AE";
+      if (isNonUAE) {
+        ;(async () => {
+          try {
+            const { COUNTRIES } = await import("@shared/schema");
+            const countryEntry = COUNTRIES.find((c: any) => c.code === data.country.toUpperCase());
+            const countryName = countryEntry?.name ?? data.country;
+            await storage.addToInternationalWaitlist({
+              userId: user.id,
+              email: user.email,
+              fullName: user.fullName,
+              country: data.country,
+              city: data.city || null,
+              signupType: user.signupType,
+            });
+            const { sendInternationalWaitlistEmail } = await import("./emailService");
+            sendInternationalWaitlistEmail(user.email, { fullName: user.fullName, country: data.country, countryName }).catch(() => {});
+          } catch (err) {
+            console.error("[register] international waitlist error:", err);
+          }
+        })();
+      }
+
       // Send email verification link + welcome email (fire-and-forget — never blocks registration)
       ;(async () => {
         try {
@@ -830,7 +854,7 @@ export async function registerRoutes(
         }),
         sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
       ]);
-      res.json(safeUser);
+      res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4287,6 +4311,15 @@ export async function registerRoutes(
   app.get("/api/admin/whatsapp/events", requireAdmin, async (_req, res) => {
     const { getWhatsAppEvents } = await import("./whatsappService");
     res.json(getWhatsAppEvents());
+  });
+
+  app.get("/api/admin/international-waitlist", requireAdmin, async (_req, res) => {
+    try {
+      const data = await storage.getInternationalWaitlistGrouped();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to load waitlist" });
+    }
   });
 
   // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.

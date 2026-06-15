@@ -24,6 +24,22 @@ export async function backfillLocationFields() {
       FROM users AS u
       WHERE p.user_id = u.id AND p.country IS NULL
     `);
+
+    // Ensure international_waitlist table exists so no manual db:push is needed.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS international_waitlist (
+        id serial PRIMARY KEY,
+        user_id varchar(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email text NOT NULL,
+        full_name text,
+        country text NOT NULL,
+        city text,
+        signup_type text,
+        created_at timestamp DEFAULT now(),
+        CONSTRAINT intl_waitlist_user_unique UNIQUE (user_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS intl_waitlist_country_idx ON international_waitlist(country)`);
   } catch (err) {
     console.error("Location backfill error:", err);
   }

@@ -119,6 +119,7 @@ export function RegisterPage() {
     return null;
   });
   const [resendingVerification, setResendingVerification] = useState(false);
+  const [internationalCountry, setInternationalCountry] = useState<string | null>(null);
 
   const benefits = [
     t("landing.freeForEveryone"),
@@ -169,7 +170,7 @@ export function RegisterPage() {
     setIsLoading(true);
     setRegisterError(null);
     try {
-      await register({
+      const result = await register({
         email: formValues.email,
         password: formValues.password,
         fullName: formValues.fullName,
@@ -180,9 +181,13 @@ export function RegisterPage() {
       trackEvent("register", {
         country: formValues.country,
       });
+      setRegisteredEmail(formValues.email);
+      if (result?.onInternationalWaitlist) {
+        setInternationalCountry(formValues.country);
+        return;
+      }
       // Store email then navigate so the success screen survives any
       // auth-context re-render that would otherwise reset component state.
-      setRegisteredEmail(formValues.email);
       navigate(`/register?step=verify&email=${encodeURIComponent(formValues.email)}`);
     } catch (error: any) {
       const raw = (error?.message || "").toLowerCase();
@@ -616,7 +621,36 @@ export function RegisterPage() {
           </div>
 
           <Card>
-            {registeredEmail ? (
+            {internationalCountry ? (
+              <div className="p-8 text-center space-y-5">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto text-3xl">
+                  🌍
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold mb-2">
+                    Bareter is coming to {COUNTRIES.find((c) => c.code === internationalCountry)?.name ?? internationalCountry}!
+                  </h2>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    We're currently live exclusively in the <strong>United Arab Emirates</strong> and expanding fast.
+                    You've been added to our early-access list — we'll notify you the moment we launch in your country.
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-4 text-sm text-left space-y-1.5">
+                  <p className="font-medium text-foreground">Want to start now?</p>
+                  <p className="text-muted-foreground">
+                    You can browse and barter UAE listings by switching your location to UAE in Settings or using the location selector at the top of any page.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button onClick={() => navigate("/browse")} className="w-full">
+                    Explore UAE Listings
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => navigate("/settings")} className="text-muted-foreground">
+                    Go to Settings to change location
+                  </Button>
+                </div>
+              </div>
+            ) : registeredEmail ? (
               <div className="p-8 text-center space-y-5">
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
                   <Mail className="h-8 w-8 text-primary" />
