@@ -8,4 +8,5 @@ vite.config.ts.*
 .env
 .env.*
 uploads/
-*.logwhatsapp-auth/
+*.log
+whatsapp-auth/
