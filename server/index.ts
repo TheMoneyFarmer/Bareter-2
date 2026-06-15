@@ -16,6 +16,22 @@ import { registerAudioRoutes } from "./replit_integrations/audio";
 const app = express();
 const httpServer = createServer(app);
 
+// ── Global crash guards ──────────────────────────────────────────────────
+// This VM deployment runs background subsystems (the WhatsApp/Baileys socket,
+// cron schedulers, AI agents) in-process alongside the web server. Without
+// these handlers, a single unhandled promise rejection or uncaught exception
+// thrown ASYNCHRONOUSLY inside any of those subsystems (i.e. not caught by the
+// .catch() on their startup promise) terminates the entire Node process —
+// taking bareter.com down and forcing a cold restart. We log with full context
+// and keep serving: the website must never go down because a background task
+// threw. (Root cause of repeated short production outages.)
+process.on("unhandledRejection", (reason) => {
+  console.error("[fatal-guard] Unhandled promise rejection — process kept alive:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[fatal-guard] Uncaught exception — process kept alive:", err);
+});
+
 // On Replit, auto-derive PRIVATE_OBJECT_DIR from REPL_ID if not explicitly set.
 // Replit provisions an object storage bucket named replit-objstore-<REPL_ID>
 // which persists across redeploys. Without this, uploads fall back to the
@@ -302,14 +318,19 @@ app.use((req, res, next) => {
         .catch((err) => console.error("[startup] scheduler failed:", err));
 
       // 6b. Baileys WhatsApp service (OTP delivery).
-      // Only start on Replit — locally there's no Object Storage proxy (port 1106)
-      // so session restore always fails and creates a useless retry loop.
-      if (process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT) {
+      // Start ONLY in the production deployment. WhatsApp allows a single live
+      // session per number, and the dev workspace + production both restore the
+      // same session from Object Storage. If both run it, they fight over that
+      // session and each kicks the other off (disconnect code 440), producing
+      // an endless ~10s reconnect loop and constant churn that can crash the
+      // process. REPLIT_DEPLOYMENT is set only in the published deployment,
+      // never in the dev workspace — so production owns the session alone.
+      if (process.env.REPLIT_DEPLOYMENT) {
         import("./whatsappService")
           .then(({ whatsappService }) => whatsappService.start())
           .catch((err) => console.error("[startup] whatsappService failed:", err));
       } else {
-        console.log("[whatsapp] Skipped — not running on Replit (no Object Storage available)");
+        console.log("[whatsapp] Skipped — only runs in the production deployment (avoids session conflict with prod)");
       }
 
       // 6. Warm per-agent budget cache (degrades gracefully on miss).
