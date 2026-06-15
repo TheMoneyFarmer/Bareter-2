@@ -4633,11 +4633,17 @@ export async function registerRoutes(
                   rawHtml: sendRawHtml,
                   vars: {
                     name: recipient.name || "",
+                    firstName: recipient.name?.split(" ")[0] || "",
+                    lastName: recipient.name?.split(" ").slice(1).join(" ") || "",
                     email: recipient.email,
                     city: "",
                     businessName: "",
                     accountType: "",
                     appName: "Bareter",
+                    baseUrl: (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, ""),
+                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/register`,
+                    loginUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/login`,
+                    browseUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/browse`,
                   },
                 });
                 await storage.createEmailLog({

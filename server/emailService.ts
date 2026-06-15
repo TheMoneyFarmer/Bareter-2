@@ -49,8 +49,8 @@ const CTA_KEYWORD_MAP: [RegExp, string][] = [
 export function injectSmartCtaUrls(html: string): string {
   const BASE = getBaseUrl();
   return html
-    // Replace empty / placeholder hrefs based on anchor text
-    .replace(/<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
+    // Replace empty / placeholder / unresolved-template hrefs based on anchor text
+    .replace(/<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank|\{\{[^}]*\}\}[^"']*)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
       (_match, pre, _href, post, inner) => {
         const text = inner.replace(/<[^>]+>/g, "").trim();
         for (const [pattern, path] of CTA_KEYWORD_MAP) {
@@ -59,7 +59,9 @@ export function injectSmartCtaUrls(html: string): string {
         return `<a${pre}href="${BASE}"${post}>${inner}</a>`;
       })
     // Fix relative hrefs that start with "/" (not yet absolute)
-    .replace(/href="(\/[^"]+)"/gi, `href="${BASE}$1"`);
+    .replace(/href="(\/[^"]+)"/gi, `href="${BASE}$1"`)
+    // Fix any remaining unresolved template vars in hrefs
+    .replace(/href="[^"]*\{\{[^}]+\}\}[^"]*"/gi, `href="${BASE}/register"`);
 }
 
 function smtpFromAddress() {

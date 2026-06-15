@@ -2155,8 +2155,8 @@ export function AdminPage() {
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                   onClick={async () => {
                     try {
-                      const sampleVars = { name: "Sarah Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter" };
-                      const previewBody = broadcastBody || (broadcastBodyMode === "html" ? "<p>Hello, welcome to <strong>Bareter</strong>!</p>" : "Hello {{name}}, welcome to {{appName}}!");
+                      const sampleVars = { name: "Sarah Al-Hassan", firstName: "Sarah", lastName: "Al-Hassan", email: "sarah@example.com", city: "Dubai", businessName: "Al-Hassan Trading", accountType: "business", appName: "Bareter", baseUrl: "https://bareter.com", signupUrl: "https://bareter.com/register", loginUrl: "https://bareter.com/login", browseUrl: "https://bareter.com/browse" };
+                      const previewBody = broadcastBody || (broadcastBodyMode === "html" ? "<p>Hello, welcome to <strong>Bareter</strong>!</p>" : "Hello {{firstName}}, welcome to {{appName}}!");
                       const result = await previewMutation.mutateAsync({
                         body: previewBody,
                         recipientName: "Sarah Al-Hassan",
@@ -2178,7 +2178,7 @@ export function AdminPage() {
               </div>
             </div>
             <Textarea
-              placeholder={broadcastBodyMode === "html" ? "Paste raw HTML here…" : "Email body... Use {{name}}, {{email}}, {{appName}} for personalisation."}
+              placeholder={broadcastBodyMode === "html" ? "Paste raw HTML here…" : "Email body... Use {{firstName}}, {{name}}, {{email}}, {{appName}} for personalisation."}
               rows={8}
               value={broadcastBody}
               onChange={(e) => setBroadcastBody(e.target.value)}
@@ -2187,7 +2187,7 @@ export function AdminPage() {
             />
             {broadcastBodyMode === "text" && (
               <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
-                {["{{name}}", "{{email}}", "{{appName}}"].map((v) => (
+                {["{{firstName}}", "{{name}}", "{{email}}", "{{signupUrl}}", "{{baseUrl}}", "{{appName}}"].map((v) => (
                   <button
                     key={v}
                     type="button"
