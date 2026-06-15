@@ -1857,11 +1857,8 @@ export async function registerRoutes(
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const sessionUser = req.session?.userId ? await storage.getUser(req.session.userId) : null;
       const queryCountry = req.query.country as string | undefined;
       const queryCity = req.query.city as string | undefined;
-      // Never fall back to sessionUser.country — only filter by what the client explicitly sent.
-      // Falling back would silently hide all AE listings for any user whose profile has a non-AE country.
       const country = worldwide ? undefined : queryCountry || undefined;
       const city = worldwide ? undefined : queryCity || undefined;
 
@@ -6438,12 +6435,8 @@ export async function registerRoutes(
       const limit = parseInt(req.query.limit as string) || 20;
       const offset = parseInt(req.query.offset as string) || 0;
       const worldwide = req.query.worldwide === "true";
-      const sessionUserPosts = req.session?.userId
-        ? await storage.getUser(req.session.userId)
-        : null;
       const queryCountryPosts = (req.query.country as string | undefined)?.toUpperCase();
       const queryCityPosts = req.query.city as string | undefined;
-      // Only filter by what the client explicitly sent — never infer from the session user's profile.
       const country = worldwide ? undefined : queryCountryPosts || undefined;
       const city = worldwide ? undefined : queryCityPosts || undefined;
       const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
