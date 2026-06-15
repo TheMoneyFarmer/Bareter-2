@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { trackEvent } from "@/lib/posthog";
 import { useI18n } from "@/lib/i18n";
-import { Link, useParams, useSearch } from "wouter";
+import { Link, useParams, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -68,10 +68,11 @@ const STATE_COLORS: Record<string, { color: string; step: number }> = {
 
 export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const { t, language, isRTL } = useI18n();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [message, setMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -100,6 +101,13 @@ export function DealDetailPage() {
   const [translatingMsgIds, setTranslatingMsgIds] = useState<Set<string>>(new Set());
   const [translatedMsgIds, setTranslatedMsgIds] = useState<Set<string>>(new Set());
   const [msgTranslations, setMsgTranslations] = useState<Record<string, string>>({});
+
+  // Redirect unauthenticated users to login so email links work end-to-end.
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate(`/login?redirect=/deals/${id}`, { replace: true });
+    }
+  }, [authLoading, user, id]);
 
   // When the UI language changes, collapse all in-place translations so the
   // user always sees text in the new target language (or the original, if

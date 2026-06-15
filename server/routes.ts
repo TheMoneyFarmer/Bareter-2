@@ -9785,5 +9785,27 @@ export async function registerRoutes(
     }
   });
 
+  // ── Email link redirects ─────────────────────────────────────────────────────
+  // /go?to=/deals/123 — used in transactional emails so unauthenticated users
+  // land on /login?redirect=<destination> rather than a blank auth-wall page,
+  // while already-signed-in users skip login entirely.
+  app.get("/go", (req, res) => {
+    const dest = (req.query.to as string | undefined)?.trim();
+    if (!dest || !dest.startsWith("/")) {
+      return res.redirect(302, "/browse");
+    }
+    const safe = dest.replace(/[^\w\-/?=&#%.]/g, ""); // strip anything unexpected
+    if (req.session?.userId) {
+      return res.redirect(302, safe);
+    }
+    return res.redirect(302, `/login?redirect=${encodeURIComponent(safe)}`);
+  });
+
+  // Legacy-path redirects — old URLs that used to appear in emails/marketing.
+  app.get("/my-exchanges", (_req, res) => res.redirect(301, "/deals"));
+  app.get("/my-listings", (_req, res) => res.redirect(301, "/dashboard"));
+  app.get("/my-account", (_req, res) => res.redirect(301, "/profile"));
+  app.get("/verify", (_req, res) => res.redirect(301, "/settings"));
+
   return httpServer;
 }

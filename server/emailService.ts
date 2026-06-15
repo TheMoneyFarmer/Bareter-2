@@ -25,6 +25,11 @@ function createSmtpTransport() {
 const APP_NAME = "Bareter";
 const FALLBACK_FROM = "noreply@bareter.com";
 
+// Always trim PUBLIC_APP_URL — a stray trailing space produces %20 in links.
+function getBaseUrl(): string {
+  return (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
+}
+
 function smtpFromAddress() {
   return process.env.FROM_EMAIL || process.env.SMTP_USER || FALLBACK_FROM;
 }
@@ -188,7 +193,7 @@ function emailShell(content: string, opts?: { rtl?: boolean }): string {
   const dir = opts?.rtl ? "rtl" : "ltr";
   const align = opts?.rtl ? "right" : "left";
   const year = new Date().getFullYear();
-  const BASE_URL = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const BASE_URL = getBaseUrl();
   return `<!DOCTYPE html>
 <html lang="${opts?.rtl ? "ar" : "en"}" dir="${dir}">
 <head>
@@ -845,7 +850,7 @@ export async function sendVerificationApprovedEmail(
   }
   const greeting = opts.fullName ? `Hi ${opts.fullName},` : "Hi there,";
   const verType = opts.accountType === "business" ? "Business (KYB)" : "Identity (KYC)";
-  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const baseUrl = getBaseUrl();
   const customTemplate = await getCustomTemplate("email_template_verification_approved");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl })
@@ -919,16 +924,16 @@ export async function sendVerificationUnderReviewEmail(
 // CAN-SPAM/GDPR/UAE PDPL "marketing-style" rules.
 
 function buildAppBaseUrl(): string {
-  // PUBLIC_APP_URL is the externally-reachable URL used in emails and links.
-  // APP_BASE_URL may point to localhost — never use it for email links.
-  const publicUrl = process.env.PUBLIC_APP_URL?.trim();
-  if (publicUrl) return publicUrl.replace(/\/$/, "");
+  // getBaseUrl() already trims and handles the PUBLIC_APP_URL fallback.
+  // Fall back to Replit domains when PUBLIC_APP_URL is not set.
+  const publicUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  if (publicUrl) return publicUrl;
   if (process.env.REPLIT_DOMAINS) {
     const host = process.env.REPLIT_DOMAINS.split(",")[0]?.trim();
     if (host) return `https://${host}`;
   }
   if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return "https://bareter.com";
+  return getBaseUrl();
 }
 
 function escapeReminderHtml(s: string): string {
@@ -1541,7 +1546,7 @@ export async function sendRawEmail(opts: { to: string; subject: string; html: st
 export async function sendEmailVerifiedEmail(toEmail: string, fullName?: string | null): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
-  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const baseUrl = getBaseUrl();
   const customTemplate = await getCustomTemplate("email_template_email_verified");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })
@@ -1562,7 +1567,7 @@ export async function sendEmailVerifiedEmail(toEmail: string, fullName?: string 
 export async function sendAccountReadyEmail(toEmail: string, fullName?: string | null): Promise<boolean> {
   if (!(await isEmailConfigured())) return false;
   const greeting = fullName ? `Hi ${fullName},` : "Hi there,";
-  const baseUrl = process.env.PUBLIC_APP_URL || "https://bareter.com";
+  const baseUrl = getBaseUrl();
   const customTemplate = await getCustomTemplate("email_template_account_ready");
   const html = customTemplate
     ? applyTemplateVars(customTemplate, { greeting, fullName: fullName || "there", appName: APP_NAME, baseUrl })

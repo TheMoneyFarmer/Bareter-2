@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { DealWithUsers, Listing, ListingComment, User } from "@shared/schema";
 import { useLocation } from "wouter";
+import { useEffect } from "react";
 import {
   Handshake,
   ArrowRight,
@@ -153,11 +154,19 @@ function DealCard({ deal, userId }: { deal: DealWithUsers; userId: string }) {
 }
 
 export function DealsPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+
+  // Email links land here — redirect to login with returnTo so the user comes
+  // back to this page after signing in instead of landing on a blank auth wall.
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate(`/login?redirect=/deals`, { replace: true });
+    }
+  }, [authLoading, user]);
 
   const { data: deals, isLoading } = useQuery<DealWithUsers[]>({
     queryKey: ["/api/deals"],
@@ -198,22 +207,7 @@ export function DealsPage() {
   const completedDeals = deals?.filter((d) => d.state === "completed") || [];
   const cancelledDeals = deals?.filter((d) => d.state === "cancelled") || [];
 
-  if (!user) {
-    return (
-      <div className="container px-4 py-16 mx-auto max-w-2xl text-center">
-        <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-          <Handshake className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">{t("deals.signInTitle")}</h2>
-        <p className="text-muted-foreground mb-6">
-          {t("deals.signInDesc")}
-        </p>
-        <Link href="/login">
-          <Button>{t("auth.signIn")}</Button>
-        </Link>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
     <div className="container px-4 py-8 mx-auto max-w-4xl">
