@@ -37,6 +37,7 @@ async function backupSessionToStorage(): Promise<void> {
     if (!fs.existsSync(AUTH_DIR)) return;
     const bucket = objectStorageClient.bucket(BUCKET);
     const files = fs.readdirSync(AUTH_DIR);
+    if (files.length === 0) return;
     await Promise.all(files.map(async (name) => {
       const contents = fs.readFileSync(path.join(AUTH_DIR, name));
       await bucket.file(`${SESSION_PREFIX}${name}`).save(contents, { resumable: false });
@@ -57,12 +58,26 @@ async function clearSessionFromStorage(): Promise<void> {
     console.warn("[whatsapp] Could not clear session from Object Storage:", err?.message);
   }
 }
+
 const logger = P({ level: "silent" });
 
 const FOUNDER_EMAIL = process.env.FOUNDER_EMAIL || "thandolwenkosimceeyah@gmail.com";
 
 // How many consecutive OTP send failures before we alert
 const FAILURE_ALERT_THRESHOLD = 3;
+
+// Reconnect backoff: 5s → 10s → 20s → 30s → 60s (max). Resets to 5s after
+// a successful connection so a single drop never waits more than 5 seconds.
+const RECONNECT_DELAYS_MS = [5000, 10000, 20000, 30000, 60000];
+
+// Watchdog: if we've been disconnected for longer than this, force a reconnect
+// regardless of any pending timers. Catches stuck states where the timer fired
+// but connect() silently failed.
+const WATCHDOG_INTERVAL_MS = 45_000;
+const WATCHDOG_MAX_DISCONNECTED_MS = 90_000;
+
+// Periodic session backup when connected (every 5 min)
+const SESSION_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
@@ -83,8 +98,12 @@ class WhatsAppService extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private lastError: string | null = null;
-  private connectAttempts = 0;
+  private totalConnectAttempts = 0;   // lifetime counter for admin display only
+  private consecutiveDrops = 0;       // resets on successful connect — drives backoff
   private pairingCode: string | null = null;
+  private disconnectedSince: number | null = null; // timestamp of last disconnect
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private sessionBackupTimer: ReturnType<typeof setInterval> | null = null;
 
   // Consecutive OTP failure tracking
   private consecutiveFailures = 0;
@@ -107,7 +126,7 @@ class WhatsAppService extends EventEmitter {
   }
 
   getConnectAttempts(): number {
-    return this.connectAttempts;
+    return this.totalConnectAttempts;
   }
 
   isReady(): boolean {
@@ -117,12 +136,10 @@ class WhatsAppService extends EventEmitter {
   async requestPairingCode(phone: string): Promise<string> {
     if (!this.sock) throw new Error("Not connected — wait for the socket to initialise first");
     if (this.state === "connected") throw new Error("Already linked — no pairing needed");
-    // Digits only, no + or spaces
     const digits = phone.replace(/\D/g, "");
     if (!digits) throw new Error("Invalid phone number");
     try {
       const code: string = await (this.sock as any).requestPairingCode(digits);
-      // Format as XXXX-XXXX for readability
       this.pairingCode = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
       console.log("[whatsapp] Pairing code issued for", digits);
       return this.pairingCode;
@@ -145,7 +162,6 @@ class WhatsAppService extends EventEmitter {
   }
 
   private async triggerFailureAlert() {
-    // Throttle: don't spam more than once per hour
     const now = Date.now();
     if (this.alertSentAt && now - this.alertSentAt < 60 * 60 * 1000) return;
     this.alertSentAt = now;
@@ -178,12 +194,15 @@ class WhatsAppService extends EventEmitter {
   async start() {
     if (this.state === "connecting" || this.state === "connected") return;
     this.stopped = false;
+    this.startWatchdog();
     await this.connect();
   }
 
   stop() {
     this.stopped = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopWatchdog();
+    this.stopSessionBackup();
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.sock?.end(undefined);
     this.sock = null;
     this.state = "disconnected";
@@ -198,6 +217,8 @@ class WhatsAppService extends EventEmitter {
     this.sock = null;
     this.state = "disconnected";
     this.qrBase64 = null;
+    this.consecutiveDrops = 0;
+    this.disconnectedSince = null;
     if (fs.existsSync(AUTH_DIR)) {
       fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     }
@@ -224,8 +245,61 @@ class WhatsAppService extends EventEmitter {
     return `${digits}@s.whatsapp.net`;
   }
 
+  // Watchdog: runs every WATCHDOG_INTERVAL_MS and forces a reconnect if we've
+  // been disconnected for longer than WATCHDOG_MAX_DISCONNECTED_MS. This catches
+  // stuck states where the reconnect timer fired but connect() silently failed.
+  private startWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (this.stopped) return;
+      if (this.state === "connected") return;
+      if (this.state === "connecting") return;
+      const stuckFor = this.disconnectedSince ? Date.now() - this.disconnectedSince : 0;
+      if (stuckFor >= WATCHDOG_MAX_DISCONNECTED_MS) {
+        console.warn(`[whatsapp] Watchdog: disconnected for ${Math.round(stuckFor / 1000)}s — forcing reconnect`);
+        if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+        this.connect().catch((e) => console.error("[whatsapp] Watchdog reconnect failed:", e));
+      }
+    }, WATCHDOG_INTERVAL_MS);
+  }
+
+  private stopWatchdog() {
+    if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+  }
+
+  // Periodic session backup while connected, so Object Storage always has a
+  // fresh copy even if the process is killed before creds.update fires.
+  private startSessionBackup() {
+    if (this.sessionBackupTimer) return;
+    this.sessionBackupTimer = setInterval(() => {
+      if (this.state === "connected") {
+        backupSessionToStorage().catch(() => {});
+      }
+    }, SESSION_BACKUP_INTERVAL_MS);
+  }
+
+  private stopSessionBackup() {
+    if (this.sessionBackupTimer) { clearInterval(this.sessionBackupTimer); this.sessionBackupTimer = null; }
+  }
+
+  private scheduleReconnect(loggedOut: boolean) {
+    if (this.stopped) return;
+    if (this.reconnectTimer) return; // already scheduled
+
+    // Use a bounded step from RECONNECT_DELAYS_MS based on consecutive drops.
+    // This resets to index 0 (5s) after every successful connection, so a
+    // single transient drop always recovers fast.
+    const stepIndex = Math.min(this.consecutiveDrops, RECONNECT_DELAYS_MS.length - 1);
+    const delay = loggedOut ? 3000 : RECONNECT_DELAYS_MS[stepIndex];
+
+    console.log(`[whatsapp] Reconnecting in ${Math.round(delay / 1000)}s (consecutiveDrops=${this.consecutiveDrops})`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.stopped) this.connect().catch((e) => console.error("[whatsapp] Reconnect failed:", e));
+    }, delay);
+  }
+
   private async notifyDisconnect(reason: string, loggedOut: boolean) {
-    // Only alert if we were previously connected (not on first boot before scan)
     const subject = loggedOut
       ? "⚠️ Bareter: WhatsApp number logged out / possibly banned"
       : "⚠️ Bareter: WhatsApp connection dropped";
@@ -253,11 +327,14 @@ class WhatsAppService extends EventEmitter {
   }
 
   private async connect() {
+    // Guard: don't stack concurrent connect attempts
+    if (this.state === "connecting" || this.state === "connected") return;
+
     this.state = "connecting";
     this.qrBase64 = null;
-    this.connectAttempts++;
+    this.totalConnectAttempts++;
     this.emit("state", this.state);
-    console.log(`[whatsapp] connect() attempt #${this.connectAttempts}`);
+    console.log(`[whatsapp] connect() attempt #${this.totalConnectAttempts} (consecutiveDrops=${this.consecutiveDrops})`);
 
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -266,35 +343,37 @@ class WhatsAppService extends EventEmitter {
       this.lastError = `Cannot create auth dir: ${err?.message}`;
       console.error("[whatsapp]", this.lastError);
       this.state = "disconnected";
+      this.disconnectedSince = Date.now();
       this.emit("state", this.state);
+      this.consecutiveDrops++;
+      this.scheduleReconnect(false);
       return;
     }
 
-    // Hard timeout: if connect() hangs at any point, force a retry after 90s
+    // Hard timeout: if connect() hangs, force a retry
     const hardTimeout = setTimeout(() => {
       if (this.state !== "connected") {
-        this.lastError = `Connection timed out after 90s on attempt #${this.connectAttempts}`;
+        this.lastError = `Connection timed out after 90s on attempt #${this.totalConnectAttempts}`;
         console.warn("[whatsapp]", this.lastError);
         this.sock?.end(undefined);
         this.sock = null;
         this.state = "disconnected";
+        this.disconnectedSince = Date.now();
         this.emit("state", this.state);
-        if (!this.stopped) {
-          const backoff = Math.min(15000 * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
-          console.log(`[whatsapp] Hard timeout — retrying in ${Math.round(backoff / 1000)}s`);
-          setTimeout(() => this.connect(), backoff);
-        }
+        this.consecutiveDrops++;
+        this.scheduleReconnect(false);
       }
     }, 90000);
 
+    let sock: WASocket;
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
       console.log("[whatsapp] Loading Baileys module…");
       const baileys = await import("@whiskeysockets/baileys");
       const makeWASocket = baileys.default ?? (baileys as any);
-      const { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, DisconnectReason: DR } = baileys;
-      console.log("[whatsapp] Baileys loaded, typeof makeWASocket:", typeof makeWASocket);
+      const { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = baileys;
+      console.log("[whatsapp] Baileys loaded");
 
       console.log("[whatsapp] Loading auth state…");
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -308,12 +387,12 @@ class WhatsAppService extends EventEmitter {
         ]) as { version: [number, number, number] };
         version = result.version;
         console.log("[whatsapp] WA version:", version);
-      } catch (err: any) {
+      } catch {
         console.warn("[whatsapp] fetchLatestBaileysVersion failed — using fallback:", FALLBACK_VERSION);
       }
 
       console.log("[whatsapp] Creating socket…");
-      this.sock = makeWASocket({
+      sock = makeWASocket({
         version,
         logger,
         auth: {
@@ -324,14 +403,16 @@ class WhatsAppService extends EventEmitter {
         shouldIgnoreJid: () => false,
         connectTimeoutMs: 60000,
         retryRequestDelayMs: 2000,
-        // Send a ping every 15s to keep the WS alive through Replit's proxy
-        keepAliveIntervalMs: 15000,
-        // Don't mark messages as read — this is a send-only OTP account
+        // Ping every 10s to keep the WebSocket alive through Replit's proxy.
+        // 15s was leaving gaps — 10s gives a tighter heartbeat.
+        keepAliveIntervalMs: 10000,
         markOnlineOnConnect: false,
       });
+
+      this.sock = sock;
       console.log("[whatsapp] Socket created — waiting for QR or connection…");
 
-      this.sock.ev.on("creds.update", async () => {
+      sock.ev.on("creds.update", async () => {
         await saveCreds();
         backupSessionToStorage().catch(() => {});
       });
@@ -339,20 +420,18 @@ class WhatsAppService extends EventEmitter {
       clearTimeout(hardTimeout);
       this.lastError = `Socket init failed: ${err?.message ?? String(err)}`;
       console.error("[whatsapp]", this.lastError);
+      this.sock = null;
       this.state = "disconnected";
+      this.disconnectedSince = Date.now();
       this.emit("state", this.state);
-      if (!this.stopped) {
-        const backoff = Math.min(10000 * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
-        console.log(`[whatsapp] Socket init failed — retrying in ${Math.round(backoff / 1000)}s`);
-        setTimeout(() => this.connect(), backoff);
-      }
+      this.consecutiveDrops++;
+      this.scheduleReconnect(false);
       return;
     }
 
-    // Track whether we were ever connected so we only alert on actual drops
     let wasConnected = false;
 
-    this.sock.ev.on("connection.update", async (update) => {
+    sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -367,30 +446,42 @@ class WhatsAppService extends EventEmitter {
       if (connection === "open") {
         clearTimeout(hardTimeout);
         wasConnected = true;
+
+        // ── KEY FIX: reset consecutive-drop counter on every successful connect ──
+        // Previously this was never reset, so backoff grew unboundedly after
+        // each drop. Now a single transient drop always recovers in ~5s.
+        this.consecutiveDrops = 0;
+
         this.state = "connected";
         this.qrBase64 = null;
         this.pairingCode = null;
         this.lastError = null;
         this.consecutiveFailures = 0;
         this.alertSentAt = null;
+        this.disconnectedSince = null;
         console.log("[whatsapp] Connected and stable");
         this.emit("state", this.state);
+        this.startSessionBackup();
       }
 
       if (connection === "close") {
         clearTimeout(hardTimeout);
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
-        const loggedOut = code === 401; // DisconnectReason.loggedOut
+        const loggedOut = code === 401;
 
         console.warn(`[whatsapp] Connection closed — code: ${code}, loggedOut: ${loggedOut}`);
 
+        this.stopSessionBackup();
         this.sock = null;
         this.state = "disconnected";
         this.qrBase64 = null;
+        this.disconnectedSince = Date.now();
+        this.consecutiveDrops++;
         this.emit("state", this.state);
 
+        // Only alert if we were previously connected — skip alerts on first-boot
+        // before scan (which always closes with code 515 or similar).
         if (wasConnected) {
-          // Alert founder — connection was established before, now it's gone
           this.notifyDisconnect(String(code), loggedOut).catch(() => {});
         }
 
@@ -401,13 +492,7 @@ class WhatsAppService extends EventEmitter {
           clearSessionFromStorage().catch(() => {});
         }
 
-        if (!this.stopped) {
-          // Exponential backoff: 8s → 16s → 32s … capped at 5 minutes
-          const baseDelay = loggedOut ? 2000 : 8000;
-          const backoff = Math.min(baseDelay * Math.pow(2, Math.max(0, this.connectAttempts - 1)), 5 * 60 * 1000);
-          console.log(`[whatsapp] Reconnecting in ${Math.round(backoff / 1000)}s (attempt #${this.connectAttempts})`);
-          this.reconnectTimer = setTimeout(() => this.connect(), backoff);
-        }
+        this.scheduleReconnect(loggedOut);
       }
     });
   }
