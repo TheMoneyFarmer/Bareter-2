@@ -4607,7 +4607,11 @@ export async function registerRoutes(
       // Background worker — runs after response is sent
       setImmediate(async () => {
         try {
-          const { sendAdminEmail } = await import("./emailService");
+          const { sendAdminEmail, injectSmartCtaUrls } = await import("./emailService");
+          // For HTML bodies (pasted from Claude), inject smart CTA URLs before sending
+          const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
+          const sendBody = (rawHtml || looksLikeHtml) ? injectSmartCtaUrls(body) : body;
+          const sendRawHtml = rawHtml || looksLikeHtml;
           await storage.updateBroadcastJob(broadcastId, { status: "processing", startedAt: new Date() });
           let sent = 0, failed = 0;
           const BATCH_SIZE = 10;
@@ -4618,8 +4622,8 @@ export async function registerRoutes(
                 const ok = await sendAdminEmail(recipient.email, {
                   recipientName: recipient.name,
                   subject,
-                  body,
-                  rawHtml,
+                  body: sendBody,
+                  rawHtml: sendRawHtml,
                   vars: {
                     name: recipient.name || "",
                     email: recipient.email,
@@ -4693,16 +4697,20 @@ export async function registerRoutes(
       if (typeof body !== "string") {
         return res.status(400).json({ message: "body (string) is required" });
       }
-      const { renderBroadcastEmailHtml, applyTemplateVars } = await import("./emailService");
+      const { renderBroadcastEmailHtml, applyTemplateVars, injectSmartCtaUrls } = await import("./emailService");
+
+      // Auto-detect HTML: if body contains tags, always treat as raw HTML regardless of mode
+      const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
+
       let html: string;
       if (mode === "template") {
-        // System templates are full HTML — just substitute vars, no wrapping or escaping
         html = vars ? applyTemplateVars(body, vars) : body;
-      } else if (mode === "html") {
-        // Raw HTML body wrapped in the branded shell without escaping
-        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, rawHtml: true, vars: vars || {} });
+      } else if (mode === "html" || looksLikeHtml) {
+        // Raw HTML — substitute vars, inject smart CTAs, then wrap in branded shell
+        const substituted = vars ? applyTemplateVars(body, vars) : body;
+        const withUrls = injectSmartCtaUrls(substituted);
+        html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body: withUrls, rawHtml: true, vars: {} });
       } else {
-        // Broadcast mode: plain text body wrapped in the branded shell
         html = renderBroadcastEmailHtml({ recipientName: recipientName || null, body, vars: vars || {} });
       }
       res.json({ html });

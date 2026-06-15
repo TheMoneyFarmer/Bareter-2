@@ -30,6 +30,38 @@ function getBaseUrl(): string {
   return (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
 }
 
+// Keyword → platform path map for smart CTA injection
+const CTA_KEYWORD_MAP: [RegExp, string][] = [
+  [/claim.*spot|join.*now|get.*access|early.*access|sign.*up|register/i, "/register"],
+  [/browse|explore|discover|listing|marketplace/i, "/browse"],
+  [/deal|swap|barter|trade/i, "/deals"],
+  [/verify|verification|identity/i, "/settings"],
+  [/profile|account|my.*setting/i, "/settings"],
+  [/post.*listing|add.*listing|create.*listing/i, "/listings/new"],
+  [/sign.*in|log.*in|login/i, "/login"],
+  [/how.*it.*works|learn.*more/i, "/browse"],
+];
+
+/**
+ * Replaces href="#", href="", or relative hrefs in HTML with smart platform URLs
+ * inferred from the anchor's text content. Call this before rendering pasted HTML.
+ */
+export function injectSmartCtaUrls(html: string): string {
+  const BASE = getBaseUrl();
+  return html
+    // Replace empty / placeholder hrefs based on anchor text
+    .replace(/<a([^>]*?)href=["'](#|javascript:void[^"']*|about:blank)?["']([^>]*?)>([\s\S]*?)<\/a>/gi,
+      (_match, pre, _href, post, inner) => {
+        const text = inner.replace(/<[^>]+>/g, "").trim();
+        for (const [pattern, path] of CTA_KEYWORD_MAP) {
+          if (pattern.test(text)) return `<a${pre}href="${BASE}${path}"${post}>${inner}</a>`;
+        }
+        return `<a${pre}href="${BASE}"${post}>${inner}</a>`;
+      })
+    // Fix relative hrefs that start with "/" (not yet absolute)
+    .replace(/href="(\/[^"]+)"/gi, `href="${BASE}$1"`);
+}
+
 function smtpFromAddress() {
   return process.env.FROM_EMAIL || process.env.SMTP_USER || FALLBACK_FROM;
 }
