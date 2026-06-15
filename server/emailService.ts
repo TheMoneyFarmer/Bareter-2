@@ -309,7 +309,9 @@ export function renderBroadcastEmailHtml(opts: {
   const substituted = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   if (opts.rawHtml) {
-    return emailShell(substituted);
+    // Pasted HTML is a complete email — send it as-is without double-wrapping in our shell.
+    // The HTML from Claude already has its own header/body/footer structure.
+    return substituted;
   }
   const escapedBody = substituted
     .replace(/&/g, "&amp;")
