@@ -625,6 +625,25 @@ export function LandingPage() {
     if (user) navigate("/feed");
   }, [user, navigate]);
 
+  // Email CTA auto-redirect: ?src=email → show 5s countdown then go to /register
+  const [emailCountdown, setEmailCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("src") !== "email") return;
+    setEmailCountdown(5);
+    let count = 5;
+    const interval = setInterval(() => {
+      count -= 1;
+      setEmailCountdown(count);
+      if (count <= 0) {
+        clearInterval(interval);
+        navigate("/register");
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const h = (e: MouseEvent) => { if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSugg(false); };
     document.addEventListener("mousedown", h);
@@ -711,6 +730,34 @@ export function LandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-background">
+
+      {/* Email CTA auto-redirect banner */}
+      {emailCountdown !== null && emailCountdown > 0 && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-[#0f5f5a] text-white text-sm flex items-center justify-between px-4 py-3 shadow-lg">
+          <span>Taking you to sign up in <strong>{emailCountdown}s</strong>…</span>
+          <div className="flex items-center gap-3">
+            <button
+              className="underline hover:no-underline text-white/90"
+              onClick={() => { setEmailCountdown(null); navigate("/register"); }}
+            >
+              Sign up now
+            </button>
+            <button
+              className="underline hover:no-underline text-white/90"
+              onClick={() => { setEmailCountdown(null); navigate("/login"); }}
+            >
+              Sign in
+            </button>
+            <button
+              className="text-white/70 hover:text-white ml-2"
+              onClick={() => setEmailCountdown(null)}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Global page animations */}
       <style>{`

@@ -32,7 +32,8 @@ function getBaseUrl(): string {
 
 // Keyword → platform path map for smart CTA injection
 const CTA_KEYWORD_MAP: [RegExp, string][] = [
-  [/claim.*spot|join.*now|get.*access|early.*access|sign.*up|register/i, "/register"],
+  [/claim.*spot|join.*now|get.*access|early.*access/i, "/?src=email"],
+  [/sign.*up|register/i, "/register"],
   [/browse|explore|discover|listing|marketplace/i, "/browse"],
   [/deal|swap|barter|trade/i, "/deals"],
   [/verify|verification|identity/i, "/settings"],

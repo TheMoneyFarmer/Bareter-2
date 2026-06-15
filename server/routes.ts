@@ -4507,7 +4507,7 @@ export async function registerRoutes(
         accountType: admin.accountType || "individual",
         appName: "Bareter",
         baseUrl: BASE,
-        signupUrl: `${BASE}/register`,
+        signupUrl: `${BASE}/?src=email`,
         loginUrl: `${BASE}/login`,
         browseUrl: `${BASE}/browse`,
       };
@@ -4650,7 +4650,7 @@ export async function registerRoutes(
                     accountType: "",
                     appName: "Bareter",
                     baseUrl: (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, ""),
-                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/register`,
+                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email`,
                     loginUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/login`,
                     browseUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/browse`,
                   },
@@ -9902,6 +9902,9 @@ export async function registerRoutes(
   app.get("/my-listings", (_req, res) => res.redirect(301, "/dashboard"));
   app.get("/my-account", (_req, res) => res.redirect(301, "/profile"));
   app.get("/verify", (_req, res) => res.redirect(301, "/settings"));
+
+  // Keepalive endpoint — used by external uptime monitors to prevent cold starts.
+  app.get("/ping", (_req, res) => res.status(200).send("ok"));
 
   return httpServer;
 }
