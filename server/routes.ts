@@ -4495,12 +4495,14 @@ export async function registerRoutes(
           : [];
       const recipients = [...new Set([admin.email, ...extraEmails])];
 
-      const adminFirstName = admin.fullName?.split(" ")[0] || "there";
+      // Use a realistic sample name — admin's own DB name may not reflect real recipients
+      const sampleFirstName = "Sarah";
+      const sampleFullName = "Sarah Al-Hassan";
       const BASE = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
       const sampleVars: Record<string, string> = {
-        name: admin.fullName || "Admin",
-        firstName: adminFirstName,
-        lastName: admin.fullName?.split(" ").slice(1).join(" ") || "",
+        name: sampleFullName,
+        firstName: sampleFirstName,
+        lastName: "Al-Hassan",
         email: admin.email,
         city: admin.city || "Dubai",
         businessName: admin.businessName || "Acme Trading LLC",
