@@ -1697,7 +1697,7 @@ export function AdminPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Onboarding</TableHead>
+                  <TableHead>Verification</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
@@ -1746,7 +1746,7 @@ export function AdminPage() {
                             <Ban className="h-3 w-3" />
                             Banned
                           </Badge>
-                        ) : (isUserVerified(u.kycStatus, u.kybStatus) || u.isVerified) ? (
+                        ) : isUserVerified(u.kycStatus, u.kybStatus, (u as any).phoneVerified, u.isVerified) ? (
                           <Badge className="gap-1">
                             <ShieldCheck className="h-3 w-3" />
                             Verified
@@ -1760,10 +1760,12 @@ export function AdminPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {u.onboardingCompleted ? (
-                        <Badge variant="outline" className="text-green-600 gap-1"><CheckCircle className="h-3 w-3" />Done</Badge>
+                      {(u as any).emailVerified && (u as any).phoneVerified ? (
+                        <Badge variant="outline" className="text-green-600 gap-1"><CheckCircle className="h-3 w-3" />Done (2/2)</Badge>
+                      ) : (u as any).emailVerified || (u as any).phoneVerified ? (
+                        <Badge variant="secondary">1/2 — {(u as any).emailVerified ? "WhatsApp pending" : "Email pending"}</Badge>
                       ) : (
-                        <Badge variant="secondary">Step {u.onboardingStep || 1}/4</Badge>
+                        <Badge variant="secondary">0/2 — not started</Badge>
                       )}
                     </TableCell>
                     <TableCell>{u.location || "-"}</TableCell>
@@ -4781,8 +4783,16 @@ export function AdminPage() {
                   <p className="text-sm">{userDetail.createdAt ? new Date(userDetail.createdAt).toLocaleDateString() : "-"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Onboarding</p>
-                  <p className="text-sm">{userDetail.onboardingCompleted ? "Completed" : `Step ${userDetail.onboardingStep || 1}/4`}</p>
+                  <p className="text-xs text-muted-foreground">Verification</p>
+                  <p className="text-sm">
+                    {(userDetail as any).emailVerified && (userDetail as any).phoneVerified
+                      ? "Done (2/2) — email + WhatsApp"
+                      : (userDetail as any).emailVerified
+                        ? "1/2 — email verified, WhatsApp pending"
+                        : (userDetail as any).phoneVerified
+                          ? "1/2 — WhatsApp verified, email pending"
+                          : "0/2 — not started"}
+                  </p>
                 </div>
               </div>
 
