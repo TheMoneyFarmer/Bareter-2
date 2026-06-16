@@ -300,6 +300,7 @@ export interface IStorage {
 
   // Waitlist
   createWaitlistEntry(input: InsertWaitlistEntry & { ipAddress?: string | null; userAgent?: string | null }): Promise<WaitlistEntry>;
+  deleteWaitlistEntries(ids: number[]): Promise<number>;
   getWaitlistEntryByEmail(email: string): Promise<WaitlistEntry | undefined>;
   getWaitlistEntryByReferralCode(code: string): Promise<WaitlistEntry | undefined>;
   listWaitlistEntries(opts?: { limit?: number; offset?: number; country?: string; search?: string }): Promise<WaitlistEntry[]>;
@@ -1750,6 +1751,15 @@ export class DatabaseStorage implements IStorage {
     return entry;
   }
 
+  async deleteWaitlistEntries(ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const deleted = await db
+      .delete(waitlistEntries)
+      .where(inArray(waitlistEntries.id, ids))
+      .returning({ id: waitlistEntries.id });
+    return deleted.length;
+  }
+
   async getWaitlistEntryByEmail(email: string): Promise<WaitlistEntry | undefined> {
     const [row] = await db
       .select()
@@ -1881,6 +1891,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── International Waitlist ─────────────────────────────────────────────
+  async getInternationalWaitlistEntryByUserId(userId: string): Promise<InternationalWaitlistEntry | undefined> {
+    const [row] = await db.select().from(internationalWaitlist).where(eq(internationalWaitlist.userId, userId));
+    return row;
+  }
+
   async addToInternationalWaitlist(data: {
     userId: string;
     email: string;

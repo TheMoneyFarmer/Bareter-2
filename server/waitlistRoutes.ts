@@ -296,6 +296,46 @@ export function registerWaitlistRoutes(
     res.json({ offset: effective });
   });
 
+  // Admin: manually add a waitlist entry (e.g. signups collected offline/WhatsApp).
+  // Bypasses the public rate-limit and honeypot — the request is already
+  // authenticated via requireAdmin.
+  app.post("/api/admin/waitlist", requireAdmin, async (req, res) => {
+    const parsed = insertWaitlistEntrySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid input" });
+    }
+    try {
+      const existing = await storage.getWaitlistEntryByEmail(parsed.data.email);
+      if (existing) {
+        return res.status(409).json({ message: "This email is already on the waitlist" });
+      }
+      const entry = await storage.createWaitlistEntry(parsed.data);
+      res.json({ ok: true, entry });
+    } catch (err) {
+      console.error("[admin waitlist] create error:", err);
+      res.status(500).json({ message: "Failed to add waitlist entry" });
+    }
+  });
+
+  // Admin: delete a single waitlist entry
+  app.delete("/api/admin/waitlist/:id", requireAdmin, async (req, res) => {
+    const id = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    const deleted = await storage.deleteWaitlistEntries([id]);
+    res.json({ ok: true, deleted });
+  });
+
+  // Admin: bulk-delete waitlist entries
+  app.post("/api/admin/waitlist/bulk-delete", requireAdmin, async (req, res) => {
+    const schema = z.object({ ids: z.array(z.number().int()).min(1).max(1000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "ids must be a non-empty array of integers" });
+    }
+    const deleted = await storage.deleteWaitlistEntries(parsed.data.ids);
+    res.json({ ok: true, deleted });
+  });
+
   app.get("/api/admin/waitlist/export.csv", requireAdmin, async (_req, res) => {
     const rows = await storage.listWaitlistEntries({ limit: 10000 });
     const header = [

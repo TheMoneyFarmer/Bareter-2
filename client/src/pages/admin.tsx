@@ -5248,6 +5248,7 @@ function WaitlistOffsetCard() {
 }
 
 function WaitlistAdminSection() {
+  const { toast } = useToast();
   const { data: modeData } = useQuery<{ enabled: boolean; count: number }>({
     queryKey: ["/api/waitlist/mode"],
   });
@@ -5257,6 +5258,7 @@ function WaitlistAdminSection() {
     stats: { byCountry: Array<{ country: string; count: number }>; byDay: Array<{ day: string; count: number }> };
   }>({
     queryKey: ["/api/admin/waitlist"],
+    staleTime: 0,
   });
   const entries = data?.entries || [];
   const total = data?.total ?? entries.length;
@@ -5273,6 +5275,51 @@ function WaitlistAdminSection() {
     (e.name || "").toLowerCase().includes(search.toLowerCase()) ||
     (e.referralCode || "").toLowerCase().includes(search.toLowerCase())
   );
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleId = (id: number) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggleAll = (ids: number[]) => setSelectedIds((prev) => prev.size === ids.length && ids.every((id) => prev.has(id)) ? new Set() : new Set(ids));
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ email: "", name: "", country: "", city: "", accountType: "", businessName: "" });
+
+  const addMutation = useMutation({
+    mutationFn: async (body: typeof addForm) => {
+      const res = await apiRequest("POST", "/api/admin/waitlist", {
+        email: body.email,
+        name: body.name || undefined,
+        country: body.country || undefined,
+        city: body.city || undefined,
+        accountType: body.accountType || undefined,
+        businessName: body.businessName || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/waitlist"] });
+      setAddOpen(false);
+      setAddForm({ email: "", name: "", country: "", city: "", accountType: "", businessName: "" });
+      toast({ title: "Added to waitlist" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to add entry", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      if (ids.length === 1) {
+        const res = await apiRequest("DELETE", `/api/admin/waitlist/${ids[0]}`);
+        return res.json();
+      }
+      const res = await apiRequest("POST", "/api/admin/waitlist/bulk-delete", { ids });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/waitlist"] });
+      setSelectedIds(new Set());
+      toast({ title: "Entry deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to delete", description: err.message, variant: "destructive" }),
+  });
 
   return (
     <div className="space-y-6">
@@ -5292,12 +5339,74 @@ function WaitlistAdminSection() {
             WAITLIST_MODE: {modeData?.enabled ? "ON (read-only)" : "OFF"}
           </div>
         </div>
-        <Button asChild data-testid="button-export-waitlist-csv">
-          <a href="/api/admin/waitlist/export.csv" download>
-            Export CSV
-          </a>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild data-testid="button-export-waitlist-csv">
+            <a href="/api/admin/waitlist/export.csv" download>
+              Export CSV
+            </a>
+          </Button>
+          <Button size="sm" className="gap-2" onClick={() => setAddOpen(true)} data-testid="button-add-waitlist-entry">
+            <Plus className="h-4 w-4" />
+            Add Entry
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Waitlist Entry</DialogTitle>
+            <DialogDescription>Manually add someone to the main waitlist (e.g. a signup collected offline or via WhatsApp).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Email *</Label>
+                <Input type="email" value={addForm.email} onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Name</Label>
+                <Input value={addForm.name} onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))} placeholder="Jane Doe" className="mt-1" />
+              </div>
+              <div>
+                <Label>Country</Label>
+                <Select value={addForm.country} onValueChange={(v) => setAddForm((f) => ({ ...f, country: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select country" /></SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>City</Label>
+                <Input value={addForm.city} onChange={(e) => setAddForm((f) => ({ ...f, city: e.target.value }))} placeholder="Dubai" className="mt-1" />
+              </div>
+              <div>
+                <Label>Account Type</Label>
+                <Select value={addForm.accountType} onValueChange={(v) => setAddForm((f) => ({ ...f, accountType: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Business Name</Label>
+                <Input value={addForm.businessName} onChange={(e) => setAddForm((f) => ({ ...f, businessName: e.target.value }))} placeholder="Optional" className="mt-1" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={() => addMutation.mutate(addForm)} disabled={!addForm.email || addMutation.isPending} data-testid="button-confirm-add-waitlist">
+              {addMutation.isPending ? "Adding..." : "Add Entry"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <WaitlistOffsetCard />
 
@@ -5339,6 +5448,24 @@ function WaitlistAdminSection() {
           </div>
         </CardHeader>
         <CardContent>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="ml-2"
+                disabled={deleteMutation.isPending}
+                onClick={() => { if (confirm(`Delete ${selectedIds.size} waitlist entr${selectedIds.size === 1 ? "y" : "ies"}? This cannot be undone.`)) deleteMutation.mutate(Array.from(selectedIds)); }}
+                data-testid="button-bulk-delete-waitlist"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
+              </Button>
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
+                <X className="h-3.5 w-3.5 mr-1" />Clear
+              </Button>
+            </div>
+          )}
           {isLoading ? (
             <p className="text-muted-foreground text-sm py-4 text-center">Loading…</p>
           ) : filtered.length === 0 ? (
@@ -5347,6 +5474,12 @@ function WaitlistAdminSection() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filtered.length > 0 && filtered.every((e) => selectedIds.has(e.id)) ? true : filtered.some((e) => selectedIds.has(e.id)) ? "indeterminate" : false}
+                      onCheckedChange={() => toggleAll(filtered.map((e) => e.id))}
+                    />
+                  </TableHead>
                   <TableHead>Pos</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Name</TableHead>
@@ -5356,11 +5489,15 @@ function WaitlistAdminSection() {
                   <TableHead>Referrals</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Joined</TableHead>
+                  <TableHead className="w-[60px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((entry) => (
-                  <TableRow key={entry.id} data-testid={`row-waitlist-${entry.id}`}>
+                  <TableRow key={entry.id} className={selectedIds.has(entry.id) ? "bg-primary/5" : ""} data-testid={`row-waitlist-${entry.id}`}>
+                    <TableCell>
+                      <Checkbox checked={selectedIds.has(entry.id)} onCheckedChange={() => toggleId(entry.id)} />
+                    </TableCell>
                     <TableCell className="font-mono text-sm">#{entry.position}</TableCell>
                     <TableCell className="text-sm">{entry.email}</TableCell>
                     <TableCell className="text-sm">{entry.name || "—"}</TableCell>
@@ -5383,6 +5520,25 @@ function WaitlistAdminSection() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" data-testid={`button-waitlist-actions-${entry.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => { if (confirm(`Delete waitlist entry for ${entry.email}?`)) deleteMutation.mutate([entry.id]); }}
+                            data-testid={`button-delete-waitlist-${entry.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -5788,13 +5944,47 @@ function AdminsManagementTab({
 }
 
 function FeatureWaitlistAdminSection() {
+  const { toast } = useToast();
   const { data: entries = [], isLoading } = useQuery<{ id: number; email: string; feature: string; createdAt: string }[]>({
     queryKey: ["/api/admin/feature-waitlist"],
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const creators = entries.filter(e => e.feature === "creators");
   const brandCollabs = entries.filter(e => e.feature === "brand-collabs");
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleId = (id: number) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggleAll = (ids: number[]) => setSelectedIds((prev) => prev.size === ids.length && ids.every((id) => prev.has(id)) ? new Set() : new Set(ids));
+
+  const [addOpen, setAddOpen] = useState<{ open: boolean; feature: "creators" | "brand-collabs" }>({ open: false, feature: "creators" });
+  const [addEmail, setAddEmail] = useState("");
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/feature-waitlist", { email: addEmail, feature: addOpen.feature });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/feature-waitlist"] });
+      setAddOpen({ open: false, feature: "creators" });
+      setAddEmail("");
+      toast({ title: "Added to waitlist" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to add entry", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/feature-waitlist/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/feature-waitlist"] });
+      toast({ title: "Entry deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to delete", description: err.message, variant: "destructive" }),
+  });
 
   const downloadCsv = (rows: typeof entries, filename: string) => {
     const csv = ["email,feature,joined_at", ...rows.map(r => `${r.email},${r.feature},${r.createdAt}`)].join("\n");
@@ -5805,35 +5995,74 @@ function FeatureWaitlistAdminSection() {
     URL.revokeObjectURL(url);
   };
 
-  const renderTable = (rows: typeof entries, label: string, accent: string) => (
-    <div className="rounded-xl border overflow-hidden">
-      <div className={`px-5 py-3.5 flex items-center justify-between ${accent}`}>
-        <div>
-          <p className="font-bold text-white text-sm">{label}</p>
-          <p className="text-white/70 text-xs">{rows.length} signups</p>
+  const renderTable = (rows: typeof entries, label: string, accent: string, feature: "creators" | "brand-collabs") => {
+    const ids = rows.map(r => r.id);
+    const selectedInGroup = ids.filter(id => selectedIds.has(id));
+    return (
+      <div className="rounded-xl border overflow-hidden">
+        <div className={`px-5 py-3.5 flex items-center justify-between gap-2 flex-wrap ${accent}`}>
+          <div>
+            <p className="font-bold text-white text-sm">{label}</p>
+            <p className="text-white/70 text-xs">{rows.length} signups</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedInGroup.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { if (confirm(`Delete ${selectedInGroup.length} entr${selectedInGroup.length === 1 ? "y" : "ies"}?`)) selectedInGroup.forEach(id => deleteMutation.mutate(id)); setSelectedIds(new Set()); }}
+                className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Trash2 className="h-3.5 w-3.5" />Delete ({selectedInGroup.length})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setAddOpen({ open: true, feature })}
+              className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1"
+            >
+              <Plus className="h-3.5 w-3.5" />Add
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadCsv(rows, `${label.toLowerCase().replace(/ /g,"-")}-waitlist.csv`)}
+              className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => downloadCsv(rows, `${label.toLowerCase().replace(/ /g,"-")}-waitlist.csv`)}
-          className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-lg transition-colors"
-        >
-          Export CSV
-        </button>
-      </div>
-      {rows.length === 0 ? (
-        <div className="p-8 text-center text-muted-foreground text-sm">No signups yet</div>
-      ) : (
-        <div className="divide-y">
-          {rows.map(r => (
-            <div key={r.id} className="flex items-center justify-between px-5 py-3 text-sm">
-              <span className="font-medium">{r.email}</span>
-              <span className="text-muted-foreground text-xs">{new Date(r.createdAt).toLocaleDateString()}</span>
+        {rows.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">No signups yet</div>
+        ) : (
+          <div className="divide-y">
+            <div className="flex items-center gap-3 px-5 py-2 bg-muted/30">
+              <Checkbox
+                checked={ids.length > 0 && ids.every(id => selectedIds.has(id)) ? true : ids.some(id => selectedIds.has(id)) ? "indeterminate" : false}
+                onCheckedChange={() => toggleAll(ids)}
+              />
+              <span className="text-xs text-muted-foreground">Select all</span>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+            {rows.map(r => (
+              <div key={r.id} className="flex items-center gap-3 px-5 py-3 text-sm" data-testid={`row-feature-waitlist-${r.id}`}>
+                <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleId(r.id)} />
+                <span className="font-medium flex-1">{r.email}</span>
+                <span className="text-muted-foreground text-xs">{new Date(r.createdAt).toLocaleDateString()}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive"
+                  onClick={() => { if (confirm(`Delete waitlist entry for ${r.email}?`)) deleteMutation.mutate(r.id); }}
+                  data-testid={`button-delete-feature-waitlist-${r.id}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -5841,12 +6070,32 @@ function FeatureWaitlistAdminSection() {
         <h2 className="text-2xl font-bold mb-1">Feature Waitlists</h2>
         <p className="text-muted-foreground">Early-access signups for Creators Hub and Brand Collabs coming-soon pages.</p>
       </div>
+
+      <Dialog open={addOpen.open} onOpenChange={(open) => setAddOpen((s) => ({ ...s, open }))}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add to {addOpen.feature === "creators" ? "Creators Hub" : "Brand Collabs"} Waitlist</DialogTitle>
+            <DialogDescription>Manually add an email to this feature waitlist.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label>Email *</Label>
+            <Input type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="jane@example.com" className="mt-1" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen({ open: false, feature: "creators" })}>Cancel</Button>
+            <Button onClick={() => addMutation.mutate()} disabled={!addEmail || addMutation.isPending} data-testid="button-confirm-add-feature-waitlist">
+              {addMutation.isPending ? "Adding..." : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {isLoading ? (
         <div className="text-muted-foreground text-sm">Loading…</div>
       ) : (
         <div className="space-y-5">
-          {renderTable(creators, "Creators Hub", "bg-violet-600")}
-          {renderTable(brandCollabs, "Brand Collabs", "bg-bareter-teal")}
+          {renderTable(creators, "Creators Hub", "bg-violet-600", "creators")}
+          {renderTable(brandCollabs, "Brand Collabs", "bg-bareter-teal", "brand-collabs")}
         </div>
       )}
     </div>
@@ -5854,15 +6103,61 @@ function FeatureWaitlistAdminSection() {
 }
 
 function InternationalWaitlistSection() {
+  const { toast } = useToast();
   const { data: groups = [], isLoading } = useQuery<{ country: string; count: number; entries: { id: number; email: string; fullName: string | null; country: string; city: string | null; signupType: string | null; createdAt: string | null }[] }[]>({
     queryKey: ["/api/admin/international-waitlist"],
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   const totalCount = groups.reduce((s, g) => s + g.count, 0);
 
   const getCountryName = (code: string) =>
     COUNTRIES.find((c) => c.code === code.toUpperCase())?.name ?? code;
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleId = (id: number) => setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ email: "", fullName: "", country: "", city: "", signupType: "" });
+
+  const addMutation = useMutation({
+    mutationFn: async (body: typeof addForm) => {
+      const res = await apiRequest("POST", "/api/admin/international-waitlist", {
+        email: body.email,
+        fullName: body.fullName || undefined,
+        country: body.country,
+        city: body.city || undefined,
+        signupType: body.signupType || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/international-waitlist"] });
+      setAddOpen(false);
+      setAddForm({ email: "", fullName: "", country: "", city: "", signupType: "" });
+      toast({ title: "Added to international waitlist" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to add entry", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/international-waitlist/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/international-waitlist"] });
+      toast({ title: "Entry deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Failed to delete", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} entr${selectedIds.size === 1 ? "y" : "ies"}?`)) return;
+    Array.from(selectedIds).forEach((id) => deleteMutation.mutate(id));
+    setSelectedIds(new Set());
+  };
 
   const downloadCsv = () => {
     const all = groups.flatMap((g) => g.entries);
@@ -5889,13 +6184,71 @@ function InternationalWaitlistSection() {
             {totalCount > 0 && <span className="ml-1 font-medium text-foreground">{totalCount} total across {groups.length} countr{groups.length === 1 ? "y" : "ies"}.</span>}
           </p>
         </div>
-        {totalCount > 0 && (
-          <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
-            <Download className="h-3.5 w-3.5" />
-            Export CSV
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" className="gap-1.5" onClick={deleteSelected} data-testid="button-bulk-delete-intl-waitlist">
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete ({selectedIds.size})
+            </Button>
+          )}
+          <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)} data-testid="button-add-intl-waitlist">
+            <Plus className="h-3.5 w-3.5" />
+            Add Entry
           </Button>
-        )}
+          {totalCount > 0 && (
+            <Button variant="outline" size="sm" onClick={downloadCsv} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+          )}
+        </div>
       </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add to International Waitlist</DialogTitle>
+            <DialogDescription>Entries link to an existing Bareter account — enter the email of a user who already registered.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>User Email *</Label>
+                <Input type="email" value={addForm.email} onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))} placeholder="Existing account email" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Full Name</Label>
+                <Input value={addForm.fullName} onChange={(e) => setAddForm((f) => ({ ...f, fullName: e.target.value }))} placeholder="Defaults to the account's name" className="mt-1" />
+              </div>
+              <div>
+                <Label>Country *</Label>
+                <Select value={addForm.country} onValueChange={(v) => setAddForm((f) => ({ ...f, country: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select country" /></SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>City</Label>
+                <Input value={addForm.city} onChange={(e) => setAddForm((f) => ({ ...f, city: e.target.value }))} placeholder="Optional" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Signup Type</Label>
+                <Input value={addForm.signupType} onChange={(e) => setAddForm((f) => ({ ...f, signupType: e.target.value }))} placeholder="Optional" className="mt-1" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={() => addMutation.mutate(addForm)} disabled={!addForm.email || !addForm.country || addMutation.isPending} data-testid="button-confirm-add-intl-waitlist">
+              {addMutation.isPending ? "Adding..." : "Add Entry"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isLoading ? (
         <div className="text-muted-foreground text-sm">Loading…</div>
@@ -5922,21 +6275,37 @@ function InternationalWaitlistSection() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b text-muted-foreground">
+                        <th className="text-left py-1.5 pr-3 font-medium w-8"></th>
                         <th className="text-left py-1.5 pr-3 font-medium">Name</th>
                         <th className="text-left py-1.5 pr-3 font-medium">Email</th>
                         <th className="text-left py-1.5 pr-3 font-medium">City</th>
                         <th className="text-left py-1.5 pr-3 font-medium">Type</th>
-                        <th className="text-left py-1.5 font-medium">Signed up</th>
+                        <th className="text-left py-1.5 pr-3 font-medium">Signed up</th>
+                        <th className="text-left py-1.5 font-medium"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.entries.map((e) => (
-                        <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40">
+                        <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40" data-testid={`row-intl-waitlist-${e.id}`}>
+                          <td className="py-1.5 pr-3">
+                            <Checkbox checked={selectedIds.has(e.id)} onCheckedChange={() => toggleId(e.id)} />
+                          </td>
                           <td className="py-1.5 pr-3">{e.fullName ?? "—"}</td>
                           <td className="py-1.5 pr-3 font-mono text-[11px]">{e.email}</td>
                           <td className="py-1.5 pr-3">{e.city ?? "—"}</td>
                           <td className="py-1.5 pr-3 capitalize">{e.signupType ?? "—"}</td>
-                          <td className="py-1.5 text-muted-foreground">{e.createdAt ? new Date(e.createdAt).toLocaleDateString() : "—"}</td>
+                          <td className="py-1.5 pr-3 text-muted-foreground">{e.createdAt ? new Date(e.createdAt).toLocaleDateString() : "—"}</td>
+                          <td className="py-1.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive"
+                              onClick={() => { if (confirm(`Delete waitlist entry for ${e.email}?`)) deleteMutation.mutate(e.id); }}
+                              data-testid={`button-delete-intl-waitlist-${e.id}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

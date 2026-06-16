@@ -4325,6 +4325,52 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: manually add someone to the international waitlist. Entries link
+  // 1:1 to a real user account (schema FK), so this looks the user up by
+  // email rather than accepting a freeform name.
+  app.post("/api/admin/international-waitlist", requireAdmin, async (req, res) => {
+    try {
+      const { email, country, city, signupType, fullName } = req.body as {
+        email?: string; country?: string; city?: string; signupType?: string; fullName?: string;
+      };
+      if (!email || !country) {
+        return res.status(400).json({ message: "email and country are required" });
+      }
+      const targetUser = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!targetUser) {
+        return res.status(404).json({ message: "No registered user found with that email — international waitlist entries must link to an existing account." });
+      }
+      const existingEntry = await storage.getInternationalWaitlistEntryByUserId(targetUser.id);
+      if (existingEntry) {
+        return res.status(409).json({ message: "This user is already on the international waitlist" });
+      }
+      await storage.addToInternationalWaitlist({
+        userId: targetUser.id,
+        email: targetUser.email,
+        fullName: fullName?.trim() || targetUser.fullName || null,
+        country,
+        city: city || null,
+        signupType: signupType || null,
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[admin international-waitlist] create error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to add entry" });
+    }
+  });
+
+  app.delete("/api/admin/international-waitlist/:id", requireAdmin, async (req, res) => {
+    const id = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    try {
+      const deleted = await db.delete(internationalWaitlist).where(eq(internationalWaitlist.id, id)).returning({ id: internationalWaitlist.id });
+      res.json({ ok: true, deleted: deleted.length });
+    } catch (err: any) {
+      console.error("[admin international-waitlist] delete error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to delete entry" });
+    }
+  });
+
   // GET /api/admin/run-cleanup — one-shot purge callable from browser while logged in as admin.
   // Idempotent: returns {deleted:0} when already clean.
   app.get("/api/admin/run-cleanup", requireAdmin, async (req, res) => {
@@ -8239,6 +8285,38 @@ export async function registerRoutes(
       const rows = await db.select().from(featureWaitlists).orderBy(featureWaitlists.createdAt);
       return res.json(rows);
     } catch (err) {
+      return res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Admin: manually add someone to a feature waitlist (bypasses public flow/email)
+  app.post("/api/admin/feature-waitlist", requireAdmin, async (req, res) => {
+    try {
+      const { email, feature } = req.body as { email?: string; feature?: string };
+      if (!email || !["creators", "brand-collabs"].includes(feature ?? "")) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const [row] = await db
+        .insert(featureWaitlists)
+        .values({ email: email.trim().toLowerCase(), feature: feature! })
+        .onConflictDoNothing()
+        .returning();
+      if (!row) return res.status(409).json({ message: "This email is already on that waitlist" });
+      return res.json({ ok: true, entry: row });
+    } catch (err) {
+      console.error("[admin feature-waitlist] create error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/admin/feature-waitlist/:id", requireAdmin, async (req, res) => {
+    const id = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    try {
+      const deleted = await db.delete(featureWaitlists).where(eq(featureWaitlists.id, id)).returning({ id: featureWaitlists.id });
+      return res.json({ ok: true, deleted: deleted.length });
+    } catch (err) {
+      console.error("[admin feature-waitlist] delete error:", err);
       return res.status(500).json({ message: "Server error" });
     }
   });
