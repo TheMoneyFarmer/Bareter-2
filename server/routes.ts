@@ -5089,10 +5089,10 @@ export async function registerRoutes(
         email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
         email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", daysLeft: "3", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
-        email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/api/auth/verify-email?token=test`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=signupNudge` },
-        email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/new`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=signupNudge` },
-        email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/browse`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=listingNudge` },
-        email_template_waitlist_final_call: { greeting: "Hi there,", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/register?invite=test`, unsubscribeUrl: `${baseUrl}/api/waitlist/unsubscribe?token=test` },
+        email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, verifyUrl: `${baseUrl}/api/auth/verify-email?token=test` },
+        email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
+        email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
+        email_template_waitlist_final_call: { greeting: "Hi there,", name: "there", appName: "Bareter", baseUrl, registerUrl: `${baseUrl}/register?invite=test` },
       };
 
       const vars = sampleVars[templateKey] || { appName: "Bareter", baseUrl, actionUrl: baseUrl };
