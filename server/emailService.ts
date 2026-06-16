@@ -1200,6 +1200,11 @@ interface ReminderOpts {
   baseUrl?: string;
 }
 
+function getFirstName(fullName: string | null | undefined, language: "en" | "ar" = "en"): string {
+  const first = fullName?.trim().split(/\s+/)[0];
+  return first || (language === "ar" ? "مرحباً" : "there");
+}
+
 export async function sendVerificationReminderEmail(
   opts: ReminderOpts & { stage: "24h" | "72h" | "7d" },
 ): Promise<boolean> {
@@ -1295,7 +1300,7 @@ export async function sendSignupUnverifiedReminderEmail(
   }
   const base = opts.baseUrl || buildAppBaseUrl();
   const copy = REMINDER_COPY.signupUnverified[opts.language];
-  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const greeting = getFirstName(opts.fullName, opts.language);
   const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=signupNudge`;
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
   const customTemplate = await getCustomTemplate("email_template_signup_unverified");
@@ -1321,7 +1326,7 @@ export async function sendSignupNoListingReminderEmail(opts: ReminderOpts): Prom
   }
   const base = opts.baseUrl || buildAppBaseUrl();
   const copy = REMINDER_COPY.signupNoListing[opts.language];
-  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const greeting = getFirstName(opts.fullName, opts.language);
   const ctaUrl = `${base}/create-listing?utm_source=reminder&utm_medium=email&utm_campaign=signup_no_listing_24h`;
   const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=signupNudge`;
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
@@ -1348,7 +1353,7 @@ export async function sendListingNoProposalReminderEmail(opts: ReminderOpts): Pr
   }
   const base = opts.baseUrl || buildAppBaseUrl();
   const copy = REMINDER_COPY.listingNoProposal[opts.language];
-  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const greeting = getFirstName(opts.fullName, opts.language);
   const ctaUrl = `${base}/browse?utm_source=reminder&utm_medium=email&utm_campaign=listing_no_proposal_72h`;
   const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=listingNudge`;
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
@@ -1377,7 +1382,7 @@ export async function sendWaitlistFinalCallEmail(
     return false;
   }
   const base = opts.baseUrl || buildAppBaseUrl();
-  const greeting = opts.name || "there";
+  const greeting = getFirstName(opts.name);
   const registerUrl = opts.inviteCode
     ? `${base}/register?invite=${opts.inviteCode}&utm_source=reminder&utm_medium=email&utm_campaign=waitlist_final_call`
     : `${base}/register?utm_source=reminder&utm_medium=email&utm_campaign=waitlist_final_call`;
