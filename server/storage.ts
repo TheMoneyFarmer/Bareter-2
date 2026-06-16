@@ -353,6 +353,7 @@ export interface IStorage {
   createBroadcastJob(job: { id: string; subject: string; body: string; filter?: unknown; recipientCount: number; sentBy?: string }): Promise<BroadcastJob>;
   getBroadcastJob(id: string): Promise<BroadcastJob | undefined>;
   updateBroadcastJob(id: string, data: Partial<Pick<BroadcastJob, "status" | "sent" | "failed" | "startedAt" | "completedAt">>): Promise<void>;
+  listBroadcastJobs(limit?: number): Promise<BroadcastJob[]>;
 
   // Analytics helpers
   getUserSignupsByDay(days: number): Promise<{ date: string; count: number }[]>;
@@ -2246,6 +2247,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateBroadcastJob(id: string, data: Partial<Pick<BroadcastJob, "status" | "sent" | "failed" | "startedAt" | "completedAt">>): Promise<void> {
     await db.update(broadcastJobs).set(data).where(eq(broadcastJobs.id, id));
+  }
+
+  async listBroadcastJobs(limit = 50): Promise<BroadcastJob[]> {
+    return db.select().from(broadcastJobs).orderBy(desc(broadcastJobs.createdAt)).limit(Math.min(limit, 200));
   }
 
   // ── Email logs ──────────────────────────────────────────────────────

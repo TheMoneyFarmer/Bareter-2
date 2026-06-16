@@ -4603,6 +4603,7 @@ export async function registerRoutes(
             subject: `[TEST] ${subject}`,
             body: sendBody,
             rawHtml: isHtml,
+            source: "test",
             vars,
           });
         })
@@ -4636,6 +4637,102 @@ export async function registerRoutes(
     }
   });
 
+  type BroadcastRecipient = { email: string; name: string | null };
+
+  // Shared by the initial broadcast send and the "resend to failed
+  // recipients" retry — both need the same throttled-send + correctly
+  // tagged logging behavior.
+  async function runBroadcastSend(opts: {
+    req: Request;
+    broadcastId: string;
+    subject: string;
+    body: string;
+    rawHtml: boolean;
+    recipients: BroadcastRecipient[];
+    adminUserId?: string;
+  }): Promise<void> {
+    const { req, broadcastId, subject, body, rawHtml, recipients, adminUserId } = opts;
+    try {
+      const { sendAdminEmail, injectSmartCtaUrls, isFullHtmlDocument } = await import("./emailService");
+      const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
+      const isFullDoc = isFullHtmlDocument(body);
+      // Inject correct URLs into any HTML body; full docs pass through as-is (rawHtml=true returns body directly)
+      const sendBody = (rawHtml || looksLikeHtml || isFullDoc) ? injectSmartCtaUrls(body) : body;
+      const sendRawHtml = rawHtml || looksLikeHtml || isFullDoc;
+      await storage.updateBroadcastJob(broadcastId, { status: "processing", startedAt: new Date() });
+      let sent = 0, failed = 0;
+      // Resend rate-limits at ~2 req/sec. Sending in large fully-concurrent
+      // batches (the old BATCH_SIZE=10 Promise.all) reliably tripped
+      // rate_limit_exceeded (429) for most of each batch. A small
+      // concurrency window plus a pause between windows keeps us under
+      // that limit; sendMail() also retries individual 429s with backoff
+      // as a second line of defense.
+      const CONCURRENCY = 2;
+      const PAUSE_BETWEEN_WINDOWS_MS = 600;
+      for (let i = 0; i < recipients.length; i += CONCURRENCY) {
+        const window = recipients.slice(i, i + CONCURRENCY);
+        await Promise.all(window.map(async (recipient) => {
+          try {
+            // Strip placeholder / empty names so "Bareter Founder" never reaches an email.
+            const PLACEHOLDERS = new Set(["bareter founder", "bareter", "admin", "founder"]);
+            const trimmedName = recipient.name?.trim() || "";
+            const cleanName = trimmedName && !PLACEHOLDERS.has(trimmedName.toLowerCase()) ? trimmedName : null;
+            const recipientFirstName = cleanName?.split(" ")[0] || "there";
+            const recipientLastName = cleanName?.split(" ").slice(1).join(" ") || "";
+            const BASE_URL = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
+            const ok = await sendAdminEmail(recipient.email, {
+              recipientName: cleanName ?? undefined,
+              subject,
+              body: sendBody,
+              rawHtml: sendRawHtml,
+              source: "broadcast",
+              broadcastId,
+              vars: {
+                name: cleanName || "there",
+                firstName: recipientFirstName,
+                lastName: recipientLastName,
+                greeting: cleanName ? `Hi ${recipientFirstName},` : "Hi there,",
+                email: recipient.email,
+                city: "",
+                businessName: "",
+                accountType: "",
+                appName: "Bareter",
+                baseUrl: BASE_URL,
+                signupUrl: `${BASE_URL}/?src=email&to=%2Fregister`,
+                loginUrl: `${BASE_URL}/?src=email&to=%2Flogin`,
+                browseUrl: `${BASE_URL}/?src=email&to=%2Fbrowse`,
+              },
+            });
+            // sendAdminEmail → sendMail already writes a correctly-tagged
+            // (source="broadcast", broadcastId, real error message) row to
+            // email_logs — no need to log again here.
+            if (ok) sent++; else failed++;
+          } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            await storage.createEmailLog({
+              recipientEmail: recipient.email,
+              subject,
+              status: "failed",
+              source: "broadcast",
+              broadcastId,
+              errorMessage: errMsg.slice(0, 200),
+              sentBy: adminUserId,
+            });
+            failed++;
+          }
+        }));
+        if (i + CONCURRENCY < recipients.length) {
+          await new Promise((resolve) => setTimeout(resolve, PAUSE_BETWEEN_WINDOWS_MS));
+        }
+      }
+      await storage.updateBroadcastJob(broadcastId, { status: "completed", sent, failed, completedAt: new Date() });
+      await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
+    } catch (workerErr) {
+      console.error("Broadcast worker error:", workerErr);
+      await storage.updateBroadcastJob(broadcastId, { status: "failed", completedAt: new Date() });
+    }
+  }
+
   app.post("/api/admin/email/broadcast", requireAdmin, async (req, res) => {
     try {
       const { subject, body, filter } = req.body;
@@ -4647,8 +4744,7 @@ export async function registerRoutes(
       const rawHtml: boolean = filter?.bodyMode === "html";
 
       // Build recipient list depending on audience type
-      type Recipient = { email: string; name: string | null };
-      let recipients: Recipient[] = [];
+      let recipients: BroadcastRecipient[] = [];
 
       if (audience === "waitlist-main") {
         const rows = await db.select({ email: waitlistEntries.email, name: waitlistEntries.name }).from(waitlistEntries);
@@ -4698,82 +4794,22 @@ export async function registerRoutes(
       res.status(202).json({ broadcastId, recipientCount: recipients.length, status: "queued" });
 
       // Background worker — runs after response is sent
-      setImmediate(async () => {
-        try {
-          const { sendAdminEmail, injectSmartCtaUrls, isFullHtmlDocument } = await import("./emailService");
-          const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
-          const isFullDoc = isFullHtmlDocument(body);
-          // Inject correct URLs into any HTML body; full docs pass through as-is (rawHtml=true returns body directly)
-          const sendBody = (rawHtml || looksLikeHtml || isFullDoc) ? injectSmartCtaUrls(body) : body;
-          const sendRawHtml = rawHtml || looksLikeHtml || isFullDoc;
-          await storage.updateBroadcastJob(broadcastId, { status: "processing", startedAt: new Date() });
-          let sent = 0, failed = 0;
-          const BATCH_SIZE = 10;
-          for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-            const batch = recipients.slice(i, i + BATCH_SIZE);
-            await Promise.all(batch.map(async (recipient) => {
-              try {
-                // Strip placeholder / empty names so "Bareter Founder" never reaches an email.
-                const PLACEHOLDERS = new Set(["bareter founder", "bareter", "admin", "founder"]);
-                const trimmedName = recipient.name?.trim() || "";
-                const cleanName = trimmedName && !PLACEHOLDERS.has(trimmedName.toLowerCase()) ? trimmedName : null;
-                const recipientFirstName = cleanName?.split(" ")[0] || "there";
-                const recipientLastName = cleanName?.split(" ").slice(1).join(" ") || "";
-                const BASE_URL = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
-                const ok = await sendAdminEmail(recipient.email, {
-                  recipientName: cleanName ?? undefined,
-                  subject,
-                  body: sendBody,
-                  rawHtml: sendRawHtml,
-                  vars: {
-                    name: cleanName || "there",
-                    firstName: recipientFirstName,
-                    lastName: recipientLastName,
-                    greeting: cleanName ? `Hi ${recipientFirstName},` : "Hi there,",
-                    email: recipient.email,
-                    city: "",
-                    businessName: "",
-                    accountType: "",
-                    appName: "Bareter",
-                    baseUrl: BASE_URL,
-                    signupUrl: `${BASE_URL}/?src=email&to=%2Fregister`,
-                    loginUrl: `${BASE_URL}/?src=email&to=%2Flogin`,
-                    browseUrl: `${BASE_URL}/?src=email&to=%2Fbrowse`,
-                  },
-                });
-                await storage.createEmailLog({
-                  recipientEmail: recipient.email,
-                  subject,
-                  status: ok ? "sent" : "failed",
-                  source: "broadcast",
-                  broadcastId,
-                  sentBy: adminUserId,
-                });
-                if (ok) sent++; else failed++;
-              } catch (err: unknown) {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                await storage.createEmailLog({
-                  recipientEmail: recipient.email,
-                  subject,
-                  status: "failed",
-                  source: "broadcast",
-                  broadcastId,
-                  errorMessage: errMsg.slice(0, 200),
-                  sentBy: adminUserId,
-                });
-                failed++;
-              }
-            }));
-          }
-          await storage.updateBroadcastJob(broadcastId, { status: "completed", sent, failed, completedAt: new Date() });
-          await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
-        } catch (workerErr) {
-          console.error("Broadcast worker error:", workerErr);
-          await storage.updateBroadcastJob(broadcastId, { status: "failed", completedAt: new Date() });
-        }
-      });
+      setImmediate(() => runBroadcastSend({ req, broadcastId, subject, body, rawHtml, recipients, adminUserId }));
     } catch (error) {
       console.error("Broadcast email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: list past broadcast jobs so a failed/partially-failed send can be
+  // found and resent even after a page refresh (broadcastJobId only lives in
+  // client-side React state otherwise).
+  app.get("/api/admin/email/broadcasts", requireAdmin, async (_req, res) => {
+    try {
+      const jobs = await storage.listBroadcastJobs(50);
+      res.json(jobs);
+    } catch (error) {
+      console.error("List broadcasts error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4785,6 +4821,52 @@ export async function registerRoutes(
       res.json(job);
     } catch (error) {
       console.error("Broadcast status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: resend a broadcast to only the recipients whose original send
+  // failed. Looks up the failed email_logs rows for this broadcastId, spins
+  // up a brand-new broadcast job (so it gets its own id/stats and shows up
+  // as its own row in the broadcast history) scoped to just those addresses,
+  // and reuses the same throttled-send worker.
+  app.post("/api/admin/email/broadcast/:id/resend-failed", requireAdmin, async (req, res) => {
+    try {
+      const originalId = String(req.params.id);
+      const original = await storage.getBroadcastJob(originalId);
+      if (!original) return res.status(404).json({ message: "Broadcast job not found" });
+
+      const failedLogs = await db
+        .select({ recipientEmail: emailLogs.recipientEmail })
+        .from(emailLogs)
+        .where(and(eq(emailLogs.broadcastId, originalId), eq(emailLogs.status, "failed")));
+
+      // Dedupe — a recipient can have more than one failed attempt logged
+      // (e.g. a rate-limit retry that still failed) under the same broadcastId.
+      const failedEmails = Array.from(new Set(failedLogs.map(r => r.recipientEmail)));
+      if (failedEmails.length === 0) {
+        return res.status(400).json({ message: "No failed recipients found for this broadcast" });
+      }
+
+      const recipients: BroadcastRecipient[] = failedEmails.map(email => ({ email, name: null }));
+      const rawHtml: boolean = (original.filter as any)?.bodyMode === "html";
+      const broadcastId = crypto.randomUUID();
+      const adminUserId = req.session.userId;
+
+      await storage.createBroadcastJob({
+        id: broadcastId,
+        subject: original.subject,
+        body: original.body,
+        filter: { ...(original.filter as any), retryOf: originalId },
+        recipientCount: recipients.length,
+        sentBy: adminUserId,
+      });
+
+      res.status(202).json({ broadcastId, recipientCount: recipients.length, status: "queued", retryOf: originalId });
+
+      setImmediate(() => runBroadcastSend({ req, broadcastId, subject: original.subject, body: original.body, rawHtml, recipients, adminUserId }));
+    } catch (error) {
+      console.error("Resend failed broadcast error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4872,17 +4954,18 @@ export async function registerRoutes(
       const { emailLogs } = await import("@shared/schema");
       const { db: dbInst } = await import("./db");
       const { desc, eq, and, gte } = await import("drizzle-orm");
-      const { templateKey, status, since } = req.query as Record<string, string | undefined>;
+      const { templateKey, status, since, broadcastId } = req.query as Record<string, string | undefined>;
       const conditions: Parameters<typeof and>[0][] = [];
       if (templateKey) conditions.push(eq(emailLogs.templateKey, templateKey));
       if (status) conditions.push(eq(emailLogs.status, status));
       if (since) conditions.push(gte(emailLogs.createdAt, new Date(since)));
+      if (broadcastId) conditions.push(eq(emailLogs.broadcastId, broadcastId));
       const rows = await dbInst
         .select()
         .from(emailLogs)
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(emailLogs.createdAt))
-        .limit(200);
+        .limit(broadcastId ? 1000 : 200);
       res.json(rows);
     } catch (err) {
       console.error("Email logs error:", err);

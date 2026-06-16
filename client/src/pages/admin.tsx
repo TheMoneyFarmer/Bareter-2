@@ -258,6 +258,7 @@ export function AdminPage() {
   const [broadcastAccountType, setBroadcastAccountType] = useState("all");
   const [broadcastVerification, setBroadcastVerification] = useState("all");
   const [broadcastJobId, setBroadcastJobId] = useState<string | null>(null);
+  const [logsBroadcastFilter, setLogsBroadcastFilter] = useState<string | null>(null);
   const [broadcastPreviewHtml, setBroadcastPreviewHtml] = useState<string | null>(null);
   const [broadcastTestEmails, setBroadcastTestEmails] = useState("");
   const [broadcastAudience, setBroadcastAudience] = useState("users");
@@ -778,6 +779,7 @@ export function AdminPage() {
       setBroadcastSubject("");
       setBroadcastBody("");
       toast({ title: "Broadcast queued", description: `Sending to ${data.recipientCount} recipients in the background…` });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/broadcasts"] });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to start broadcast", variant: "destructive" });
@@ -794,6 +796,22 @@ export function AdminPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to send test email", variant: "destructive" });
+    },
+  });
+
+  const resendFailedMutation = useMutation({
+    mutationFn: async (originalBroadcastId: string) => {
+      const res = await apiRequest("POST", `/api/admin/email/broadcast/${originalBroadcastId}/resend-failed`, {});
+      return res.json();
+    },
+    onSuccess: (data: { broadcastId: string; recipientCount: number; status: string }) => {
+      setBroadcastJobId(data.broadcastId);
+      toast({ title: "Resending to failed recipients", description: `Retrying ${data.recipientCount} recipients in the background…` });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/email/broadcasts"] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to start resend";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -829,6 +847,29 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/email/stats"] });
     }
   }, [broadcastJobStatus?.status]);
+
+  type BroadcastJobRow = { id: string; subject: string; status: string; recipientCount: number; sent: number; failed: number; createdAt: string | null; completedAt: string | null; filter: { retryOf?: string } | null };
+  const { data: broadcastHistory, refetch: refetchBroadcastHistory } = useQuery<BroadcastJobRow[]>({
+    queryKey: ["/api/admin/email/broadcasts"],
+    queryFn: async () => { const r = await fetch("/api/admin/email/broadcasts", { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+    staleTime: 0,
+    enabled: false,
+  });
+
+  // setLogsBroadcastFilter + refetchEmailLogs() in the same handler would race —
+  // the query's queryKey only updates on the next render, so an immediate
+  // refetch() would still hit the *previous* filter. Fetch directly and seed
+  // the cache for the key this component is about to render with instead.
+  const loadEmailLogs = async (broadcastIdFilter: string | null) => {
+    setLogsBroadcastFilter(broadcastIdFilter);
+    const url = broadcastIdFilter
+      ? `/api/admin/email/logs?broadcastId=${encodeURIComponent(broadcastIdFilter)}`
+      : "/api/admin/email/logs";
+    const r = await fetch(url, { credentials: "include" });
+    if (r.ok) {
+      queryClient.setQueryData(["/api/admin/email/logs", broadcastIdFilter], await r.json());
+    }
+  };
 
   const previewMutation = useMutation({
     mutationFn: async (data: { body: string; recipientName?: string; vars?: Record<string, string>; mode?: "broadcast" | "template" | "html" }) => {
@@ -875,8 +916,15 @@ export function AdminPage() {
   });
 
   const { data: emailLogsData, refetch: refetchEmailLogs } = useQuery<any[]>({
-    queryKey: ["/api/admin/email/logs"],
-    queryFn: async () => { const r = await fetch("/api/admin/email/logs", { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+    queryKey: ["/api/admin/email/logs", logsBroadcastFilter],
+    queryFn: async () => {
+      const url = logsBroadcastFilter
+        ? `/api/admin/email/logs?broadcastId=${encodeURIComponent(logsBroadcastFilter)}`
+        : "/api/admin/email/logs";
+      const r = await fetch(url, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
     staleTime: 0,
     enabled: false,
   });
@@ -2281,9 +2329,112 @@ export function AdminPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground font-mono">ID: {broadcastJobId}</p>
+                {broadcastJobStatus.status === "completed" && broadcastJobStatus.failed > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={resendFailedMutation.isPending}
+                      onClick={() => broadcastJobId && resendFailedMutation.mutate(broadcastJobId)}
+                      data-testid="button-resend-failed"
+                    >
+                      {resendFailedMutation.isPending ? "Resending…" : `Resend to ${broadcastJobStatus.failed} failed recipient${broadcastJobStatus.failed === 1 ? "" : "s"}`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!broadcastJobId) return;
+                        loadEmailLogs(broadcastJobId);
+                        document.querySelector('[data-testid="card-email-logs"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      data-testid="button-view-failures-in-logs"
+                    >
+                      View why it failed
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-broadcast-history">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base">Recent Broadcasts</CardTitle>
+            <CardDescription>Past sends — resend to failed recipients even after a page refresh</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => refetchBroadcastHistory()} data-testid="button-refresh-broadcast-history">
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {!broadcastHistory ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Click Refresh to load past broadcasts</p>
+          ) : broadcastHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No broadcasts sent yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 pr-3">Date</th>
+                    <th className="pb-2 pr-3">Subject</th>
+                    <th className="pb-2 pr-3">Status</th>
+                    <th className="pb-2 pr-3">Results</th>
+                    <th className="pb-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {broadcastHistory.map((job) => (
+                    <tr key={job.id} className="hover:bg-muted/30">
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-muted-foreground">{job.createdAt ? new Date(job.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                      <td className="py-1.5 pr-3 max-w-[220px] truncate" title={job.subject}>
+                        {job.subject}
+                        {job.filter?.retryOf && <span className="ml-1.5 text-[10px] text-muted-foreground">(retry)</span>}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${job.status === "completed" ? "bg-green-100 text-green-700" : job.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          {job.status}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-3 text-muted-foreground whitespace-nowrap">{job.sent} sent · {job.failed} failed · {job.recipientCount} total</td>
+                      <td className="py-1.5">
+                        <div className="flex gap-1.5">
+                          {job.status === "completed" && job.failed > 0 && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[11px]"
+                              disabled={resendFailedMutation.isPending}
+                              onClick={() => resendFailedMutation.mutate(job.id)}
+                              data-testid={`button-resend-failed-${job.id}`}
+                            >
+                              Resend failed
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-[11px]"
+                            onClick={() => {
+                              loadEmailLogs(job.id);
+                              document.querySelector('[data-testid="card-email-logs"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            data-testid={`button-view-logs-${job.id}`}
+                          >
+                            View logs
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -2499,11 +2650,27 @@ export function AdminPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
           <div>
             <CardTitle className="text-base">Email Logs</CardTitle>
-            <CardDescription>Every transactional and test email sent — success and failures</CardDescription>
+            <CardDescription>
+              {logsBroadcastFilter
+                ? <>Showing logs for broadcast <span className="font-mono">{logsBroadcastFilter}</span></>
+                : "Every transactional, test, and broadcast email sent — success and failures"}
+            </CardDescription>
           </div>
-          <Button size="sm" variant="outline" onClick={() => refetchEmailLogs()} data-testid="button-refresh-email-logs">
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            {logsBroadcastFilter && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => loadEmailLogs(null)}
+                data-testid="button-clear-logs-filter"
+              >
+                Clear filter
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => refetchEmailLogs()} data-testid="button-refresh-email-logs">
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {!emailLogsData ? (

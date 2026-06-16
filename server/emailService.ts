@@ -153,9 +153,11 @@ interface MailOptions {
   attachments?: MailAttachment[];
   templateKey?: string;
   userId?: string;
+  source?: "transactional" | "broadcast" | "test";
+  broadcastId?: string;
 }
 
-async function sendViaResend(opts: MailOptions): Promise<{ ok: boolean; messageId?: string }> {
+async function sendViaResend(opts: MailOptions): Promise<{ ok: boolean; messageId?: string; errorMessage?: string; isRateLimit?: boolean }> {
   const { client, fromEmail } = await getUncachableResendClient();
   const from = `${APP_NAME} <${fromEmail || process.env.FROM_EMAIL || FALLBACK_FROM}>`;
   const result = await client.emails.send({
@@ -172,9 +174,17 @@ async function sendViaResend(opts: MailOptions): Promise<{ ok: boolean; messageI
   });
   if (result.error) {
     console.error("[EMAIL] Resend error:", result.error);
-    return { ok: false };
+    return {
+      ok: false,
+      errorMessage: `Resend ${result.error.name}: ${result.error.message}`,
+      isRateLimit: result.error.name === "rate_limit_exceeded",
+    };
   }
   return { ok: true, messageId: (result.data as any)?.id };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function sendViaSmtp(opts: MailOptions): Promise<boolean> {
@@ -200,6 +210,7 @@ async function logEmailAttempt(opts: {
   subject: string;
   status: "sent" | "failed";
   source: "transactional" | "broadcast" | "test";
+  broadcastId?: string;
   templateKey?: string;
   userId?: string;
   resendMessageId?: string;
@@ -211,6 +222,7 @@ async function logEmailAttempt(opts: {
       subject: opts.subject,
       status: opts.status,
       source: opts.source,
+      broadcastId: opts.broadcastId ?? null,
       templateKey: opts.templateKey ?? null,
       userId: opts.userId ?? null,
       resendMessageId: opts.resendMessageId ?? null,
@@ -221,23 +233,41 @@ async function logEmailAttempt(opts: {
   }
 }
 
+// Resend enforces a per-second rate limit (429 rate_limit_exceeded) well below
+// what a broadcast batch can produce if sent fully concurrently. Retry a
+// rate-limited send a couple of times with backoff before giving up — this is
+// cheap insurance against the exact failure mode that caused mass broadcast
+// failures (see broadcast worker, which now also throttles its send rate).
+const RATE_LIMIT_RETRY_DELAYS_MS = [1200, 2500];
+
 async function sendMail(opts: MailOptions): Promise<boolean> {
   console.log(`[EMAIL] Attempting ${opts.templateKey ?? "unknown"} → ${opts.to} | "${opts.subject}"`);
+  const source = opts.source ?? "transactional";
   let resendAttempted = false;
   if (await isResendReady()) {
     resendAttempted = true;
-    try {
-      const { ok, messageId } = await sendViaResend(opts);
-      if (ok) {
-        console.log(`[EMAIL] ✓ Resend OK ${opts.templateKey ?? ""} → ${opts.to} | msgId=${messageId ?? "?"}`);
-        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, resendMessageId: messageId });
-        return true;
+    let attempt = 0;
+    while (true) {
+      try {
+        const { ok, messageId, errorMessage, isRateLimit } = await sendViaResend(opts);
+        if (ok) {
+          console.log(`[EMAIL] ✓ Resend OK ${opts.templateKey ?? ""} → ${opts.to} | msgId=${messageId ?? "?"}`);
+          await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId, resendMessageId: messageId });
+          return true;
+        }
+        if (isRateLimit && attempt < RATE_LIMIT_RETRY_DELAYS_MS.length) {
+          await sleep(RATE_LIMIT_RETRY_DELAYS_MS[attempt]);
+          attempt++;
+          continue;
+        }
+        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId, errorMessage: errorMessage ?? "Resend returned error" });
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[EMAIL] Resend send failed:", err);
+        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId, errorMessage: `Resend exception: ${msg}` });
+        break;
       }
-      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: "Resend returned error" });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[EMAIL] Resend send failed:", err);
-      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: `Resend exception: ${msg}` });
     }
     // Resend failed — fall through to SMTP if configured.
   }
@@ -248,18 +278,18 @@ async function sendMail(opts: MailOptions): Promise<boolean> {
         if (resendAttempted) {
           console.warn("[EMAIL] Delivered via SMTP after Resend failure.");
         }
-        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source: "transactional", templateKey: opts.templateKey, userId: opts.userId });
+        await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "sent", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId });
         return true;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[EMAIL] SMTP send failed:", err);
-      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: `SMTP exception: ${msg}` });
+      await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId, errorMessage: `SMTP exception: ${msg}` });
     }
   }
   if (!resendAttempted && !hasSmtpConfig()) {
     console.error(`[EMAIL] ✗ No mail provider configured — dropped ${opts.templateKey ?? ""} → ${opts.to}`);
-    await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source: "transactional", templateKey: opts.templateKey, userId: opts.userId, errorMessage: "No mail provider configured" });
+    await logEmailAttempt({ to: opts.to, subject: opts.subject, status: "failed", source, broadcastId: opts.broadcastId, templateKey: opts.templateKey, userId: opts.userId, errorMessage: "No mail provider configured" });
   }
   return false;
 }
@@ -717,7 +747,15 @@ export async function sendCriticalAlertEmail(
 
 export async function sendAdminEmail(
   toEmail: string,
-  opts: { recipientName?: string | null; subject: string; body: string; rawHtml?: boolean; vars?: Record<string, string> },
+  opts: {
+    recipientName?: string | null;
+    subject: string;
+    body: string;
+    rawHtml?: boolean;
+    vars?: Record<string, string>;
+    source?: "transactional" | "broadcast" | "test";
+    broadcastId?: string;
+  },
 ): Promise<boolean> {
   if (!(await isEmailConfigured())) {
     console.log(`[EMAIL] Admin email to ${toEmail} skipped (email not configured). Subject: ${opts.subject}`);
@@ -727,7 +765,7 @@ export async function sendAdminEmail(
   const substitutedBody = opts.vars ? applyTemplateVars(opts.body, opts.vars) : opts.body;
   const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
   const text = `${greeting}\n\n${substitutedBody}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: opts.subject, html, text });
+  return sendMail({ to: toEmail, subject: opts.subject, html, text, source: opts.source, broadcastId: opts.broadcastId });
 }
 
 export async function sendListingRejectionEmail(
