@@ -117,6 +117,11 @@ import {
   TrendingUp,
   Instagram,
   Globe,
+  MapPin,
+  Tag,
+  Percent,
+  Wallet,
+  ListChecks,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -163,6 +168,8 @@ type WaitlistEntryRow = {
 
 type AnalyticsData = {
   totalUsers: number;
+  newUsersToday?: number;
+  newUsersThisWeek?: number;
   totalDeals: number;
   activeDeals: number;
   completedDeals: number;
@@ -179,13 +186,52 @@ type AnalyticsData = {
   newListingsToday: number;
   totalGMV: number;
   monthlyGMV: number;
+  avgDealValue?: number;
+  completionRate?: number;
   pendingVerifications: number;
   incompleteVerifications?: number;
   openDrafts?: number;
   abandonedEngagement?: number;
   categoryStats: Record<string, number>;
+  topCategories?: { category: string; count: number }[];
+  topCountries?: { country: string; count: number }[];
+  topCities?: { city: string; count: number }[];
   dealsPerWeek: { week: string; count: number }[];
 };
+
+type DateRangeFilter = "all" | "today" | "week" | "month" | "year" | "custom";
+
+function matchesDateRange(date: string | Date | null | undefined, range: DateRangeFilter, customFrom: string, customTo: string): boolean {
+  if (range === "all") return true;
+  if (!date) return false;
+  const d = new Date(date);
+  const now = new Date();
+  if (range === "custom") {
+    if (customFrom && d < new Date(customFrom)) return false;
+    if (customTo && d > new Date(`${customTo}T23:59:59`)) return false;
+    return true;
+  }
+  if (range === "today") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return d >= start;
+  }
+  if (range === "week") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 7);
+    return d >= start;
+  }
+  if (range === "month") {
+    const start = new Date(now);
+    start.setMonth(start.getMonth() - 1);
+    return d >= start;
+  }
+  if (range === "year") {
+    const start = new Date(now);
+    start.setFullYear(start.getFullYear() - 1);
+    return d >= start;
+  }
+  return true;
+}
 
 type FunnelData = {
   waitlistCount: number;
@@ -223,6 +269,17 @@ export function AdminPage() {
   const [listingCategoryFilter, setListingCategoryFilter] = useState<string>("all");
   const [listingCityFilter, setListingCityFilter] = useState<string>("all");
   const [listingValueFilter, setListingValueFilter] = useState<string>("all");
+  const [listingCountryFilter, setListingCountryFilter] = useState<string>("all");
+  const [listingSortBy, setListingSortBy] = useState<string>("date_desc");
+  const [userCountryFilter, setUserCountryFilter] = useState<string>("all");
+  const [userSortBy, setUserSortBy] = useState<string>("date_desc");
+  const [dealStateFilter, setDealStateFilter] = useState<string>("all");
+  const [dealSortBy, setDealSortBy] = useState<string>("date_desc");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+  const [draftsDialogOpen, setDraftsDialogOpen] = useState(false);
+  const [abandonedDialogOpen, setAbandonedDialogOpen] = useState(false);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; listingId: string | null; reason: string }>({
     open: false, listingId: null, reason: "",
@@ -314,6 +371,22 @@ export function AdminPage() {
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const { data: listingDraftsData, isLoading: listingDraftsLoading } = useQuery<{
+    id: string; title: string | null; userId: string; userFullName: string | null; userEmail: string | null; createdAt: string; updatedAt: string;
+  }[]>({
+    queryKey: ["/api/admin/listing-drafts"],
+    enabled: !!user?.isAdmin && draftsDialogOpen,
+    staleTime: 0,
+  });
+
+  const { data: abandonedEngagementData, isLoading: abandonedEngagementLoading } = useQuery<{
+    userId: string; userFullName: string | null; userEmail: string | null; listingId: string | null; listingTitle: string | null; eventType: string; createdAt: string;
+  }[]>({
+    queryKey: ["/api/admin/abandoned-engagement"],
+    enabled: !!user?.isAdmin && abandonedDialogOpen,
     staleTime: 0,
   });
 
@@ -939,25 +1012,29 @@ export function AdminPage() {
   // has been declared. The server-side `requireAdmin` middleware is
   // the real authority — this is just a friendly client-side message.
 
+  const availableUserCountries = Array.from(new Set((users ?? []).map(u => (u as any).country).filter(Boolean) as string[])).sort();
+
   const filteredUsers = users?.filter((u) => {
     const matchesSearch = u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
-    if (userStatusFilter === "active") return !u.isBanned && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW");
-    if (userStatusFilter === "banned") return u.isBanned;
-    if (userStatusFilter === "pending") return u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW";
-    if (userStatusFilter === "unverified") return !u.isVerified && !u.isBanned;
-    if (userAccountTypeFilter === "individual") return u.accountType === "individual" || !u.accountType;
-    if (userAccountTypeFilter === "business") return u.accountType === "business";
+    if (userStatusFilter === "active" && !(!u.isBanned && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW"))) return false;
+    if (userStatusFilter === "banned" && !u.isBanned) return false;
+    if (userStatusFilter === "pending" && !(u.kycStatus === "IN_PROGRESS" || u.kybStatus === "IN_PROGRESS" || u.kycStatus === "IN_REVIEW" || u.kybStatus === "IN_REVIEW")) return false;
+    if (userStatusFilter === "unverified" && !(!u.isVerified && !u.isBanned)) return false;
+    if (userAccountTypeFilter === "individual" && !(u.accountType === "individual" || !u.accountType)) return false;
+    if (userAccountTypeFilter === "business" && u.accountType !== "business") return false;
+    if (userCountryFilter !== "all" && (u as any).country !== userCountryFilter) return false;
+    if (!matchesDateRange(u.createdAt, dateRangeFilter, customDateFrom, customDateTo)) return false;
     return true;
-  }).filter((u) => {
-    if (userAccountTypeFilter === "all") return true;
-    if (userAccountTypeFilter === "individual") return u.accountType === "individual" || !u.accountType;
-    if (userAccountTypeFilter === "business") return u.accountType === "business";
-    return true;
+  }).sort((a, b) => {
+    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return userSortBy === "date_asc" ? aT - bT : bT - aT;
   });
 
   const availableCities = Array.from(new Set((listings ?? []).map(l => l.city).filter(Boolean) as string[])).sort();
+  const availableListingCountries = Array.from(new Set((listings ?? []).map(l => (l as any).country).filter(Boolean) as string[])).sort();
 
   const filteredListings = listings?.filter((l) => {
     const matchesSearch = l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -979,6 +1056,7 @@ export function AdminPage() {
       if (!cats.includes(listingCategoryFilter)) return false;
     }
     if (listingCityFilter !== "all" && l.city !== listingCityFilter) return false;
+    if (listingCountryFilter !== "all" && (l as any).country !== listingCountryFilter) return false;
     if (listingValueFilter !== "all") {
       const val = parseFloat(l.retailValue || "0");
       if (listingValueFilter === "under1000" && val >= 1000) return false;
@@ -986,15 +1064,35 @@ export function AdminPage() {
       if (listingValueFilter === "5000to20000" && (val < 5000 || val > 20000)) return false;
       if (listingValueFilter === "over20000" && val <= 20000) return false;
     }
+    if (!matchesDateRange(l.createdAt, dateRangeFilter, customDateFrom, customDateTo)) return false;
     return true;
+  }).sort((a, b) => {
+    if (listingSortBy === "value_desc") return parseFloat(b.retailValue || "0") - parseFloat(a.retailValue || "0");
+    if (listingSortBy === "value_asc") return parseFloat(a.retailValue || "0") - parseFloat(b.retailValue || "0");
+    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return listingSortBy === "date_asc" ? aT - bT : bT - aT;
   });
 
-  const filteredDeals = deals?.filter(
-    (d) =>
-      d.dealNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredDeals = deals?.filter((d) => {
+    const matchesSearch = d.dealNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.seeker.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.provider.fullName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      d.provider.fullName.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (dealStateFilter === "active" && !["proposed", "accepted", "in_progress", "delivery_proof"].includes(d.state)) return false;
+    if (dealStateFilter !== "all" && dealStateFilter !== "active" && d.state !== dealStateFilter) return false;
+    if (!matchesDateRange(d.createdAt, dateRangeFilter, customDateFrom, customDateTo)) return false;
+    return true;
+  }).sort((a, b) => {
+    if (dealSortBy === "value_desc" || dealSortBy === "value_asc") {
+      const aVal = parseFloat(a.seekerValue as string || "0") + parseFloat(a.providerValue as string || "0");
+      const bVal = parseFloat(b.seekerValue as string || "0") + parseFloat(b.providerValue as string || "0");
+      return dealSortBy === "value_asc" ? aVal - bVal : bVal - aVal;
+    }
+    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dealSortBy === "date_asc" ? aT - bT : bT - aT;
+  });
 
   const navItems = [
     { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
@@ -1022,127 +1120,251 @@ export function AdminPage() {
     ? Object.entries(analytics.categoryStats).map(([name, value]) => ({ name, value }))
     : [];
 
+  // Shared date-range control reused across Users/Listings/Deals — single
+  // dateRangeFilter state drives all three so a dashboard card click can
+  // preset it once and land on a coherent filtered view.
+  const renderDateRangeFilter = () => (
+    <div className="flex items-center gap-2">
+      <Select value={dateRangeFilter} onValueChange={(v) => setDateRangeFilter(v as DateRangeFilter)}>
+        <SelectTrigger className="w-[130px]" data-testid="select-date-range-filter">
+          <SelectValue placeholder="Date range" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Time</SelectItem>
+          <SelectItem value="today">Today</SelectItem>
+          <SelectItem value="week">Last 7 Days</SelectItem>
+          <SelectItem value="month">Last 30 Days</SelectItem>
+          <SelectItem value="year">Last Year</SelectItem>
+          <SelectItem value="custom">Custom Range</SelectItem>
+        </SelectContent>
+      </Select>
+      {dateRangeFilter === "custom" && (
+        <>
+          <Input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="w-36 h-9 text-xs" data-testid="input-date-range-from" />
+          <Input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="w-36 h-9 text-xs" data-testid="input-date-range-to" />
+        </>
+      )}
+    </div>
+  );
+
+  // Lets a dashboard card jump straight to a section with a preset filter
+  // combination, so "New Listings Today" etc. land on the exact filtered
+  // view the metric describes instead of just switching tabs blind.
+  const goToSection = (section: AdminSection, opts?: {
+    userStatusFilter?: string;
+    userCountryFilter?: string;
+    userSortBy?: string;
+    listingValueFilter?: string;
+    listingCountryFilter?: string;
+    listingSortBy?: string;
+    dealStateFilter?: string;
+    dealSortBy?: string;
+    dateRangeFilter?: DateRangeFilter;
+  }) => {
+    setDateRangeFilter(opts?.dateRangeFilter ?? "all");
+    setCustomDateFrom("");
+    setCustomDateTo("");
+    setUserStatusFilter(opts?.userStatusFilter ?? "all");
+    setUserCountryFilter(opts?.userCountryFilter ?? "all");
+    setUserSortBy(opts?.userSortBy ?? "date_desc");
+    setListingValueFilter(opts?.listingValueFilter ?? "all");
+    setListingCountryFilter(opts?.listingCountryFilter ?? "all");
+    setListingSortBy(opts?.listingSortBy ?? "date_desc");
+    setDealStateFilter(opts?.dealStateFilter ?? "all");
+    setDealSortBy(opts?.dealSortBy ?? "date_desc");
+    setActiveSection(section);
+  };
+
+  const StatCard = ({
+    testId, label, value, sub, icon, color, onClick,
+  }: {
+    testId: string; label: string; value: string | number; sub?: string;
+    icon: React.ReactNode; color: string; onClick?: () => void;
+  }) => (
+    <Card
+      data-testid={testId}
+      className={onClick ? "cursor-pointer transition-colors hover:bg-muted/50" : undefined}
+      onClick={onClick}
+    >
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm text-muted-foreground">{label}</p>
+            <p className="text-2xl font-bold">{value}</p>
+            {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+          </div>
+          <div className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center shrink-0`}>
+            {icon}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   const renderDashboard = () => (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-1">Dashboard Overview</h2>
-        <p className="text-muted-foreground">Platform metrics and quick actions</p>
+        <p className="text-muted-foreground">Platform metrics and quick actions — click any card to drill in</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card data-testid="stat-total-users">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-2xl font-bold" data-testid="text-total-users">{analytics?.totalUsers || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Users className="h-5 w-5 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          testId="stat-total-users" label="Total Users" value={analytics?.totalUsers || 0}
+          icon={<Users className="h-5 w-5 text-primary" />} color="bg-primary/10"
+          onClick={() => goToSection("users")}
+        />
+        <StatCard
+          testId="stat-new-users-today" label="New Users Today" value={analytics?.newUsersToday || 0}
+          icon={<UserPlus className="h-5 w-5 text-cyan-500" />} color="bg-cyan-500/10"
+          onClick={() => goToSection("users", { dateRangeFilter: "today" })}
+        />
+        <StatCard
+          testId="stat-new-users-week" label="New Users This Week" value={analytics?.newUsersThisWeek || 0}
+          icon={<UserPlus className="h-5 w-5 text-sky-500" />} color="bg-sky-500/10"
+          onClick={() => goToSection("users", { dateRangeFilter: "week" })}
+        />
+        <StatCard
+          testId="stat-active-deals" label="Active Deals" value={analytics?.activeDeals || 0}
+          icon={<Handshake className="h-5 w-5 text-blue-500" />} color="bg-blue-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "active" })}
+        />
+        <StatCard
+          testId="stat-total-deals" label="Total Deals" value={analytics?.totalDeals || 0}
+          icon={<ListChecks className="h-5 w-5 text-indigo-500" />} color="bg-indigo-500/10"
+          onClick={() => goToSection("deals")}
+        />
 
-        <Card data-testid="stat-active-deals">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Active Deals</p>
-                <p className="text-2xl font-bold" data-testid="text-active-deals">{analytics?.activeDeals || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-                <Handshake className="h-5 w-5 text-blue-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          testId="stat-completed-deals" label="Completed Deals" value={analytics?.completedDeals || 0}
+          icon={<CheckCircle className="h-5 w-5 text-green-500" />} color="bg-green-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "completed" })}
+        />
+        <StatCard
+          testId="stat-completion-rate" label="Completion Rate"
+          value={analytics?.completionRate !== undefined ? `${analytics.completionRate.toFixed(0)}%` : "0%"}
+          icon={<Percent className="h-5 w-5 text-emerald-500" />} color="bg-emerald-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "completed" })}
+        />
+        <StatCard
+          testId="stat-monthly-gmv" label="GMV This Month"
+          value={analytics?.monthlyGMV ? `${(analytics.monthlyGMV / 1000).toFixed(0)}K` : "0"}
+          sub="AED" icon={<DollarSign className="h-5 w-5 text-green-500" />} color="bg-green-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc", dateRangeFilter: "month" })}
+        />
+        <StatCard
+          testId="stat-total-gmv" label="Total GMV (All Time)"
+          value={analytics?.totalGMV ? `${(analytics.totalGMV / 1000).toFixed(0)}K` : "0"}
+          sub="AED" icon={<Wallet className="h-5 w-5 text-teal-500" />} color="bg-teal-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc" })}
+        />
+        <StatCard
+          testId="stat-avg-deal-value" label="Avg Deal Value"
+          value={analytics?.avgDealValue ? `${Math.round(analytics.avgDealValue).toLocaleString()}` : "0"}
+          sub="AED" icon={<DollarSign className="h-5 w-5 text-lime-500" />} color="bg-lime-500/10"
+          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc" })}
+        />
 
-        <Card data-testid="stat-monthly-gmv">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">GMV This Month</p>
-                <p className="text-2xl font-bold" data-testid="text-monthly-gmv">
-                  {analytics?.monthlyGMV ? `${(analytics.monthlyGMV / 1000).toFixed(0)}K` : "0"}
-                </p>
-                <p className="text-xs text-muted-foreground">AED</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
-                <DollarSign className="h-5 w-5 text-green-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-pending-verifications">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Pending Verifications</p>
-                <p className="text-2xl font-bold" data-testid="text-pending-verifications">{analytics?.pendingVerifications || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-orange-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-new-listings-today">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">New Listings Today</p>
-                <p className="text-2xl font-bold" data-testid="text-new-listings-today">{analytics?.newListingsToday || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
-                <Package className="h-5 w-5 text-purple-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+        <StatCard
+          testId="stat-total-listings" label="Total Listings" value={analytics?.totalListings || 0}
+          icon={<Package className="h-5 w-5 text-purple-500" />} color="bg-purple-500/10"
+          onClick={() => goToSection("listings")}
+        />
+        <StatCard
+          testId="stat-active-listings" label="Active Listings" value={analytics?.activeListings || 0}
+          icon={<Package className="h-5 w-5 text-fuchsia-500" />} color="bg-fuchsia-500/10"
+          onClick={() => goToSection("listings")}
+        />
+        <StatCard
+          testId="stat-new-listings-today" label="New Listings Today" value={analytics?.newListingsToday || 0}
+          icon={<Package className="h-5 w-5 text-violet-500" />} color="bg-violet-500/10"
+          onClick={() => goToSection("listings", { dateRangeFilter: "today" })}
+        />
+        <StatCard
+          testId="stat-pending-verifications" label="Pending Verifications" value={analytics?.pendingVerifications || 0}
+          icon={<Clock className="h-5 w-5 text-orange-500" />} color="bg-orange-500/10"
+          onClick={() => goToSection("users", { userStatusFilter: "pending" })}
+        />
         {/* Task #248: completion-funnel KPIs surfaced from /api/admin/analytics */}
-        <Card data-testid="stat-incomplete-verifications">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Incomplete Verifications</p>
-                <p className="text-2xl font-bold" data-testid="text-incomplete-verifications">{analytics?.incompleteVerifications || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-amber-500" />
-              </div>
-            </div>
+        <StatCard
+          testId="stat-incomplete-verifications" label="Incomplete Verifications" value={analytics?.incompleteVerifications || 0}
+          icon={<Clock className="h-5 w-5 text-amber-500" />} color="bg-amber-500/10"
+          onClick={() => goToSection("users", { userStatusFilter: "pending" })}
+        />
+
+        <StatCard
+          testId="stat-open-drafts" label="Open Drafts" value={analytics?.openDrafts || 0}
+          icon={<Package className="h-5 w-5 text-blue-500" />} color="bg-blue-500/10"
+          onClick={() => setDraftsDialogOpen(true)}
+        />
+        <StatCard
+          testId="stat-abandoned-engagement" label="Abandoned Engagement" value={analytics?.abandonedEngagement || 0}
+          icon={<Clock className="h-5 w-5 text-rose-500" />} color="bg-rose-500/10"
+          onClick={() => setAbandonedDialogOpen(true)}
+        />
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><Tag className="h-4 w-4" /> Top Categories</CardTitle>
+            <CardDescription>Most-listed categories, click to filter listings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(analytics?.topCategories?.length ? analytics.topCategories : []).map((c) => (
+              <button
+                key={c.category}
+                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
+                onClick={() => goToSection("listings")}
+                data-testid={`top-category-${c.category}`}
+              >
+                <span className="truncate">{c.category}</span>
+                <Badge variant="secondary">{c.count}</Badge>
+              </button>
+            ))}
+            {!analytics?.topCategories?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
           </CardContent>
         </Card>
 
-        <Card data-testid="stat-open-drafts">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Open Drafts</p>
-                <p className="text-2xl font-bold" data-testid="text-open-drafts">{analytics?.openDrafts || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-                <Package className="h-5 w-5 text-blue-500" />
-              </div>
-            </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4" /> Top Countries</CardTitle>
+            <CardDescription>Listings by country, click to filter</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(analytics?.topCountries?.length ? analytics.topCountries : []).map((c) => (
+              <button
+                key={c.country}
+                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
+                onClick={() => goToSection("listings", { listingCountryFilter: c.country })}
+                data-testid={`top-country-${c.country}`}
+              >
+                <span className="truncate">{c.country}</span>
+                <Badge variant="secondary">{c.count}</Badge>
+              </button>
+            ))}
+            {!analytics?.topCountries?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
           </CardContent>
         </Card>
 
-        <Card data-testid="stat-abandoned-engagement">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Abandoned Engagement</p>
-                <p className="text-2xl font-bold" data-testid="text-abandoned-engagement">{analytics?.abandonedEngagement || 0}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-rose-500" />
-              </div>
-            </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Top Cities</CardTitle>
+            <CardDescription>Listings by city, click to filter</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(analytics?.topCities?.length ? analytics.topCities : []).map((c) => (
+              <button
+                key={c.city}
+                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
+                onClick={() => goToSection("listings")}
+                data-testid={`top-city-${c.city}`}
+              >
+                <span className="truncate">{c.city}</span>
+                <Badge variant="secondary">{c.count}</Badge>
+              </button>
+            ))}
+            {!analytics?.topCities?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
           </CardContent>
         </Card>
       </div>
@@ -1183,13 +1405,18 @@ export function AdminPage() {
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest deals and user actions</CardDescription>
+            <CardDescription>Latest deals and user actions — click a row for details</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[300px]">
               <div className="space-y-4">
                 {deals?.slice(0, 10).map((deal) => (
-                  <div key={deal.id} className="flex items-start gap-3">
+                  <div
+                    key={deal.id}
+                    className="flex items-start gap-3 cursor-pointer hover:bg-muted/50 rounded-md p-1.5 -m-1.5 transition-colors"
+                    onClick={() => setSelectedDeal(deal)}
+                    data-testid={`recent-activity-${deal.id}`}
+                  >
                     <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
                       deal.state === "completed" ? "bg-green-500/10" :
                       deal.state === "cancelled" ? "bg-red-500/10" :
@@ -1221,6 +1448,68 @@ export function AdminPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={draftsDialogOpen} onOpenChange={setDraftsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Open Drafts</DialogTitle>
+            <DialogDescription>Listings users started but never published</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            {listingDraftsLoading ? (
+              <p className="text-sm text-muted-foreground py-4">Loading…</p>
+            ) : !listingDraftsData?.length ? (
+              <p className="text-sm text-muted-foreground py-4">No open drafts.</p>
+            ) : (
+              <div className="space-y-2">
+                {listingDraftsData.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 p-3 rounded-md border">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{d.title || "Untitled draft"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{d.userFullName || d.userEmail || d.userId}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {d.updatedAt ? new Date(d.updatedAt).toLocaleDateString() : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={abandonedDialogOpen} onOpenChange={setAbandonedDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Abandoned Engagement</DialogTitle>
+            <DialogDescription>Users who saved or messaged on a listing 48h+ ago and never opened a deal</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            {abandonedEngagementLoading ? (
+              <p className="text-sm text-muted-foreground py-4">Loading…</p>
+            ) : !abandonedEngagementData?.length ? (
+              <p className="text-sm text-muted-foreground py-4">No abandoned engagement.</p>
+            ) : (
+              <div className="space-y-2">
+                {abandonedEngagementData.map((e, i) => (
+                  <div key={`${e.userId}-${i}`} className="flex items-center justify-between gap-3 p-3 rounded-md border">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{e.userFullName || e.userEmail || e.userId}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {e.eventType === "saved" ? "Saved" : "Messaged about"} {e.listingTitle || "a listing"}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {e.createdAt ? new Date(e.createdAt).toLocaleDateString() : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -1257,6 +1546,29 @@ export function AdminPage() {
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="individual">Individual</SelectItem>
               <SelectItem value="business">Business</SelectItem>
+            </SelectContent>
+          </Select>
+          {availableUserCountries.length > 0 && (
+            <Select value={userCountryFilter} onValueChange={setUserCountryFilter}>
+              <SelectTrigger className="w-[130px]" data-testid="select-user-country-filter">
+                <SelectValue placeholder="Country" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Countries</SelectItem>
+                {availableUserCountries.map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {renderDateRangeFilter()}
+          <Select value={userSortBy} onValueChange={setUserSortBy}>
+            <SelectTrigger className="w-[140px]" data-testid="select-user-sort">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest First</SelectItem>
+              <SelectItem value="date_asc">Oldest First</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative w-64">
@@ -1607,6 +1919,31 @@ export function AdminPage() {
               <SelectItem value="over20000">Over 20,000 AED</SelectItem>
             </SelectContent>
           </Select>
+          {availableListingCountries.length > 0 && (
+            <Select value={listingCountryFilter} onValueChange={setListingCountryFilter}>
+              <SelectTrigger className="w-[130px]" data-testid="select-listing-country-filter">
+                <SelectValue placeholder="Country" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Countries</SelectItem>
+                {availableListingCountries.map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {renderDateRangeFilter()}
+          <Select value={listingSortBy} onValueChange={setListingSortBy}>
+            <SelectTrigger className="w-[150px]" data-testid="select-listing-sort">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest First</SelectItem>
+              <SelectItem value="date_asc">Oldest First</SelectItem>
+              <SelectItem value="value_desc">Highest Value</SelectItem>
+              <SelectItem value="value_asc">Lowest Value</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -1810,6 +2147,33 @@ export function AdminPage() {
           <p className="text-muted-foreground">View all deals and their details</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Select value={dealStateFilter} onValueChange={setDealStateFilter}>
+            <SelectTrigger className="w-[140px]" data-testid="select-deal-state-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active (In Progress)</SelectItem>
+              <SelectItem value="proposed">Proposed</SelectItem>
+              <SelectItem value="accepted">Accepted</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="delivery_proof">Delivery Proof</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          {renderDateRangeFilter()}
+          <Select value={dealSortBy} onValueChange={setDealSortBy}>
+            <SelectTrigger className="w-[150px]" data-testid="select-deal-sort">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest First</SelectItem>
+              <SelectItem value="date_asc">Oldest First</SelectItem>
+              <SelectItem value="value_desc">Highest Value</SelectItem>
+              <SelectItem value="value_asc">Lowest Value</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

@@ -4465,8 +4465,44 @@ export async function registerRoutes(
         abandonedEngagement = await storage.countAbandonedEngagement();
       } catch (e) { console.error("[analytics] abandonedEngagement:", e); }
 
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - 7);
+      const newUsersToday = allUsers.filter(u => u.createdAt && new Date(u.createdAt) >= todayStart).length;
+      const newUsersThisWeek = allUsers.filter(u => u.createdAt && new Date(u.createdAt) >= weekStart).length;
+
+      const avgDealValue = completedDeals.length > 0 ? totalGMV / completedDeals.length : 0;
+      const completionRate = allDeals.length > 0 ? (completedDeals.length / allDeals.length) * 100 : 0;
+
+      const topCategories = Object.entries(categoryStats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([category, count]) => ({ category, count }));
+
+      const countryStats: Record<string, number> = {};
+      allListings.forEach(l => {
+        const c = (l as any).country || "Unknown";
+        countryStats[c] = (countryStats[c] || 0) + 1;
+      });
+      const topCountries = Object.entries(countryStats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([country, count]) => ({ country, count }));
+
+      const cityStats: Record<string, number> = {};
+      allListings.forEach(l => {
+        const c = (l as any).city;
+        if (c) cityStats[c] = (cityStats[c] || 0) + 1;
+      });
+      const topCities = Object.entries(cityStats)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([city, count]) => ({ city, count }));
+
       res.json({
         totalUsers: allUsers.length,
+        newUsersToday,
+        newUsersThisWeek,
         totalDeals: allDeals.length,
         activeDeals: activeDeals.length,
         completedDeals: completedDeals.length,
@@ -4475,15 +4511,68 @@ export async function registerRoutes(
         newListingsToday,
         totalGMV,
         monthlyGMV,
+        avgDealValue,
+        completionRate,
         pendingVerifications,
         incompleteVerifications,
         openDrafts,
         abandonedEngagement,
         categoryStats,
+        topCategories,
+        topCountries,
+        topCities,
         dealsPerWeek,
       });
     } catch (error) {
       console.error("Admin analytics error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Drill-down for the "Open Drafts" dashboard card — listing_drafts has no
+  // admin section of its own, so this powers a lightweight detail dialog.
+  app.get("/api/admin/listing-drafts", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await db
+        .select({
+          id: listingDrafts.id,
+          title: listingDrafts.title,
+          userId: listingDrafts.userId,
+          userFullName: users.fullName,
+          userEmail: users.email,
+          createdAt: listingDrafts.createdAt,
+          updatedAt: listingDrafts.updatedAt,
+        })
+        .from(listingDrafts)
+        .leftJoin(users, eq(listingDrafts.userId, users.id))
+        .orderBy(desc(listingDrafts.updatedAt));
+      res.json(rows);
+    } catch (error) {
+      console.error("Admin listing-drafts error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Drill-down for the "Abandoned Engagement" dashboard card — users who
+  // saved/messaged on a listing ≥48h ago and never opened a deal.
+  app.get("/api/admin/abandoned-engagement", requireAdmin, async (_req, res) => {
+    try {
+      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      const rows = await db.execute(sqlOperator`
+        SELECT DISTINCT ON (e.user_id)
+          e.user_id AS "userId", u.full_name AS "userFullName", u.email AS "userEmail",
+          e.listing_id AS "listingId", l.title AS "listingTitle", e.event_type AS "eventType",
+          e.created_at AS "createdAt"
+        FROM engagement_events e
+        JOIN users u ON u.id = e.user_id
+        LEFT JOIN listings l ON l.id = e.listing_id
+        WHERE e.event_type IN ('saved', 'message_started') AND e.created_at <= ${cutoff}
+        ORDER BY e.user_id, e.created_at DESC
+      `);
+      const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+      res.json(list);
+    } catch (error) {
+      console.error("Admin abandoned-engagement error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
