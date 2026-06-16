@@ -500,7 +500,7 @@ export function Header() {
                         <Settings className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span>{t("nav.settings")}</span>
                       </DropdownMenuItem>
-                      {user.isAdmin && (
+                      {user.role === "super_admin" && (
                         <DropdownMenuItem onSelect={() => navigate("/admin")} className="cursor-pointer gap-2.5 px-4 py-2.5" data-testid="menu-admin">
                           <Shield className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           <span className="flex-1">Admin Panel</span>
@@ -643,7 +643,7 @@ export function Header() {
                           <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                         </button>
                       </Link>
-                      {user.isAdmin && (
+                      {user.role === "super_admin" && (
                         <Link href="/admin" onClick={closeMobileMenu}>
                           <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
                             <Shield className="h-4 w-4 text-muted-foreground" />

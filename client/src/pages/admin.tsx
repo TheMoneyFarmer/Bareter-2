@@ -3477,6 +3477,7 @@ export function AdminPage() {
           <AdminsManagementTab
             users={users ?? []}
             currentUserId={user?.id ?? ""}
+            currentUserRole={user?.role ?? ""}
             promoteMutation={promoteMutation}
             demoteMutation={demoteMutation}
           />
@@ -6271,18 +6272,65 @@ function CmsMembersSection() {
 function AdminsManagementTab({
   users,
   currentUserId,
+  currentUserRole,
   promoteMutation,
   demoteMutation,
 }: {
   users: User[];
   currentUserId: string;
+  currentUserRole: string;
   promoteMutation: ReturnType<typeof useMutation<void, Error, string>>;
   demoteMutation: ReturnType<typeof useMutation<void, Error, string>>;
 }) {
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [addSearch, setAddSearch] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; user: User | null; action: "promote" | "demote" }>({
     open: false, user: null, action: "promote",
+  });
+  const isSuperAdmin = currentUserRole === "super_admin";
+
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "super_admin">("admin");
+
+  const { data: invites = [], isLoading: invitesLoading } = useQuery<
+    { id: number; email: string; role: string; expiresAt: string; acceptedAt: string | null; revokedAt: string | null }[]
+  >({
+    queryKey: ["/api/admin/invites"],
+    enabled: isSuperAdmin,
+    staleTime: 0,
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/admin/invites", { email: inviteEmail.trim().toLowerCase(), role: inviteRole });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/invites"] });
+      toast({ title: "Invite sent", description: `An invite link was emailed to ${inviteEmail.trim()}.` });
+      setInviteEmail("");
+      setInviteRole("admin");
+    },
+    onError: (err: Error) => {
+      const raw = err.message?.split(": ").slice(1).join(": ") || "";
+      const parsed = (() => {
+        try { return JSON.parse(raw)?.message as string | undefined; } catch { return undefined; }
+      })();
+      toast({ title: "Couldn't send invite", description: parsed || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const revokeInviteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("POST", `/api/admin/invites/${id}/revoke`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/invites"] });
+      toast({ title: "Invite revoked" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to revoke invite", variant: "destructive" });
+    },
   });
 
   const admins = users.filter((u) => u.isAdmin || u.role === "admin" || u.role === "super_admin");
@@ -6431,6 +6479,108 @@ function AdminsManagementTab({
           )}
         </CardContent>
       </Card>
+
+      {isSuperAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-bareter-teal" />
+              Invite a Department Lead
+            </CardTitle>
+            <CardDescription>
+              Send a one-time invite link by email. They set their own password and get their own
+              login — no shared credentials, and only super admins can send these.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="teammate@email.com"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="max-w-sm"
+                data-testid="input-invite-email"
+              />
+              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "admin" | "super_admin")}>
+                <SelectTrigger className="w-full sm:w-[160px]" data-testid="select-invite-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="super_admin">Super Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={() => inviteMutation.mutate()}
+                disabled={!inviteEmail.trim() || inviteMutation.isPending}
+                data-testid="button-send-invite"
+              >
+                <Mail className="h-3.5 w-3.5 mr-1" />
+                Send Invite
+              </Button>
+            </div>
+
+            {invitesLoading ? (
+              <div className="py-4 text-center text-muted-foreground text-sm">Loading invites…</div>
+            ) : invites.length === 0 ? (
+              <div className="py-4 text-center text-muted-foreground text-sm">No invites sent yet</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invites.map((inv) => {
+                    const isExpired = !inv.acceptedAt && !inv.revokedAt && new Date(inv.expiresAt) < new Date();
+                    const statusLabel = inv.acceptedAt
+                      ? "Accepted"
+                      : inv.revokedAt
+                        ? "Revoked"
+                        : isExpired
+                          ? "Expired"
+                          : "Pending";
+                    const statusVariant = inv.acceptedAt ? "default" : inv.revokedAt || isExpired ? "outline" : "secondary";
+                    const canRevoke = !inv.acceptedAt && !inv.revokedAt && !isExpired;
+                    return (
+                      <TableRow key={inv.id} data-testid={`row-invite-${inv.id}`}>
+                        <TableCell className="text-sm">{inv.email}</TableCell>
+                        <TableCell>
+                          <Badge variant={inv.role === "super_admin" ? "destructive" : "default"}>
+                            {inv.role === "super_admin" ? "Super Admin" : "Admin"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusVariant as "default" | "outline" | "secondary"}>{statusLabel}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {canRevoke && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                              disabled={revokeInviteMutation.isPending}
+                              onClick={() => revokeInviteMutation.mutate(inv.id)}
+                              data-testid={`button-revoke-invite-${inv.id}`}
+                            >
+                              Revoke
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog
         open={confirmDialog.open}

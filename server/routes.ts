@@ -302,6 +302,23 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
   next();
 };
 
+// Only the founder/super_admins can invite new admins — a regular department-lead
+// admin must never be able to mint invite links for someone else.
+const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const user = await storage.getUser(req.session.userId);
+  if (user?.role !== "super_admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  const allow = await getAdminEmailAllowlist();
+  if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  next();
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -5417,6 +5434,149 @@ export async function registerRoutes(
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Admin demote error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Super-admin-only: mint a one-time invite link for a new department lead.
+  app.post("/api/admin/invites", requireSuperAdmin, async (req, res) => {
+    try {
+      const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      const role = req.body.role === "super_admin" ? "super_admin" : "admin";
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "A valid email is required" });
+      }
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "A user with this email already exists" });
+      }
+      const existingInvites = await storage.getAdminInvites();
+      const now = new Date();
+      const pending = existingInvites.find(
+        (inv) => inv.email === email && !inv.acceptedAt && !inv.revokedAt && inv.expiresAt > now,
+      );
+      if (pending) {
+        return res.status(400).json({ message: "An active invite for this email already exists" });
+      }
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const invite = await storage.createAdminInvite({
+        email,
+        role,
+        token,
+        invitedByUserId: req.session.userId!,
+        expiresAt,
+      });
+      const inviter = await storage.getUser(req.session.userId!);
+      const adminDomain = process.env.ADMIN_DOMAIN || "admin.bareter.com";
+      const acceptUrl = `https://${adminDomain}/accept-invite?token=${token}`;
+      const { sendAdminInviteEmail } = await import("./emailService");
+      await sendAdminInviteEmail(email, {
+        inviterName: inviter?.fullName || "A Bareter admin",
+        role,
+        acceptUrl,
+        expiresInDays: 7,
+      });
+      await logAdminAction(req, "admin_invite_create", "admin_invite", String(invite.id), { email, role });
+      res.status(201).json({ id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt });
+    } catch (error) {
+      console.error("Admin invite create error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Super-admin-only: list all invites (pending/accepted/revoked/expired) for the management UI.
+  app.get("/api/admin/invites", requireSuperAdmin, async (_req, res) => {
+    try {
+      const invites = await storage.getAdminInvites();
+      res.json(invites.map(({ token, ...rest }) => rest));
+    } catch (error) {
+      console.error("Admin invites list error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Super-admin-only: revoke an unused invite link before it's accepted.
+  app.post("/api/admin/invites/:id/revoke", requireSuperAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invite id" });
+      await storage.revokeAdminInvite(id);
+      await logAdminAction(req, "admin_invite_revoke", "admin_invite", String(id), {});
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Admin invite revoke error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Public, unauthenticated — the accept-invite page calls this first to validate
+  // the token before showing the signup form. Never returns the token itself.
+  app.get("/api/admin/invites/verify/:token", async (req, res) => {
+    try {
+      const token = String(req.params.token || "");
+      const invite = await storage.getAdminInviteByToken(token);
+      if (!invite || invite.acceptedAt || invite.revokedAt || invite.expiresAt < new Date()) {
+        return res.status(404).json({ valid: false });
+      }
+      res.json({ valid: true, email: invite.email, role: invite.role });
+    } catch (error) {
+      console.error("Admin invite verify error:", error);
+      res.status(500).json({ valid: false });
+    }
+  });
+
+  // Public, unauthenticated — creates the admin account from a valid, unused, unexpired
+  // invite token. This is the ONLY way to create an admin account without an existing
+  // admin doing it directly; there is no open signup page on the admin subdomain.
+  app.post("/api/admin/invites/accept", async (req, res) => {
+    try {
+      const token = typeof req.body.token === "string" ? req.body.token : "";
+      const fullName = typeof req.body.fullName === "string" ? req.body.fullName.trim() : "";
+      const password = typeof req.body.password === "string" ? req.body.password : "";
+      const invite = await storage.getAdminInviteByToken(token);
+      if (!invite || invite.acceptedAt || invite.revokedAt || invite.expiresAt < new Date()) {
+        return res.status(400).json({ message: "This invite link is invalid or has expired" });
+      }
+      if (!fullName) {
+        return res.status(400).json({ message: "Full name is required" });
+      }
+      if (!password || password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+      const existingUser = await storage.getUserByEmail(invite.email);
+      if (existingUser) {
+        return res.status(400).json({ message: "An account with this email already exists" });
+      }
+      const hashedPassword = await hashPassword(password);
+      const createdUser = await storage.createUser({
+        email: invite.email,
+        password: hashedPassword,
+        fullName,
+        role: invite.role,
+        accountType: "individual",
+        country: "AE",
+      });
+      const user = (await storage.updateUser(createdUser.id, { isAdmin: true })) || createdUser;
+      await updateAdminAllowlist(invite.email, "add", invite.invitedByUserId);
+      await storage.markAdminInviteAccepted(invite.id, user.id);
+      await storage.createAuditLog({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "admin_invite_accept",
+        targetType: "admin_invite",
+        targetId: String(invite.id),
+        details: { invitedBy: invite.invitedByUserId, role: invite.role },
+        ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+      });
+      req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => (err ? reject(err) : resolve()));
+      });
+      const { password: _pw, ...safeUser } = user;
+      res.status(201).json(safeUser);
+    } catch (error) {
+      console.error("Admin invite accept error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

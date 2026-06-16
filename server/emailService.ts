@@ -472,6 +472,30 @@ export async function sendEmailVerificationEmail(toEmail: string, opts: { fullNa
   return sendMail({ to: toEmail, subject: `Verify your ${APP_NAME} email`, html, text });
 }
 
+export async function sendAdminInviteEmail(
+  toEmail: string,
+  opts: { inviterName: string; role: string; acceptUrl: string; expiresInDays: number },
+): Promise<boolean> {
+  const roleLabel = opts.role === "super_admin" ? "Super Admin" : "Admin";
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Admin invite for ${toEmail}: ${opts.acceptUrl}`);
+    return false;
+  }
+  const html = emailShell(`
+    <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">You've been invited to the ${APP_NAME} admin panel</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${opts.inviterName} has invited you to join the ${APP_NAME} admin team as <strong>${roleLabel}</strong>.</p>
+    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Click below to set your password and activate your account. This link expires in <strong>${opts.expiresInDays} days</strong>.</p>
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${opts.acceptUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Activate my admin account</a>
+    </div>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0 0 6px;">Or paste this link in your browser:</p>
+    <p style="text-align:center;margin:0 0 18px;"><a href="${opts.acceptUrl}" style="color:#136c68;font-size:11px;word-break:break-all;">${opts.acceptUrl}</a></p>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">If you weren't expecting this, you can safely ignore this email.</p>
+  `);
+  const text = `${opts.inviterName} has invited you to join the ${APP_NAME} admin team as ${roleLabel}.\n\nActivate your account:\n${opts.acceptUrl}\n\nThis link expires in ${opts.expiresInDays} days.\n\nIf you weren't expecting this, ignore this email.\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `You've been invited to the ${APP_NAME} admin team`, html, text });
+}
+
 export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 

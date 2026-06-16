@@ -67,6 +67,9 @@ import {
   waitlistEntries,
   type WaitlistEntry,
   type InsertWaitlistEntry,
+  adminInvites,
+  type AdminInvite,
+  type InsertAdminInvite,
   appSettings,
   consentLogs,
   type ConsentLog,
@@ -406,6 +409,13 @@ export interface IStorage {
   markWaitlistFinalCallSent(entryId: number): Promise<void>;
   getOrCreateWaitlistUnsubscribeToken(entryId: number): Promise<string>;
   getWaitlistEntryByUnsubscribeToken(token: string): Promise<WaitlistEntry | undefined>;
+
+  // Admin invites — one-time links for onboarding department leads (super_admin only)
+  createAdminInvite(invite: InsertAdminInvite & { token: string }): Promise<AdminInvite>;
+  getAdminInviteByToken(token: string): Promise<AdminInvite | undefined>;
+  getAdminInvites(): Promise<AdminInvite[]>;
+  revokeAdminInvite(id: number): Promise<void>;
+  markAdminInviteAccepted(id: number, acceptedUserId: string): Promise<void>;
 
   // Support Tickets
   createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket>;
@@ -2836,6 +2846,28 @@ export class DatabaseStorage implements IStorage {
   async getUserByUnsubscribeToken(token: string): Promise<User | undefined> {
     const [u] = await db.select().from(users).where(eq(users.unsubscribeToken, token));
     return u;
+  }
+
+  async createAdminInvite(invite: InsertAdminInvite & { token: string }): Promise<AdminInvite> {
+    const [row] = await db.insert(adminInvites).values(invite).returning();
+    return row;
+  }
+
+  async getAdminInviteByToken(token: string): Promise<AdminInvite | undefined> {
+    const [row] = await db.select().from(adminInvites).where(eq(adminInvites.token, token));
+    return row;
+  }
+
+  async getAdminInvites(): Promise<AdminInvite[]> {
+    return await db.select().from(adminInvites).orderBy(desc(adminInvites.createdAt));
+  }
+
+  async revokeAdminInvite(id: number): Promise<void> {
+    await db.update(adminInvites).set({ revokedAt: new Date() }).where(eq(adminInvites.id, id));
+  }
+
+  async markAdminInviteAccepted(id: number, acceptedUserId: string): Promise<void> {
+    await db.update(adminInvites).set({ acceptedAt: new Date(), acceptedUserId }).where(eq(adminInvites.id, id));
   }
 
   // ── Collab Applications ────────────────────────────────────────────────

@@ -608,6 +608,32 @@ export const waitlistEntries = pgTable("waitlist_entries", {
   positionUniqueIdx: uniqueIndex("waitlist_position_unique_idx").on(table.position),
 }));
 
+// One-time, expiring invite links for bringing department leads onto the admin
+// panel without a public signup form. Only super_admins can create these.
+export const adminInvites = pgTable("admin_invites", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("admin"), // admin | super_admin
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  invitedByUserId: varchar("invited_by_user_id", { length: 36 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  acceptedUserId: varchar("accepted_user_id", { length: 36 }),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAdminInviteSchema = createInsertSchema(adminInvites).omit({
+  id: true,
+  token: true,
+  acceptedAt: true,
+  acceptedUserId: true,
+  revokedAt: true,
+  createdAt: true,
+});
+export type InsertAdminInvite = z.infer<typeof insertAdminInviteSchema>;
+export type AdminInvite = typeof adminInvites.$inferSelect;
+
 // Exchange preference item with optional priority
 export type ExchangeItem = {
   name: string;

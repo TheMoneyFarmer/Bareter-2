@@ -34,6 +34,7 @@ const ListingDetailPage = lazy(() => import("@/pages/listing-detail").then((m) =
 const DealsPage = lazy(() => import("@/pages/deals").then((m) => ({ default: m.DealsPage })));
 const DealDetailPage = lazy(() => import("@/pages/deal-detail").then((m) => ({ default: m.DealDetailPage })));
 const AdminPage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminPage })));
+const AdminAcceptInvitePage = lazy(() => import("@/pages/admin-accept-invite").then((m) => ({ default: m.AdminAcceptInvitePage })));
 const CompanyOsDashboard = lazy(() => import("@/pages/admin/CompanyOsDashboard"));
 const MarketingDashboard = lazy(() => import("@/pages/admin/MarketingDashboard"));
 const SalesDashboard = lazy(() => import("@/pages/admin/SalesDashboard"));
@@ -235,12 +236,23 @@ function AdminLoginForm() {
 // Minimal app rendered when hostname === admin.bareter.com.
 // No header, footer, nav, cookie banner, or support chat — just the admin panel.
 function AdminApp() {
+  const [location] = useLocation();
   const { data: user, isLoading } = useQuery<{ role?: string; isAdmin?: boolean } | null>({
     queryKey: ["/api/auth/me"],
     retry: false,
   });
 
   const isAdmin = user?.isAdmin === true || user?.role === "admin" || user?.role === "super_admin";
+
+  // Invite acceptance is the only unauthenticated, account-creating page on this
+  // subdomain — it requires a valid one-time token, so it bypasses the login/404 gate below.
+  if (location.startsWith("/accept-invite")) {
+    return (
+      <Suspense fallback={<FullPageLoader />}>
+        <AdminAcceptInvitePage />
+      </Suspense>
+    );
+  }
 
   if (isLoading) {
     return <FullPageLoader />;
