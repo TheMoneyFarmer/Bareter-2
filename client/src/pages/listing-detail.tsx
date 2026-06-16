@@ -1449,7 +1449,7 @@ export function ListingDetailPage() {
                     <p className="text-sm font-medium">Add your WhatsApp to propose a barter</p>
                   </div>
                   <p className="text-xs text-muted-foreground">Verify your WhatsApp number to unlock proposals and protect both sides of every deal.</p>
-                  <Link href="/profile" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-4 hover:bg-primary/90 transition-colors">Add WhatsApp</Link>
+                  <Link href="/profile?tab=verification" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-4 hover:bg-primary/90 transition-colors">Add WhatsApp</Link>
                 </div>
               )}
 
