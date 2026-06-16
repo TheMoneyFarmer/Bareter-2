@@ -5014,7 +5014,7 @@ export async function registerRoutes(
   app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
     try {
       const templates: Record<string, string> = {};
-      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const key of keys) {
         const val = await storage.getAppSetting(key);
         templates[key] = val || "";
@@ -5032,7 +5032,7 @@ export async function registerRoutes(
       if (!templates || typeof templates !== "object") {
         return res.status(400).json({ message: "Templates object is required" });
       }
-      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const [key, value] of Object.entries(templates)) {
         if (validKeys.includes(key) && typeof value === "string") {
           await storage.setAppSetting(key, value, req.session.userId);
@@ -5098,7 +5098,6 @@ export async function registerRoutes(
         email_template_new_message: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, senderName: "Test Co", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
-        email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", daysLeft: "3", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
         email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, verifyUrl: `${baseUrl}/api/auth/verify-email?token=test` },
         email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
         email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },

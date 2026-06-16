@@ -1788,32 +1788,6 @@ export async function sendProposalDeclinedEmail(
   return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" was not accepted`, html, text, templateKey: "email_template_proposal_declined" });
 }
 
-// ─── Listing Expiring Soon ────────────────────────────────────────────────────
-
-export async function sendListingExpiringEmail(
-  toEmail: string,
-  opts: { recipientName?: string | null; listingTitle: string; daysLeft: number; listingId: string; baseUrl: string },
-): Promise<boolean> {
-  if (!(await isEmailConfigured())) return false;
-  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
-  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const daysLeftStr = String(opts.daysLeft);
-  const listingUrl = `${opts.baseUrl}/listings/${opts.listingId}`;
-  const customTemplate = await getCustomTemplate("email_template_listing_expiring");
-  const html = customTemplate
-    ? applyTemplateVars(customTemplate, { greeting, listingTitle: safeTitle, daysLeft: daysLeftStr, appName: APP_NAME, baseUrl: opts.baseUrl })
-    : emailShell(`
-      <h2 style="font-size:19px;font-weight:700;color:#92400e;margin:0 0 10px;">Your listing expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</h2>
-      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} your listing <strong>"${safeTitle}"</strong> will expire in <strong>${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}</strong>.</p>
-      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">Renew it to keep receiving barter proposals and stay visible to traders.</p>
-      <div style="text-align:center;">
-        <a href="${listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Renew Listing</a>
-      </div>
-    `);
-  const text = `${greeting}\n\nYour listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}. Renew it here: ${listingUrl}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `Your listing "${opts.listingTitle}" expires in ${daysLeftStr} day${opts.daysLeft === 1 ? "" : "s"}`, html, text, templateKey: "email_template_listing_expiring" });
-}
-
 export async function sendRawEmail(opts: { to: string; subject: string; html: string; text: string; templateKey?: string; userId?: string }): Promise<boolean> {
   return sendMail(opts);
 }
