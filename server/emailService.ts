@@ -240,7 +240,7 @@ async function logEmailAttempt(opts: {
 // failures (see broadcast worker, which now also throttles its send rate).
 const RATE_LIMIT_RETRY_DELAYS_MS = [1200, 2500];
 
-async function sendMail(opts: MailOptions): Promise<boolean> {
+export async function sendMail(opts: MailOptions): Promise<boolean> {
   console.log(`[EMAIL] Attempting ${opts.templateKey ?? "unknown"} → ${opts.to} | "${opts.subject}"`);
   const source = opts.source ?? "transactional";
   let resendAttempted = false;
@@ -1059,7 +1059,7 @@ export async function sendVerificationUnderReviewEmail(
 // behavioural nudges, not transactional mail — they fall under
 // CAN-SPAM/GDPR/UAE PDPL "marketing-style" rules.
 
-function buildAppBaseUrl(): string {
+export function buildAppBaseUrl(): string {
   // getBaseUrl() already trims and handles the PUBLIC_APP_URL fallback.
   // Fall back to Replit domains when PUBLIC_APP_URL is not set.
   const publicUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
@@ -1146,6 +1146,48 @@ const REMINDER_COPY = {
       b: (n: string, t: string) => `${n}، كنت تتصفح "${t}" على Bareter. صاحب الإعلان لا يزال نشطًا — أرسل رسالة قبل أن يسبقك أحد.`,
       cta: "افتح الإعلان",
       sub: "تابع من حيث توقفت على Bareter",
+    },
+  },
+  signupUnverified: {
+    en: {
+      h: "Verify your email to get started",
+      b: (n: string) => `${n}, you signed up but haven't verified your email yet. Verify it now so you can list, propose, and trade on Bareter.`,
+      cta: "Verify my email",
+      sub: "Verify your email to start using Bareter",
+    },
+    ar: {
+      h: "وثّق بريدك الإلكتروني للبدء",
+      b: (n: string) => `${n}، لقد سجلت ولكن لم توثق بريدك الإلكتروني بعد. وثّقه الآن لتتمكن من النشر وتقديم العروض والمقايضة على Bareter.`,
+      cta: "وثّق بريدي الإلكتروني",
+      sub: "وثّق بريدك الإلكتروني لبدء استخدام Bareter",
+    },
+  },
+  signupNoListing: {
+    en: {
+      h: "Post your first listing",
+      b: (n: string) => `${n}, you joined Bareter but haven't listed anything yet. List what you have to offer — it takes a couple of minutes and that's how deals start happening.`,
+      cta: "Create your first listing",
+      sub: "Post your first listing on Bareter",
+    },
+    ar: {
+      h: "أنشر إعلانك الأول",
+      b: (n: string) => `${n}، لقد انضممت إلى Bareter ولكنك لم تنشر شيئًا بعد. أنشر ما تملكه — لا يستغرق ذلك سوى دقيقتين وهكذا تبدأ الصفقات.`,
+      cta: "أنشئ إعلانك الأول",
+      sub: "أنشر إعلانك الأول على Bareter",
+    },
+  },
+  listingNoProposal: {
+    en: {
+      h: "Browse and send your first proposal",
+      b: (n: string) => `${n}, your listing is live but a listing sitting alone doesn't make deals happen. Browse what's out there and send a proposal.`,
+      cta: "Browse listings",
+      sub: "Your listing is waiting for its first proposal",
+    },
+    ar: {
+      h: "تصفح وأرسل أول عرض لك",
+      b: (n: string) => `${n}، إعلانك منشور، لكن الإعلان بمفرده لا يصنع صفقات. تصفح ما هو متاح وأرسل عرضًا.`,
+      cta: "تصفح الإعلانات",
+      sub: "إعلانك في انتظار أول عرض",
     },
   },
 };
@@ -1242,6 +1284,121 @@ export async function sendEngagementReminderEmail(
   });
   const text = `${greeting}\n\n${copy.b(greeting, safeTitle)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
   return sendMail({ to: opts.toEmail, subject: copy.sub, html, text });
+}
+
+export async function sendSignupUnverifiedReminderEmail(
+  opts: ReminderOpts & { verifyUrl: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Signup-unverified reminder for ${opts.toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.signupUnverified[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=signupNudge`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const customTemplate = await getCustomTemplate("email_template_signup_unverified");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base, verifyUrl: opts.verifyUrl })
+    : reminderShell({
+        language: opts.language,
+        heading: copy.h,
+        body: copy.b(greeting),
+        ctaText: copy.cta,
+        ctaUrl: opts.verifyUrl,
+        unsubscribeUrl: unsubUrl,
+        unsubscribeLabel: unsubLabel,
+      });
+  const text = `${greeting}\n\n${copy.b(greeting)}\n\n${copy.cta}: ${opts.verifyUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text, templateKey: "email_template_signup_unverified" });
+}
+
+export async function sendSignupNoListingReminderEmail(opts: ReminderOpts): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Signup-no-listing reminder for ${opts.toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.signupNoListing[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const ctaUrl = `${base}/create-listing?utm_source=reminder&utm_medium=email&utm_campaign=signup_no_listing_24h`;
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=signupNudge`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const customTemplate = await getCustomTemplate("email_template_signup_no_listing");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base })
+    : reminderShell({
+        language: opts.language,
+        heading: copy.h,
+        body: copy.b(greeting),
+        ctaText: copy.cta,
+        ctaUrl,
+        unsubscribeUrl: unsubUrl,
+        unsubscribeLabel: unsubLabel,
+      });
+  const text = `${greeting}\n\n${copy.b(greeting)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text, templateKey: "email_template_signup_no_listing" });
+}
+
+export async function sendListingNoProposalReminderEmail(opts: ReminderOpts): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Listing-no-proposal reminder for ${opts.toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const copy = REMINDER_COPY.listingNoProposal[opts.language];
+  const greeting = opts.fullName || (opts.language === "ar" ? "مرحباً" : "Hi there");
+  const ctaUrl = `${base}/browse?utm_source=reminder&utm_medium=email&utm_campaign=listing_no_proposal_72h`;
+  const unsubUrl = `${base}/api/reminders/unsubscribe?token=${opts.unsubscribeToken}&kind=listingNudge`;
+  const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
+  const customTemplate = await getCustomTemplate("email_template_listing_no_proposal");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base })
+    : reminderShell({
+        language: opts.language,
+        heading: copy.h,
+        body: copy.b(greeting),
+        ctaText: copy.cta,
+        ctaUrl,
+        unsubscribeUrl: unsubUrl,
+        unsubscribeLabel: unsubLabel,
+      });
+  const text = `${greeting}\n\n${copy.b(greeting)}\n\n${copy.cta}: ${ctaUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: opts.toEmail, subject: copy.sub, html, text, templateKey: "email_template_listing_no_proposal" });
+}
+
+export async function sendWaitlistFinalCallEmail(
+  toEmail: string,
+  opts: { name: string | null; unsubscribeToken: string; inviteCode: string | null; baseUrl?: string },
+): Promise<boolean> {
+  if (!(await isEmailConfigured())) {
+    console.log(`[EMAIL] Waitlist final-call for ${toEmail} skipped`);
+    return false;
+  }
+  const base = opts.baseUrl || buildAppBaseUrl();
+  const greeting = opts.name || "there";
+  const registerUrl = opts.inviteCode
+    ? `${base}/register?invite=${opts.inviteCode}&utm_source=reminder&utm_medium=email&utm_campaign=waitlist_final_call`
+    : `${base}/register?utm_source=reminder&utm_medium=email&utm_campaign=waitlist_final_call`;
+  const unsubUrl = `${base}/api/waitlist/unsubscribe?token=${opts.unsubscribeToken}`;
+  const unsubLabel = "Unsubscribe from these emails";
+  const heading = "Your beta spot is about to be released";
+  const body = `Hi ${greeting}, we sent you an invite to Bareter's beta and you haven't claimed it yet. Spots are limited and we're reassigning unclaimed invites soon — this is the last reminder before yours goes to someone else on the list.`;
+  const customTemplate = await getCustomTemplate("email_template_waitlist_final_call");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting: `Hi ${greeting},`, name: greeting, appName: APP_NAME, baseUrl: base, registerUrl })
+    : reminderShell({
+        language: "en",
+        heading,
+        body,
+        ctaText: "Claim my spot",
+        ctaUrl: registerUrl,
+        unsubscribeUrl: unsubUrl,
+        unsubscribeLabel: unsubLabel,
+      });
+  const text = `Hi ${greeting},\n\n${body}\n\nClaim my spot: ${registerUrl}\n\n${unsubLabel}: ${unsubUrl}`;
+  return sendMail({ to: toEmail, subject: "Last call — your Bareter beta invite expires soon", html, text, templateKey: "email_template_waitlist_final_call" });
 }
 
 // ─── Listing Published ────────────────────────────────────────────────────────

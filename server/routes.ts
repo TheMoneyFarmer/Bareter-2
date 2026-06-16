@@ -5004,7 +5004,7 @@ export async function registerRoutes(
   app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
     try {
       const templates: Record<string, string> = {};
-      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring"];
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const key of keys) {
         const val = await storage.getAppSetting(key);
         templates[key] = val || "";
@@ -5022,7 +5022,7 @@ export async function registerRoutes(
       if (!templates || typeof templates !== "object") {
         return res.status(400).json({ message: "Templates object is required" });
       }
-      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring"];
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const [key, value] of Object.entries(templates)) {
         if (validKeys.includes(key) && typeof value === "string") {
           await storage.setAppSetting(key, value, req.session.userId);
@@ -5089,6 +5089,10 @@ export async function registerRoutes(
         email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
         email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", daysLeft: "3", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
+        email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/api/auth/verify-email?token=test`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=signupNudge` },
+        email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/new`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=signupNudge` },
+        email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/browse`, unsubscribeUrl: `${baseUrl}/api/reminders/unsubscribe?token=test&kind=listingNudge` },
+        email_template_waitlist_final_call: { greeting: "Hi there,", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/register?invite=test`, unsubscribeUrl: `${baseUrl}/api/waitlist/unsubscribe?token=test` },
       };
 
       const vars = sampleVars[templateKey] || { appName: "Bareter", baseUrl, actionUrl: baseUrl };
@@ -6526,6 +6530,8 @@ export async function registerRoutes(
     // Task #248 — completion reminder gates (master + per-channel).
     "reminders_enabled", "reminders_verification_enabled",
     "reminders_drafts_enabled", "reminders_engagement_enabled",
+    "reminders_signup_nudge_enabled", "reminders_listing_nudge_enabled",
+    "reminders_waitlist_final_call_enabled", "waitlist_final_call_delay_days",
   ];
 
   app.get("/api/admin/settings/platform", requireAdmin, async (_req, res) => {
@@ -6551,8 +6557,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid request body" });
       }
       const BOOLEAN_KEYS = ["maintenance_mode", "registration_enabled", "invite_only_mode", "announcement_banner_enabled", "waitlist_enabled", "disputes_enabled", "ai_matching_enabled",
-        "reminders_enabled", "reminders_verification_enabled", "reminders_drafts_enabled", "reminders_engagement_enabled"];
-      const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user"];
+        "reminders_enabled", "reminders_verification_enabled", "reminders_drafts_enabled", "reminders_engagement_enabled",
+        "reminders_signup_nudge_enabled", "reminders_listing_nudge_enabled", "reminders_waitlist_final_call_enabled"];
+      const NUMERIC_KEYS = ["high_value_threshold", "max_listings_per_user", "waitlist_final_call_delay_days"];
       const JSON_KEYS = ["how_it_works_steps", "faq_entries", "active_emirates"];
       const STRING_KEYS = ["announcement_banner_text", "announcement_banner_link", "contact_email", "support_email", "support_phone", "hero_headline", "hero_tagline", "hero_cta", "maintenance_message"];
 
@@ -9809,14 +9816,15 @@ export async function registerRoutes(
       // as "all". This both prevents reflected-XSS via the HTML response
       // and blocks the caller from poisoning reminderPreferences with an
       // arbitrary key.
-      const allowed = new Set(["all", "verification", "drafts", "engagement"]);
+      const allowed = new Set(["all", "verification", "drafts", "engagement", "signupNudge", "listingNudge"]);
       const kind = allowed.has(rawKind) ? rawKind : "all";
-      const prefs: { verification?: boolean; drafts?: boolean; engagement?: boolean } = {
+      const prefs: { verification?: boolean; drafts?: boolean; engagement?: boolean; signupNudge?: boolean; listingNudge?: boolean } = {
         ...(user.reminderPreferences ?? {}),
       };
       if (kind === "all") {
         prefs.verification = false; prefs.drafts = false; prefs.engagement = false;
-      } else if (kind === "verification" || kind === "drafts" || kind === "engagement") {
+        prefs.signupNudge = false; prefs.listingNudge = false;
+      } else if (kind === "verification" || kind === "drafts" || kind === "engagement" || kind === "signupNudge" || kind === "listingNudge") {
         prefs[kind] = false;
       }
       await storage.updateUser(user.id, { reminderPreferences: prefs });
@@ -9832,6 +9840,29 @@ export async function registerRoutes(
 </body></html>`);
     } catch (err) {
       console.error("[reminders] unsubscribe failed:", err);
+      res.status(500).send("Something went wrong");
+    }
+  });
+
+  // Waitlist-specific unsubscribe — for entries that never converted to a
+  // user, so there's no `users.id` to key off. Marks the final-call as
+  // already "sent" to suppress the (currently only) waitlist campaign.
+  app.get("/api/waitlist/unsubscribe", async (req, res) => {
+    try {
+      const token = String(req.query.token || "");
+      if (!token) return res.status(400).send("Missing token");
+      const entry = await storage.getWaitlistEntryByUnsubscribeToken(token);
+      if (!entry) return res.status(404).send("Invalid unsubscribe link");
+      await storage.markWaitlistFinalCallSent(entry.id);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(`<!doctype html><html><head><meta charset="utf-8"><title>Unsubscribed</title></head>
+<body style="font-family:Arial,sans-serif;max-width:520px;margin:80px auto;padding:32px;text-align:center;color:#1a1a2e">
+<h1 style="color:#136c68">You're unsubscribed</h1>
+<p style="color:#4b5563">We won't send you any more beta invite emails.</p>
+<p style="color:#9ca3af;font-size:12px">Bareter</p>
+</body></html>`);
+    } catch (err) {
+      console.error("[waitlist] unsubscribe failed:", err);
       res.status(500).send("Something went wrong");
     }
   });

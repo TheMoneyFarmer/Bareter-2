@@ -545,6 +545,8 @@ export const users = pgTable("users", {
     verification?: boolean;
     drafts?: boolean;
     engagement?: boolean;
+    signupNudge?: boolean;
+    listingNudge?: boolean;
   }>().default({}),
   // Random per-user token used to authenticate one-click unsubscribe
   // links from reminder emails — generated lazily the first time we
@@ -591,6 +593,15 @@ export const waitlistEntries = pgTable("waitlist_entries", {
   confirmedAt: timestamp("confirmed_at"),
   convertedUserId: varchar("converted_user_id", { length: 36 }),
   createdAt: timestamp("created_at").defaultNow(),
+  // Final-call ("beta invite, never signed up") campaign sent-marker —
+  // mirrors confirmedAt's role as a one-shot send tracker, but for the
+  // final-call email since this entry has no users.id to key reminder_log
+  // dedup off of until/unless it converts.
+  finalCallSentAt: timestamp("final_call_sent_at"),
+  // Per-entry unsubscribe token for the final-call email, generated lazily
+  // the same way users.unsubscribeToken is — mirrors that column since
+  // waitlist entries aren't users yet and can't share the users-keyed token.
+  unsubscribeToken: varchar("unsubscribe_token", { length: 48 }),
 }, (table) => ({
   refCodeIdx: index("waitlist_referral_code_idx").on(table.referralCode),
   refByIdx: index("waitlist_referred_by_idx").on(table.referredByCode),
@@ -2267,6 +2278,9 @@ export const REMINDER_KINDS = [
   "draft_24h",
   "draft_72h",
   "engagement_48h",
+  "signup_unverified_24h",
+  "signup_no_listing_24h",
+  "listing_no_proposal_72h",
 ] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 

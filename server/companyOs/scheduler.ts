@@ -28,6 +28,11 @@ import {
   sendVerificationReminderEmail,
   sendDraftReminderEmail,
   sendEngagementReminderEmail,
+  sendSignupUnverifiedReminderEmail,
+  sendSignupNoListingReminderEmail,
+  sendListingNoProposalReminderEmail,
+  sendWaitlistFinalCallEmail,
+  buildAppBaseUrl,
 } from "../emailService";
 // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
 // import { getSessionStatus } from "../diditClient";
@@ -44,7 +49,8 @@ import { storage } from "../storage";
 import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 import { db } from "../db";
 import { deals, users, listings } from "@shared/schema";
-import { and, inArray, lt, gte, sql as drizzleSql } from "drizzle-orm";
+import { and, inArray, lt, gte, eq, sql as drizzleSql } from "drizzle-orm";
+import crypto from "crypto";
 
 const AGENT_JOB_MAP: Record<string, string> = {
   // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
@@ -425,20 +431,24 @@ async function dailyProgressRemindersJob(): Promise<void> {
     console.log("[reminders] master toggle off — skipping daily run");
     return;
   }
-  const [vEnabled, dEnabled, eEnabled] = await Promise.all([
+  const [vEnabled, dEnabled, eEnabled, signupNudgeFlag, listingNudgeFlag] = await Promise.all([
     storage.getAppSetting("reminders_verification_enabled"),
     storage.getAppSetting("reminders_drafts_enabled"),
     storage.getAppSetting("reminders_engagement_enabled"),
+    storage.getAppSetting("reminders_signup_nudge_enabled"),
+    storage.getAppSetting("reminders_listing_nudge_enabled"),
   ]);
   const verificationOn = vEnabled !== "false";
   const draftsOn = dEnabled !== "false";
   const engagementOn = eEnabled !== "false";
+  const signupNudgeOn = signupNudgeFlag !== "false";
+  const listingNudgeOn = listingNudgeFlag !== "false";
   // Send-once-ever per (user, kind, target). The cadence stage is
   // encoded in the kind, so we use a very long lookback to make
   // hasRecentReminder behave as a permanent dedupe.
   const FOREVER_HOURS = 365 * 24 * 10;
 
-  let sentVerify = 0, sentDraft = 0, sentEngage = 0;
+  let sentVerify = 0, sentDraft = 0, sentEngage = 0, sentSignupUnverified = 0, sentSignupNoListing = 0, sentListingNoProposal = 0;
 
   if (verificationOn) {
     try {
@@ -537,7 +547,131 @@ async function dailyProgressRemindersJob(): Promise<void> {
     }
   }
 
-  console.log(`[reminders] dailyProgressReminders done: verify=${sentVerify} draft=${sentDraft} engage=${sentEngage}`);
+  if (signupNudgeOn) {
+    try {
+      const candidates = await storage.getSignupUnverifiedCandidates();
+      for (const u of candidates) {
+        if (u.reminderPreferences && u.reminderPreferences.signupNudge === false) continue;
+        const kind = "signup_unverified_24h" as const;
+        if (await storage.hasRecentReminder(u.id, kind, null, FOREVER_HOURS)) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(u.id);
+        // The token from signup (if any) is 24h+ old by now, so issue a
+        // fresh one — same pattern as POST /api/auth/resend-verification.
+        const verifyToken = crypto.randomBytes(32).toString("hex");
+        const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await db.update(users).set({
+          emailVerificationToken: verifyToken,
+          emailVerificationExpires: expires,
+        }).where(eq(users.id, u.id));
+        const verifyUrl = `${buildAppBaseUrl()}/api/auth/verify-email?token=${verifyToken}`;
+        const ok = await sendSignupUnverifiedReminderEmail({
+          toEmail: u.email,
+          fullName: u.fullName ?? null,
+          language: (u.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+          verifyUrl,
+        }).catch((err) => { console.error("[reminders] signup-unverified send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(u.id, kind, null);
+          sentSignupUnverified++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] signup-unverified branch failed:", err);
+    }
+
+    try {
+      const candidates = await storage.getSignupNoListingCandidates();
+      for (const u of candidates) {
+        if (u.reminderPreferences && u.reminderPreferences.signupNudge === false) continue;
+        const kind = "signup_no_listing_24h" as const;
+        if (await storage.hasRecentReminder(u.id, kind, null, FOREVER_HOURS)) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(u.id);
+        const ok = await sendSignupNoListingReminderEmail({
+          toEmail: u.email,
+          fullName: u.fullName ?? null,
+          language: (u.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+        }).catch((err) => { console.error("[reminders] signup-no-listing send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(u.id, kind, null);
+          sentSignupNoListing++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] signup-no-listing branch failed:", err);
+    }
+  }
+
+  if (listingNudgeOn) {
+    try {
+      const candidates = await storage.getListingNoProposalCandidates();
+      for (const u of candidates) {
+        if (u.reminderPreferences && u.reminderPreferences.listingNudge === false) continue;
+        const kind = "listing_no_proposal_72h" as const;
+        if (await storage.hasRecentReminder(u.id, kind, null, FOREVER_HOURS)) continue;
+        const token = await storage.getOrCreateUnsubscribeToken(u.id);
+        const ok = await sendListingNoProposalReminderEmail({
+          toEmail: u.email,
+          fullName: u.fullName ?? null,
+          language: (u.language === "ar" ? "ar" : "en"),
+          unsubscribeToken: token,
+        }).catch((err) => { console.error("[reminders] listing-no-proposal send failed:", err); return false; });
+        if (ok) {
+          await storage.recordReminder(u.id, kind, null);
+          sentListingNoProposal++;
+        }
+      }
+    } catch (err) {
+      console.error("[reminders] listing-no-proposal branch failed:", err);
+    }
+  }
+
+  console.log(`[reminders] dailyProgressReminders done: verify=${sentVerify} draft=${sentDraft} engage=${sentEngage} signupUnverified=${sentSignupUnverified} signupNoListing=${sentSignupNoListing} listingNoProposal=${sentListingNoProposal}`);
+}
+
+// Runs once a day (same cron tick as dailyProgressRemindersJob). Anchored
+// to the one-time waitlist launch-email send (`waitlist_launch_email_sent_at`,
+// stamped by POST /api/admin/waitlist/launch-email) rather than a per-user
+// signup age — this is a global campaign trigger, not a per-user lifecycle
+// nudge, so it doesn't share reminder_log/users-keyed dedupe and instead
+// tracks its own sent-marker directly on waitlistEntries.
+async function waitlistFinalCallJob(): Promise<void> {
+  const enabled = await storage.getAppSetting("reminders_waitlist_final_call_enabled");
+  if (enabled === "false") {
+    console.log("[reminders] waitlist final-call disabled — skipping");
+    return;
+  }
+  const anchorIso = await storage.getAppSetting("waitlist_launch_email_sent_at");
+  if (!anchorIso) {
+    console.log("[reminders] waitlist final-call: no launch email sent yet — skipping");
+    return;
+  }
+  const delayRaw = await storage.getAppSetting("waitlist_final_call_delay_days");
+  const delayDays = delayRaw ? Number.parseInt(delayRaw, 10) : 5;
+  let sent = 0;
+  try {
+    const candidates = await storage.getWaitlistFinalCallCandidates(
+      Number.isFinite(delayDays) ? delayDays : 5,
+      anchorIso,
+    );
+    const betaInviteCode = await storage.getAppSetting("beta_invite_code");
+    for (const entry of candidates) {
+      const token = await storage.getOrCreateWaitlistUnsubscribeToken(entry.id);
+      const ok = await sendWaitlistFinalCallEmail(entry.email, {
+        name: entry.name,
+        unsubscribeToken: token,
+        inviteCode: betaInviteCode,
+      }).catch((err) => { console.error("[reminders] waitlist final-call send failed:", err); return false; });
+      if (ok) {
+        await storage.markWaitlistFinalCallSent(entry.id);
+        sent++;
+      }
+    }
+  } catch (err) {
+    console.error("[reminders] waitlist final-call job failed:", err);
+  }
+  console.log(`[reminders] waitlistFinalCall done: sent=${sent}`);
 }
 
 async function budgetWarningJob(): Promise<void> {
@@ -709,6 +843,12 @@ export function startScheduler(): void {
   // unsubscribe link in any mis-fired email is acted on within
   // business hours. Idempotent via reminder_log.
   schedule("dailyProgressReminders", "0 11 * * *", dailyProgressRemindersJob);
+
+  // 11:00 Dubai daily (same tick as the reminder sweep above) — beta
+  // waitlist final-call. Anchored to waitlist_launch_email_sent_at rather
+  // than per-user signup age, so it gets its own job for failure isolation
+  // and clearer logs, same as listingExpiringReminders below.
+  schedule("waitlistFinalCall", "0 11 * * *", waitlistFinalCallJob);
 
   // 09:00 Dubai daily — deal inactivity reminders. Emails both parties
   // in any deal that has been stuck (no updatedAt change) for ≥36 hours

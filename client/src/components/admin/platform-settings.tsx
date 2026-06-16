@@ -217,6 +217,24 @@ const FLAG_CONFIRM: Record<string, { onTitle: string; offTitle: string; onDesc: 
     onDesc:   "Reminder emails will be sent 48h after a user saves a listing or starts a message without completing.",
     offDesc:  "Engagement reminder emails will stop sending.",
   },
+  reminders_signup_nudge_enabled: {
+    onTitle:  "Enable Signup Nudges?",
+    offTitle: "Disable Signup Nudges?",
+    onDesc:   "Reminder emails will be sent 24h after signup to users who haven't verified their email or haven't created a listing.",
+    offDesc:  "Signup nudge emails will stop sending.",
+  },
+  reminders_listing_nudge_enabled: {
+    onTitle:  "Enable Listing Nudges?",
+    offTitle: "Disable Listing Nudges?",
+    onDesc:   "Reminder emails will be sent 72h after a listing goes live if the owner hasn't received a proposal.",
+    offDesc:  "Listing nudge emails will stop sending.",
+  },
+  reminders_waitlist_final_call_enabled: {
+    onTitle:  "Enable Waitlist Final Call?",
+    offTitle: "Disable Waitlist Final Call?",
+    onDesc:   "Waitlist members who got the beta invite but never signed up will receive one last-chance email after the configured delay.",
+    offDesc:  "The waitlist final-call email will stop sending.",
+  },
   announcement_banner_enabled: {
     onTitle:  "Show Announcement Banner?",
     offTitle: "Hide Announcement Banner?",
@@ -238,6 +256,10 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
   const [remindersVerification, setRemindersVerification] = useState(settings.reminders_verification_enabled !== "false");
   const [remindersDrafts, setRemindersDrafts] = useState(settings.reminders_drafts_enabled !== "false");
   const [remindersEngagement, setRemindersEngagement] = useState(settings.reminders_engagement_enabled !== "false");
+  const [remindersSignupNudge, setRemindersSignupNudge] = useState(settings.reminders_signup_nudge_enabled !== "false");
+  const [remindersListingNudge, setRemindersListingNudge] = useState(settings.reminders_listing_nudge_enabled !== "false");
+  const [remindersWaitlistFinalCall, setRemindersWaitlistFinalCall] = useState(settings.reminders_waitlist_final_call_enabled !== "false");
+  const [waitlistFinalCallDelayDays, setWaitlistFinalCallDelayDays] = useState(settings.waitlist_final_call_delay_days || "5");
   const [bannerEnabled, setBannerEnabled] = useState(settings.announcement_banner_enabled === "true");
   const [bannerText, setBannerText] = useState(settings.announcement_banner_text || "");
   const [bannerLink, setBannerLink] = useState(settings.announcement_banner_link || "");
@@ -256,6 +278,10 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
     setRemindersVerification(settings.reminders_verification_enabled !== "false");
     setRemindersDrafts(settings.reminders_drafts_enabled !== "false");
     setRemindersEngagement(settings.reminders_engagement_enabled !== "false");
+    setRemindersSignupNudge(settings.reminders_signup_nudge_enabled !== "false");
+    setRemindersListingNudge(settings.reminders_listing_nudge_enabled !== "false");
+    setRemindersWaitlistFinalCall(settings.reminders_waitlist_final_call_enabled !== "false");
+    setWaitlistFinalCallDelayDays(settings.waitlist_final_call_delay_days || "5");
     setBannerEnabled(settings.announcement_banner_enabled === "true");
     setBannerText(settings.announcement_banner_text || "");
     setBannerLink(settings.announcement_banner_link || "");
@@ -282,6 +308,9 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
       reminders_verification_enabled: setRemindersVerification,
       reminders_drafts_enabled: setRemindersDrafts,
       reminders_engagement_enabled: setRemindersEngagement,
+      reminders_signup_nudge_enabled: setRemindersSignupNudge,
+      reminders_listing_nudge_enabled: setRemindersListingNudge,
+      reminders_waitlist_final_call_enabled: setRemindersWaitlistFinalCall,
       announcement_banner_enabled: setBannerEnabled,
     };
     setters[key]?.(nextValue);
@@ -384,6 +413,29 @@ function GeneralSettings({ settings, onSave, saving }: { settings: PlatformSetti
               <FlagRow flagKey="reminders_verification_enabled" checked={remindersVerification} label="Verification reminders (24h / 72h / 7d)" description="" indent />
               <FlagRow flagKey="reminders_drafts_enabled" checked={remindersDrafts} label="Saved-draft reminders (24h / 72h)" description="" indent />
               <FlagRow flagKey="reminders_engagement_enabled" checked={remindersEngagement} label="Engagement reminders (48h after saving a listing or starting a message)" description="" indent />
+              <FlagRow flagKey="reminders_signup_nudge_enabled" checked={remindersSignupNudge} label="Signup nudges (24h after signup — unverified email and/or no listing yet)" description="" indent />
+              <FlagRow flagKey="reminders_listing_nudge_enabled" checked={remindersListingNudge} label="Listing nudges (72h after a listing goes live with no proposal)" description="" indent />
+            </div>
+          )}
+          <Separator />
+          <FlagRow flagKey="reminders_waitlist_final_call_enabled" checked={remindersWaitlistFinalCall} label="Waitlist Final Call" description="Send one last-chance email to waitlist members who got the beta invite but never signed up." />
+          {remindersWaitlistFinalCall && (
+            <div className="ml-6 border-l-2 border-primary/30 pl-4 space-y-2">
+              <Label htmlFor="waitlist-final-call-delay">Days after beta invite before sending</Label>
+              <Input
+                id="waitlist-final-call-delay"
+                type="number"
+                min={0}
+                value={waitlistFinalCallDelayDays}
+                onChange={(e) => setWaitlistFinalCallDelayDays(e.target.value)}
+                className="max-w-[120px]"
+                data-testid="input-waitlist-final-call-delay"
+              />
+              <Button size="sm" variant="outline" className="gap-1.5" disabled={saving}
+                onClick={() => onSave({ waitlist_final_call_delay_days: waitlistFinalCallDelayDays })}
+              >
+                <Save className="h-3.5 w-3.5" /> Save delay
+              </Button>
             </div>
           )}
         </CardContent>

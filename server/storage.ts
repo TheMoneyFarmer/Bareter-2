@@ -395,6 +395,17 @@ export interface IStorage {
   recordReminder(userId: string, kind: ReminderKind, targetId?: string | null): Promise<ReminderLogRow>;
   getOrCreateUnsubscribeToken(userId: string): Promise<string>;
   getUserByUnsubscribeToken(token: string): Promise<User | undefined>;
+  /** Users 24h–7d old whose email is still unverified. */
+  getSignupUnverifiedCandidates(): Promise<User[]>;
+  /** Users 24h–7d old with zero non-deleted listings. */
+  getSignupNoListingCandidates(): Promise<User[]>;
+  /** Users whose earliest non-deleted listing is 72h–14d old and who have never proposed a deal. */
+  getListingNoProposalCandidates(): Promise<User[]>;
+  /** Waitlist entries that got the beta launch email, never converted, and are past the final-call delay. */
+  getWaitlistFinalCallCandidates(delayDays: number, anchorIso: string): Promise<WaitlistEntry[]>;
+  markWaitlistFinalCallSent(entryId: number): Promise<void>;
+  getOrCreateWaitlistUnsubscribeToken(entryId: number): Promise<string>;
+  getWaitlistEntryByUnsubscribeToken(token: string): Promise<WaitlistEntry | undefined>;
 
   // Support Tickets
   createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket>;
@@ -2729,6 +2740,97 @@ export class DatabaseStorage implements IStorage {
     const token = crypto.randomBytes(24).toString("hex");
     await db.update(users).set({ unsubscribeToken: token }).where(eq(users.id, userId));
     return token;
+  }
+
+  async getSignupUnverifiedCandidates(): Promise<User[]> {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const until = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return await db
+      .select()
+      .from(users)
+      .where(and(
+        eq(users.emailVerified, false),
+        gte(users.createdAt, since),
+        lte(users.createdAt, until),
+      ));
+  }
+
+  async getSignupNoListingCandidates(): Promise<User[]> {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const until = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const candidates = await db
+      .select()
+      .from(users)
+      .where(and(gte(users.createdAt, since), lte(users.createdAt, until)));
+    if (candidates.length === 0) return [];
+    const listedUserIds = await db
+      .selectDistinct({ userId: listings.userId })
+      .from(listings)
+      .where(and(
+        inArray(listings.userId, candidates.map((u) => u.id)),
+        isNull(listings.deletedAt),
+      ));
+    const listed = new Set(listedUserIds.map((r) => r.userId));
+    return candidates.filter((u) => !listed.has(u.id));
+  }
+
+  async getListingNoProposalCandidates(): Promise<User[]> {
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const until = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    const earliestRows = await db
+      .select({
+        userId: listings.userId,
+        earliestAt: sql<Date>`min(${listings.createdAt})`,
+      })
+      .from(listings)
+      .where(isNull(listings.deletedAt))
+      .groupBy(listings.userId);
+    const eligibleIds = earliestRows
+      .filter((r) => {
+        const t = new Date(r.earliestAt as unknown as string).getTime();
+        return t >= since.getTime() && t <= until.getTime();
+      })
+      .map((r) => r.userId);
+    if (eligibleIds.length === 0) return [];
+    const dealRows = await db
+      .selectDistinct({ seekerId: deals.seekerId })
+      .from(deals)
+      .where(inArray(deals.seekerId, eligibleIds));
+    const proposed = new Set(dealRows.map((d) => d.seekerId));
+    const remainingIds = eligibleIds.filter((id) => !proposed.has(id));
+    if (remainingIds.length === 0) return [];
+    return await db.select().from(users).where(inArray(users.id, remainingIds));
+  }
+
+  async getWaitlistFinalCallCandidates(delayDays: number, anchorIso: string): Promise<WaitlistEntry[]> {
+    const anchor = new Date(anchorIso);
+    const eligibleSince = new Date(anchor.getTime() + delayDays * 24 * 60 * 60 * 1000);
+    if (Date.now() < eligibleSince.getTime()) return [];
+    return await db
+      .select()
+      .from(waitlistEntries)
+      .where(and(
+        isNotNull(waitlistEntries.confirmedAt),
+        isNull(waitlistEntries.convertedUserId),
+        isNull(waitlistEntries.finalCallSentAt),
+      ));
+  }
+
+  async markWaitlistFinalCallSent(entryId: number): Promise<void> {
+    await db.update(waitlistEntries).set({ finalCallSentAt: new Date() }).where(eq(waitlistEntries.id, entryId));
+  }
+
+  async getOrCreateWaitlistUnsubscribeToken(entryId: number): Promise<string> {
+    const [e] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.id, entryId));
+    if (e?.unsubscribeToken) return e.unsubscribeToken;
+    const token = crypto.randomBytes(24).toString("hex");
+    await db.update(waitlistEntries).set({ unsubscribeToken: token }).where(eq(waitlistEntries.id, entryId));
+    return token;
+  }
+
+  async getWaitlistEntryByUnsubscribeToken(token: string): Promise<WaitlistEntry | undefined> {
+    const [e] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.unsubscribeToken, token));
+    return e;
   }
 
   async getUserByUnsubscribeToken(token: string): Promise<User | undefined> {
