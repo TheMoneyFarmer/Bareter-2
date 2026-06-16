@@ -39,6 +39,10 @@ export async function bootstrapAdmin(): Promise<void> {
     const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
     if (existing) {
+      // Clear the placeholder name so broadcasts don't greet the founder as "Bareter".
+      // Empty string means "not set yet" — the email system falls back to "Hi there,".
+      // Once the founder sets their real name in their profile it stays.
+      const clearPlaceholder = existing.fullName === "Bareter Founder" ? { fullName: "" } : {};
       await db
         .update(users)
         .set({
@@ -50,6 +54,7 @@ export async function bootstrapAdmin(): Promise<void> {
           isPaused: false,
           isBanned: false,
           updatedAt: new Date(),
+          ...clearPlaceholder,
         })
         .where(eq(users.id, existing.id));
       console.log(`[bootstrapAdmin] Refreshed admin: ${email}`);
@@ -57,15 +62,12 @@ export async function bootstrapAdmin(): Promise<void> {
       await db.insert(users).values({
         email,
         password: passwordHash,
-        fullName: "Bareter Founder",
-        businessName: "Bareter",
-        bio: "Platform founder.",
-        location: "Dubai",
+        fullName: "", // founder fills this in via their profile — avoids "Bareter" in emails
         isAdmin: true,
         role: "super_admin",
         founderBadge: true,
         founderBadgeAt: new Date(),
-        profileCompleted: true,
+        profileCompleted: false,
       });
       console.log(`[bootstrapAdmin] Created founder admin: ${email}`);
     }

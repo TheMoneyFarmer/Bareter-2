@@ -2178,26 +2178,42 @@ export function AdminPage() {
               </div>
             </div>
             <Textarea
-              placeholder={broadcastBodyMode === "html" ? "Paste raw HTML here…" : "Email body... Use {{firstName}}, {{name}}, {{email}}, {{appName}} for personalisation."}
+              placeholder={broadcastBodyMode === "html" ? "Paste raw HTML here…" : "Email body... Use {{firstName}} for the recipient's name, e.g. 'Hi {{firstName}}, ...'"}
               rows={8}
               value={broadcastBody}
               onChange={(e) => setBroadcastBody(e.target.value)}
               className={broadcastBodyMode === "html" ? "font-mono text-xs" : ""}
               data-testid="input-broadcast-body"
             />
+            {/\{\{appName\}\}/.test(broadcastBody) && (
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                ⚠ Your email contains <code>{"{{appName}}"}</code> which inserts the platform name &ldquo;Bareter&rdquo; — not the recipient&apos;s name. Use <code>{"{{firstName}}"}</code> to personalise with each person&apos;s first name.
+              </div>
+            )}
             {broadcastBodyMode === "text" && (
-              <div className="flex flex-wrap gap-1.5 pt-0.5" data-testid="broadcast-variable-chips">
-                {["{{firstName}}", "{{name}}", "{{email}}", "{{signupUrl}}", "{{baseUrl}}", "{{appName}}"].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setBroadcastBody((prev) => prev + v)}
-                    className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
-                    data-testid={`chip-var-${v.replace(/\{|\}/g, "")}`}
-                  >
-                    {v}
-                  </button>
-                ))}
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Recipient variables:</p>
+                <div className="flex flex-wrap gap-1.5" data-testid="broadcast-variable-chips">
+                  {[
+                    { v: "{{greeting}}", hint: "Auto greeting: 'Hi Sarah,' or 'Hi there,'" },
+                    { v: "{{firstName}}", hint: "First name only (e.g. Sarah)" },
+                    { v: "{{name}}", hint: "Full name (e.g. Sarah Al-Hassan)" },
+                    { v: "{{email}}", hint: "Recipient email address" },
+                    { v: "{{signupUrl}}", hint: "Sign-up link" },
+                    { v: "{{browseUrl}}", hint: "Browse listings link" },
+                  ].map(({ v, hint }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      title={hint}
+                      onClick={() => setBroadcastBody((prev) => prev + v)}
+                      className="text-xs font-mono bg-muted hover:bg-muted/80 border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                      data-testid={`chip-var-${v.replace(/\{|\}/g, "")}`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -4497,22 +4497,30 @@ export async function registerRoutes(
 
       const BASE = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
 
+      // Names like "Bareter Founder" come from the admin bootstrap default and
+      // must never be sent to a recipient as if it were a person's name.
+      const NAME_PLACEHOLDERS = new Set(["bareter founder", "bareter", "admin", "founder", ""]);
+      const cleanPersonName = (raw: string | null | undefined): string | null => {
+        const trimmed = raw?.trim() || "";
+        return trimmed && !NAME_PLACEHOLDERS.has(trimmed.toLowerCase()) ? trimmed : null;
+      };
+
       // Resolve each recipient's REAL name so the test mirrors a real broadcast:
       // logged-in admin → their own signup name, other addresses → registered
       // user's name, else waitlist entry's name, else null → greeting "Hi there,".
       const resolveRecipientName = async (email: string): Promise<string | null> => {
-        if (email === admin.email) return admin.fullName ?? null;
+        if (email === admin.email) return cleanPersonName(admin.fullName);
         const user = await storage.getUserByEmail(email).catch(() => null);
-        if (user?.fullName) return user.fullName;
+        if (user?.fullName) return cleanPersonName(user.fullName);
         const wl = await storage.getWaitlistEntryByEmail(email).catch(() => null);
-        if (wl?.name) return wl.name;
+        if (wl?.name) return cleanPersonName(wl.name);
         try {
           const intl = await db
             .select({ fullName: internationalWaitlist.fullName })
             .from(internationalWaitlist)
             .where(eq(internationalWaitlist.email, email))
             .limit(1);
-          if (intl[0]?.fullName) return intl[0].fullName;
+          if (intl[0]?.fullName) return cleanPersonName(intl[0].fullName);
         } catch { /* ignore lookup failures — fall back to "there" */ }
         return null;
       };
@@ -4533,6 +4541,7 @@ export async function registerRoutes(
             name: fullName || "there",
             firstName,
             lastName,
+            greeting: fullName ? `Hi ${firstName},` : "Hi there,",
             email,
             city: "",
             businessName: "",
@@ -4658,24 +4667,32 @@ export async function registerRoutes(
             const batch = recipients.slice(i, i + BATCH_SIZE);
             await Promise.all(batch.map(async (recipient) => {
               try {
+                // Strip placeholder / empty names so "Bareter Founder" never reaches an email.
+                const PLACEHOLDERS = new Set(["bareter founder", "bareter", "admin", "founder"]);
+                const trimmedName = recipient.name?.trim() || "";
+                const cleanName = trimmedName && !PLACEHOLDERS.has(trimmedName.toLowerCase()) ? trimmedName : null;
+                const recipientFirstName = cleanName?.split(" ")[0] || "there";
+                const recipientLastName = cleanName?.split(" ").slice(1).join(" ") || "";
+                const BASE_URL = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
                 const ok = await sendAdminEmail(recipient.email, {
-                  recipientName: recipient.name,
+                  recipientName: cleanName ?? undefined,
                   subject,
                   body: sendBody,
                   rawHtml: sendRawHtml,
                   vars: {
-                    name: recipient.name || "there",
-                    firstName: recipient.name?.split(" ")[0] || "there",
-                    lastName: recipient.name?.split(" ").slice(1).join(" ") || "",
+                    name: cleanName || "there",
+                    firstName: recipientFirstName,
+                    lastName: recipientLastName,
+                    greeting: cleanName ? `Hi ${recipientFirstName},` : "Hi there,",
                     email: recipient.email,
                     city: "",
                     businessName: "",
                     accountType: "",
                     appName: "Bareter",
-                    baseUrl: (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, ""),
-                    signupUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Fregister`,
-                    loginUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Flogin`,
-                    browseUrl: `${(process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "")}/?src=email&to=%2Fbrowse`,
+                    baseUrl: BASE_URL,
+                    signupUrl: `${BASE_URL}/?src=email&to=%2Fregister`,
+                    loginUrl: `${BASE_URL}/?src=email&to=%2Flogin`,
+                    browseUrl: `${BASE_URL}/?src=email&to=%2Fbrowse`,
                   },
                 });
                 await storage.createEmailLog({
