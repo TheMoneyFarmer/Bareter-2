@@ -1305,7 +1305,7 @@ export async function sendSignupUnverifiedReminderEmail(
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
   const customTemplate = await getCustomTemplate("email_template_signup_unverified");
   const html = customTemplate
-    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base, verifyUrl: opts.verifyUrl })
+    ? applyTemplateVars(customTemplate, { greeting, firstName: greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base, verifyUrl: opts.verifyUrl, actionUrl: opts.verifyUrl, email: opts.toEmail })
     : reminderShell({
         language: opts.language,
         heading: copy.h,
@@ -1332,7 +1332,7 @@ export async function sendSignupNoListingReminderEmail(opts: ReminderOpts): Prom
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
   const customTemplate = await getCustomTemplate("email_template_signup_no_listing");
   const html = customTemplate
-    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base })
+    ? applyTemplateVars(customTemplate, { greeting, firstName: greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base, actionUrl: ctaUrl, email: opts.toEmail })
     : reminderShell({
         language: opts.language,
         heading: copy.h,
@@ -1359,7 +1359,7 @@ export async function sendListingNoProposalReminderEmail(opts: ReminderOpts): Pr
   const unsubLabel = opts.language === "ar" ? "إلغاء الاشتراك" : "Unsubscribe from these reminders";
   const customTemplate = await getCustomTemplate("email_template_listing_no_proposal");
   const html = customTemplate
-    ? applyTemplateVars(customTemplate, { greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base })
+    ? applyTemplateVars(customTemplate, { greeting, firstName: greeting, fullName: opts.fullName || "there", appName: APP_NAME, baseUrl: base, actionUrl: ctaUrl, email: opts.toEmail })
     : reminderShell({
         language: opts.language,
         heading: copy.h,
@@ -1392,7 +1392,7 @@ export async function sendWaitlistFinalCallEmail(
   const body = `Hi ${greeting}, we sent you an invite to Bareter's beta and you haven't claimed it yet. Spots are limited and we're reassigning unclaimed invites soon — this is the last reminder before yours goes to someone else on the list.`;
   const customTemplate = await getCustomTemplate("email_template_waitlist_final_call");
   const html = customTemplate
-    ? applyTemplateVars(customTemplate, { greeting: `Hi ${greeting},`, name: greeting, appName: APP_NAME, baseUrl: base, registerUrl })
+    ? applyTemplateVars(customTemplate, { greeting: `Hi ${greeting},`, firstName: greeting, name: greeting, appName: APP_NAME, baseUrl: base, registerUrl, actionUrl: registerUrl, email: toEmail })
     : reminderShell({
         language: "en",
         heading,
