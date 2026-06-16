@@ -798,27 +798,6 @@ export async function sendListingRejectionEmail(
   return sendMail({ to: toEmail, subject: `Listing Not Approved: ${opts.listingTitle}`, html, text, templateKey: "email_template_listing_rejected" });
 }
 
-export async function sendWaitlistLaunchEmail(
-  toEmail: string,
-  opts: { name?: string | null; baseUrl: string },
-): Promise<boolean> {
-  if (!(await isEmailConfigured())) {
-    console.log(`[EMAIL] Launch email skipped for ${toEmail} (email not configured).`);
-    return false;
-  }
-  const greeting = opts.name ? `Hi ${opts.name},` : "Hi there,";
-  const html = emailShell(`
-    <h2 style="font-size:21px;font-weight:700;color:#1a2035;margin:0 0 12px;">We're live!</h2>
-    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting} the wait is over — <strong>${APP_NAME}</strong> is now open for business!</p>
-    <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">As an early supporter, you've earned a <strong>Founder Badge</strong> on your profile. Create your account now and start bartering with verified businesses worldwide.</p>
-    <div style="text-align:center;margin:0 0 4px;">
-      <a href="${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">Create Your Account</a>
-    </div>
-  `);
-  const text = `${greeting}\n\nThe wait is over — ${APP_NAME} is now open for business!\n\nAs an early supporter, you've earned a Founder Badge on your profile.\n\nCreate your account: ${opts.baseUrl}/register?email=${encodeURIComponent(toEmail)}\n\n— ${APP_NAME}`;
-  return sendMail({ to: toEmail, subject: `${APP_NAME} is live — claim your Founder Badge!`, html, text });
-}
-
 export async function sendSupportTicketConfirmationEmail(
   toEmail: string,
   opts: { recipientName?: string | null; ticketNumber: string; subject: string; baseUrl: string },

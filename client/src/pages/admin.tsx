@@ -2493,13 +2493,19 @@ export function AdminPage() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="users">Registered Users</SelectItem>
-                <SelectItem value="waitlist-main">Waitlist — Main</SelectItem>
+                <SelectItem value="waitlist-main">Waitlist — Main (confirmed, not yet registered)</SelectItem>
                 <SelectItem value="waitlist-creators">Waitlist — Creators</SelectItem>
                 <SelectItem value="waitlist-brand-collabs">Waitlist — Brand Collabs</SelectItem>
                 <SelectItem value="waitlist-international">Waitlist — International</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {broadcastAudience === "waitlist-main" && (
+            <p className="text-xs text-muted-foreground">
+              This send also marks your beta as "launched" for the automated Waitlist Final Call reminder — only send this once you actually mean to announce launch.
+            </p>
+          )}
 
           {/* User-only filters */}
           {broadcastAudience === "users" && (

@@ -99,10 +99,10 @@ import {
 import { db, pool } from "./db";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
-import { isEmailConfigured, sendWaitlistLaunchEmail } from "./emailService";
+import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes, bustWaitlistEnabledCache } from "./waitlistRoutes";
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
-import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not } from "drizzle-orm";
+import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not, isNull, isNotNull } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
 // security tests can construct fresh, low-threshold copies, and so the
@@ -4739,8 +4739,9 @@ export async function registerRoutes(
     rawHtml: boolean;
     recipients: BroadcastRecipient[];
     adminUserId?: string;
+    audience?: string;
   }): Promise<void> {
-    const { req, broadcastId, subject, body, rawHtml, recipients, adminUserId } = opts;
+    const { req, broadcastId, subject, body, rawHtml, recipients, adminUserId, audience } = opts;
     try {
       const { sendAdminEmail, injectSmartCtaUrls, isFullHtmlDocument } = await import("./emailService");
       const looksLikeHtml = /<[a-z][\s\S]*>/i.test(body);
@@ -4815,6 +4816,11 @@ export async function registerRoutes(
         }
       }
       await storage.updateBroadcastJob(broadcastId, { status: "completed", sent, failed, completedAt: new Date() });
+      if (audience === "waitlist-main" && sent > 0) {
+        // This blast doubles as the beta "launch" milestone — stamp the
+        // anchor the Waitlist Final Call nudge is gated on.
+        await storage.setAppSetting("waitlist_launch_email_sent_at", new Date().toISOString(), adminUserId ?? null);
+      }
       await logAdminAction(req, "email_broadcast", "system", broadcastId, { subject, recipientCount: recipients.length, sent, failed });
     } catch (workerErr) {
       console.error("Broadcast worker error:", workerErr);
@@ -4836,7 +4842,11 @@ export async function registerRoutes(
       let recipients: BroadcastRecipient[] = [];
 
       if (audience === "waitlist-main") {
-        const rows = await db.select({ email: waitlistEntries.email, name: waitlistEntries.name }).from(waitlistEntries);
+        // Confirmed entries who haven't converted to a real account yet —
+        // same eligibility as the old dedicated launch-email blast.
+        const rows = await db.select({ email: waitlistEntries.email, name: waitlistEntries.name })
+          .from(waitlistEntries)
+          .where(and(isNotNull(waitlistEntries.confirmedAt), isNull(waitlistEntries.convertedUserId)));
         recipients = rows.map(r => ({ email: r.email, name: r.name ?? null }));
       } else if (audience === "waitlist-creators") {
         const rows = await db.select({ email: featureWaitlists.email }).from(featureWaitlists).where(eq(featureWaitlists.feature, "creators"));
@@ -4883,7 +4893,7 @@ export async function registerRoutes(
       res.status(202).json({ broadcastId, recipientCount: recipients.length, status: "queued" });
 
       // Background worker — runs after response is sent
-      setImmediate(() => runBroadcastSend({ req, broadcastId, subject, body, rawHtml, recipients, adminUserId }));
+      setImmediate(() => runBroadcastSend({ req, broadcastId, subject, body, rawHtml, recipients, adminUserId, audience }));
     } catch (error) {
       console.error("Broadcast email error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6616,68 +6626,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Admin update platform settings error:", error);
       res.status(500).json({ message: "Failed to update settings" });
-    }
-  });
-
-  // ── Waitlist launch email ─────────────────────────────────────────
-  app.post("/api/admin/waitlist/launch-email", requireAdmin, async (req, res) => {
-    try {
-      const { subject: customSubject, body: customBody } = req.body || {};
-      const entries = await storage.listWaitlistEntries({ limit: 10000 });
-      const eligible = entries.filter(e => e.confirmedAt && !e.convertedUserId);
-      let sent = 0;
-      let failed = 0;
-      const configuredUrl = process.env.PUBLIC_APP_URL?.trim();
-      const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-      const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
-      const baseUrl = configuredUrl
-        ? configuredUrl.replace(/\/+$/, "")
-        : replitDomain
-          ? `https://${replitDomain}`
-          : devDomain
-            ? `https://${devDomain}`
-            : "http://localhost:5000";
-
-      const { applyTemplateVars, sendWaitlistLaunchEmail: defaultSend } = await import("./emailService");
-
-      for (const entry of eligible) {
-        try {
-          let ok: boolean;
-          if (customBody && customBody.trim()) {
-            const vars = { name: entry.name || "there", email: entry.email, appName: "Bareter", baseUrl };
-            const html = applyTemplateVars(customBody, vars);
-            const subject = customSubject?.trim() || "We're live — you're invited to Bareter!";
-            const { sendMail: _ignored, ...emailSvc } = await import("./emailService") as any;
-            const { default: nodemailer } = await import("nodemailer") as any;
-            const resendModule = await import("./resendClient");
-            const isReady = await resendModule.isResendReady();
-            if (isReady) {
-              const { client, fromEmail } = await resendModule.getUncachableResendClient();
-              const result = await client.emails.send({
-                from: `Bareter <${fromEmail || "noreply@bareter.com"}>`,
-                to: entry.email,
-                subject,
-                html,
-                text: html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(),
-              });
-              ok = !result.error;
-            } else {
-              ok = false;
-            }
-          } else {
-            ok = await defaultSend(entry.email, { name: entry.name, baseUrl });
-          }
-          if (ok) sent++; else failed++;
-        } catch {
-          failed++;
-        }
-      }
-      await storage.setAppSetting("waitlist_launch_email_sent_at", new Date().toISOString(), req.session.userId ?? null);
-      await logAdminAction(req, "waitlist_launch_email_sent", "waitlist", "bulk", { sent, failed, total: eligible.length });
-      res.json({ sent, failed, total: eligible.length });
-    } catch (error) {
-      console.error("Admin waitlist launch email error:", error);
-      res.status(500).json({ message: "Failed to send launch emails" });
     }
   });
 

@@ -632,10 +632,10 @@ async function dailyProgressRemindersJob(): Promise<void> {
 
 // Runs once a day (same cron tick as dailyProgressRemindersJob). Anchored
 // to the one-time waitlist launch-email send (`waitlist_launch_email_sent_at`,
-// stamped by POST /api/admin/waitlist/launch-email) rather than a per-user
-// signup age — this is a global campaign trigger, not a per-user lifecycle
-// nudge, so it doesn't share reminder_log/users-keyed dedupe and instead
-// tracks its own sent-marker directly on waitlistEntries.
+// stamped by POST /api/admin/email/broadcast when audience="waitlist-main")
+// rather than a per-user signup age — this is a global campaign trigger,
+// not a per-user lifecycle nudge, so it doesn't share reminder_log/users-keyed
+// dedupe and instead tracks its own sent-marker directly on waitlistEntries.
 async function waitlistFinalCallJob(): Promise<void> {
   const enabled = await storage.getAppSetting("reminders_waitlist_final_call_enabled");
   if (enabled === "false") {
