@@ -4264,7 +4264,7 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/verify", requireAdmin, async (req, res) => {
     try {
       const { verified } = req.body;
-      const updateData: Record<string, unknown> = { isVerified: verified };
+      const updateData: Record<string, unknown> = { isVerified: verified, phoneVerified: verified };
       if (verified) {
         updateData.verificationStatus = "verified";
         updateData.kycStatus = "APPROVED";
@@ -5618,23 +5618,6 @@ export async function registerRoutes(
     }
   });
 
-  // Admin override: manually mark a user's phone as verified (or clear the override).
-  // Allows unblocking users who can't complete WhatsApp OTP due to a conflict or
-  // service issue. The user can still add their own number later from their profile.
-  app.post("/api/admin/users/:id/verify-phone", requireAdmin, async (req, res) => {
-    try {
-      const { verified } = req.body; // boolean
-      const user = await storage.updateUser(param(req.params.id), { phoneVerified: Boolean(verified) });
-      if (!user) return res.status(404).json({ message: "User not found" });
-      await logAdminAction(req, verified ? "phone_verification_override" : "phone_verification_revoked", "user", user.id, { email: user.email });
-      const { password: _pw, ...safe } = user;
-      res.json(safe);
-    } catch (err) {
-      console.error("[admin/verify-phone]", err);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
     try {
       const { banned, reason } = req.body;
@@ -5813,16 +5796,19 @@ export async function registerRoutes(
       const tierUpdates: Record<string, boolean | string> = {};
       if (tier === "basic") {
         tierUpdates.isVerified = false;
+        tierUpdates.phoneVerified = false;
         tierUpdates.kycStatus = "NOT_STARTED";
         tierUpdates.kybStatus = "NOT_STARTED";
         tierUpdates.accountType = "individual";
       } else if (tier === "verified") {
         tierUpdates.isVerified = true;
+        tierUpdates.phoneVerified = true;
         tierUpdates.kycStatus = "APPROVED";
         tierUpdates.kybStatus = "NOT_STARTED";
         tierUpdates.accountType = "individual";
       } else if (tier === "business") {
         tierUpdates.isVerified = true;
+        tierUpdates.phoneVerified = true;
         tierUpdates.kycStatus = "APPROVED";
         tierUpdates.kybStatus = "APPROVED";
         tierUpdates.accountType = "business";

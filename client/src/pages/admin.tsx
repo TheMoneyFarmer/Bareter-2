@@ -122,8 +122,6 @@ import {
   Percent,
   Wallet,
   ListChecks,
-  Phone,
-  PhoneOff,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -461,18 +459,6 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics/funnel"] });
       toast({ title: "Success", description: "User verification updated" });
     },
-  });
-
-  const verifyPhoneMutation = useMutation({
-    mutationFn: async ({ userId, verified }: { userId: string; verified: boolean }) => {
-      await apiRequest("POST", `/api/admin/users/${userId}/verify-phone`, { verified });
-    },
-    onSuccess: (_, { verified }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
-      toast({ title: verified ? "WhatsApp override applied" : "WhatsApp override removed", description: verified ? "User can now post listings." : "User must complete WhatsApp verification." });
-    },
-    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
   const promoteMutation = useMutation({
@@ -1808,16 +1794,6 @@ export function AdminPage() {
                               <><ShieldX className="h-4 w-4 mr-2" />Remove Verification</>
                             ) : (
                               <><UserCheck className="h-4 w-4 mr-2" />Verify User</>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => { e.stopPropagation(); verifyPhoneMutation.mutate({ userId: u.id, verified: !(u as any).phoneVerified }); }}
-                            data-testid={`button-verify-phone-${u.id}`}
-                          >
-                            {(u as any).phoneVerified ? (
-                              <><PhoneOff className="h-4 w-4 mr-2" />Remove WhatsApp Override</>
-                            ) : (
-                              <><Phone className="h-4 w-4 mr-2" />Override WhatsApp Verification</>
                             )}
                           </DropdownMenuItem>
                           <DropdownMenuItem
