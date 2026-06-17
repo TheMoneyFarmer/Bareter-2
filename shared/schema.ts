@@ -634,6 +634,27 @@ export const insertAdminInviteSchema = createInsertSchema(adminInvites).omit({
 export type InsertAdminInvite = z.infer<typeof insertAdminInviteSchema>;
 export type AdminInvite = typeof adminInvites.$inferSelect;
 
+export const phoneVerificationLogs = pgTable("phone_verification_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 36 }),
+  email: text("email"),
+  phone: text("phone").notNull(),
+  // sent | invalid_format | conflict | service_down | error
+  result: text("result").notNull(),
+  failureReason: text("failure_reason"),
+  // baileys | twilio | none (none = failed before any send was attempted)
+  service: text("service"),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPhoneVerificationLogSchema = createInsertSchema(phoneVerificationLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPhoneVerificationLog = z.infer<typeof insertPhoneVerificationLogSchema>;
+export type PhoneVerificationLog = typeof phoneVerificationLogs.$inferSelect;
+
 // Exchange preference item with optional priority
 export type ExchangeItem = {
   name: string;

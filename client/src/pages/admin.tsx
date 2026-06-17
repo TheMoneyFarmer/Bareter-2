@@ -146,7 +146,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "verification-logs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -1112,6 +1112,7 @@ export function AdminPage() {
     { id: "reviews" as const, label: "Reviews", icon: Star },
     { id: "creators" as const, label: "Creators", icon: Camera },
     { id: "collabs" as const, label: "Collabs", icon: Zap },
+    { id: "verification-logs" as const, label: "Verification Logs", icon: ShieldCheck },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -3092,6 +3093,8 @@ export function AdminPage() {
     </div>
   );
 
+  const renderVerificationLogs = () => <VerificationLogsSection />;
+
   const renderAnalytics = () => {
     const funnelSteps = [
       { label: "Waitlist Signups", hint: "Total entries in the waitlist table (all time)", value: funnelData?.waitlistCount ?? 0, color: "bg-blue-500" },
@@ -4357,6 +4360,8 @@ export function AdminPage() {
         return renderCreators();
       case "collabs":
         return renderCollabs();
+      case "verification-logs":
+        return renderVerificationLogs();
       case "analytics":
         return renderAnalytics();
       case "settings":
@@ -6276,6 +6281,133 @@ function CmsMembersSection() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── WhatsApp Verification Logs ──────────────────────────────────────────────
+
+type PhoneVerifLog = {
+  id: number;
+  userId: string | null;
+  email: string | null;
+  phone: string;
+  result: string;
+  failureReason: string | null;
+  service: string | null;
+  ipAddress: string | null;
+  createdAt: string | null;
+};
+
+const RESULT_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  sent: { label: "Sent", variant: "default" },
+  invalid_format: { label: "Bad format", variant: "outline" },
+  conflict: { label: "Conflict", variant: "destructive" },
+  service_down: { label: "Service down", variant: "destructive" },
+  error: { label: "Error", variant: "destructive" },
+};
+
+function VerificationLogsSection() {
+  const [resultFilter, setResultFilter] = useState<string>("all");
+  const { data: logs = [], isLoading } = useQuery<PhoneVerifLog[]>({
+    queryKey: ["/api/admin/phone-verification-logs", resultFilter],
+    queryFn: async () => {
+      const params = resultFilter !== "all" ? `?result=${resultFilter}` : "";
+      const res = await fetch(`/api/admin/phone-verification-logs${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load logs");
+      return res.json();
+    },
+    staleTime: 0,
+  });
+
+  const failCount = logs.filter((l) => l.result !== "sent").length;
+  const conflictCount = logs.filter((l) => l.result === "conflict").length;
+  const serviceDownCount = logs.filter((l) => l.result === "service_down").length;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">WhatsApp Verification Logs</h2>
+        <p className="text-muted-foreground">Every code send attempt — successful or failed — with the exact reason.</p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "Total attempts", value: logs.length },
+          { label: "Successful", value: logs.filter((l) => l.result === "sent").length },
+          { label: "Conflicts", value: conflictCount, warn: conflictCount > 0 },
+          { label: "Service down", value: serviceDownCount, warn: serviceDownCount > 0 },
+        ].map((s) => (
+          <Card key={s.label} className={s.warn ? "border-destructive/40" : ""}>
+            <CardContent className="pt-4 pb-3">
+              <p className="text-2xl font-bold">{s.value}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <CardTitle className="text-base">Attempt history</CardTitle>
+            <Select value={resultFilter} onValueChange={setResultFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All results</SelectItem>
+                <SelectItem value="sent">Sent only</SelectItem>
+                <SelectItem value="conflict">Conflicts</SelectItem>
+                <SelectItem value="service_down">Service down</SelectItem>
+                <SelectItem value="invalid_format">Bad format</SelectItem>
+                <SelectItem value="error">Errors</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">Loading…</div>
+          ) : logs.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">No attempts recorded yet</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Result</TableHead>
+                  <TableHead>Reason / detail</TableHead>
+                  <TableHead>Service</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => {
+                  const meta = RESULT_LABELS[log.result] ?? { label: log.result, variant: "outline" as const };
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {log.createdAt ? new Date(log.createdAt).toLocaleString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[160px] truncate">{log.email ?? log.userId ?? "—"}</TableCell>
+                      <TableCell className="text-xs font-mono">{log.phone}</TableCell>
+                      <TableCell>
+                        <Badge variant={meta.variant}>{meta.label}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+                        {log.failureReason ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{log.service ?? "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

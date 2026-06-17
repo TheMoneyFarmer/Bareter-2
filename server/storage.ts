@@ -70,6 +70,9 @@ import {
   adminInvites,
   type AdminInvite,
   type InsertAdminInvite,
+  phoneVerificationLogs,
+  type PhoneVerificationLog,
+  type InsertPhoneVerificationLog,
   appSettings,
   consentLogs,
   type ConsentLog,
@@ -416,6 +419,10 @@ export interface IStorage {
   getAdminInvites(): Promise<AdminInvite[]>;
   revokeAdminInvite(id: number): Promise<void>;
   markAdminInviteAccepted(id: number, acceptedUserId: string): Promise<void>;
+
+  // WhatsApp verification attempt logs
+  createPhoneVerificationLog(log: InsertPhoneVerificationLog): Promise<PhoneVerificationLog>;
+  getPhoneVerificationLogs(opts?: { result?: string; limit?: number; offset?: number }): Promise<PhoneVerificationLog[]>;
 
   // Support Tickets
   createSupportTicket(data: InsertSupportTicket & { userId?: string | null; subject: string; requesterName?: string | null; requesterEmail?: string | null }): Promise<SupportTicket>;
@@ -2868,6 +2875,25 @@ export class DatabaseStorage implements IStorage {
 
   async markAdminInviteAccepted(id: number, acceptedUserId: string): Promise<void> {
     await db.update(adminInvites).set({ acceptedAt: new Date(), acceptedUserId }).where(eq(adminInvites.id, id));
+  }
+
+  // ── WhatsApp Verification Logs ─────────────────────────────────────────
+
+  async createPhoneVerificationLog(log: InsertPhoneVerificationLog): Promise<PhoneVerificationLog> {
+    const [row] = await db.insert(phoneVerificationLogs).values(log).returning();
+    return row;
+  }
+
+  async getPhoneVerificationLogs(opts: { result?: string; limit?: number; offset?: number } = {}): Promise<PhoneVerificationLog[]> {
+    const conditions = [];
+    if (opts.result) conditions.push(eq(phoneVerificationLogs.result, opts.result));
+    return db
+      .select()
+      .from(phoneVerificationLogs)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(phoneVerificationLogs.createdAt))
+      .limit(opts.limit ?? 200)
+      .offset(opts.offset ?? 0);
   }
 
   // ── Collab Applications ────────────────────────────────────────────────

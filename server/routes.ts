@@ -945,18 +945,35 @@ export async function registerRoutes(
 
   // ── Phone OTP (WhatsApp) ─────────────────────────────────────────────────
   app.post("/api/auth/phone/send-otp", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
+
+    const logAttempt = (
+      phone: string,
+      result: "sent" | "invalid_format" | "conflict" | "service_down" | "error",
+      opts: { failureReason?: string; service?: string; email?: string } = {}
+    ) =>
+      storage.createPhoneVerificationLog({ userId, email: opts.email ?? null, phone, result, failureReason: opts.failureReason ?? null, service: opts.service ?? null, ipAddress: ip }).catch(() => {});
+
     try {
-      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      const userEmail = user?.email ?? null;
+
       const phone: string | undefined = typeof req.body.phone === "string" ? req.body.phone.trim() : undefined;
-      if (!phone) return res.status(400).json({ message: "Phone number required" });
+      if (!phone) {
+        logAttempt("(none)", "invalid_format", { failureReason: "Phone number required", email: userEmail ?? undefined });
+        return res.status(400).json({ message: "Phone number required" });
+      }
       if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+        logAttempt(phone, "invalid_format", { failureReason: "Invalid format — must start with + and be 8–15 digits", email: userEmail ?? undefined });
         return res.status(400).json({ message: "Use international format, e.g. +971501234567" });
       }
 
       // Prevent one phone number being linked to multiple accounts
-      const existing = await db.select({ id: users.id }).from(users)
+      const existing = await db.select({ id: users.id, email: users.email }).from(users)
         .where(and(eq(users.phone, phone), not(eq(users.id, userId)))).limit(1);
       if (existing.length > 0) {
+        logAttempt(phone, "conflict", { failureReason: `Already linked to account: ${existing[0].email}`, email: userEmail ?? undefined });
         return res.status(409).json({ message: "This phone number is already linked to another account" });
       }
 
@@ -987,19 +1004,23 @@ export async function registerRoutes(
       // Try Baileys (self-hosted WhatsApp) first, fall back to Twilio
       const { whatsappService } = await import("./whatsappService");
       let sent = false;
+      let serviceUsed = "none";
       if (whatsappService.isReady()) {
         sent = await whatsappService.sendMessage(phone, body);
         whatsappService.recordSendResult(sent);
+        if (sent) serviceUsed = "baileys";
       }
 
       if (!sent) {
         const { sendWhatsApp, isTwilioConfigured } = await import("./companyOs/twilio");
         if (isTwilioConfigured()) {
           sent = await sendWhatsApp(phone, body);
+          if (sent) serviceUsed = "twilio";
         }
       }
 
       if (!sent && !isDev) {
+        logAttempt(phone, "service_down", { failureReason: "Both Baileys and Twilio failed to deliver", service: "none", email: userEmail ?? undefined });
         return res.status(503).json({ message: "WhatsApp verification is not available right now. Please try again later." });
       }
 
@@ -1007,9 +1028,11 @@ export async function registerRoutes(
         console.log(`[phone-otp] DEV: WhatsApp not connected — code for ${phone} is ${code}`);
       }
 
+      logAttempt(phone, "sent", { service: serviceUsed, email: userEmail ?? undefined });
       res.json({ message: "Code sent via WhatsApp", dev: isDev ? code : undefined });
     } catch (err) {
       console.error("[phone/send-otp]", err);
+      logAttempt(req.body?.phone ?? "(unknown)", "error", { failureReason: String(err) });
       res.status(500).json({ message: "Failed to send verification code" });
     }
   });
@@ -5577,6 +5600,20 @@ export async function registerRoutes(
       res.status(201).json(safeUser);
     } catch (error) {
       console.error("Admin invite accept error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // WhatsApp verification logs — super_admin read-only view
+  app.get("/api/admin/phone-verification-logs", requireAdmin, async (req, res) => {
+    try {
+      const result = typeof req.query.result === "string" ? req.query.result : undefined;
+      const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
+      const offset = parseInt(String(req.query.offset ?? "0"));
+      const logs = await storage.getPhoneVerificationLogs({ result, limit, offset });
+      res.json(logs);
+    } catch (err) {
+      console.error("[admin/phone-verification-logs]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

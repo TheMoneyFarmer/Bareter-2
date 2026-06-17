@@ -35,16 +35,30 @@ export function PhoneVerificationModal({ open, onVerified, onClose, existingPhon
         body: JSON.stringify({ phone: phone.trim() }),
         credentials: "include",
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast({ title: data.message || "Failed to send code", variant: "destructive" });
+        if (res.status === 409) {
+          toast({
+            title: "Number already in use",
+            description: "This number is linked to another account. Contact support at hello@bareter.com if it belongs to you.",
+            variant: "destructive",
+          });
+        } else if (res.status === 503) {
+          toast({
+            title: "Service temporarily unavailable",
+            description: "We can't reach WhatsApp right now. Please try again in a few minutes.",
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: data.message || "Failed to send code", variant: "destructive" });
+        }
         return;
       }
       if (data.dev) setDevCode(data.dev);
       setStep("otp");
       toast({ title: "Code sent", description: "Check your WhatsApp for the 6-digit code." });
     } catch {
-      toast({ title: "Failed to send code", description: "Please check your number and try again.", variant: "destructive" });
+      toast({ title: "Couldn't connect", description: "Check your internet connection and try again.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
