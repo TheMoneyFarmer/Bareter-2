@@ -2083,6 +2083,11 @@ export async function registerRoutes(
       await storage.incrementListingViews(param(req.params.id));
 
       const userId = req.session?.userId;
+
+      // Log accurate view for analytics (deduped 1/user/IP/day — fire-and-forget)
+      const viewerIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() || req.ip;
+      storage.logListingView(listing.id, userId, viewerIp).catch(() => {});
+
       const isLiked = userId ? await storage.isListingLiked(listing.id, userId) : false;
       const commentCount = await storage.getListingCommentCount(listing.id);
 
@@ -2927,16 +2932,11 @@ export async function registerRoutes(
       const followerCount = await storage.getFollowerCount(userId);
       const followingCount = await storage.getFollowingCount(userId);
       
-      // Generate sample views over time data
-      const viewsOverTime = [];
-      for (let i = timeRange; i >= 0; i -= Math.ceil(timeRange / 10)) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        viewsOverTime.push({
-          date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          views: Math.floor(Math.random() * 50) + 10,
-        });
-      }
+      // Real deduped views per day from listing_views table (1 per user/IP per listing per day)
+      const listingIds = userListings.map(l => l.id);
+      const viewsOverTime = listingIds.length > 0
+        ? await storage.getListingViewsOverTime(listingIds, timeRange)
+        : [];
       
       // Listings by category
       const categoryMap = new Map<string, number>();

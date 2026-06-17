@@ -130,6 +130,7 @@ import {
   type InsertCollabApplication,
   internationalWaitlist,
   type InternationalWaitlistEntry,
+  listingViews,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -158,6 +159,8 @@ export interface IStorage {
   createListing(listing: InsertListing): Promise<Listing>;
   updateListing(id: string, data: Partial<Listing>): Promise<Listing | undefined>;
   incrementListingViews(id: string): Promise<void>;
+  logListingView(listingId: string, userId?: string, ipAddress?: string): Promise<void>;
+  getListingViewsOverTime(listingIds: string[], days?: number): Promise<{ date: string; views: number }[]>;
 
   // Deals
   getDeal(id: string): Promise<Deal | undefined>;
@@ -634,6 +637,65 @@ export class DatabaseStorage implements IStorage {
       .update(listings)
       .set({ viewCount: sql`${listings.viewCount} + 1` })
       .where(eq(listings.id, id));
+  }
+
+  async logListingView(listingId: string, userId?: string, ipAddress?: string): Promise<void> {
+    // Skip if we have no identifier at all (untrackable bot/crawler)
+    if (!userId && !ipAddress) return;
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    if (userId) {
+      const [existing] = await db
+        .select({ id: listingViews.id })
+        .from(listingViews)
+        .where(and(
+          eq(listingViews.listingId, listingId),
+          eq(listingViews.userId, userId),
+          gte(listingViews.viewedAt, todayStart),
+        ));
+      if (existing) return;
+      await db.insert(listingViews).values({ listingId, userId, ipAddress: ipAddress ?? null });
+    } else if (ipAddress) {
+      const [existing] = await db
+        .select({ id: listingViews.id })
+        .from(listingViews)
+        .where(and(
+          eq(listingViews.listingId, listingId),
+          isNull(listingViews.userId),
+          eq(listingViews.ipAddress, ipAddress),
+          gte(listingViews.viewedAt, todayStart),
+        ));
+      if (existing) return;
+      await db.insert(listingViews).values({ listingId, userId: null, ipAddress });
+    }
+  }
+
+  async getListingViewsOverTime(listingIds: string[], days: number = 30): Promise<{ date: string; views: number }[]> {
+    if (listingIds.length === 0) return [];
+
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    since.setHours(0, 0, 0, 0);
+
+    const rows = await db
+      .select({
+        day: sql<string>`date_trunc('day', ${listingViews.viewedAt})::date`,
+        views: sql<number>`count(distinct coalesce(${listingViews.userId}, ${listingViews.ipAddress}))`,
+      })
+      .from(listingViews)
+      .where(and(
+        inArray(listingViews.listingId, listingIds),
+        gte(listingViews.viewedAt, since),
+      ))
+      .groupBy(sql`date_trunc('day', ${listingViews.viewedAt})`)
+      .orderBy(sql`date_trunc('day', ${listingViews.viewedAt})`);
+
+    return rows.map(r => ({
+      date: new Date(r.day).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      views: Number(r.views),
+    }));
   }
 
   // Deals

@@ -2480,3 +2480,16 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   userIdx: index("push_subs_user_idx").on(table.userId),
   endpointIdx: index("push_subs_endpoint_idx").on(table.endpoint),
 }));
+
+// Accurate per-user/IP view log for analytics (deduped: 1 per user/IP per listing per day).
+// The naive listings.viewCount is kept for user-facing display only.
+export const listingViews = pgTable("listing_views", {
+  id: serial("id").primaryKey(),
+  listingId: text("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  ipAddress: text("ip_address"),
+  viewedAt: timestamp("viewed_at").defaultNow().notNull(),
+}, (table) => ({
+  listingIdx: index("listing_views_listing_idx").on(table.listingId),
+  viewedAtIdx: index("listing_views_viewed_at_idx").on(table.viewedAt),
+}));
