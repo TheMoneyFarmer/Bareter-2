@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
@@ -190,6 +190,25 @@ export default function DashboardPage() {
     },
     enabled: !!user,
   });
+
+  // Deep-link: /dashboard?tab=listings&edit=<id> — from "Edit Listing" on listing-detail page
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    const editId = params.get("edit");
+    if (tab) setActiveTab(tab);
+    if (editId && myListings) {
+      const target = myListings.find((l) => l.id === editId);
+      if (target) {
+        openEdit(target);
+        // Clean the param from URL without triggering a re-render loop
+        params.delete("edit");
+        params.delete("tab");
+        const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+        window.history.replaceState({}, "", newUrl);
+      }
+    }
+  }, [myListings]);
 
   const unfollowMutation = useMutation({
     mutationFn: (followerId: string) =>

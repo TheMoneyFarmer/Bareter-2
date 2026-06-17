@@ -1983,7 +1983,7 @@ export function ListingDetailPage() {
             <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-bareter-muted">{t("listingDetail.thisIsYourListing")}</p>
-                <Button variant="bareter-outline" className="mt-2 w-full" data-testid="button-edit-listing">
+                <Button variant="bareter-outline" className="mt-2 w-full" data-testid="button-edit-listing" onClick={() => navigate(`/dashboard?tab=listings&edit=${listing.id}`)}>
                   {t("listingDetail.editListing")}
                 </Button>
               </CardContent>
