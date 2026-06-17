@@ -146,7 +146,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "ai-logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "verification-logs";
+type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -309,6 +309,12 @@ export function AdminPage() {
   const [auditLogAdminFilter, setAuditLogAdminFilter] = useState<string>("all");
   const [auditLogDateFrom, setAuditLogDateFrom] = useState<string>("");
   const [auditLogDateTo, setAuditLogDateTo] = useState<string>("");
+  const [logsSource, setLogsSource] = useState<"all" | "ai" | "email" | "whatsapp" | "audit">("all");
+  const [logsDatePreset, setLogsDatePreset] = useState<"all" | "today" | "week" | "month" | "custom">("all");
+  const [logsDateFrom, setLogsDateFrom] = useState("");
+  const [logsDateTo, setLogsDateTo] = useState("");
+  const [logsSearch, setLogsSearch] = useState("");
+  const [logsStatusFilter, setLogsStatusFilter] = useState("all");
   const [broadcastSubject, setBroadcastSubject] = useState("");
   const [broadcastBody, setBroadcastBody] = useState("");
   const [broadcastCityFilter, setBroadcastCityFilter] = useState("");
@@ -696,7 +702,7 @@ export function AdminPage() {
   const { data: auditLogs = [] } = useQuery<AdminAuditLog[]>({
     queryKey: ["/api/admin/audit-logs", auditLogActionFilter, auditLogAdminFilter, auditLogDateFrom, auditLogDateTo],
     queryFn: () => fetch(auditLogUrl, { credentials: "include" }).then(r => r.json()),
-    enabled: activeSection === "settings" && settingsTab === "audit",
+    enabled: (activeSection === "settings" && settingsTab === "audit") || activeSection === "logs",
     staleTime: 0,
   });
 
@@ -1102,7 +1108,7 @@ export function AdminPage() {
     { id: "disputes" as const, label: "Disputes", icon: Gavel },
     { id: "reports" as const, label: "Reports", icon: Flag },
     { id: "flags" as const, label: "Flags", icon: AlertTriangle },
-    { id: "ai-logs" as const, label: "AI Logs", icon: Bot },
+    { id: "logs" as const, label: "Logs", icon: ScrollText },
     { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
     { id: "feature-waitlist" as const, label: "Feature Waitlists", icon: Sparkles },
     { id: "intl-waitlist" as const, label: "Intl. Waitlist", icon: Globe },
@@ -1112,7 +1118,6 @@ export function AdminPage() {
     { id: "reviews" as const, label: "Reviews", icon: Star },
     { id: "creators" as const, label: "Creators", icon: Camera },
     { id: "collabs" as const, label: "Collabs", icon: Zap },
-    { id: "verification-logs" as const, label: "Verification Logs", icon: ShieldCheck },
     { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
     { id: "settings" as const, label: "Settings", icon: Settings },
   ];
@@ -3093,7 +3098,6 @@ export function AdminPage() {
     </div>
   );
 
-  const renderVerificationLogs = () => <VerificationLogsSection />;
 
   const renderAnalytics = () => {
     const funnelSteps = [
@@ -3928,19 +3932,33 @@ export function AdminPage() {
     agentInteractions: AgentInteractionEntry[];
   }>({
     queryKey: ["/api/ai/logs"],
-    enabled: activeSection === "ai-logs" && !!user?.isAdmin,
+    enabled: activeSection === "logs" && !!user?.isAdmin,
+  });
+
+  const { data: phoneVerifLogs = [] } = useQuery<PhoneVerifLog[]>({
+    queryKey: ["/api/admin/phone-verification-logs", "unified"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/phone-verification-logs", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: activeSection === "logs",
+    staleTime: 0,
+  });
+
+  const { data: unifiedEmailLogs = [], refetch: refetchUnifiedEmailLogs } = useQuery<any[]>({
+    queryKey: ["/api/admin/email/logs", "unified"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/email/logs", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: activeSection === "logs",
+    staleTime: 0,
   });
 
   const [aiLogFilter, setAiLogFilter] = useState<"all" | "approved" | "flagged" | "rejected">("all");
   const [aiAgentFilter, setAiAgentFilter] = useState<string>("all");
-
-  const filteredModLogs = (aiLogs?.moderationLogs || []).filter(
-    (l) => aiLogFilter === "all" || l.action === aiLogFilter
-  );
-  const filteredInteractions = (aiLogs?.agentInteractions || []).filter(
-    (i) => aiAgentFilter === "all" || i.agentType === aiAgentFilter
-  );
-  const totalTokens = (aiLogs?.agentInteractions || []).reduce((sum, i) => sum + (i.tokensUsed || 0), 0);
 
   const renderWaitlist = () => <WaitlistAdminSection />;
 
@@ -4130,191 +4148,554 @@ export function AdminPage() {
     </div>
   );
 
-  const renderAiLogs = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-1">AI Agent Logs</h2>
-        <p className="text-muted-foreground">Monitor AI agent activity and moderation decisions</p>
-      </div>
+  const renderLogs = () => {
+    // ── Client-side date range ──
+    const getThreshold = (): Date | null => {
+      if (logsDatePreset === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+      if (logsDatePreset === "week") return new Date(Date.now() - 7 * 86400000);
+      if (logsDatePreset === "month") return new Date(Date.now() - 30 * 86400000);
+      if (logsDatePreset === "custom" && logsDateFrom) return new Date(logsDateFrom);
+      return null;
+    };
+    const getCeiling = (): Date | null => {
+      if (logsDatePreset === "custom" && logsDateTo) { const d = new Date(logsDateTo); d.setHours(23, 59, 59, 999); return d; }
+      return null;
+    };
+    const threshold = getThreshold();
+    const ceiling = getCeiling();
+    const inDate = (ts: string | null | undefined): boolean => {
+      if (!ts) return true;
+      const d = new Date(ts);
+      if (threshold && d < threshold) return false;
+      if (ceiling && d > ceiling) return false;
+      return true;
+    };
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Total Interactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-ai-total-interactions">{aiLogs?.agentInteractions?.length || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Moderation Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-ai-moderation-count">{aiLogs?.moderationLogs?.length || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Flagged Content</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-500" data-testid="text-ai-flagged-count">
-              {(aiLogs?.moderationLogs || []).filter((l) => l.action === "flagged").length}
+    const q = logsSearch.trim().toLowerCase();
+    const matchQ = (...fields: (string | null | undefined)[]): boolean =>
+      !q || fields.some(f => f?.toLowerCase().includes(q));
+
+    const matchStatus = (isSuccess: boolean): boolean => {
+      if (logsStatusFilter === "all") return true;
+      return logsStatusFilter === "success" ? isSuccess : !isSuccess;
+    };
+
+    // ── Per-source filtered arrays ──
+    const fMod = (aiLogs?.moderationLogs || []).filter(l =>
+      (aiLogFilter === "all" || l.action === aiLogFilter) &&
+      inDate(l.createdAt) &&
+      matchQ(l.targetType, l.action, l.reason) &&
+      matchStatus(l.action === "approved")
+    );
+    const fInt = (aiLogs?.agentInteractions || []).filter(l =>
+      (aiAgentFilter === "all" || l.agentType === aiAgentFilter) &&
+      inDate(l.createdAt) &&
+      matchQ(l.agentType, l.userMessage, l.agentResponse)
+    );
+    const aiTotal = fMod.length + fInt.length;
+
+    const fEmail = unifiedEmailLogs.filter(l =>
+      inDate(l.createdAt) &&
+      matchQ(l.recipientEmail, l.subject, l.templateKey) &&
+      matchStatus(l.status === "sent")
+    );
+
+    const fWA = phoneVerifLogs.filter(l =>
+      inDate(l.createdAt) &&
+      matchQ(l.email, l.phone, l.result, l.failureReason) &&
+      matchStatus(l.result === "sent")
+    );
+
+    const fAudit = auditLogs.filter((l: AdminAuditLog) =>
+      inDate(l.createdAt?.toString()) &&
+      matchQ((l as any).adminEmail, l.action, (l as any).targetType)
+    );
+
+    // ── Normalized combined feed for "all" view ──
+    type NL = { key: string; source: string; ts: string | null; desc: string; ok: boolean | null; sub?: string };
+    const allFeed: NL[] = [
+      ...fMod.map(l => ({ key: `m-${l.id}`, source: "AI", ts: l.createdAt, desc: `Moderation: ${l.action} — ${l.targetType}`, ok: l.action === "approved", sub: l.reason?.substring(0, 60) || undefined })),
+      ...fInt.map(l => ({ key: `i-${l.id}`, source: "AI", ts: l.createdAt, desc: `Agent (${l.agentType}): ${l.userMessage?.substring(0, 50)}`, ok: null, sub: `${l.tokensUsed || 0} tokens` })),
+      ...fEmail.map((l: any) => ({ key: `e-${l.id}`, source: "Email", ts: l.createdAt, desc: `→ ${l.recipientEmail}: ${l.subject || l.templateKey || "email"}`, ok: l.status === "sent", sub: l.errorMessage?.substring(0, 60) || undefined })),
+      ...fWA.map(l => ({ key: `w-${l.id}`, source: "WhatsApp", ts: l.createdAt, desc: `${l.email || l.userId || "user"} → ${l.phone}`, ok: l.result === "sent", sub: l.result !== "sent" ? (l.failureReason || l.result) : undefined })),
+      ...fAudit.map((l: AdminAuditLog) => ({ key: `a-${l.id}`, source: "Audit", ts: l.createdAt?.toString() || null, desc: `${(l as any).adminEmail || "admin"}: ${l.action.replace(/_/g, " ")}`, ok: null, sub: (l as any).targetType || undefined })),
+    ].sort((a, b) => {
+      if (!a.ts && !b.ts) return 0;
+      if (!a.ts) return 1;
+      if (!b.ts) return -1;
+      return new Date(b.ts).getTime() - new Date(a.ts).getTime();
+    });
+
+    const sourceColors: Record<string, string> = {
+      AI: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+      Email: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+      WhatsApp: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+      Audit: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    };
+
+    const fmt = (ts: string | null | undefined) =>
+      ts ? new Date(ts).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Logs</h2>
+          <p className="text-muted-foreground">All system activity in one place — AI, email, WhatsApp, and admin actions</p>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Source pills */}
+          <div className="flex gap-0.5 bg-muted p-0.5 rounded-lg">
+            {(["all", "ai", "email", "whatsapp", "audit"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setLogsSource(s)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${logsSource === s ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {s === "all" ? "All" : s === "ai" ? "AI" : s === "email" ? "Email" : s === "whatsapp" ? "WhatsApp" : "Audit"}
+              </button>
+            ))}
+          </div>
+
+          {/* Date preset */}
+          <Select value={logsDatePreset} onValueChange={v => setLogsDatePreset(v as typeof logsDatePreset)}>
+            <SelectTrigger className="w-[130px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All time</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">Last 7 days</SelectItem>
+              <SelectItem value="month">Last 30 days</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {logsDatePreset === "custom" && (
+            <>
+              <Input type="date" value={logsDateFrom} onChange={e => setLogsDateFrom(e.target.value)} className="h-8 w-[130px] text-xs" />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input type="date" value={logsDateTo} onChange={e => setLogsDateTo(e.target.value)} className="h-8 w-[130px] text-xs" />
+            </>
+          )}
+
+          {/* Status */}
+          <Select value={logsStatusFilter} onValueChange={setLogsStatusFilter}>
+            <SelectTrigger className="w-[125px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="success">Success only</SelectItem>
+              <SelectItem value="failure">Failures only</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search email, phone, action…"
+              value={logsSearch}
+              onChange={e => setLogsSearch(e.target.value)}
+              className="pl-8 h-8 text-xs"
+            />
+          </div>
+
+          {/* Export CSV */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => {
+              const rows = allFeed.map(r =>
+                [r.source, r.ts ? new Date(r.ts).toISOString() : "", `"${r.desc.replace(/"/g, '""')}"`, r.ok === null ? "" : r.ok ? "success" : "failure", `"${(r.sub || "").replace(/"/g, '""')}"`].join(",")
+              );
+              const csv = ["Source,Timestamp,Description,Status,Detail", ...rows].join("\n");
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+              a.download = `bareter-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.click();
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </Button>
+        </div>
+
+        {/* Summary stat cards — clicking a card switches to that source */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: "Total", value: allFeed.length, sub: "all sources", src: "all" as const },
+            { label: "AI", value: aiTotal, sub: `${fMod.length} mod · ${fInt.length} agent`, src: "ai" as const },
+            { label: "Email", value: fEmail.length, sub: `${fEmail.filter((l: any) => l.status === "sent").length} delivered`, src: "email" as const },
+            { label: "WhatsApp", value: fWA.length, sub: `${fWA.filter(l => l.result === "sent").length} sent`, src: "whatsapp" as const },
+            { label: "Audit", value: fAudit.length, sub: "admin actions", src: "audit" as const },
+          ].map(s => (
+            <Card
+              key={s.label}
+              className={`cursor-pointer transition-colors hover:border-primary/40 ${logsSource === s.src ? "border-primary" : ""}`}
+              onClick={() => setLogsSource(s.src)}
+            >
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xl font-bold">{s.value}</p>
+                <p className="text-xs font-medium">{s.label}</p>
+                <p className="text-xs text-muted-foreground truncate">{s.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* ── ALL: chronological merged feed ── */}
+        {logsSource === "all" && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Activity Feed</CardTitle>
+              <CardDescription>{allFeed.length} events matching current filters</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {allFeed.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No activity found for the selected filters</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[130px]">Time</TableHead>
+                      <TableHead className="w-[90px]">Source</TableHead>
+                      <TableHead>Event</TableHead>
+                      <TableHead className="w-[80px]">Status</TableHead>
+                      <TableHead>Detail</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allFeed.slice(0, 200).map(row => (
+                      <TableRow key={row.key}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(row.ts)}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${sourceColors[row.source] || ""}`}>
+                            {row.source}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[280px] truncate">{row.desc}</TableCell>
+                        <TableCell>
+                          {row.ok === null
+                            ? <span className="text-xs text-muted-foreground">—</span>
+                            : row.ok
+                              ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700">✓ ok</span>
+                              : <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700">✗ fail</span>
+                          }
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">{row.sub || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {allFeed.length > 200 && (
+                <p className="py-3 text-center text-xs text-muted-foreground border-t">
+                  Showing first 200 of {allFeed.length} — apply a source or date filter to narrow down
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── AI: moderation logs + agent interactions ── */}
+        {logsSource === "ai" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Interactions</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold" data-testid="text-ai-total-interactions">{fInt.length}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Moderation Actions</CardTitle></CardHeader>
+                <CardContent><div className="text-2xl font-bold" data-testid="text-ai-moderation-count">{fMod.length}</div></CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Flagged</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-amber-500" data-testid="text-ai-flagged-count">
+                    {fMod.filter(l => l.action === "flagged").length}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Tokens Used</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-ai-total-tokens">
+                    {fInt.reduce((s, i) => s + (i.tokensUsed || 0), 0).toLocaleString()}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Total Tokens Used</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-ai-total-tokens">{totalTokens.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-lg">Moderation Logs</CardTitle>
-            <div className="flex gap-1">
-              {(["all", "approved", "flagged", "rejected"] as const).map((f) => (
-                <Button
-                  key={f}
-                  variant={aiLogFilter === f ? "default" : "outline"}
-                  size="sm"
-                  className="text-xs h-7 capitalize"
-                  data-testid={`btn-filter-moderation-${f}`}
-                  onClick={() => setAiLogFilter(f)}
-                >
-                  {f}
-                </Button>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base">Moderation Logs</CardTitle>
+                  <div className="flex gap-1">
+                    {(["all", "approved", "flagged", "rejected"] as const).map(f => (
+                      <Button key={f} variant={aiLogFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
+                        data-testid={`btn-filter-moderation-${f}`} onClick={() => setAiLogFilter(f)}>{f}</Button>
+                    ))}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {fMod.length === 0 ? (
+                  <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Categories</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Confidence</TableHead>
+                        <TableHead>Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fMod.map(log => {
+                        const cats: string[] = log.rawResponse?.categories ?? [];
+                        return (
+                          <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
+                            <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
+                            <TableCell>
+                              <Badge variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}>
+                                {log.action}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {cats.length === 0
+                                  ? <span className="text-xs text-muted-foreground">—</span>
+                                  : cats.map(cat => (
+                                    <Badge key={cat} variant="outline" className={`text-xs ${cat === "off_platform" ? "border-amber-500/60 text-amber-600" : cat === "cash_price" ? "border-red-400/60 text-red-600" : ""}`}
+                                      data-testid={`badge-category-${log.id}-${cat}`}>{cat}</Badge>
+                                  ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
+                            <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base">Agent Interactions</CardTitle>
+                  <div className="flex gap-1">
+                    {["all", "support", "matching", "valuation", "engagement", "admin"].map(f => (
+                      <Button key={f} variant={aiAgentFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
+                        data-testid={`btn-filter-agent-${f}`} onClick={() => setAiAgentFilter(f)}>{f}</Button>
+                    ))}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {fInt.length === 0 ? (
+                  <p className="text-muted-foreground text-sm py-4 text-center">No agent interactions</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agent</TableHead>
+                        <TableHead>User Message</TableHead>
+                        <TableHead>Response</TableHead>
+                        <TableHead>Tokens</TableHead>
+                        <TableHead>Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fInt.map(i => (
+                        <TableRow key={i.id} data-testid={`row-interaction-${i.id}`}>
+                          <TableCell><Badge variant="outline" className="capitalize">{i.agentType}</Badge></TableCell>
+                          <TableCell className="max-w-[150px] truncate text-sm">{i.userMessage}</TableCell>
+                          <TableCell className="max-w-[200px] truncate text-sm">{i.agentResponse?.substring(0, 80)}</TableCell>
+                          <TableCell className="text-sm">{i.tokensUsed || 0}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {i.createdAt ? new Date(i.createdAt).toLocaleDateString() : "N/A"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── EMAIL: delivery logs ── */}
+        {logsSource === "email" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <div>
+                <CardTitle className="text-base">Email Logs</CardTitle>
+                <CardDescription>{fEmail.length} emails matching current filters</CardDescription>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => refetchUnifiedEmailLogs()}>Refresh</Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {fEmail.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-10 text-center">No email logs found</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Template</TableHead>
+                      <TableHead>To</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Source</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fEmail.map((log: any) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(log.createdAt)}</TableCell>
+                        <TableCell className="text-xs font-mono">{log.templateKey ? log.templateKey.replace("email_template_", "") : "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[160px] truncate">{log.recipientEmail}</TableCell>
+                        <TableCell className="text-xs max-w-[200px] truncate text-muted-foreground">{log.subject}</TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${log.status === "sent" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                            {log.status === "sent" ? "✓ sent" : "✗ failed"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {log.source}
+                          {log.errorMessage && (
+                            <p className="text-red-500 mt-0.5 max-w-[180px] truncate" title={log.errorMessage}>{log.errorMessage}</p>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── WHATSAPP: phone verification logs ── */}
+        {logsSource === "whatsapp" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: "Total attempts", value: fWA.length },
+                { label: "Successful", value: fWA.filter(l => l.result === "sent").length },
+                { label: "Conflicts", value: fWA.filter(l => l.result === "conflict").length, warn: fWA.some(l => l.result === "conflict") },
+                { label: "Service down", value: fWA.filter(l => l.result === "service_down").length, warn: fWA.some(l => l.result === "service_down") },
+              ].map(s => (
+                <Card key={s.label} className={s.warn ? "border-destructive/40" : ""}>
+                  <CardContent className="pt-4 pb-3">
+                    <p className="text-2xl font-bold">{s.value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+                  </CardContent>
+                </Card>
               ))}
             </div>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Attempt history</CardTitle>
+                <CardDescription>{fWA.length} entries matching current filters</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {fWA.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">No WhatsApp log entries found</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>When</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Result</TableHead>
+                        <TableHead>Reason / detail</TableHead>
+                        <TableHead>Service</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fWA.map(log => {
+                        const meta = RESULT_LABELS[log.result] ?? { label: log.result, variant: "outline" as const };
+                        return (
+                          <TableRow key={log.id}>
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(log.createdAt)}</TableCell>
+                            <TableCell className="text-xs max-w-[160px] truncate">{log.email ?? log.userId ?? "—"}</TableCell>
+                            <TableCell className="text-xs font-mono">{log.phone}</TableCell>
+                            <TableCell><Badge variant={meta.variant}>{meta.label}</Badge></TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">{log.failureReason ?? "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{log.service ?? "—"}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent>
-          {filteredModLogs.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs found</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Categories</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Confidence</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredModLogs.map((log) => {
-                  const cats: string[] = log.rawResponse?.categories ?? [];
-                  return (
-                  <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
-                    <TableCell>
-                      <Badge variant="outline">{log.targetType}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}
-                      >
-                        {log.action}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {cats.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : cats.map((cat) => (
-                          <Badge
-                            key={cat}
-                            variant="outline"
-                            className={
-                              cat === "off_platform"
-                                ? "border-amber-500/60 text-amber-600 text-xs"
-                                : cat === "cash_price"
-                                ? "border-red-400/60 text-red-600 text-xs"
-                                : "text-xs"
-                            }
-                            data-testid={`badge-category-${log.id}-${cat}`}
-                          >
-                            {cat}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
-                    <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
-                    </TableCell>
-                  </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-lg">Agent Interactions</CardTitle>
-            <div className="flex gap-1">
-              {["all", "support", "matching", "valuation", "engagement", "admin"].map((f) => (
-                <Button
-                  key={f}
-                  variant={aiAgentFilter === f ? "default" : "outline"}
-                  size="sm"
-                  className="text-xs h-7 capitalize"
-                  data-testid={`btn-filter-agent-${f}`}
-                  onClick={() => setAiAgentFilter(f)}
-                >
-                  {f}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredInteractions.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-4 text-center">No agent interactions found</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>User Message</TableHead>
-                  <TableHead>Response</TableHead>
-                  <TableHead>Tokens</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredInteractions.map((interaction) => (
-                  <TableRow key={interaction.id} data-testid={`row-interaction-${interaction.id}`}>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">{interaction.agentType}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[150px] truncate text-sm">{interaction.userMessage}</TableCell>
-                    <TableCell className="max-w-[200px] truncate text-sm">{interaction.agentResponse?.substring(0, 80)}</TableCell>
-                    <TableCell className="text-sm">{interaction.tokensUsed || 0}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {interaction.createdAt ? new Date(interaction.createdAt).toLocaleDateString() : "N/A"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+        {/* ── AUDIT: admin action log ── */}
+        {logsSource === "audit" && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Admin Audit Log</CardTitle>
+              <CardDescription>{fAudit.length} actions matching filters</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {fAudit.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No audit log entries found</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>When</TableHead>
+                      <TableHead>Admin</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Target</TableHead>
+                      <TableHead>Details</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fAudit.map((log: AdminAuditLog) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(log.createdAt?.toString())}</TableCell>
+                        <TableCell className="text-xs max-w-[160px] truncate">{(log as any).adminEmail ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs capitalize">{log.action.replace(/_/g, " ")}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{(log as any).targetType ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                          {log.details ? JSON.stringify(log.details).substring(0, 80) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   const renderReviews = () => {
     return (
@@ -4340,8 +4721,8 @@ export function AdminPage() {
         return renderReports();
       case "flags":
         return renderFlags();
-      case "ai-logs":
-        return renderAiLogs();
+      case "logs":
+        return renderLogs();
       case "waitlist":
         return renderWaitlist();
       case "feature-waitlist":
@@ -4360,8 +4741,6 @@ export function AdminPage() {
         return renderCreators();
       case "collabs":
         return renderCollabs();
-      case "verification-logs":
-        return renderVerificationLogs();
       case "analytics":
         return renderAnalytics();
       case "settings":
