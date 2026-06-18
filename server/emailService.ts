@@ -496,7 +496,7 @@ export async function sendAdminInviteEmail(
   return sendMail({ to: toEmail, subject: `You've been invited to the ${APP_NAME} admin team`, html, text });
 }
 
-export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string): Promise<void> {
+export async function sendPasswordResetEmail(toEmail: string, resetToken: string, baseUrl: string, fullName?: string): Promise<void> {
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
 
   const isDev = process.env.NODE_ENV !== "production";
@@ -512,7 +512,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
 
   const customTemplate = await getCustomTemplate("email_template_password_reset");
   const html = customTemplate
-    ? applyTemplateVars(customTemplate, { resetUrl, appName: APP_NAME, baseUrl })
+    ? applyTemplateVars(customTemplate, { resetUrl, actionUrl: resetUrl, appName: APP_NAME, baseUrl, fullName: fullName || "there", email: toEmail })
     : emailShell(`
       <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Reset your password</h2>
       <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">We received a request to reset your ${APP_NAME} password. Click below to create a new one. This link expires in <strong>1 hour</strong>.</p>
