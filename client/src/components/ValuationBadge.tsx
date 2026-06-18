@@ -87,7 +87,7 @@ export function ValuationBadge({
             <Info className="h-3 w-3 opacity-50" />
           </span>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs space-y-1">
+        <TooltipContent side="bottom" sideOffset={6} className="max-w-[280px] space-y-1.5 z-50">
           <p className="text-sm font-semibold">Bareter Estimated Value</p>
           <p className="text-xs text-muted-foreground">
             AED {min.toLocaleString()} – AED {max.toLocaleString()}
@@ -102,16 +102,18 @@ export function ValuationBadge({
           {confLabel && (
             <p className="text-xs text-muted-foreground">
               {confLabel}
-              {conf !== null && (
-                <> · {Math.round(conf * 100)}%</>
-              )}
+              {conf !== null && <> · {Math.round(conf * 100)}%</>}
             </p>
           )}
-          {reasoning && (
-            <p className="text-xs leading-snug">{reasoning}</p>
-          )}
-          {marketNote && (
-            <p className="text-xs italic opacity-80">{marketNote}</p>
+          {(reasoning || marketNote) && (
+            <div className="max-h-40 overflow-y-auto space-y-1 border-t border-border/40 pt-1.5">
+              {reasoning && (
+                <p className="text-xs leading-snug">{reasoning}</p>
+              )}
+              {marketNote && (
+                <p className="text-xs italic opacity-80">{marketNote}</p>
+              )}
+            </div>
           )}
         </TooltipContent>
       </Tooltip>
