@@ -511,9 +511,34 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
   }
 
   const customTemplate = await getCustomTemplate("email_template_password_reset");
-  const html = customTemplate
-    ? applyTemplateVars(customTemplate, { resetUrl, actionUrl: resetUrl, appName: APP_NAME, baseUrl, fullName: fullName || "there", email: toEmail })
-    : emailShell(`
+  let html: string;
+  if (customTemplate) {
+    // Pass every common alias so the URL is substituted regardless of which
+    // variable name the admin used for the CTA button in the template editor.
+    html = applyTemplateVars(customTemplate, {
+      resetUrl,
+      actionUrl: resetUrl,
+      link: resetUrl,
+      url: resetUrl,
+      ctaUrl: resetUrl,
+      buttonUrl: resetUrl,
+      appName: APP_NAME,
+      baseUrl,
+      fullName: fullName || "there",
+      email: toEmail,
+    });
+    // Safety net: if the reset URL is still not present in the rendered HTML
+    // (template used an unsupported variable name or had no href at all),
+    // inject a plain-text fallback link so users can always complete the reset.
+    if (!html.includes(resetUrl)) {
+      const fallback = `<p style="color:#6b7280;font-size:12px;text-align:center;margin:16px 0 0;">Button not working? <a href="${resetUrl}" style="color:#136c68;">Click here to reset your password</a></p>`;
+      html = html.replace(/<\/body>/i, `${fallback}</body>`);
+      if (!html.includes(resetUrl)) {
+        html += fallback;
+      }
+    }
+  } else {
+    html = emailShell(`
       <h2 style="font-size:19px;font-weight:700;color:#1a2035;margin:0 0 10px;">Reset your password</h2>
       <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 24px;">We received a request to reset your ${APP_NAME} password. Click below to create a new one. This link expires in <strong>1 hour</strong>.</p>
       <div style="text-align:center;margin:0 0 24px;">
@@ -521,6 +546,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
       </div>
       <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">If you didn't request this, you can safely ignore this email. The link will expire in 1 hour.</p>
     `);
+  }
   const text = `Reset your ${APP_NAME} password\n\nClick this link to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.`;
 
   const sent = await sendMail({
