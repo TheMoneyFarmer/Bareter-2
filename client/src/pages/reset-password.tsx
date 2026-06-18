@@ -60,8 +60,9 @@ export function ResetPasswordPage() {
       setSuccess(true);
       setTimeout(() => navigate("/login"), 3000);
     } catch (err: any) {
-      const msg = await err?.response?.json?.().catch(() => null);
-      if (msg?.message?.includes("expired") || msg?.message?.includes("invalid")) {
+      // apiRequest throws Error("STATUS: body") — no .response property
+      const raw = (err?.message || "").toLowerCase();
+      if (raw.includes("expired") || raw.includes("invalid")) {
         setTokenInvalid(true);
       } else {
         toast({

@@ -22,8 +22,9 @@ export function ForgotPasswordPage() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
-  const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
-  const passwordResetEnabled = config?.passwordResetEnabled ?? false;
+  const { data: config, isLoading: configLoading } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
+  // Default to true while loading to avoid flashing "not available" before config arrives
+  const passwordResetEnabled = configLoading ? true : (config?.passwordResetEnabled ?? false);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
