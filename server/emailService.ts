@@ -527,15 +527,28 @@ export async function sendPasswordResetEmail(toEmail: string, resetToken: string
       fullName: fullName || "there",
       email: toEmail,
     });
-    // Safety net: if the reset URL is still not present in the rendered HTML
-    // (template used an unsupported variable name or had no href at all),
-    // inject a plain-text fallback link so users can always complete the reset.
+    // If the reset URL still isn't present after substitution, the template's
+    // button has no href attribute (or used a variable name we don't know).
+    // Patch the first button-styled <a> tag to carry the URL directly.
     if (!html.includes(resetUrl)) {
-      const fallback = `<p style="color:#6b7280;font-size:12px;text-align:center;margin:16px 0 0;">Button not working? <a href="${resetUrl}" style="color:#136c68;">Click here to reset your password</a></p>`;
-      html = html.replace(/<\/body>/i, `${fallback}</body>`);
-      if (!html.includes(resetUrl)) {
-        html += fallback;
-      }
+      let patched = false;
+      html = html.replace(/<a\b([^>]*)>/gi, (match, attrs: string) => {
+        if (patched) return match;
+        const hrefMatch = attrs.match(/\shref=["']([^"']*)["']/i);
+        const rawHref = hrefMatch ? hrefMatch[1].trim() : null;
+        // Only patch anchors that are missing a href, have an empty href,
+        // still have an unresolved {{placeholder}}, or look like a CTA button
+        // (inline background color in style attribute).
+        const isMissingHref = rawHref === null;
+        const isEmptyOrPlaceholder = rawHref !== null && (rawHref === "" || rawHref === "#" || /\{\{/.test(rawHref));
+        const looksLikeButton = /background/i.test(attrs);
+        if (!isMissingHref && !isEmptyOrPlaceholder && !looksLikeButton) return match;
+        patched = true;
+        if (hrefMatch) {
+          return `<a${attrs.replace(/(\shref=)["'][^"']*["']/i, `$1"${resetUrl}"`)}>`;
+        }
+        return `<a href="${resetUrl}"${attrs}>`;
+      });
     }
   } else {
     html = emailShell(`
