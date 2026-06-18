@@ -5684,9 +5684,12 @@ export async function registerRoutes(
         passwordResetToken: hashResetToken(token),
         passwordResetExpires: expires,
       });
-      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-      const host = req.headers["x-forwarded-host"] || req.headers.host;
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = (process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "")
+        || (() => {
+          const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+          const host = req.headers["x-forwarded-host"] || req.headers.host;
+          return `${protocol}://${host}`;
+        })();
       import("./emailService").then(({ sendPasswordResetEmail }) => sendPasswordResetEmail(user.email, token, baseUrl, user.fullName || undefined)).catch(() => {});
       await logAdminAction(req, "password_reset_sent", "user", user.id, { email: user.email });
       res.json({ message: "Password reset email sent" });

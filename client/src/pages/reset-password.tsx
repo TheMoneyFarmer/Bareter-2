@@ -29,6 +29,8 @@ export function ResetPasswordPage() {
   const [success, setSuccess] = useState(false);
   const [tokenInvalid, setTokenInvalid] = useState(false);
   const [validating, setValidating] = useState(true);
+  const [networkError, setNetworkError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   const token = new URLSearchParams(window.location.search).get("token");
 
@@ -38,13 +40,19 @@ export function ResetPasswordPage() {
       setValidating(false);
       return;
     }
+    setValidating(true);
+    setTokenInvalid(false);
+    setNetworkError(false);
     fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(token)}`)
       .then((r) => {
         if (!r.ok) setTokenInvalid(true);
       })
-      .catch(() => setTokenInvalid(true))
+      .catch(() => {
+        setNetworkError(true);
+        setTokenInvalid(true);
+      })
       .finally(() => setValidating(false));
-  }, [token]);
+  }, [token, retryKey]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -93,12 +101,25 @@ export function ResetPasswordPage() {
                   <AlertCircle className="h-7 w-7 text-destructive" />
                 </div>
               </div>
-              <h2 className="text-xl font-semibold mb-2">Link expired or invalid</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                {networkError ? "Could not verify link" : "Link expired or invalid"}
+              </h2>
               <p className="text-muted-foreground text-sm mb-6">
-                This password reset link has expired or is invalid. Reset links are only valid for 1 hour.
+                {networkError
+                  ? "We couldn't reach the server to verify your reset link. Please check your connection and try again, or request a new link below."
+                  : "This password reset link has expired or has already been used. Reset links are valid for 1 hour."}
               </p>
+              {networkError && (
+                <Button
+                  className="w-full mb-2"
+                  onClick={() => setRetryKey((k) => k + 1)}
+                  data-testid="button-retry-validate"
+                >
+                  Try again
+                </Button>
+              )}
               <Link href="/forgot-password">
-                <Button className="w-full" data-testid="button-request-new-link">Request a new link</Button>
+                <Button variant={networkError ? "outline" : "default"} className="w-full" data-testid="button-request-new-link">Request a new link</Button>
               </Link>
               <Link href="/login">
                 <Button variant="ghost" className="w-full mt-2" data-testid="button-back-to-login-invalid">Back to sign in</Button>
