@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Switch, Route, useLocation } from "wouter";
+import { Capacitor } from "@capacitor/core";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
 import { useQuery, useQueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -409,9 +410,52 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// True on iOS/Android Capacitor builds; false in every browser.
+const isNative = Capacitor.isNativePlatform();
+
+// Handles all native-only startup side-effects in one place.
+// Runs once on mount; no-ops completely when isNative is false.
+function NativeBootstrap() {
+  useEffect(() => {
+    if (!isNative) return;
+
+    // Status bar: teal background, light (white) icons
+    (async () => {
+      try {
+        const { StatusBar, Style } = await import("@capacitor/status-bar");
+        await StatusBar.setStyle({ style: Style.Light });
+        await StatusBar.setBackgroundColor({ color: "#136c68" });
+      } catch {}
+
+      // Splash screen: fade out after first render settles
+      try {
+        const { SplashScreen } = await import("@capacitor/splash-screen");
+        await SplashScreen.hide({ fadeOutDuration: 400 });
+      } catch {}
+    })();
+
+    // Android hardware back button: navigate back, exit when at root
+    let removeListener: (() => void) | undefined;
+    import("@capacitor/app")
+      .then(({ App: CapApp }) =>
+        CapApp.addListener("backButton", ({ canGoBack }) => {
+          if (canGoBack) window.history.back();
+          else CapApp.exitApp();
+        }),
+      )
+      .then((handle) => { removeListener = () => handle.remove(); })
+      .catch(() => {});
+
+    return () => { removeListener?.(); };
+  }, []);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <NativeBootstrap />
       <WarmupBanner />
       <ThemeProvider>
         <I18nProvider>
@@ -430,8 +474,9 @@ function App() {
                   <ActionGuardProvider>
                   <ErrorBoundary>
                     <MaintenanceGate>
-                      <div className="min-h-screen flex flex-col bg-background">
-                        <AnnouncementBanner />
+                      {/* safe-area-top pads content below the native status bar on iPhone notch / Dynamic Island */}
+                      <div className={`min-h-screen flex flex-col bg-background${isNative ? " safe-area-top" : ""}`}>
+                        {!isNative && <AnnouncementBanner />}
                         <Header />
                         <VerificationReminder />
                         <main className="flex-1 pb-20 md:pb-0">
@@ -443,14 +488,14 @@ function App() {
                             </GeoGate>
                           </RouteTransition>
                         </main>
-                        <Footer />
+                        {!isNative && <Footer />}
                         <MobileBottomNav />
                       </div>
                       <Toaster />
                       <AiSupportChat />
                       <BareterAiNotificationChat />
                       <LocationMismatchBanner />
-                      <CookieConsent />
+                      {!isNative && <CookieConsent />}
                     </MaintenanceGate>
                   </ErrorBoundary>
                   </ActionGuardProvider>

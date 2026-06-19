@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useLocation } from "wouter";
 import { PhoneVerificationModal } from "@/components/phone-verification-modal";
 import { useForm } from "react-hook-form";
@@ -387,12 +388,13 @@ export function CreateListingPage() {
     );
   };
 
-  const handleImageUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  // Core upload logic — shared by web file input and native camera paths.
+  const uploadFiles = async (files: File[]) => {
+    if (files.length === 0) return;
     setUploadingImages(true);
     const currentImages = form.getValues("images") || [];
     try {
-      const urls = await Promise.all(Array.from(files).map(async (file) => {
+      const urls = await Promise.all(files.map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
         if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
         const fd = new FormData();
@@ -412,6 +414,35 @@ export function CreateListingPage() {
     } finally {
       setUploadingImages(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Web path: called by the hidden <input type="file">
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    uploadFiles(Array.from(files));
+  };
+
+  // Native path: opens the OS camera / gallery picker via Capacitor
+  const handleNativeCameraCapture = async () => {
+    try {
+      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Prompt, // lets user choose camera or gallery
+        quality: 85,
+      });
+      if (!photo.dataUrl) return;
+      const blob = await fetch(photo.dataUrl).then((r) => r.blob());
+      const file = new File([blob], `photo-${Date.now()}.jpg`, {
+        type: blob.type || "image/jpeg",
+      });
+      await uploadFiles([file]);
+    } catch (err: any) {
+      // User cancelled the picker — not an error worth showing
+      const msg = (err?.message ?? "").toLowerCase();
+      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("no image")) return;
+      toast({ title: t("create.uploadFailed"), description: t("create.uploadImageError"), variant: "destructive" });
     }
   };
 
@@ -677,14 +708,20 @@ export function CreateListingPage() {
                           type="button"
                           variant="outline"
                           className="w-full h-24 border-dashed gap-2"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => {
+                            if (Capacitor.isNativePlatform()) {
+                              handleNativeCameraCapture();
+                            } else {
+                              fileInputRef.current?.click();
+                            }
+                          }}
                           disabled={uploadingImages}
                           data-testid="button-upload-images"
                         >
                           {uploadingImages ? (
                             <><Loader2 className="h-5 w-5 animate-spin" />{t("create.uploading")}</>
                           ) : (
-                            <><Upload className="h-5 w-5" />
+                            <><Camera className="h-5 w-5" />
                             {selectedType === "request" ? "Add inspiration image (optional)" : t("create.addImages")}</>
                           )}
                         </Button>

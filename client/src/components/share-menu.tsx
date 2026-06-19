@@ -8,6 +8,7 @@ import {
 import { Share2, Link2 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
+import { Capacitor } from "@capacitor/core";
 
 interface ShareMenuProps {
   url: string;
@@ -30,6 +31,39 @@ export function ShareMenu({
 }: ShareMenuProps) {
   const { toast } = useToast();
 
+  // ── Native share sheet (iOS / Android) ──────────────────────────────────
+  if (Capacitor.isNativePlatform()) {
+    const handleNativeShare = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const { Share } = await import("@capacitor/share");
+        await Share.share({
+          title: title || "Bareter Listing",
+          text: title ? `${title} on Bareter` : "Check out this listing on Bareter",
+          url,
+          dialogTitle: "Share listing",
+        });
+      } catch {
+        // User dismissed the share sheet — not an error
+      }
+    };
+
+    return (
+      <Button
+        variant={variant}
+        size={size}
+        className={className}
+        onClick={handleNativeShare}
+        data-testid={testId}
+      >
+        <Share2 className="h-3.5 w-3.5" />
+        {showLabel && <span className="ml-1">Share</span>}
+      </Button>
+    );
+  }
+
+  // ── Web fallback: dropdown with copy-link + WhatsApp ────────────────────
   const handleCopyLink = () => {
     navigator.clipboard.writeText(url)
       .then(() => toast({ title: "Link copied", description: "Link copied to clipboard." }))
