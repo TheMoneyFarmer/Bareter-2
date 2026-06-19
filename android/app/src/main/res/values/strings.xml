@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bareter</string>
+    <string name="title_activity_main">Bareter</string>
+    <string name="package_name">com.bareter.app</string>
+    <string name="custom_url_scheme">com.bareter.app</string>
+</resources>
