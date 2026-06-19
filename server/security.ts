@@ -77,6 +77,13 @@ export function originCsrfGuard(): RequestHandler {
     if (!UNSAFE_METHODS.has(req.method)) return next();
     if (CSRF_EXEMPT_PATHS.has(req.path)) return next();
 
+    // Native mobile apps send a bearer token instead of an Origin header.
+    // The token itself is validated later in requireAuth; here we only need
+    // to know a bearer was presented so CORS-safe browsers couldn't have
+    // injected this header from a third-party page.
+    const authHeader = req.headers.authorization as string | undefined;
+    if (authHeader?.startsWith("Bearer ") && authHeader.length > 8) return next();
+
     const allowed = getAllowedOriginHosts(req);
     const originHeader = req.headers.origin as string | undefined;
     const refererHeader = req.headers.referer as string | undefined;

@@ -2481,6 +2481,21 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   endpointIdx: index("push_subs_endpoint_idx").on(table.endpoint),
 }));
 
+// ─── Mobile bearer tokens ─────────────────────────────────────────────────────
+// Opaque 64-hex tokens issued to Capacitor native apps at login.
+// Only the SHA-256 hash is stored; the raw token lives only on the device.
+export const mobileTokens = pgTable("mobile_tokens", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  deviceInfo: text("device_info"),
+}, (table) => ({
+  mobileTokensUserIdx: index("mobile_tokens_user_id_idx").on(table.userId),
+}));
+
 // Accurate per-user/IP view log for analytics (deduped: 1 per user/IP per listing per day).
 // The naive listings.viewCount is kept for user-facing display only.
 export const listingViews = pgTable("listing_views", {

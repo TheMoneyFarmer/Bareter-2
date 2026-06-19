@@ -69,7 +69,9 @@ import {
   featureWaitlists,
   waitlistEntries,
   internationalWaitlist,
+  mobileTokens,
 } from "@shared/schema";
+import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
   isValidPrivateDocPath,
@@ -209,6 +211,15 @@ setInterval(() => {
 }, LAST_ACTIVE_SWEEP_MS).unref?.();
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  // Bearer token path (mobile app) — pre-verified by bearerPreAuthMiddleware.
+  // __mobileAuth === false means a token was presented but was invalid/expired.
+  // __mobileAuth truthy means it was valid and req.session.userId is already set.
+  // UA fingerprint check is naturally skipped for bearer sessions because
+  // uaFingerprint is never stored in the in-memory session created by the middleware.
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+
   const uid = req.session.userId;
   if (!uid) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -353,6 +364,11 @@ export async function registerRoutes(
     })
   );
 
+  // Verify bearer tokens from native Capacitor app; sets req.session.userId
+  // and (req as any).__mobileAuth so all downstream handlers work unchanged.
+  // Must run after session middleware so req.session is available.
+  app.use(bearerPreAuthMiddleware);
+
   // ── Google OAuth ────────────────────────────────────────────────────────────
   // Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.
   // Set authorized redirect URI in Google Cloud Console to:
@@ -440,6 +456,12 @@ export async function registerRoutes(
           await new Promise<void>((resolve, reject) =>
             req.session.save((err: any) => (err ? reject(err) : resolve()))
           );
+
+          // Native app OAuth: return JSON with bearer token instead of redirecting
+          if ((req as any).headers["x-client"] === "capacitor-app") {
+            const mobileToken = await issueMobileToken(user.id, (req as any).headers["user-agent"] ?? null);
+            return res.json({ id: user.id, mobileToken });
+          }
 
           const dest = (req.session as any).oauthRedirect || "/browse";
           delete (req.session as any).oauthRedirect;
@@ -562,6 +584,12 @@ export async function registerRoutes(
         await new Promise<void>((resolve, reject) =>
           req.session.save((err: any) => (err ? reject(err) : resolve()))
         );
+
+        // Native app OAuth: return JSON with bearer token instead of redirecting
+        if ((req as any).headers["x-client"] === "capacitor-app") {
+          const mobileToken = await issueMobileToken(user.id, (req as any).headers["user-agent"] ?? null);
+          return res.json({ id: user.id, mobileToken });
+        }
 
         const dest = (req.session as any).oauthRedirect || "/browse";
         delete (req.session as any).oauthRedirect;
@@ -1067,6 +1095,11 @@ export async function registerRoutes(
         });
       }
 
+      if (req.headers["x-client"] === "capacitor-app") {
+        const mobileToken = await issueMobileToken(userId, req.headers["user-agent"] ?? null);
+        return res.json({ message: "Phone verified", phoneVerified: true, mobileToken });
+      }
+
       res.json({ message: "Phone verified", phoneVerified: true });
     } catch (err) {
       console.error("[phone/verify-otp]", err);
@@ -1109,7 +1142,13 @@ export async function registerRoutes(
         }
         const { password, ...userWithoutPassword } = user;
         sanitizeAdminFlag(userWithoutPassword)
-          .then((safe) => res.json(safe))
+          .then(async (safe) => {
+            if (req.headers["x-client"] === "capacitor-app") {
+              const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
+              return res.json({ ...safe, mobileToken });
+            }
+            res.json(safe);
+          })
           .catch(() => res.json(userWithoutPassword));
       });
     } catch (error) {
@@ -1252,7 +1291,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    const mobileAuth = (req as any).__mobileAuth as { userId: string; tokenId: string } | false | undefined;
+    if (mobileAuth) {
+      // Mobile bearer token logout — revoke the token row, leave session alone
+      await db.delete(mobileTokens).where(eq(mobileTokens.id, mobileAuth.tokenId)).catch(() => {});
+      return res.json({ message: "Logged out successfully" });
+    }
     req.session.destroy((err) => {
       if (err) {
         return res.status(500).json({ message: "Failed to logout" });

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, getQueryFn } from "./queryClient";
+import { apiRequest, getQueryFn, storeMobileToken, clearMobileToken } from "./queryClient";
 import type { User, SocialProfile } from "@shared/schema";
 import { identifyUser, resetIdentity } from "./posthog";
 
@@ -46,9 +46,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiRequest("POST", "/api/auth/login", { email, password });
       return res.json();
     },
-    onSuccess: (userData) => {
+    onSuccess: async (userData: any) => {
+      // Extract and store mobile bearer token when issued (native app path only).
+      // Strip it from the cached user object so it never leaks into the UI layer.
+      const { mobileToken, ...user } = userData;
+      if (mobileToken) await storeMobileToken(mobileToken);
       // Set cache immediately from login response — no round-trip needed.
-      queryClient.setQueryData(["/api/auth/me"], userData);
+      queryClient.setQueryData(["/api/auth/me"], user);
     },
   });
 
@@ -65,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/auth/logout", {});
+      await clearMobileToken();
       return res.json();
     },
     onSuccess: () => {

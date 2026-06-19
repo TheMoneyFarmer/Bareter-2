@@ -1,4 +1,25 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
+
+const MOBILE_TOKEN_KEY = "bareter_mobile_token";
+
+export async function storeMobileToken(token: string): Promise<void> {
+  await Preferences.set({ key: MOBILE_TOKEN_KEY, value: token });
+}
+
+export async function clearMobileToken(): Promise<void> {
+  await Preferences.remove({ key: MOBILE_TOKEN_KEY });
+}
+
+// Returns extra headers to add on native. Returns {} on web — no change to web behavior.
+async function mobileHeaders(): Promise<Record<string, string>> {
+  if (!Capacitor.isNativePlatform()) return {};
+  const headers: Record<string, string> = { "X-Client": "capacitor-app" };
+  const { value } = await Preferences.get({ key: MOBILE_TOKEN_KEY });
+  if (value) headers["Authorization"] = `Bearer ${value}`;
+  return headers;
+}
 
 // When the app believes the user is signed in (the cached /api/auth/me is a
 // real user) but the server starts rejecting requests with 401, the session
@@ -38,9 +59,13 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const extra = await mobileHeaders();
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...extra,
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -55,8 +80,10 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const extra = await mobileHeaders();
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: extra,
     });
 
     if (res.status === 401) {
