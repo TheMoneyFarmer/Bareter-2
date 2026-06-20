@@ -1,6 +1,6 @@
 import compression from "compression";
-import express, { type Request, Response, NextFunction } from "express";
-import { securityHeaders, originCsrfGuard } from "./security";
+import express, { type Request, Response, NextFunction, type RequestHandler } from "express";
+import { securityHeaders, originCsrfGuard, getAllowedOriginHosts, originHostOf } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -48,6 +48,45 @@ app.set("trust proxy", 1);
 
 // Gzip/deflate all responses — biggest single win for JSON-heavy API payloads
 app.use(compression());
+
+// CORS — must run before the CSRF guard so that:
+//   (a) OPTIONS preflights are answered immediately (no route handler needed)
+//   (b) cross-origin responses from allowed origins carry the right headers
+// Permitted origins = everything in ALLOWED_ORIGINS env var (bareter.com,
+// admin.bareter.com) PLUS the two fixed Capacitor WebView origins:
+//   • capacitor://localhost — iOS WKWebView
+//   • http://localhost     — Android WebView
+// For same-origin browser requests the Origin header is absent and this
+// middleware is a no-op, so web behavior is completely unchanged.
+const CAPACITOR_ORIGINS = new Set(["capacitor://localhost", "http://localhost"]);
+
+function corsMiddleware(): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin as string | undefined;
+    if (!origin) return next();
+
+    const originHost = originHostOf(origin);
+    const allowed = getAllowedOriginHosts(req);
+    const permitted =
+      CAPACITOR_ORIGINS.has(origin) ||
+      (originHost !== null && allowed.has(originHost));
+
+    if (permitted) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Client");
+      res.setHeader("Access-Control-Max-Age", "86400");
+    }
+
+    // Preflight — answer immediately without reaching the CSRF guard or routes
+    if (req.method === "OPTIONS") return res.status(204).end();
+
+    next();
+  };
+}
+
+app.use(corsMiddleware());
 
 // Standard browser security headers. CSP is left disabled because the Vite
 // dev middleware injects inline scripts/HMR that a strict CSP would block;

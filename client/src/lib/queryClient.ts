@@ -2,6 +2,10 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
+// Empty string on web → all paths stay relative (same-origin, no change).
+// "https://bareter.com" in native builds → absolute URL to the production API.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+
 const MOBILE_TOKEN_KEY = "bareter_mobile_token";
 
 export async function storeMobileToken(token: string): Promise<void> {
@@ -60,7 +64,7 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   const extra = await mobileHeaders();
-  const res = await fetch(url, {
+  const res = await fetch(API_BASE + url, {
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
@@ -81,7 +85,7 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const extra = await mobileHeaders();
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(API_BASE + (queryKey.join("/") as string), {
       credentials: "include",
       headers: extra,
     });
