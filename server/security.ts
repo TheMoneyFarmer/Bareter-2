@@ -71,6 +71,9 @@ export function originHostOf(value: string | undefined): string | null {
   }
 }
 
+// Matches the set in server/index.ts corsMiddleware — kept in sync manually.
+const CAPACITOR_ORIGINS = new Set(["capacitor://localhost", "http://localhost"]);
+
 export function originCsrfGuard(): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.path.startsWith("/api/")) return next();
@@ -84,8 +87,13 @@ export function originCsrfGuard(): RequestHandler {
     const authHeader = req.headers.authorization as string | undefined;
     if (authHeader?.startsWith("Bearer ") && authHeader.length > 8) return next();
 
-    const allowed = getAllowedOriginHosts(req);
+    // Capacitor WebViews use capacitor://localhost (iOS) or http://localhost
+    // (Android) as their Origin. These can't be forged by a browser from a
+    // third-party page, so they're safe to trust here just as in the CORS middleware.
     const originHeader = req.headers.origin as string | undefined;
+    if (originHeader && CAPACITOR_ORIGINS.has(originHeader)) return next();
+
+    const allowed = getAllowedOriginHosts(req);
     const refererHeader = req.headers.referer as string | undefined;
     const candidate =
       originHostOf(originHeader) || originHostOf(refererHeader);
