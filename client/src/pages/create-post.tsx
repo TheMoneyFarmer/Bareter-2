@@ -27,7 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE } from "@/lib/queryClient";
 import { FEED_CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import type { OfferNeedItem, PostCategoryDetails } from "@shared/schema";
 import {

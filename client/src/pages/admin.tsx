@@ -52,7 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
 import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report, DisputeWithParties, AdminAuditLog, FailedLoginAttempt } from "@shared/schema";
 import { CATEGORIES, COUNTRIES } from "@shared/schema";
 import {

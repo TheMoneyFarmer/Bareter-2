@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import { Handshake, Loader2, Eye, EyeOff, CheckCircle2, AlertCircle } from "lucide-react";
 
 const schema = z.object({

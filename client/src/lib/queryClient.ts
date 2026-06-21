@@ -25,7 +25,7 @@ export async function clearMobileToken(): Promise<void> {
 }
 
 // Returns extra headers to add on native. Returns {} on web — no change to web behavior.
-async function mobileHeaders(): Promise<Record<string, string>> {
+export async function mobileHeaders(): Promise<Record<string, string>> {
   if (!Capacitor.isNativePlatform()) return {};
   const headers: Record<string, string> = { "X-Client": "capacitor-app" };
   const { value } = await Preferences.get({ key: MOBILE_TOKEN_KEY });

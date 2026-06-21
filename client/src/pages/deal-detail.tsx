@@ -24,7 +24,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import { RatingModal } from "@/components/RatingModal";
 import { MatchScoreCard } from "@/components/MatchScoreCard";
 import type { DealWithUsers, MessageWithSender, DealMilestone } from "@shared/schema";

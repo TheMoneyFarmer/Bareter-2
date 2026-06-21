@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

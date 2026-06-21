@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import type { ListingWithUser, Listing, ListingCommentWithUser } from "@shared/schema";
 import {
   MapPin,
