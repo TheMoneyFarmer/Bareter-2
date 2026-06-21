@@ -35,19 +35,17 @@ export function MobileBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-50 md:hidden"
+      className="fixed bottom-4 left-3 right-3 z-50 md:hidden"
       data-testid="mobile-bottom-nav"
       aria-label="Primary"
     >
-      <div className="relative bg-white dark:bg-card border-t border-bareter-border dark:border-border h-[60px] safe-area-bottom shadow-[0_-2px_8px_rgba(15,25,35,0.08)]">
+      <div className="relative bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-full shadow-[0_4px_24px_rgba(0,0,0,0.14)] h-[60px] px-1">
         <div className="grid grid-cols-5 h-full">
-          {/* Discover — social barter feed */}
+          {/* Discover */}
           <Link
             href="/feed"
             className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-              feedActive
-                ? "text-bareter-teal"
-                : "text-bareter-muted dark:text-muted-foreground"
+              feedActive ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
             }`}
             data-testid="mobile-tab-feed"
           >
@@ -55,13 +53,11 @@ export function MobileBottomNav() {
             <span className="text-[10px] font-medium">Discover</span>
           </Link>
 
-          {/* Browse — category listings hub */}
+          {/* Browse */}
           <Link
             href="/browse"
             className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-              isActive("/browse")
-                ? "text-bareter-teal"
-                : "text-bareter-muted dark:text-muted-foreground"
+              isActive("/browse") ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
             }`}
             data-testid="mobile-tab-browse"
           >
@@ -69,17 +65,49 @@ export function MobileBottomNav() {
             <span className="text-[10px] font-medium">Browse</span>
           </Link>
 
-          {/* List (FAB placeholder slot — keeps grid balanced) */}
-          <div className="flex items-end justify-center" />
+          {/* Center: Create Listing — teal circle within the pill */}
+          {user ? (
+            <Link
+              href="/create-listing"
+              className="flex items-center justify-center"
+              data-testid="mobile-tab-create-listing"
+              aria-label="List a barter"
+            >
+              <div className="h-11 w-11 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white flex items-center justify-center transition-all active:scale-95 shadow-md">
+                <Plus className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+            </Link>
+          ) : loginIntercept ? (
+            <button
+              type="button"
+              onClick={openWaitlist}
+              className="flex items-center justify-center"
+              data-testid="mobile-tab-create-listing"
+              aria-label="Join the waitlist to list"
+            >
+              <div className="h-11 w-11 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white flex items-center justify-center transition-all active:scale-95 shadow-md">
+                <Plus className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center justify-center"
+              data-testid="mobile-tab-create-listing"
+              aria-label="Sign in to list a barter"
+            >
+              <div className="h-11 w-11 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white flex items-center justify-center transition-all active:scale-95 shadow-md">
+                <Plus className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+            </Link>
+          )}
 
           {/* Notifications */}
           {user ? (
             <Link
               href="/notifications"
               className={`relative flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-                isActive("/notifications")
-                  ? "text-bareter-teal"
-                  : "text-bareter-muted dark:text-muted-foreground"
+                isActive("/notifications") ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
               }`}
               data-testid="mobile-tab-notifications"
             >
@@ -114,9 +142,7 @@ export function MobileBottomNav() {
             <Link
               href={profileHref}
               className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-                isActive(profileHref)
-                  ? "text-bareter-teal"
-                  : "text-bareter-muted dark:text-muted-foreground"
+                isActive(profileHref) ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
               }`}
               data-testid={user ? "mobile-tab-profile" : "mobile-tab-login"}
             >
@@ -129,37 +155,6 @@ export function MobileBottomNav() {
             </Link>
           )}
         </div>
-
-        {/* Elevated +List FAB — center, sits above the bar */}
-        {user ? (
-          <Link
-            href="/create-listing"
-            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
-            data-testid="mobile-tab-create-listing"
-            aria-label="List a barter"
-          >
-            <Plus className="h-7 w-7" strokeWidth={2.5} />
-          </Link>
-        ) : loginIntercept ? (
-          <button
-            type="button"
-            onClick={openWaitlist}
-            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
-            data-testid="mobile-tab-create-listing"
-            aria-label="Join the waitlist to list"
-          >
-            <Plus className="h-7 w-7" strokeWidth={2.5} />
-          </button>
-        ) : (
-          <Link
-            href="/login"
-            className="absolute inset-x-0 mx-auto -top-6 h-14 w-14 rounded-full bg-bareter-teal hover:bg-bareter-teal-light text-white shadow-bareter-hover flex items-center justify-center transition-colors active:scale-95"
-            data-testid="mobile-tab-create-listing"
-            aria-label="Sign in to list a barter"
-          >
-            <Plus className="h-7 w-7" strokeWidth={2.5} />
-          </Link>
-        )}
       </div>
     </nav>
   );

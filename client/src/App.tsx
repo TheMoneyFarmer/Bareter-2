@@ -479,7 +479,7 @@ function App() {
                         {!isNative && <AnnouncementBanner />}
                         <Header />
                         <VerificationReminder />
-                        <main className="flex-1 pb-20 md:pb-0">
+                        <main className="flex-1 pb-28 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
                               <Suspense fallback={<PageSkeleton />}>
