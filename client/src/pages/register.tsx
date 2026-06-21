@@ -144,7 +144,7 @@ export function RegisterPage() {
   // IP-based country/city preselect when register form loads
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/geo/lookup", { credentials: "include" })
+    fetch(`${API_BASE}/api/geo/lookup`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((geo) => {
         if (cancelled || !geo?.country) return;
@@ -679,7 +679,7 @@ export function RegisterPage() {
                     onClick={async () => {
                       setResendingVerification(true);
                       try {
-                        await fetch("/api/auth/resend-verification", { method: "POST", credentials: "include" });
+                        await fetch(`${API_BASE}/api/auth/resend-verification`, { method: "POST", credentials: "include" });
                         toast({ title: "Email resent", description: "Check your inbox again." });
                       } catch { /* ignore */ }
                       setResendingVerification(false);

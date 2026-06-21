@@ -930,7 +930,7 @@ export function AdminPage() {
   type BroadcastJobRow = { id: string; subject: string; status: string; recipientCount: number; sent: number; failed: number; createdAt: string | null; completedAt: string | null; filter: { retryOf?: string } | null };
   const { data: broadcastHistory, refetch: refetchBroadcastHistory } = useQuery<BroadcastJobRow[]>({
     queryKey: ["/api/admin/email/broadcasts"],
-    queryFn: async () => { const r = await fetch("/api/admin/email/broadcasts", { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+    queryFn: async () => { const r = await fetch(`${API_BASE}/api/admin/email/broadcasts`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
     staleTime: 0,
     enabled: false,
   });
@@ -3938,7 +3938,7 @@ export function AdminPage() {
   const { data: phoneVerifLogs = [] } = useQuery<PhoneVerifLog[]>({
     queryKey: ["/api/admin/phone-verification-logs", "unified"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/phone-verification-logs", { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/admin/phone-verification-logs`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -3949,7 +3949,7 @@ export function AdminPage() {
   const { data: unifiedEmailLogs = [], refetch: refetchUnifiedEmailLogs } = useQuery<any[]>({
     queryKey: ["/api/admin/email/logs", "unified"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/email/logs", { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/admin/email/logs`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -6524,7 +6524,7 @@ interface SanityMember {
 function CmsMembersSection() {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<{ projectId: string; members: SanityMember[] }>({
     queryKey: ["/api/admin/sanity-members"],
-    queryFn: () => fetch("/api/admin/sanity-members", { credentials: "include" }).then((r) => {
+    queryFn: () => fetch(`${API_BASE}/api/admin/sanity-members`, { credentials: "include" }).then((r) => {
       if (!r.ok) return r.json().then((e: { message?: string }) => { throw new Error(e.message ?? `Error ${r.status}`); });
       return r.json();
     }),
@@ -6691,7 +6691,7 @@ function VerificationLogsSection() {
     queryKey: ["/api/admin/phone-verification-logs", resultFilter],
     queryFn: async () => {
       const params = resultFilter !== "all" ? `?result=${resultFilter}` : "";
-      const res = await fetch(`/api/admin/phone-verification-logs${params}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/admin/phone-verification-logs${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load logs");
       return res.json();
     },

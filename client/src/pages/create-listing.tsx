@@ -400,7 +400,7 @@ export function CreateListingPage() {
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
-        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) {
           if (res.status === 401) handleAuthExpiry(401);
           const err = await res.json().catch(() => ({}));

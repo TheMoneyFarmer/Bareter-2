@@ -4,7 +4,15 @@ import { Preferences } from "@capacitor/preferences";
 
 // Empty string on web → all paths stay relative (same-origin, no change).
 // "https://bareter.com" in native builds → absolute URL to the production API.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+
+// Prefix relative paths (e.g. /objects/...) with API_BASE so images load
+// correctly in the Capacitor WebView, which has no same-origin server.
+export function assetUrl(path: string | null | undefined): string {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) return path;
+  return `${API_BASE}${path}`;
+}
 
 const MOBILE_TOKEN_KEY = "bareter_mobile_token";
 

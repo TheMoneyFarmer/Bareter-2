@@ -132,7 +132,7 @@ export function DealDetailPage() {
     }
     setTranslatingMsgIds((prev) => new Set(prev).add(msgId));
     try {
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`${API_BASE}/api/translate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -243,7 +243,7 @@ export function DealDetailPage() {
 
   const { data: contractData, refetch: refetchContract } = useQuery<ContractData>({
     queryKey: ["/api/deals", id, "contract"],
-    queryFn: () => fetch(`/api/deals/${id}/contract`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(`${API_BASE}/api/deals/${id}/contract`, { credentials: "include" }).then(r => r.json()),
     enabled: !!id && !!deal && CONTRACT_STATES.includes(deal.state),
     staleTime: 30_000,
   });
@@ -311,7 +311,7 @@ export function DealDetailPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", "proof");
-      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+      const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData, credentials: "include" });
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => ({}));
         throw new Error(err.message || "Upload failed");

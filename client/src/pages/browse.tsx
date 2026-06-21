@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CATEGORIES, LOCATIONS, ITEM_CONDITIONS, type ListingWithUser } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -312,7 +312,7 @@ export function BrowsePage() {
   const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings", { country: activeLocation.country, worldwide: activeLocation.worldwide }],
     queryFn: async () => {
-      const res = await fetch(`/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
@@ -327,7 +327,7 @@ export function BrowsePage() {
   const { data: collabListings = [], isLoading: collabLoading } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/collabs"],
     queryFn: async () => {
-      const res = await fetch("/api/listings/collabs", { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/collabs`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -349,7 +349,7 @@ export function BrowsePage() {
     queryKey: ["/api/listings/nearby", userCity],
     queryFn: async () => {
       if (!userCity) return [];
-      const res = await fetch(`/api/listings/nearby?city=${encodeURIComponent(userCity)}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/nearby?city=${encodeURIComponent(userCity)}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },

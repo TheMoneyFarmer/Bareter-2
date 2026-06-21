@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/queryClient";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -22,7 +23,7 @@ export function AdminAcceptInvitePage() {
       setStatus("invalid");
       return;
     }
-    fetch(`/api/admin/invites/verify/${token}`)
+    fetch(`${API_BASE}/api/admin/invites/verify/${token}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.valid) {
@@ -52,7 +53,7 @@ export function AdminAcceptInvitePage() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/admin/invites/accept", {
+      const res = await fetch(`${API_BASE}/api/admin/invites/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
