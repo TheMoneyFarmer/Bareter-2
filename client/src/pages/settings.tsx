@@ -883,7 +883,7 @@ export function SettingsPage() {
                         formData.append("file", file);
                         formData.append("type", "business_license");
                         try {
-                          const res = await fetch("/api/upload", {
+                          const res = await fetch(`${API_BASE}/api/upload`, {
                             method: "POST",
                             body: formData,
                             credentials: "include",
@@ -1560,7 +1560,7 @@ export function SettingsPage() {
                       <Button
                         onClick={() => {
                           if (!cpFollowers.trim()) return;
-                          fetch("/api/feature-waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: cpFollowers.trim(), feature: "creators" }) }).catch(() => {});
+                          fetch(`${API_BASE}/api/feature-waitlist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: cpFollowers.trim(), feature: "creators" }) }).catch(() => {});
                           toast({ title: "You're on the list!", description: "We'll notify you when Creator Hub launches." });
                           setCpFollowers("");
                         }}

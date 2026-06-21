@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/queryClient";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -643,7 +644,7 @@ export function LandingPage() {
 
   const { data: suggestionListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings", { search: heroQuery }],
-    queryFn: () => fetch(`/api/listings?search=${encodeURIComponent(heroQuery)}&limit=5`).then(r => r.json()),
+    queryFn: () => fetch(`${API_BASE}/api/listings?search=${encodeURIComponent(heroQuery)}&limit=5`).then(r => r.json()),
     enabled: heroQuery.trim().length >= 2,
     staleTime: 5000,
   });
@@ -664,7 +665,7 @@ export function LandingPage() {
   const { data: latestListings, isLoading: loadingLatest } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings", { seed: daySeed }],
     queryFn: async () => {
-      const res = await fetch(`/api/listings?seed=${daySeed}&limit=24`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings?seed=${daySeed}&limit=24`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
@@ -676,7 +677,7 @@ export function LandingPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const q = heroQuery.trim();
-    if (q.length >= 2) fetch("/api/search-history", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ query: q }) }).catch(() => {});
+    if (q.length >= 2) fetch(`${API_BASE}/api/search-history`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ query: q }) }).catch(() => {});
     navigate(`/browse${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     setShowSugg(false);
   };

@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/queryClient";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ function ComingSoonPage({ variant }: { variant: Variant }) {
     e.preventDefault();
     if (!email.trim()) return;
     // Fire-and-forget to waitlist endpoint
-    fetch("/api/feature-waitlist", {
+    fetch(`${API_BASE}/api/feature-waitlist`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim(), feature: variant }),

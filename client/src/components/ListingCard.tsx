@@ -18,7 +18,7 @@ import { useWaitlist } from "@/lib/waitlist";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, assetUrl } from "@/lib/queryClient";
 import { useActionGuard } from "@/lib/action-guard";
 
 const CATEGORY_PILL_COLORS: Record<string, string> = {
@@ -360,7 +360,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               className="flex items-center gap-2 flex-1 min-w-0 group/seller"
             >
               <Avatar className="h-7 w-7 flex-shrink-0">
-                <AvatarImage src={listing.user?.avatarUrl || undefined} alt={listing.user?.fullName} />
+                <AvatarImage src={assetUrl(listing.user?.avatarUrl) || undefined} alt={listing.user?.fullName} />
                 <AvatarFallback className="text-[10px] bg-bareter-teal-muted text-bareter-teal">
                   {listing.user?.fullName?.charAt(0)?.toUpperCase() || "U"}
                 </AvatarFallback>

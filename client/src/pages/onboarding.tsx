@@ -93,7 +93,7 @@ export default function OnboardingPage() {
       !!user.city || (user.country && user.country !== "AE") || user.locationPrompted;
     if (userHasPickedLocation) return;
     let cancelled = false;
-    fetch("/api/geo/lookup", { credentials: "include" })
+    fetch(`${API_BASE}/api/geo/lookup`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((geo) => {
         if (cancelled || !geo?.country) return;

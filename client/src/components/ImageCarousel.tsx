@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
+import { assetUrl } from "@/lib/queryClient";
 
 interface ImageCarouselProps {
   images: string[];
@@ -84,7 +85,7 @@ function Lightbox({
               className="relative h-full min-w-0 flex-[0_0_100%] flex items-center justify-center px-2"
             >
               <img
-                src={src}
+                src={assetUrl(src)}
                 alt={`${alt} ${i + 1} of ${images.length}`}
                 loading={i === 0 ? "eager" : "lazy"}
                 className="max-h-full max-w-full object-contain select-none"
@@ -215,7 +216,7 @@ export function ImageCarousel({
                 data-testid={testIdPrefix ? `${testIdPrefix}-slide-${i}` : undefined}
               >
                 <img
-                  src={src}
+                  src={assetUrl(src)}
                   alt={`${alt} ${i + 1} of ${safeImages.length}`}
                   loading={i === 0 ? "eager" : "lazy"}
                   className="w-full h-full object-cover"

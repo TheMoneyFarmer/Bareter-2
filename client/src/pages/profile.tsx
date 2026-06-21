@@ -104,7 +104,7 @@ function VerificationSection({ user }: { user: User }) {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/phone/send-otp", {
+      const res = await fetch(`${API_BASE}/api/auth/phone/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -507,7 +507,7 @@ export function ProfilePage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", type);
-      const res = await fetch("/api/upload", {
+      const res = await fetch(`${API_BASE}/api/upload`, {
         method: "POST",
         body: formData,
         credentials: "include",

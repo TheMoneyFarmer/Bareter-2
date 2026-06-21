@@ -277,7 +277,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
-        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
         return (await res.json()).url as string;
       }));
@@ -293,7 +293,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
   const { data: comments, isLoading } = useQuery<PostCommentWithUser[]>({
     queryKey: ["/api/posts", postId, "comments"],
     queryFn: async () => {
-      const res = await fetch(`/api/posts/${postId}/comments`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/posts/${postId}/comments`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch comments");
       return res.json();
     },
@@ -1402,7 +1402,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
-        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
         return (await res.json()).url as string;
       }));
@@ -1418,7 +1418,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
   const { data: proposals, isLoading } = useQuery<ProposalWithUser[]>({
     queryKey: ["/api/listings", listing.id, "comments"],
     queryFn: async () => {
-      const res = await fetch(`/api/listings/${listing.id}/comments`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/${listing.id}/comments`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch proposals");
       return res.json();
     },
@@ -2280,7 +2280,7 @@ export function FeedPage() {
   const { data: feedListings, isLoading: listingsLoading, refetch: refetchListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/feed", activeCategory, activeLocation.country, activeLocation.worldwide, feedSeed],
     queryFn: async () => {
-      const res = await fetch(`/api/listings?${listingsParams.toString()}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings?${listingsParams.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
@@ -2297,7 +2297,7 @@ export function FeedPage() {
   const { data: trendingListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/trending"],
     queryFn: async () => {
-      const res = await fetch("/api/listings/trending?limit=10", { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/trending?limit=10`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },

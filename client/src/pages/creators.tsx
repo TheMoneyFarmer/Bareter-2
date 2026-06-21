@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/queryClient";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -148,7 +149,7 @@ export function CreatorsPage() {
       if (niche !== "all") params.set("niche", niche);
       const min = minFollowersMap[minFollowers];
       if (min) params.set("minFollowers", String(min));
-      const res = await fetch(`/api/creators?${params}`);
+      const res = await fetch(`${API_BASE}/api/creators?${params}`);
       return res.json();
     },
     staleTime: 30_000,

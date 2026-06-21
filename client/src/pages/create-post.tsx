@@ -286,7 +286,7 @@ export function CreatePostPage() {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("type", "post");
-        const res = await fetch("/api/upload", {
+        const res = await fetch(`${API_BASE}/api/upload`, {
           method: "POST",
           body: formData,
           credentials: "include",

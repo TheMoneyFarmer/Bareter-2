@@ -142,7 +142,7 @@ export default function DashboardPage() {
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/dashboard/analytics", timeRange],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/analytics?timeRange=${timeRange}`, {
+      const res = await fetch(`${API_BASE}/api/dashboard/analytics?timeRange=${timeRange}`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch analytics");
@@ -154,7 +154,7 @@ export default function DashboardPage() {
   const { data: followers, isLoading: followersLoading } = useQuery<FollowerWithUser[]>({
     queryKey: ["/api/users", user?.id, "followers"],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${user?.id}/followers`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/users/${user?.id}/followers`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch followers");
       return res.json();
     },
@@ -164,7 +164,7 @@ export default function DashboardPage() {
   const { data: following, isLoading: followingLoading } = useQuery<FollowingWithUser[]>({
     queryKey: ["/api/users", user?.id, "following"],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${user?.id}/following`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/users/${user?.id}/following`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch following");
       return res.json();
     },
@@ -174,7 +174,7 @@ export default function DashboardPage() {
   const { data: deals, isLoading: dealsLoading } = useQuery<DealWithContract[]>({
     queryKey: ["/api/dashboard/deals", dealFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/deals?filter=${dealFilter}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/dashboard/deals?filter=${dealFilter}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch deals");
       return res.json();
     },
@@ -184,7 +184,7 @@ export default function DashboardPage() {
   const { data: myListings, isLoading: listingsLoading } = useQuery<Listing[]>({
     queryKey: ["/api/listings/user", user?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/listings/user/${user?.id}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/user/${user?.id}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },

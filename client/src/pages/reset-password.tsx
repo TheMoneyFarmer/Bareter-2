@@ -43,7 +43,7 @@ export function ResetPasswordPage() {
     setValidating(true);
     setTokenInvalid(false);
     setNetworkError(false);
-    fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(token)}`)
+    fetch(`${API_BASE}/api/auth/reset-password/validate?token=${encodeURIComponent(token)}`)
       .then((r) => {
         if (!r.ok) setTokenInvalid(true);
       })

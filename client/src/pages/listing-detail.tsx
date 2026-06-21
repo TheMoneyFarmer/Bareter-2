@@ -356,7 +356,7 @@ export function ListingDetailPage() {
     setTranslating(true);
     try {
       const textToTranslate = `TITLE: ${listing.title}\nDESCRIPTION: ${listing.description || ""}`;
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`${API_BASE}/api/translate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -434,7 +434,7 @@ export function ListingDetailPage() {
   const { data: similarListings } = useQuery<any[]>({
     queryKey: ["/api/listings", id, "similar"],
     queryFn: async () => {
-      const res = await fetch(`/api/listings/${id}/similar?limit=6`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/${id}/similar?limit=6`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -444,7 +444,7 @@ export function ListingDetailPage() {
   const { data: userReviews } = useQuery<{ avgRating: number; reviewCount: number; reviews: any[] }>({
     queryKey: ["/api/users", listing?.userId, "reviews"],
     queryFn: async () => {
-      const res = await fetch(`/api/users/${listing!.userId}/reviews`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/users/${listing!.userId}/reviews`, { credentials: "include" });
       if (!res.ok) return { avgRating: 0, reviewCount: 0, reviews: [] };
       return res.json();
     },
@@ -513,7 +513,7 @@ export function ListingDetailPage() {
   const { data: collabApplications = [] } = useQuery<any[]>({
     queryKey: ["/api/listings", id, "collab-applications"],
     queryFn: async () => {
-      const res = await fetch(`/api/listings/${id}/collab/applications`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings/${id}/collab/applications`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -524,7 +524,7 @@ export function ListingDetailPage() {
   const { data: myCollabApp } = useQuery<any>({
     queryKey: ["/api/listings", id, "my-collab-app"],
     queryFn: async () => {
-      const res = await fetch(`/api/me/collab/applications`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/me/collab/applications`, { credentials: "include" });
       if (!res.ok) return null;
       const all = await res.json();
       return all.find((a: any) => a.listingId === id) ?? null;
@@ -619,7 +619,7 @@ export function ListingDetailPage() {
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
-        const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
         return (await res.json()).url as string;
       }));
