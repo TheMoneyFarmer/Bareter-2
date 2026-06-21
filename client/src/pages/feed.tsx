@@ -15,7 +15,7 @@ import { useWaitlist } from "@/lib/waitlist";
 import { useActionGuard } from "@/lib/action-guard";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, mobileHeaders } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -2280,7 +2280,8 @@ export function FeedPage() {
   const { data: feedListings, isLoading: listingsLoading, refetch: refetchListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/feed", activeCategory, activeLocation.country, activeLocation.worldwide, feedSeed],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/listings?${listingsParams.toString()}`, { credentials: "include" });
+      const extra = await mobileHeaders();
+      const res = await fetch(`${API_BASE}/api/listings?${listingsParams.toString()}`, { credentials: "include", headers: extra });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
@@ -2297,7 +2298,8 @@ export function FeedPage() {
   const { data: trendingListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/trending"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/listings/trending?limit=10`, { credentials: "include" });
+      const extra = await mobileHeaders();
+      const res = await fetch(`${API_BASE}/api/listings/trending?limit=10`, { credentials: "include", headers: extra });
       if (!res.ok) return [];
       return res.json();
     },

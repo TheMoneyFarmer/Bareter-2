@@ -1985,7 +1985,6 @@ export async function registerRoutes(
         maxValue: typeof maxValue === "string" && !isNaN(parseFloat(maxValue)) ? parseFloat(maxValue) : undefined,
         limit: seedParam ? limit * 3 : limit, // overfetch for shuffle
         offset,
-        excludeUserId: req.session?.userId || undefined,
       });
 
       const userId = req.session?.userId;

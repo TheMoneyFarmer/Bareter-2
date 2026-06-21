@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, handleAuthExpiry } from "@/lib/queryClient";
+import { apiRequest, handleAuthExpiry, API_BASE } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";

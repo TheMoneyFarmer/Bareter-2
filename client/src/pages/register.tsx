@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
+import { API_BASE } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";

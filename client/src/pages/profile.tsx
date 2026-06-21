@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile, type ListingDraft, type DealWithUsers } from "@shared/schema";
 import { Link } from "wouter";
 import { FileText, Trash2 } from "lucide-react";
