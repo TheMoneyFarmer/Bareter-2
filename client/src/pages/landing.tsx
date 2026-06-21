@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/queryClient";
+import { API_BASE, assetUrl } from "@/lib/queryClient";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -87,7 +87,7 @@ function ListingCard({ listing }: { listing: ListingWithUser }) {
       <article className="bareter-stagger-card group bg-white dark:bg-card rounded-2xl border border-gray-100 dark:border-border shadow-sm hover:shadow-bareter-hover hover:-translate-y-2 transition-all duration-300 overflow-hidden h-full flex flex-col cursor-pointer bareter-card-hover">
         <div className="relative h-32 sm:h-40 lg:h-44 bg-gradient-to-br from-bareter-teal/8 to-bareter-teal/3 overflow-hidden flex-shrink-0">
           {images?.[0] ? (
-            <img src={images[0]} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+            <img src={assetUrl(images[0])} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
           ) : (
             <div className="flex items-center justify-center h-full">
               <ArrowLeftRight className="h-12 w-12 text-bareter-teal/20" />

@@ -15,7 +15,7 @@ import { useWaitlist } from "@/lib/waitlist";
 import { useActionGuard } from "@/lib/action-guard";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE, mobileHeaders } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, mobileHeaders, assetUrl } from "@/lib/queryClient";
 import AiMatchCards from "@/components/ai-match-cards";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -385,9 +385,9 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
                 {(comment as any).images && ((comment as any).images as string[]).length > 0 && (
                   <div className="flex gap-1 mt-1.5 flex-wrap">
                     {((comment as any).images as string[]).map((imgUrl: string, imgIdx: number) => (
-                      <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                      <a key={imgIdx} href={assetUrl(imgUrl)} target="_blank" rel="noopener noreferrer">
                         <img
-                          src={imgUrl}
+                          src={assetUrl(imgUrl)}
                           alt={`Offer image ${imgIdx + 1}`}
                           className="h-12 w-12 object-cover rounded border hover:opacity-90 transition-opacity"
                         />
@@ -1571,8 +1571,8 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
                   {p.images && p.images.length > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
                       {p.images.map((imgUrl, imgIdx) => (
-                        <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
-                          <img src={imgUrl} alt={`Offer ${imgIdx + 1}`} className="h-12 w-12 object-cover rounded border hover:opacity-90 transition-opacity" />
+                        <a key={imgIdx} href={assetUrl(imgUrl)} target="_blank" rel="noopener noreferrer">
+                          <img src={assetUrl(imgUrl)} alt={`Offer ${imgIdx + 1}`} className="h-12 w-12 object-cover rounded border hover:opacity-90 transition-opacity" />
                         </a>
                       ))}
                     </div>
@@ -2002,7 +2002,7 @@ function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
       <Link href={`/listings/${listing.id}`} className="relative block">
         {images?.[0] ? (
           <img
-            src={images[0]}
+            src={assetUrl(images[0])}
             alt={listing.title}
             className="w-full aspect-[4/3] object-cover hover:opacity-95 transition-opacity"
           />
@@ -2193,7 +2193,7 @@ function CompactListingCard({ listing }: { listing: ListingWithUser }) {
     <div className="rounded-xl overflow-hidden border border-bareter-border bg-white dark:bg-card shadow-sm">
       <Link href={`/listings/${listing.id}`} className="block relative aspect-square bg-muted/30">
         {images?.[0] ? (
-          <img src={images[0]} alt={listing.title} className="w-full h-full object-cover" />
+          <img src={assetUrl(images[0])} alt={listing.title} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <ArrowRightLeft className="h-7 w-7 text-bareter-teal/30" />
@@ -2357,7 +2357,7 @@ export function FeedPage() {
                     className="shrink-0 w-28 sm:w-36 snap-start rounded-lg border border-bareter-border bg-white dark:bg-card overflow-hidden hover:shadow-bareter-hover transition-shadow"
                   >
                     {(l.images as string[])?.[0] ? (
-                      <img src={(l.images as string[])[0]} alt={l.title} className="w-full h-18 sm:h-24 object-cover" style={{ height: "72px" }} />
+                      <img src={assetUrl((l.images as string[])[0])} alt={l.title} className="w-full h-18 sm:h-24 object-cover" style={{ height: "72px" }} />
                     ) : (
                       <div className="w-full bg-muted/30 flex items-center justify-center" style={{ height: "72px" }}>
                         <ArrowRightLeft className="h-4 w-4 text-muted-foreground/40" />

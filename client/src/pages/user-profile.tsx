@@ -55,7 +55,7 @@ import { StarRating } from "@/components/StarRating";
 import { SiInstagram, SiLinkedin, SiX, SiTiktok, SiYoutube, SiSnapchat } from "react-icons/si";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, assetUrl } from "@/lib/queryClient";
 import type { Listing, Rating, User } from "@shared/schema";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import type { ExchangeItem } from "@shared/schema";
@@ -896,7 +896,7 @@ export function UserProfilePage() {
                 className="w-full text-left flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
               >
                 {listing.images?.[0] ? (
-                  <img src={listing.images[0] as string} alt={listing.title} className="h-12 w-12 rounded-md object-cover flex-shrink-0" />
+                  <img src={assetUrl(listing.images[0] as string)} alt={listing.title} className="h-12 w-12 rounded-md object-cover flex-shrink-0" />
                 ) : (
                   <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
                     <Package className="h-5 w-5 text-muted-foreground" />
