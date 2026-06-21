@@ -750,7 +750,7 @@ export function ProfilePage() {
             }}
             className="flex-1 h-8 border border-border rounded-lg text-sm font-semibold bg-muted/40 hover:bg-muted/60 transition-colors"
           >
-            Share profile
+            Share
           </button>
         </div>
       </div>
@@ -899,26 +899,30 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Mobile horizontal icon tab row */}
-      <div className="md:hidden flex border-b border-border mb-0">
+      {/* Mobile horizontal icon tab row — scrollable, all sections */}
+      <div className="md:hidden flex overflow-x-auto border-b border-border mb-0 scrollbar-hide">
         {([
-          { id: "grid" as const, Icon: Grid3x3 },
-          { id: "offers" as ProfileTabId, Icon: Package },
-          { id: "deals" as ProfileTabId, Icon: Handshake },
-          { id: "portfolio" as ProfileTabId, Icon: ImageIcon },
-          { id: "profile" as ProfileTabId, Icon: User },
-        ] as const).map(({ id, Icon }) => (
+          { id: "grid"         as const,        Icon: Grid3x3,      label: "Listings"      },
+          { id: "offers"       as ProfileTabId,  Icon: Package,      label: "Offers"        },
+          { id: "needs"        as ProfileTabId,  Icon: ShoppingCart, label: "Needs"         },
+          { id: "deals"        as ProfileTabId,  Icon: Handshake,    label: "Deals"         },
+          { id: "endorsements" as ProfileTabId,  Icon: ThumbsUp,     label: "Reviews"       },
+          { id: "portfolio"    as ProfileTabId,  Icon: ImageIcon,    label: "Portfolio"     },
+          { id: "drafts"       as ProfileTabId,  Icon: FileText,     label: "Drafts"        },
+          { id: "verification" as ProfileTabId,  Icon: Shield,       label: "Verify"        },
+        ] as const).map(({ id, Icon, label }) => (
           <button
             key={id}
             type="button"
             onClick={() => id === "grid" ? goToGrid() : goToSection(id)}
-            className={`flex-1 flex flex-col items-center py-2.5 border-b-2 transition-colors ${
+            className={`flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-2 border-b-2 transition-colors ${
               mobileTab === id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground"
             }`}
           >
             <Icon className="h-[18px] w-[18px]" strokeWidth={mobileTab === id ? 2.5 : 2} />
+            <span className="text-[9px] font-medium whitespace-nowrap">{label}</span>
           </button>
         ))}
       </div>
