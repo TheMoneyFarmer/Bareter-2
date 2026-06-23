@@ -54,6 +54,9 @@ import {
   ChevronRight,
   PlusCircle,
   ArrowRightLeft,
+  X,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import {
@@ -112,6 +115,7 @@ type EditForm = {
   tags: string;
   condition: string;
   openToOffers: boolean;
+  images: string[];
 };
 
 export default function DashboardPage() {
@@ -132,7 +136,9 @@ export default function DashboardPage() {
     tags: "",
     condition: "like_new",
     openToOffers: true,
+    images: [],
   });
+  const [uploadingEditImages, setUploadingEditImages] = useState(false);
 
   if (!authLoading && !user) {
     navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
@@ -291,7 +297,33 @@ export default function DashboardPage() {
       tags: (listing.tags as string[] | null)?.join(", ") ?? "",
       condition: listing.condition ?? "like_new",
       openToOffers: listing.openToOffers ?? true,
+      images: (listing.images as string[] | null) ?? [],
     });
+  }
+
+  async function handleUploadEditImages(files: File[]) {
+    if (!files.length) return;
+    setUploadingEditImages(true);
+    try {
+      const urls: string[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("image", file);
+        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
+        if (!res.ok) throw new Error("Upload failed");
+        const data = await res.json();
+        urls.push(data.url);
+      }
+      setEditForm((f) => ({ ...f, images: [...f.images, ...urls] }));
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingEditImages(false);
+    }
+  }
+
+  function handleRemoveEditImage(index: number) {
+    setEditForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== index) }));
   }
 
   function handleSaveEdit() {
@@ -306,6 +338,7 @@ export default function DashboardPage() {
         tags: editForm.tags.split(",").map((t) => t.trim()).filter(Boolean),
         condition: editForm.condition,
         openToOffers: editForm.openToOffers,
+        images: editForm.images,
       },
     });
   }
@@ -1038,6 +1071,46 @@ export default function DashboardPage() {
                   <SelectItem value="service">Service / Digital</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Photos</Label>
+              {editForm.images.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {editForm.images.map((url, idx) => (
+                    <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEditImage(idx)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-5 w-5 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-muted-foreground/30 rounded-lg p-3 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
+                {uploadingEditImages ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm text-muted-foreground">Uploading…</span></>
+                ) : (
+                  <><ImagePlus className="h-4 w-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">Add photos</span></>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingEditImages}
+                  onChange={(e) => {
+                    if (e.target.files) handleUploadEditImages(Array.from(e.target.files));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {editForm.images.length === 0 && (
+                <p className="text-xs text-muted-foreground">No photos — add at least one so buyers can see your item.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-tags">Tags (comma separated)</Label>
