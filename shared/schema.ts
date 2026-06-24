@@ -1135,12 +1135,13 @@ export const moderationLogs = pgTable("moderation_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   targetType: text("target_type").notNull(), // "listing", "post", "message"
   targetId: varchar("target_id", { length: 36 }).notNull(),
-  action: text("action").notNull(), // "approved", "flagged", "rejected"
+  action: text("action").notNull(), // "approved", "flagged", "rejected", "pending"
   reason: text("reason"),
   confidence: decimal("confidence", { precision: 5, scale: 2 }),
   rawResponse: jsonb("raw_response"),
   reviewedByAdmin: boolean("reviewed_by_admin").default(false),
   adminUserId: varchar("admin_user_id", { length: 36 }),
+  triggeredBy: text("triggered_by").default("auto_ai"), // "auto_ai" | "manual_admin"
   createdAt: timestamp("created_at").defaultNow(),
 });
 

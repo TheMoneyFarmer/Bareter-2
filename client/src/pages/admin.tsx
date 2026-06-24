@@ -3921,6 +3921,8 @@ export function AdminPage() {
     reason: string;
     confidence: string | null;
     rawResponse: { categories?: string[] } | null;
+    triggeredBy: string | null;
+    reviewedByAdmin: boolean | null;
     createdAt: string | null;
   }
 
@@ -4439,65 +4441,172 @@ export function AdminPage() {
               </Card>
             </div>
 
+            {/* ── Auto-blocked review queue ── */}
+            {(() => {
+              const autoBlocked = (aiLogs?.moderationLogs || []).filter(l =>
+                l.triggeredBy === "auto_ai" &&
+                (l.action === "flagged" || l.action === "rejected") &&
+                !l.reviewedByAdmin &&
+                inDate(l.createdAt)
+              );
+              return autoBlocked.length > 0 ? (
+                <Card className="border-amber-300 dark:border-amber-700">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <CardTitle className="text-base text-amber-700 dark:text-amber-400">
+                        Auto-blocked — Needs Review ({autoBlocked.length})
+                      </CardTitle>
+                      <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">AI flagged · unreviewed</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      These listings were automatically blocked by the moderation engine. Review and approve or confirm rejection.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Override</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {autoBlocked.map(log => (
+                          <TableRow key={log.id} className="bg-amber-50/50 dark:bg-amber-950/20">
+                            <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
+                            <TableCell>
+                              <Badge variant={log.action === "rejected" ? "destructive" : "secondary"}>
+                                {log.action}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[240px] text-xs text-muted-foreground">{log.reason}</TableCell>
+                            <TableCell className="text-sm font-medium">
+                              {log.confidence ? (
+                                <span className={parseFloat(log.confidence) < 0.6 ? "text-amber-600" : "text-red-600"}>
+                                  {Math.round(parseFloat(log.confidence) * 100)}%
+                                </span>
+                              ) : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "—"}
+                            </TableCell>
+                            <TableCell>
+                              {log.targetType === "listing" && (
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                                    onClick={() => approveListingMutation.mutate(log.targetId)}
+                                    disabled={approveListingMutation.isPending}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                                    onClick={() => setRejectDialog({ open: true, listingId: log.targetId, reason: "" })}
+                                  >
+                                    Confirm Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()}
+
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="text-base">Moderation Logs</CardTitle>
-                  <div className="flex gap-1">
-                    {(["all", "approved", "flagged", "rejected"] as const).map(f => (
-                      <Button key={f} variant={aiLogFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
-                        data-testid={`btn-filter-moderation-${f}`} onClick={() => setAiLogFilter(f)}>{f}</Button>
-                    ))}
+                  <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-1">
+                      {(["all", "approved", "flagged", "rejected"] as const).map(f => (
+                        <Button key={f} variant={aiLogFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
+                          data-testid={`btn-filter-moderation-${f}`} onClick={() => setAiLogFilter(f)}>{f}</Button>
+                      ))}
+                    </div>
+                    <Button
+                      variant={aiLogFilter === ("auto_blocked" as any) ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs h-7 border-amber-400 text-amber-700"
+                      onClick={() => setAiLogFilter("auto_blocked" as any)}
+                    >
+                      Auto-blocked only
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                {fMod.length === 0 ? (
-                  <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>Categories</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Confidence</TableHead>
-                        <TableHead>Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fMod.map(log => {
-                        const cats: string[] = log.rawResponse?.categories ?? [];
-                        return (
-                          <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
-                            <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
-                            <TableCell>
-                              <Badge variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}>
-                                {log.action}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {cats.length === 0
-                                  ? <span className="text-xs text-muted-foreground">—</span>
-                                  : cats.map(cat => (
-                                    <Badge key={cat} variant="outline" className={`text-xs ${cat === "off_platform" ? "border-amber-500/60 text-amber-600" : cat === "cash_price" ? "border-red-400/60 text-red-600" : ""}`}
-                                      data-testid={`badge-category-${log.id}-${cat}`}>{cat}</Badge>
-                                  ))}
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
-                            <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
+                {(() => {
+                  const displayed = aiLogFilter === ("auto_blocked" as any)
+                    ? fMod.filter(l => l.triggeredBy === "auto_ai" && (l.action === "flagged" || l.action === "rejected"))
+                    : fMod;
+                  return displayed.length === 0 ? (
+                    <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Categories</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead>Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {displayed.map(log => {
+                          const cats: string[] = log.rawResponse?.categories ?? [];
+                          return (
+                            <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
+                              <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
+                              <TableCell>
+                                <Badge variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}>
+                                  {log.action}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-xs ${log.triggeredBy === "auto_ai" ? "border-purple-400 text-purple-700" : "border-blue-400 text-blue-700"}`}>
+                                  {log.triggeredBy === "manual_admin" ? "admin" : "auto"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {cats.length === 0
+                                    ? <span className="text-xs text-muted-foreground">—</span>
+                                    : cats.map(cat => (
+                                      <Badge key={cat} variant="outline" className={`text-xs ${cat === "off_platform" ? "border-amber-500/60 text-amber-600" : cat === "cash_price" ? "border-red-400/60 text-red-600" : ""}`}
+                                        data-testid={`badge-category-${log.id}-${cat}`}>{cat}</Badge>
+                                    ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
+                              <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
               </CardContent>
             </Card>
 

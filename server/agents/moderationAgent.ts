@@ -110,13 +110,26 @@ export async function moderateContent(
   }
 }
 
+// Minimum confidence for auto-approve. Below this threshold the listing
+// stays "pending" even if the AI verdict is "approved" — a human reviews it.
+const AUTO_APPROVE_CONFIDENCE_THRESHOLD = 0.85;
+
 export async function moderateAndLog(
   contentType: "listing" | "post" | "message",
   targetId: string,
   content: { title?: string; description?: string; text?: string; value?: number; categories?: string[] },
   userId?: string
 ): Promise<ModerationResult> {
-  const result = await moderateContent(contentType, content);
+  let result = await moderateContent(contentType, content);
+
+  // Downgrade low-confidence approvals to pending so a human reviews them.
+  if (result.action === "approved" && result.confidence < AUTO_APPROVE_CONFIDENCE_THRESHOLD) {
+    result = {
+      ...result,
+      action: "flagged",
+      reason: `Low-confidence auto-review (${(result.confidence * 100).toFixed(0)}%) — held for human check. Original reason: ${result.reason}`,
+    };
+  }
 
   try {
     await db.insert(moderationLogs).values({
@@ -126,6 +139,7 @@ export async function moderateAndLog(
       reason: result.reason,
       confidence: result.confidence.toString(),
       rawResponse: JSON.parse(JSON.stringify(result)),
+      triggeredBy: "auto_ai",
     });
   } catch (err) {
     console.error("Failed to log moderation result:", err);

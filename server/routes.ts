@@ -6104,10 +6104,10 @@ export async function registerRoutes(
 
         if (action === "approve") {
           await storage.updateListing(listingId, { isActive: true, moderationStatus: "approved" });
-          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "approved", reason: "Bulk approved by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null });
+          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "approved", reason: "Bulk approved by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null, triggeredBy: "manual_admin" });
         } else if (action === "reject") {
           await storage.updateListing(listingId, { isActive: false, moderationStatus: "rejected" });
-          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "rejected", reason: "Bulk rejected by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null });
+          await db.insert(moderationLogs).values({ targetType: "listing", targetId: listingId, action: "rejected", reason: "Bulk rejected by admin", reviewedByAdmin: true, adminUserId: req.session.userId || null, triggeredBy: "manual_admin" });
         } else if (action === "delete") {
           await db.update(listings).set({ deletedAt: new Date(), deletedByUserId: req.session.userId, isActive: false }).where(eq(listings.id, listingId));
         }
@@ -6181,6 +6181,7 @@ export async function registerRoutes(
         reason: "Approved by admin",
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
+        triggeredBy: "manual_admin",
       });
       await logAdminAction(req, "listing_approved", "listing", listingId, { title: listing.title });
       res.json(listing);
@@ -6253,6 +6254,7 @@ export async function registerRoutes(
         reason,
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
+        triggeredBy: "manual_admin",
       });
       const owner = await storage.getUser(listing.userId);
       if (owner) {
@@ -6299,6 +6301,7 @@ export async function registerRoutes(
         reason: `Admin edited fields: ${changedFields}`,
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
+        triggeredBy: "manual_admin",
       });
       await logAdminAction(req, "listing_edited", "listing", listingId, { changedFields, title: listing.title });
       res.json(listing);
@@ -6327,6 +6330,7 @@ export async function registerRoutes(
         reason: isFeatured ? `Featured for ${durationDays || 7} days` : "Removed from featured",
         reviewedByAdmin: true,
         adminUserId: req.session.userId || null,
+        triggeredBy: "manual_admin",
       });
       await logAdminAction(req, isFeatured ? "listing_featured" : "listing_unfeatured", "listing", listingId, { title: listing.title });
       res.json(listing);
