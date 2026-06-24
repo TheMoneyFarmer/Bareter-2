@@ -147,7 +147,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "morning-check" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -407,8 +407,9 @@ export function AdminPage() {
 
   const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
     queryKey: ["/api/admin/morning-check"],
-    enabled: activeSection === "morning-check" && !!user?.isAdmin,
+    enabled: activeSection === "queue" && !!user?.isAdmin,
     staleTime: 0,
+    refetchInterval: 7 * 60 * 60 * 1000,
   });
 
   const { data: listingDraftsData, isLoading: listingDraftsLoading } = useQuery<{
@@ -1161,7 +1162,7 @@ export function AdminPage() {
   const morningBadge = pendingModerationCount + pendingVerifCount;
 
   const navItems: { id: AdminSection; label: string; icon: React.ElementType; badge?: number }[] = [
-    { id: "morning-check", label: "Morning Check", icon: Sun, badge: morningBadge > 0 ? morningBadge : undefined },
+    { id: "queue", label: "Daily Queue", icon: ClipboardList, badge: morningBadge > 0 ? morningBadge : undefined },
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "users", label: "Users", icon: Users },
     { id: "listings", label: "Listings", icon: Package },
@@ -4985,14 +4986,14 @@ export function AdminPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Sun className="h-6 w-6 text-yellow-500" />
-              Morning Check
+              <ClipboardList className="h-6 w-6 text-primary" />
+              Daily Queue
             </h2>
             <p className="text-muted-foreground text-sm mt-1">
               {morningCheckLoading
                 ? "Loading queues…"
                 : totalQueue === 0
-                ? "All queues clear — you're done for now."
+                ? "All queues clear — nothing needs action right now."
                 : `${totalQueue} item${totalQueue !== 1 ? "s" : ""} need your attention`}
             </p>
           </div>
@@ -5503,7 +5504,7 @@ export function AdminPage() {
             </div>
             <h3 className="text-lg font-semibold">All queues clear</h3>
             <p className="text-muted-foreground text-sm mt-1 max-w-xs mx-auto">
-              No pending listings, verifications, reports, or disputes. Check back later or explore a section.
+              No pending listings, verifications, reports, disputes, or tickets. Auto-refreshes every 7 hours.
             </p>
           </div>
         )}
@@ -5513,7 +5514,7 @@ export function AdminPage() {
 
   const renderContent = () => {
     switch (activeSection) {
-      case "morning-check":
+      case "queue":
         return renderMorningCheck();
       case "dashboard":
         return renderDashboard();
