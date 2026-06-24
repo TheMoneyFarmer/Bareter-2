@@ -5716,6 +5716,42 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/listings/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const { status, category, from, to } = req.query as Record<string, string>;
+      const allListings = await storage.getAllListings();
+      const escCsv = (v: string | null | undefined) => {
+        if (v == null) return "";
+        let s = String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const filtered = allListings.filter(l => {
+        if (status && l.moderationStatus !== status) return false;
+        if (category && !(l.categories as string[] || []).includes(category)) return false;
+        if (from && l.createdAt && new Date(l.createdAt) < new Date(from)) return false;
+        if (to && l.createdAt && new Date(l.createdAt) > new Date(to + "T23:59:59Z")) return false;
+        return true;
+      });
+      const headers = ["ID","Title","Category","Condition","Retail Value","Location","City","Status","Is Active","Is Featured","Moderation Status","Created At","User ID"];
+      const rows = filtered.map(l => [
+        l.id, escCsv(l.title), escCsv((l.categories as string[] || []).join(";")),
+        escCsv(l.condition), l.retailValue, escCsv(l.location), escCsv(l.city),
+        l.isActive ? "active" : "inactive", l.isActive ? "Yes" : "No",
+        l.isFeatured ? "Yes" : "No", l.moderationStatus,
+        l.createdAt ? new Date(l.createdAt).toISOString() : "", l.userId,
+      ].join(","));
+      const csv = [headers.join(","), ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="bareter-listings-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Admin export listings CSV error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req, res) => {
     try {
       const user = await storage.getUser(param(req.params.id));

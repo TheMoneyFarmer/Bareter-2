@@ -288,6 +288,8 @@ export function AdminPage() {
     open: false, listing: null, categories: [], retailValue: "",
   });
   const [disputeStatusFilter, setDisputeStatusFilter] = useState<string>("all");
+  const [reportStatusFilter, setReportStatusFilter] = useState<string>("all");
+  const [reportTypeFilter, setReportTypeFilter] = useState<string>("all");
   const [selectedDispute, setSelectedDispute] = useState<DisputeWithParties | null>(null);
   const [disputeDecisionDialog, setDisputeDecisionDialog] = useState<{ open: boolean; dispute: DisputeWithParties | null; decision: string; reasoning: string; outcome: string }>({
     open: false, dispute: null, decision: "", reasoning: "", outcome: "",
@@ -1527,24 +1529,36 @@ export function AdminPage() {
     toast({ title: "Exporting", description: "CSV download started" });
   };
 
-  const renderUsers = () => (
+  const renderUsers = () => {
+    const bannedCount = (users ?? []).filter(u => u.isBanned).length;
+    const pendingCount = (users ?? []).filter(u => (u.kycStatus === "PENDING" || u.kybStatus === "PENDING") && !u.isBanned).length;
+    const unverifiedCount = (users ?? []).filter(u => !u.isVerified && !u.isBanned && u.kycStatus !== "PENDING" && u.kybStatus !== "PENDING").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Users Management</h2>
-          <p className="text-muted-foreground">Manage registered users and verification status</p>
+          <p className="text-muted-foreground">
+            Manage registered users and verification status
+            {filteredUsers && users && filteredUsers.length !== users.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredUsers.length.toLocaleString()} of {users.length.toLocaleString()}</span>
+            )}
+            {filteredUsers && users && filteredUsers.length === users.length && users.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{users.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-user-status-filter">
+            <SelectTrigger className="w-[170px]" data-testid="select-user-status-filter">
               <SelectValue placeholder="Filter status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Users</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="banned">Banned</SelectItem>
-              <SelectItem value="pending">Pending Verification</SelectItem>
-              <SelectItem value="unverified">Unverified</SelectItem>
+              <SelectItem value="banned">Banned {bannedCount > 0 && `(${bannedCount})`}</SelectItem>
+              <SelectItem value="pending">Pending Verification {pendingCount > 0 && `(${pendingCount})`}</SelectItem>
+              <SelectItem value="unverified">Unverified {unverifiedCount > 0 && `(${unverifiedCount})`}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={userAccountTypeFilter} onValueChange={setUserAccountTypeFilter}>
@@ -1666,14 +1680,17 @@ export function AdminPage() {
       </Dialog>
 
       {selectedUserIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
-          <span className="text-sm font-medium">{selectedUserIds.size} selected</span>
-          <div className="flex items-center gap-2 ml-2">
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg flex-wrap">
+          <span className="text-sm font-medium">{selectedUserIds.size} user{selectedUserIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex items-center gap-2 ml-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "ban" })} disabled={bulkUserMutation.isPending}>
               <Ban className="h-3.5 w-3.5 mr-1.5" />Ban
             </Button>
             <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "unban" })} disabled={bulkUserMutation.isPending}>
               <UserCheck className="h-3.5 w-3.5 mr-1.5" />Unban
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setActiveSection("email"); toast({ title: `${selectedUserIds.size} users selected`, description: "Use the broadcast tool to email this group. Apply your filters there to match the same audience." }); }}>
+              <Mail className="h-3.5 w-3.5" />Email {selectedUserIds.size}
             </Button>
             <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Delete ${selectedUserIds.size} user(s) permanently? This cannot be undone.`)) bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "delete" }); }} disabled={bulkUserMutation.isPending}>
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
@@ -1870,14 +1887,27 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
-  const renderListings = () => (
+  const renderListings = () => {
+    const approvedCount = (listings ?? []).filter(l => l.moderationStatus === "approved").length;
+    const pendingListCount = (listings ?? []).filter(l => l.moderationStatus === "pending").length;
+    const flaggedCount = (listings ?? []).filter(l => l.moderationStatus === "flagged" || l.valueFlagged || l.imageFlagged).length;
+    const rejectedCount = (listings ?? []).filter(l => l.moderationStatus === "rejected").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Listings Management</h2>
-          <p className="text-muted-foreground">View and moderate all platform listings</p>
+          <p className="text-muted-foreground">
+            View and moderate all platform listings
+            {filteredListings && listings && filteredListings.length !== listings.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredListings.length.toLocaleString()} of {listings.length.toLocaleString()}</span>
+            )}
+            {filteredListings && listings && filteredListings.length === listings.length && listings.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{listings.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={listingStatusFilter} onValueChange={setListingStatusFilter}>
@@ -1886,10 +1916,10 @@ export function AdminPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="pending">Pending Review</SelectItem>
-              <SelectItem value="flagged">Flagged</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="approved">Approved {approvedCount > 0 && `(${approvedCount})`}</SelectItem>
+              <SelectItem value="pending">Pending {pendingListCount > 0 && `(${pendingListCount})`}</SelectItem>
+              <SelectItem value="flagged">Flagged {flaggedCount > 0 && `(${flaggedCount})`}</SelectItem>
+              <SelectItem value="rejected">Rejected {rejectedCount > 0 && `(${rejectedCount})`}</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
               <SelectItem value="featured">Featured</SelectItem>
@@ -1969,6 +1999,10 @@ export function AdminPage() {
               data-testid="input-search-listings"
             />
           </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (listingStatusFilter !== "all") params.set("status", listingStatusFilter); if (listingCategoryFilter !== "all") params.set("category", listingCategoryFilter); window.open(`${API_BASE}/api/admin/listings/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Listings CSV download started" }); }} data-testid="button-export-listings-csv">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
@@ -2152,14 +2186,22 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
   const renderDeals = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Deals Management</h2>
-          <p className="text-muted-foreground">View all deals and their details</p>
+          <p className="text-muted-foreground">
+            View all deals and their details
+            {filteredDeals && deals && filteredDeals.length !== deals.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredDeals.length.toLocaleString()} of {deals.length.toLocaleString()}</span>
+            )}
+            {filteredDeals && deals && filteredDeals.length === deals.length && deals.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{deals.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={dealStateFilter} onValueChange={setDealStateFilter}>
@@ -2321,6 +2363,7 @@ export function AdminPage() {
 
   const filteredDisputes = disputesData.filter(d => {
     if (disputeStatusFilter !== "all" && d.status !== disputeStatusFilter) return false;
+    if (!matchesDateRange(d.createdAt, dateRangeFilter, customDateFrom, customDateTo)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return d.subject.toLowerCase().includes(q) ||
@@ -2330,25 +2373,34 @@ export function AdminPage() {
     return true;
   });
 
-  const renderDisputes = () => (
+  const renderDisputes = () => {
+    const openCount = disputesData.filter(d => d.status === "open").length;
+    const mediationCount = disputesData.filter(d => d.status === "in_mediation").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Disputes</h2>
-          <p className="text-muted-foreground">Manage disputes between parties</p>
+          <p className="text-muted-foreground">
+            Manage disputes between parties
+            {filteredDisputes.length !== disputesData.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredDisputes.length} of {disputesData.length}</span>
+            )}
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Select value={disputeStatusFilter} onValueChange={setDisputeStatusFilter}>
-            <SelectTrigger className="w-[140px]" data-testid="select-dispute-status-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-dispute-status-filter">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="in_mediation">In Mediation</SelectItem>
+              <SelectItem value="open">Open {openCount > 0 && `(${openCount})`}</SelectItem>
+              <SelectItem value="in_mediation">In Mediation {mediationCount > 0 && `(${mediationCount})`}</SelectItem>
               <SelectItem value="resolved">Resolved</SelectItem>
             </SelectContent>
           </Select>
+          {renderDateRangeFilter()}
           <Button onClick={() => setCreateDisputeDialog({ ...createDisputeDialog, open: true })} data-testid="button-create-dispute">
             Create Dispute
           </Button>
@@ -2462,7 +2514,7 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
   const renderEmail = () => (
     <div className="space-y-6">
@@ -3697,14 +3749,50 @@ export function AdminPage() {
       return null;
     };
 
+    const filteredReports = (reportsData as any[]).filter(r => {
+      if (reportStatusFilter !== "all" && r.status !== reportStatusFilter) return false;
+      if (reportTypeFilter !== "all" && r.targetType !== reportTypeFilter) return false;
+      return true;
+    });
+    const pendingReportsCount = (reportsData as any[]).filter(r => r.status === "pending").length;
+    const actionedReportsCount = (reportsData as any[]).filter(r => r.status === "actioned").length;
+
     return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Reports</h2>
-          <p className="text-muted-foreground">User-submitted reports for review</p>
+          <p className="text-muted-foreground">
+            User-submitted reports for review
+            {filteredReports.length !== reportsData.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredReports.length} of {reportsData.length}</span>
+            )}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={reportStatusFilter} onValueChange={setReportStatusFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending {pendingReportsCount > 0 && `(${pendingReportsCount})`}</SelectItem>
+              <SelectItem value="actioned">Actioned {actionedReportsCount > 0 && `(${actionedReportsCount})`}</SelectItem>
+              <SelectItem value="dismissed">Dismissed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={reportTypeFilter} onValueChange={setReportTypeFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="listing">Listing</SelectItem>
+              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="post">Post</SelectItem>
+              <SelectItem value="deal">Deal</SelectItem>
+            </SelectContent>
+          </Select>
           <Input type="date" value={reportsExportFrom} onChange={(e) => setReportsExportFrom(e.target.value)} className="w-36 h-9 text-xs" placeholder="From" data-testid="input-reports-export-from" />
           <Input type="date" value={reportsExportTo} onChange={(e) => setReportsExportTo(e.target.value)} className="w-36 h-9 text-xs" placeholder="To" data-testid="input-reports-export-to" />
           <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (reportsExportFrom) params.set("from", reportsExportFrom); if (reportsExportTo) params.set("to", reportsExportTo); window.open(`/api/admin/reports/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Reports & disputes CSV download started" }); }} data-testid="button-export-reports-csv">
@@ -3714,10 +3802,10 @@ export function AdminPage() {
         </div>
       </div>
       <div className="space-y-3">
-        {reportsData.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">No reports submitted yet</CardContent></Card>
+        {filteredReports.length === 0 ? (
+          <Card><CardContent className="py-12 text-center text-muted-foreground">No reports found</CardContent></Card>
         ) : (
-          (reportsData as any[]).map((report) => {
+          filteredReports.map((report) => {
             const targetUrl = getTargetUrl(report);
             return (
               <Card key={report.id} className={report.status === "pending" ? "border-orange-200 dark:border-orange-900" : ""} data-testid={`row-report-${report.id}`}>
