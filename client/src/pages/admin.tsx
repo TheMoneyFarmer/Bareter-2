@@ -388,6 +388,9 @@ export function AdminPage() {
   interface MorningReport { id: string; targetType: string; reason: string; status: string; createdAt: string | null }
   interface MorningDispute { id: string; subject: string; status: string; partyAId: string; partyBId: string; createdAt: string | null }
   interface MorningSupportTicket { id: string; ticketNumber: string; subject: string; category: string; priority: string; status: string; requesterEmail: string | null; requesterName: string | null; createdAt: string | null; lastActivityAt: string | null }
+  interface MorningFlaggedPost { id: string; caption: string; postType: string | null; moderationStatus: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
+  interface MorningStaleDeals { id: string; dealNumber: string; state: string; seekerOffer: string; providerOffer: string; updatedAt: string | null; createdAt: string | null }
+  interface MorningMultiReportedUser { userId: string; email: string | null; fullName: string | null; reportCount: number }
   interface MorningCheckData {
     pendingListings: MorningPendingListing[];
     autoBlockedQueue: ModerationLogEntry[];
@@ -395,7 +398,11 @@ export function AdminPage() {
     openReports: MorningReport[];
     openDisputes: MorningDispute[];
     openSupportTickets: MorningSupportTicket[];
-    stats: { newUsers24h: number; newListings24h: number; newDeals24h: number };
+    unrespondedTickets: MorningSupportTicket[];
+    flaggedPosts: MorningFlaggedPost[];
+    staleDeals: MorningStaleDeals[];
+    multiReportedUsers: MorningMultiReportedUser[];
+    stats: { newUsers24h: number; newListings24h: number; newDeals24h: number; completedDeals24h: number; activeUsers24h: number };
   }
 
   const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
@@ -621,6 +628,26 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
       setRejectDialog({ open: false, listingId: null, reason: "" });
       toast({ title: "Success", description: "Listing rejected and user notified" });
+    },
+  });
+
+  const approvePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      await apiRequest("PATCH", `/api/admin/posts/${postId}/approve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
+      toast({ title: "Success", description: "Post approved" });
+    },
+  });
+
+  const rejectPostMutation = useMutation({
+    mutationFn: async ({ postId, reason }: { postId: string; reason: string }) => {
+      await apiRequest("PATCH", `/api/admin/posts/${postId}/reject`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
+      toast({ title: "Success", description: "Post rejected" });
     },
   });
 
@@ -4945,8 +4972,12 @@ export function AdminPage() {
     const openReps = morningCheck?.openReports ?? [];
     const openDisps = morningCheck?.openDisputes ?? [];
     const tickets = morningCheck?.openSupportTickets ?? [];
+    const unresponded = morningCheck?.unrespondedTickets ?? [];
+    const flaggedPosts = morningCheck?.flaggedPosts ?? [];
+    const staleDeals = morningCheck?.staleDeals ?? [];
+    const multiReported = morningCheck?.multiReportedUsers ?? [];
     const stats = morningCheck?.stats;
-    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length + tickets.length;
+    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length + tickets.length + unresponded.length + flaggedPosts.length + multiReported.length;
 
     return (
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -4971,12 +5002,18 @@ export function AdminPage() {
           </Button>
         </div>
 
-        {/* At-a-glance stats */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        {/* At-a-glance stats — two rows */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold">{stats?.activeUsers24h ?? "—"}</div>
+              <p className="text-xs text-muted-foreground mt-1">Active users (24h)</p>
+            </CardContent>
+          </Card>
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold">{stats?.newUsers24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">New users (24h)</p>
+              <p className="text-xs text-muted-foreground mt-1">New signups (24h)</p>
             </CardContent>
           </Card>
           <Card>
@@ -4988,9 +5025,17 @@ export function AdminPage() {
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold">{stats?.newDeals24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">New deals (24h)</p>
+              <p className="text-xs text-muted-foreground mt-1">Deals started (24h)</p>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-green-600">{stats?.completedDeals24h ?? "—"}</div>
+              <p className="text-xs text-muted-foreground mt-1">Deals completed (24h)</p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold text-amber-600">{morningCheckLoading ? "…" : pending.length}</div>
@@ -5005,8 +5050,20 @@ export function AdminPage() {
           </Card>
           <Card>
             <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-orange-600">{morningCheckLoading ? "…" : tickets.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Open tickets</p>
+              <div className="text-2xl font-bold text-orange-600">{morningCheckLoading ? "…" : unresponded.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Tickets waiting reply</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-red-700">{morningCheckLoading ? "…" : multiReported.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Multi-reported users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-yellow-600">{morningCheckLoading ? "…" : staleDeals.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Stale deals (7d+)</p>
             </CardContent>
           </Card>
         </div>
@@ -5270,6 +5327,168 @@ export function AdminPage() {
               {tickets.length > 15 && (
                 <p className="text-xs text-muted-foreground text-center pt-1">
                   +{tickets.length - 15} more — <button className="underline" onClick={() => setActiveSection("support")}>view all in Support</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 7: Unresponded support tickets (ball in admin's court) */}
+        {unresponded.length > 0 && (
+          <Card className="border-orange-300 dark:border-orange-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-orange-700 dark:text-orange-400">
+                <MessageSquare className="h-4 w-4" />
+                Waiting for Your Reply
+                <Badge variant="destructive" className="ml-1">{unresponded.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">User sent a message 4h+ ago — no admin reply yet.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {unresponded.map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between p-3 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/30 dark:bg-orange-950/20 hover:bg-orange-50/60">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        ticket.priority === "urgent" ? "bg-red-100 text-red-700" :
+                        ticket.priority === "high" ? "bg-orange-100 text-orange-700" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{ticket.priority}</span>
+                      <span className="text-xs text-muted-foreground">#{ticket.ticketNumber}</span>
+                    </div>
+                    <p className="font-medium text-sm truncate">{ticket.subject}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {ticket.requesterEmail ?? ticket.requesterName ?? "Unknown"} · Last activity: {ticket.lastActivityAt ? new Date(ticket.lastActivityAt).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="default" className="h-7 text-xs shrink-0" onClick={() => setActiveSection("support")}>
+                    Reply now
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 8: Multi-reported users */}
+        {multiReported.length > 0 && (
+          <Card className="border-red-300 dark:border-red-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-red-700 dark:text-red-400">
+                <AlertTriangle className="h-4 w-4" />
+                Multi-Reported Users
+                <Badge variant="destructive" className="ml-1">{multiReported.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">These users have 2+ pending reports in the last 7 days — likely a pattern.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {multiReported.map((u) => (
+                <div key={u.userId} className="flex items-center justify-between p-3 border border-red-200 dark:border-red-900 rounded-lg bg-red-50/30 dark:bg-red-950/20 hover:bg-red-50/60">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{u.email ?? u.userId}</p>
+                    <p className="text-xs text-muted-foreground">{u.fullName ?? "—"} · <span className="font-semibold text-red-600">{u.reportCount} reports</span> in 7 days</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0 text-red-700 border-red-400"
+                    onClick={() => { setActiveSection("users"); setSearchQuery(u.email ?? ""); }}
+                  >
+                    Investigate
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 9: Flagged community posts */}
+        {flaggedPosts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Flag className="h-4 w-4 text-yellow-600" />
+                Flagged Posts
+                <Badge className="ml-1">{flaggedPosts.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Community posts caught by auto-moderation — approve or reject.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {flaggedPosts.slice(0, 12).map((post) => (
+                <div key={post.id} className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-sm truncate">{post.caption.length > 100 ? post.caption.slice(0, 100) + "…" : post.caption}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {post.userEmail ?? post.userId} · {post.postType ?? "post"} · {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                      onClick={() => approvePostMutation.mutate(post.id)}
+                      disabled={approvePostMutation.isPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                      onClick={() => rejectPostMutation.mutate({ postId: post.id, reason: "Rejected by admin" })}
+                      disabled={rejectPostMutation.isPending}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {flaggedPosts.length > 12 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{flaggedPosts.length - 12} more — <button className="underline" onClick={() => setActiveSection("logs")}>view all in Logs</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 10: Stale active deals */}
+        {staleDeals.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="h-4 w-4 text-yellow-600" />
+                Stale Deals (7+ days inactive)
+                <Badge variant="outline" className="ml-1">{staleDeals.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Active deals with no activity in over a week — users may be stuck.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {staleDeals.slice(0, 10).map((deal) => (
+                <div key={deal.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm">Deal #{deal.dealNumber}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {deal.seekerOffer} ↔ {deal.providerOffer}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      State: <span className="capitalize">{deal.state}</span> · Last update: {deal.updatedAt ? new Date(deal.updatedAt).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("deals")}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+              {staleDeals.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{staleDeals.length - 10} more — <button className="underline" onClick={() => setActiveSection("deals")}>view all in Deals</button>
                 </p>
               )}
             </CardContent>

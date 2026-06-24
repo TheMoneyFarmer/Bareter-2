@@ -5756,6 +5756,9 @@ export async function registerRoutes(
   app.get("/api/admin/morning-check", requireAdmin, async (req, res) => {
     try {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      // Drizzle queries run in parallel
       const [
         pendingListingsRaw,
         autoBlockedQueue,
@@ -5763,9 +5766,13 @@ export async function registerRoutes(
         openReports,
         openDisputes,
         openSupportTickets,
+        flaggedPostsRaw,
+        staleDealsRaw,
         newUsersRes,
         newListingsRes,
         newDealsRes,
+        completedDealsRes,
+        activeUsersRes,
       ] = await Promise.all([
         db.select({
           id: listings.id,
@@ -5842,9 +5849,88 @@ export async function registerRoutes(
           .orderBy(desc(supportTickets.priority), desc(supportTickets.createdAt))
           .limit(25),
 
+        // Flagged community posts needing review
+        db.select({
+          id: posts.id,
+          caption: posts.caption,
+          postType: posts.postType,
+          moderationStatus: posts.moderationStatus,
+          createdAt: posts.createdAt,
+          userId: posts.userId,
+          userEmail: users.email,
+          userName: users.fullName,
+        })
+          .from(posts)
+          .leftJoin(users, eq(posts.userId, users.id))
+          .where(eq(posts.moderationStatus, "flagged"))
+          .orderBy(desc(posts.createdAt))
+          .limit(20),
+
+        // Active deals with no activity in 7+ days
+        db.select({
+          id: deals.id,
+          dealNumber: deals.dealNumber,
+          state: deals.state,
+          seekerOffer: deals.seekerOffer,
+          providerOffer: deals.providerOffer,
+          updatedAt: deals.updatedAt,
+          createdAt: deals.createdAt,
+        })
+          .from(deals)
+          .where(and(
+            inArray(deals.state, ["proposed", "accepted", "in_progress"]),
+            lt(deals.updatedAt, sevenDaysAgo),
+          ))
+          .orderBy(asc(deals.updatedAt))
+          .limit(15),
+
         db.select({ count: count() }).from(users).where(gte(users.createdAt, yesterday)),
         db.select({ count: count() }).from(listings).where(gte(listings.createdAt, yesterday)),
         db.select({ count: count() }).from(deals).where(gte(deals.createdAt, yesterday)),
+        db.select({ count: count() }).from(deals).where(and(
+          eq(deals.state, "completed"),
+          gte(deals.completedAt, yesterday),
+        )),
+        db.select({ count: count() }).from(users).where(gte(users.lastActiveAt, yesterday)),
+      ]);
+
+      // Raw SQL queries — complex joins that Drizzle can't easily express
+      const [unrespondedResult, multiReportedResult] = await Promise.all([
+        // Tickets where last message was from user and admin hasn't replied in 4h+
+        pool.query<{ id: string; ticket_number: string; subject: string; category: string; priority: string; status: string; requester_email: string | null; requester_name: string | null; created_at: string | null; last_activity_at: string | null }>(`
+          SELECT t.id, t.ticket_number, t.subject, t.category, t.priority, t.status,
+                 t.requester_email, t.requester_name, t.created_at, t.last_activity_at
+          FROM support_tickets t
+          WHERE t.status IN ('open', 'in_progress')
+          AND EXISTS (
+            SELECT 1 FROM support_messages m
+            WHERE m.ticket_id = t.id
+              AND m.sender_type = 'user'
+              AND m.created_at > COALESCE(
+                (SELECT MAX(m2.created_at) FROM support_messages m2
+                 WHERE m2.ticket_id = t.id AND m2.sender_type IN ('admin', 'ai')),
+                '1970-01-01'::timestamptz
+              )
+              AND m.created_at < NOW() - INTERVAL '4 hours'
+          )
+          ORDER BY t.last_activity_at ASC
+          LIMIT 20
+        `),
+
+        // Users with 2+ pending reports in last 7 days
+        pool.query<{ user_id: string; report_count: string; email: string | null; full_name: string | null }>(`
+          SELECT r.target_id AS user_id, COUNT(*) AS report_count,
+                 u.email, u.full_name
+          FROM reports r
+          LEFT JOIN users u ON u.id = r.target_id
+          WHERE r.target_type = 'user'
+            AND r.status = 'pending'
+            AND r.created_at > NOW() - INTERVAL '7 days'
+          GROUP BY r.target_id, u.email, u.full_name
+          HAVING COUNT(*) >= 2
+          ORDER BY COUNT(*) DESC
+          LIMIT 10
+        `),
       ]);
 
       res.json({
@@ -5854,14 +5940,72 @@ export async function registerRoutes(
         openReports,
         openDisputes,
         openSupportTickets,
+        flaggedPosts: flaggedPostsRaw,
+        staleDeals: staleDealsRaw,
+        unrespondedTickets: unrespondedResult.rows.map(r => ({
+          id: r.id,
+          ticketNumber: r.ticket_number,
+          subject: r.subject,
+          category: r.category,
+          priority: r.priority,
+          status: r.status,
+          requesterEmail: r.requester_email,
+          requesterName: r.requester_name,
+          createdAt: r.created_at,
+          lastActivityAt: r.last_activity_at,
+        })),
+        multiReportedUsers: multiReportedResult.rows.map(r => ({
+          userId: r.user_id,
+          email: r.email,
+          fullName: r.full_name,
+          reportCount: parseInt(r.report_count, 10),
+        })),
         stats: {
           newUsers24h: Number(newUsersRes[0]?.count ?? 0),
           newListings24h: Number(newListingsRes[0]?.count ?? 0),
           newDeals24h: Number(newDealsRes[0]?.count ?? 0),
+          completedDeals24h: Number(completedDealsRes[0]?.count ?? 0),
+          activeUsers24h: Number(activeUsersRes[0]?.count ?? 0),
         },
       });
     } catch (error) {
       console.error("Morning check error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Post moderation (admin approve / reject) ──────────────────────────────
+  app.patch("/api/admin/posts/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const postId = param(req.params.id);
+      await db.update(posts).set({ moderationStatus: "approved", isActive: true }).where(eq(posts.id, postId));
+      await db.insert(moderationLogs).values({
+        targetType: "post", targetId: postId,
+        action: "approved", reason: "Approved by admin", confidence: "1",
+        triggeredBy: "manual_admin", reviewedByAdmin: true,
+      }).catch(() => {});
+      await logAdminAction(req, "post_approved", "post", postId, {});
+      res.json({ message: "Post approved" });
+    } catch (error) {
+      console.error("Admin approve post error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/posts/:id/reject", requireAdmin, async (req, res) => {
+    try {
+      const postId = param(req.params.id);
+      const { reason } = req.body as { reason?: string };
+      await db.update(posts).set({ moderationStatus: "rejected", isActive: false }).where(eq(posts.id, postId));
+      await db.insert(moderationLogs).values({
+        targetType: "post", targetId: postId,
+        action: "rejected", reason: reason || "Rejected by admin", confidence: "1",
+        triggeredBy: "manual_admin", reviewedByAdmin: true,
+      }).catch(() => {});
+      await logAdminAction(req, "post_rejected", "post", postId, { reason });
+      res.json({ message: "Post rejected" });
+    } catch (error) {
+      console.error("Admin reject post error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
