@@ -415,8 +415,6 @@ const isNative = Capacitor.isNativePlatform();
 
 // Handles all native-only startup side-effects in one place.
 // Runs once on mount; no-ops completely when isNative is false.
-// NOTE: SplashScreen.hide() is intentionally NOT called here — it is called by
-// NativeSplashGate once the auth check resolves, so there's no white flash.
 function NativeBootstrap() {
   useEffect(() => {
     if (!isNative) return;
@@ -427,6 +425,15 @@ function NativeBootstrap() {
         const { StatusBar, Style } = await import("@capacitor/status-bar");
         await StatusBar.setStyle({ style: Style.Light });
         await StatusBar.setBackgroundColor({ color: "#136c68" });
+      } catch {}
+
+      // Hide the native OS splash after a short delay so the teal web overlay
+      // (NativeSplashGate) has time to render first — avoids any black flash.
+      // The web overlay stays up until auth resolves independently.
+      await new Promise((r) => setTimeout(r, 400));
+      try {
+        const { SplashScreen } = await import("@capacitor/splash-screen");
+        await SplashScreen.hide({ fadeOutDuration: 250 });
       } catch {}
     })();
 
@@ -449,9 +456,11 @@ function NativeBootstrap() {
 }
 
 /**
- * On native: keeps a full-screen teal overlay visible while the /api/auth/me
- * check is in-flight, then hides the native splash + fades out the overlay.
- * On web: invisible no-op — zero impact on web behaviour.
+ * On native: shows a full-screen teal overlay from first render until the
+ * /api/auth/me check resolves (max 8 s safety cap so it never blocks forever).
+ * The teal web overlay bridges the gap between the native splash hiding and
+ * content being ready — so there is never a white or black flash.
+ * On web: invisible no-op.
  */
 function NativeSplashGate() {
   const [visible, setVisible] = useState(isNative);
@@ -463,20 +472,25 @@ function NativeSplashGate() {
     retry: false,
   });
 
-  useEffect(() => {
-    if (!isNative || isLoading || hidden.current) return;
+  const dismiss = useRef(() => {
+    if (hidden.current) return;
     hidden.current = true;
+    setFading(true);
+    setTimeout(() => setVisible(false), 350);
+  });
 
-    // Auth resolved — hide native OS splash then fade out web overlay
-    (async () => {
-      try {
-        const { SplashScreen } = await import("@capacitor/splash-screen");
-        await SplashScreen.hide({ fadeOutDuration: 300 });
-      } catch {}
-      setFading(true);
-      setTimeout(() => setVisible(false), 350);
-    })();
+  // Dismiss once auth check finishes
+  useEffect(() => {
+    if (!isNative || isLoading) return;
+    dismiss.current();
   }, [isLoading]);
+
+  // Safety cap: always dismiss after 8 s even if auth hangs
+  useEffect(() => {
+    if (!isNative) return;
+    const t = setTimeout(() => dismiss.current(), 8000);
+    return () => clearTimeout(t);
+  }, []);
 
   if (!visible) return null;
 
