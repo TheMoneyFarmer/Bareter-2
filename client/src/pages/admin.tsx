@@ -122,6 +122,7 @@ import {
   Percent,
   Wallet,
   ListChecks,
+  Sun,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -146,7 +147,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "morning-check" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
 
 type WaitlistEntryRow = {
   id: number;
@@ -382,6 +383,25 @@ export function AdminPage() {
     staleTime: 0,
   });
 
+  interface MorningPendingListing { id: string; title: string; category: string | null; retailValue: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
+  interface MorningPendingVerif { id: string; email: string; fullName: string; accountType: string | null; verificationStatus: string | null; createdAt: string | null }
+  interface MorningReport { id: string; targetType: string; reason: string; status: string; createdAt: string | null }
+  interface MorningDispute { id: string; subject: string; status: string; partyAId: string; partyBId: string; createdAt: string | null }
+  interface MorningCheckData {
+    pendingListings: MorningPendingListing[];
+    autoBlockedQueue: ModerationLogEntry[];
+    pendingVerifications: MorningPendingVerif[];
+    openReports: MorningReport[];
+    openDisputes: MorningDispute[];
+    stats: { newUsers24h: number; newListings24h: number };
+  }
+
+  const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
+    queryKey: ["/api/admin/morning-check"],
+    enabled: activeSection === "morning-check" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
   const { data: listingDraftsData, isLoading: listingDraftsLoading } = useQuery<{
     id: string; title: string | null; userId: string; userFullName: string | null; userEmail: string | null; createdAt: string; updatedAt: string;
   }[]>({
@@ -585,6 +605,7 @@ export function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
       toast({ title: "Success", description: "Listing approved" });
     },
   });
@@ -595,6 +616,7 @@ export function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
       setRejectDialog({ open: false, listingId: null, reason: "" });
       toast({ title: "Success", description: "Listing rejected and user notified" });
     },
@@ -1105,26 +1127,31 @@ export function AdminPage() {
     return dealSortBy === "date_asc" ? aT - bT : bT - aT;
   });
 
-  const navItems = [
-    { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-    { id: "users" as const, label: "Users", icon: Users },
-    { id: "listings" as const, label: "Listings", icon: Package },
-    { id: "deals" as const, label: "Deals", icon: Handshake },
-    { id: "disputes" as const, label: "Disputes", icon: Gavel },
-    { id: "reports" as const, label: "Reports", icon: Flag },
-    { id: "flags" as const, label: "Flags", icon: AlertTriangle },
-    { id: "logs" as const, label: "Logs", icon: ScrollText },
-    { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
-    { id: "feature-waitlist" as const, label: "Feature Waitlists", icon: Sparkles },
-    { id: "intl-waitlist" as const, label: "Intl. Waitlist", icon: Globe },
-    { id: "legal" as const, label: "Legal", icon: ScrollText },
-    { id: "email" as const, label: "Email", icon: Mail },
-    { id: "support" as const, label: "Support", icon: MessageSquare },
-    { id: "reviews" as const, label: "Reviews", icon: Star },
-    { id: "creators" as const, label: "Creators", icon: Camera },
-    { id: "collabs" as const, label: "Collabs", icon: Zap },
-    { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
-    { id: "settings" as const, label: "Settings", icon: Settings },
+  const pendingModerationCount = (listings || []).filter(l => l.moderationStatus === "pending").length;
+  const pendingVerifCount = (users || []).filter(u => u.verificationStatus === "submitted").length;
+  const morningBadge = pendingModerationCount + pendingVerifCount;
+
+  const navItems: { id: AdminSection; label: string; icon: React.ElementType; badge?: number }[] = [
+    { id: "morning-check", label: "Morning Check", icon: Sun, badge: morningBadge > 0 ? morningBadge : undefined },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "users", label: "Users", icon: Users },
+    { id: "listings", label: "Listings", icon: Package },
+    { id: "deals", label: "Deals", icon: Handshake },
+    { id: "disputes", label: "Disputes", icon: Gavel },
+    { id: "reports", label: "Reports", icon: Flag },
+    { id: "flags", label: "Flags", icon: AlertTriangle },
+    { id: "logs", label: "Logs", icon: ScrollText },
+    { id: "waitlist", label: "Waitlist", icon: Sparkles },
+    { id: "feature-waitlist", label: "Feature Waitlists", icon: Sparkles },
+    { id: "intl-waitlist", label: "Intl. Waitlist", icon: Globe },
+    { id: "legal", label: "Legal", icon: ScrollText },
+    { id: "email", label: "Email", icon: Mail },
+    { id: "support", label: "Support", icon: MessageSquare },
+    { id: "reviews", label: "Reviews", icon: Star },
+    { id: "creators", label: "Creators", icon: Camera },
+    { id: "collabs", label: "Collabs", icon: Zap },
+    { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   const categoryData = analytics?.categoryStats
@@ -4909,8 +4936,304 @@ export function AdminPage() {
 
   const renderSupportSection = () => <AdminSupportSection />;
 
+  const renderMorningCheck = () => {
+    const pending = morningCheck?.pendingListings ?? [];
+    const blocked = morningCheck?.autoBlockedQueue ?? [];
+    const verifs = morningCheck?.pendingVerifications ?? [];
+    const openReps = morningCheck?.openReports ?? [];
+    const openDisps = morningCheck?.openDisputes ?? [];
+    const stats = morningCheck?.stats;
+    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length;
+
+    return (
+      <div className="p-6 space-y-6 max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Sun className="h-6 w-6 text-yellow-500" />
+              Morning Check
+            </h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              {morningCheckLoading
+                ? "Loading queues…"
+                : totalQueue === 0
+                ? "All queues clear — you're done for now."
+                : `${totalQueue} item${totalQueue !== 1 ? "s" : ""} need your attention`}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetchMorningCheck()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* At-a-glance stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold">{stats?.newUsers24h ?? "—"}</div>
+              <p className="text-xs text-muted-foreground mt-1">New users (24h)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold">{stats?.newListings24h ?? "—"}</div>
+              <p className="text-xs text-muted-foreground mt-1">New listings (24h)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-amber-600">{morningCheckLoading ? "…" : pending.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Pending moderation</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-red-600">{morningCheckLoading ? "…" : blocked.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Auto-blocked (review)</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Queue 1: Pending listings */}
+        {pending.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="h-4 w-4 text-amber-600" />
+                Pending Listings
+                <Badge className="ml-1">{pending.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">New listings waiting for your approval before going live.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {pending.map((listing) => (
+                <div key={listing.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{listing.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {listing.userEmail ?? listing.userId} · {listing.category ?? "—"} · {listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                      onClick={() => approveListingMutation.mutate(listing.id)}
+                      disabled={approveListingMutation.isPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                      onClick={() => setRejectDialog({ open: true, listingId: listing.id, reason: "" })}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pending.length >= 30 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  Showing first 30 — <button className="underline" onClick={() => setActiveSection("listings")}>view all in Listings</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 2: Auto-blocked (AI) */}
+        {blocked.length > 0 && (
+          <Card className="border-amber-300 dark:border-amber-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+                Auto-blocked by AI
+                <Badge variant="outline" className="text-amber-600 border-amber-400 ml-1">{blocked.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">AI flagged these but wasn't confident — decide to override or confirm.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {blocked.map((log) => (
+                <div key={log.id} className="flex items-start justify-between p-3 border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50/40 dark:bg-amber-950/20">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant={log.action === "rejected" ? "destructive" : "secondary"} className="text-xs">{log.action}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}% confidence` : ""}
+                      </span>
+                      <span className="text-xs text-muted-foreground">· {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : ""}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{log.reason}</p>
+                  </div>
+                  {log.targetType === "listing" && (
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                        onClick={() => approveListingMutation.mutate(log.targetId)}
+                        disabled={approveListingMutation.isPending}
+                      >
+                        Override
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                        onClick={() => setRejectDialog({ open: true, listingId: log.targetId, reason: "" })}
+                      >
+                        Confirm
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {blocked.length >= 30 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  Showing first 30 — <button className="underline" onClick={() => setActiveSection("logs")}>view all in Logs → AI</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 3: Pending verifications */}
+        {verifs.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCheck className="h-4 w-4 text-blue-600" />
+                Pending Verifications
+                <Badge className="ml-1">{verifs.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Users who submitted verification documents.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {verifs.map((u) => (
+                <div key={u.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{u.email}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {u.fullName} · {u.accountType} · Joined {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => { setActiveSection("users"); setSearchQuery(u.email || ""); }}
+                  >
+                    Review
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 4: Open reports */}
+        {openReps.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Flag className="h-4 w-4 text-orange-600" />
+                Open Reports
+                <Badge variant="destructive" className="ml-1">{openReps.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">User-submitted reports waiting for action.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {openReps.slice(0, 10).map((report) => (
+                <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{report.reason}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.targetType} · {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("reports")}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+              {openReps.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{openReps.length - 10} more — <button className="underline" onClick={() => setActiveSection("reports")}>view all in Reports</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 5: Open disputes */}
+        {openDisps.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Gavel className="h-4 w-4 text-red-600" />
+                Open Disputes
+                <Badge variant="destructive" className="ml-1">{openDisps.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Active disputes needing admin mediation.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {openDisps.slice(0, 10).map((dispute) => (
+                <div key={dispute.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{dispute.subject}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: <span className="capitalize">{dispute.status.replace("_", " ")}</span> · {dispute.createdAt ? new Date(dispute.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("disputes")}
+                  >
+                    Review
+                  </Button>
+                </div>
+              ))}
+              {openDisps.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{openDisps.length - 10} more — <button className="underline" onClick={() => setActiveSection("disputes")}>view all in Disputes</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* All clear */}
+        {totalQueue === 0 && !morningCheckLoading && (
+          <div className="text-center py-20">
+            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold">All queues clear</h3>
+            <p className="text-muted-foreground text-sm mt-1 max-w-xs mx-auto">
+              No pending listings, verifications, reports, or disputes. Check back later or explore a section.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeSection) {
+      case "morning-check":
+        return renderMorningCheck();
       case "dashboard":
         return renderDashboard();
       case "users":
@@ -5012,7 +5335,15 @@ export function AdminPage() {
               data-testid={`nav-${item.id}`}
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              {!sidebarCollapsed && <span>{item.label}</span>}
+              {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
+              {!sidebarCollapsed && item.badge ? (
+                <span className="ml-auto text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5 leading-none min-w-[1.25rem] text-center">
+                  {item.badge}
+                </span>
+              ) : null}
+              {sidebarCollapsed && item.badge ? (
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive" />
+              ) : null}
             </Button>
           ))}
           <Link href="/admin/company-os">

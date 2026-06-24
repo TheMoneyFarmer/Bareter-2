@@ -5752,6 +5752,98 @@ export async function registerRoutes(
     }
   });
 
+  // ── Morning check — all queues in one shot ────────────────────────────────
+  app.get("/api/admin/morning-check", requireAdmin, async (req, res) => {
+    try {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [
+        pendingListingsRaw,
+        autoBlockedQueue,
+        pendingVerifications,
+        openReports,
+        openDisputes,
+        newUsersRes,
+        newListingsRes,
+      ] = await Promise.all([
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          category: listings.category,
+          retailValue: listings.retailValue,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userEmail: users.email,
+          userName: users.fullName,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(eq(listings.moderationStatus, "pending"))
+          .orderBy(desc(listings.createdAt))
+          .limit(30),
+
+        db.select()
+          .from(moderationLogs)
+          .where(and(
+            eq(moderationLogs.triggeredBy, "auto_ai"),
+            inArray(moderationLogs.action, ["flagged", "rejected"]),
+            eq(moderationLogs.reviewedByAdmin, false),
+          ))
+          .orderBy(desc(moderationLogs.createdAt))
+          .limit(30),
+
+        db.select({
+          id: users.id,
+          email: users.email,
+          fullName: users.fullName,
+          accountType: users.accountType,
+          verificationStatus: users.verificationStatus,
+          createdAt: users.createdAt,
+        })
+          .from(users)
+          .where(eq(users.verificationStatus, "submitted"))
+          .orderBy(desc(users.createdAt))
+          .limit(20),
+
+        db.select()
+          .from(reports)
+          .where(eq(reports.status, "pending"))
+          .orderBy(desc(reports.createdAt))
+          .limit(20),
+
+        db.select({
+          id: disputes.id,
+          subject: disputes.subject,
+          status: disputes.status,
+          partyAId: disputes.partyAId,
+          partyBId: disputes.partyBId,
+          createdAt: disputes.createdAt,
+        })
+          .from(disputes)
+          .where(inArray(disputes.status, ["open", "in_mediation"]))
+          .orderBy(desc(disputes.createdAt))
+          .limit(20),
+
+        db.select({ count: count() }).from(users).where(gte(users.createdAt, yesterday)),
+        db.select({ count: count() }).from(listings).where(gte(listings.createdAt, yesterday)),
+      ]);
+
+      res.json({
+        pendingListings: pendingListingsRaw,
+        autoBlockedQueue,
+        pendingVerifications,
+        openReports,
+        openDisputes,
+        stats: {
+          newUsers24h: Number(newUsersRes[0]?.count ?? 0),
+          newListings24h: Number(newListingsRes[0]?.count ?? 0),
+        },
+      });
+    } catch (error) {
+      console.error("Morning check error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req, res) => {
     try {
       const user = await storage.getUser(param(req.params.id));
