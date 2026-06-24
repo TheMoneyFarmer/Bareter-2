@@ -590,7 +590,7 @@ export function Header() {
                       <Menu className="h-5 w-5" />
                     </button>
                   </SheetTrigger>
-                  <SheetContent side={isRTL ? "left" : "right"} className="w-72 p-0">
+                  <SheetContent side={isRTL ? "left" : "right"} className="w-72 p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
                     {/* Mobile user info */}
                     <div className="flex items-center gap-3 p-4 border-b bg-muted/20">
                       <Avatar className="h-11 w-11 flex-shrink-0">
