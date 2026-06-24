@@ -5894,10 +5894,11 @@ export async function registerRoutes(
         db.select({ count: count() }).from(users).where(gte(users.lastActiveAt, yesterday)),
       ]);
 
-      // Raw SQL queries — complex joins that Drizzle can't easily express
+      // Raw SQL queries — complex joins; wrapped in try-catch so a slow/failing query
+      // never crashes the whole endpoint or starves the connection pool.
+      const fallbackRows = { rows: [] as any[] };
       const [unrespondedResult, multiReportedResult] = await Promise.all([
-        // Tickets where last message was from user and admin hasn't replied in 4h+
-        pool.query<{ id: string; ticket_number: string; subject: string; category: string; priority: string; status: string; requester_email: string | null; requester_name: string | null; created_at: string | null; last_activity_at: string | null }>(`
+        pool.query(`
           SELECT t.id, t.ticket_number, t.subject, t.category, t.priority, t.status,
                  t.requester_email, t.requester_name, t.created_at, t.last_activity_at
           FROM support_tickets t
@@ -5915,10 +5916,9 @@ export async function registerRoutes(
           )
           ORDER BY t.last_activity_at ASC
           LIMIT 20
-        `),
+        `).catch(() => fallbackRows),
 
-        // Users with 2+ pending reports in last 7 days
-        pool.query<{ user_id: string; report_count: string; email: string | null; full_name: string | null }>(`
+        pool.query(`
           SELECT r.target_id AS user_id, COUNT(*) AS report_count,
                  u.email, u.full_name
           FROM reports r
@@ -5930,7 +5930,7 @@ export async function registerRoutes(
           HAVING COUNT(*) >= 2
           ORDER BY COUNT(*) DESC
           LIMIT 10
-        `),
+        `).catch(() => fallbackRows),
       ]);
 
       res.json({

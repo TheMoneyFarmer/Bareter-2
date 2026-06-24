@@ -1222,6 +1222,7 @@ export function AdminPage() {
     userStatusFilter?: string;
     userCountryFilter?: string;
     userSortBy?: string;
+    listingStatusFilter?: string;
     listingValueFilter?: string;
     listingCountryFilter?: string;
     listingSortBy?: string;
@@ -1229,12 +1230,14 @@ export function AdminPage() {
     dealSortBy?: string;
     dateRangeFilter?: DateRangeFilter;
   }) => {
+    setSearchQuery("");
     setDateRangeFilter(opts?.dateRangeFilter ?? "all");
     setCustomDateFrom("");
     setCustomDateTo("");
     setUserStatusFilter(opts?.userStatusFilter ?? "all");
     setUserCountryFilter(opts?.userCountryFilter ?? "all");
     setUserSortBy(opts?.userSortBy ?? "date_desc");
+    setListingStatusFilter(opts?.listingStatusFilter ?? "all");
     setListingValueFilter(opts?.listingValueFilter ?? "all");
     setListingCountryFilter(opts?.listingCountryFilter ?? "all");
     setListingSortBy(opts?.listingSortBy ?? "date_desc");
@@ -5003,70 +5006,116 @@ export function AdminPage() {
           </Button>
         </div>
 
-        {/* At-a-glance stats — two rows */}
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+        {/* ── Platform Overview (analytics summary) ─────────────────────── */}
+        {funnelData && (
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold">{stats?.activeUsers24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">Active users (24h)</p>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Platform Funnel</CardTitle>
+                <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => setActiveSection("analytics")}>
+                  Full analytics →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <div className="grid grid-cols-4 gap-0">
+                {[
+                  { label: "Waitlist", value: funnelData.waitlistCount, color: "text-blue-600", section: "waitlist" as AdminSection },
+                  { label: "Registered", value: funnelData.registeredCount, color: "text-teal-600", section: "users" as AdminSection },
+                  { label: "Listed", value: funnelData.listedCount, color: "text-amber-600", section: "listings" as AdminSection },
+                  { label: "Completed Deal", value: funnelData.dealtCount, color: "text-green-600", section: "deals" as AdminSection, opts: { dealStateFilter: "completed" } },
+                ].map((stage, i, arr) => (
+                  <div key={stage.label} className="flex items-center">
+                    <button
+                      className="flex-1 text-center p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => goToSection(stage.section, (stage as any).opts)}
+                    >
+                      <div className={`text-2xl font-bold ${stage.color}`}>{stage.value.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{stage.label}</div>
+                      {i > 0 && arr[i - 1].value > 0 && (
+                        <div className="text-[10px] text-muted-foreground/60">{Math.round((stage.value / arr[i - 1].value) * 100)}% conv.</div>
+                      )}
+                    </button>
+                    {i < arr.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />}
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* User growth sparkline */}
+        {userGrowth && userGrowth.length > 0 && (
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold">{stats?.newUsers24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">New signups (24h)</p>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">User Growth — Last 30 days</CardTitle>
+                <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => goToSection("users", { dateRangeFilter: "month" })}>
+                  View users →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <LineChart width={740} height={80} data={userGrowth.slice(-30)} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                <RechartsTooltip
+                  contentStyle={{ fontSize: 11 }}
+                  formatter={(v: number) => [v, "New users"]}
+                  labelFormatter={(l: string) => new Date(l).toLocaleDateString()}
+                />
+              </LineChart>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold">{stats?.newListings24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">New listings (24h)</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold">{stats?.newDeals24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">Deals started (24h)</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-green-600">{stats?.completedDeals24h ?? "—"}</div>
-              <p className="text-xs text-muted-foreground mt-1">Deals completed (24h)</p>
-            </CardContent>
-          </Card>
+        )}
+
+        {/* ── Activity stats (last 24h) — all clickable ─────────────────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Last 24 hours</p>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Active users", value: stats?.activeUsers24h, color: "", section: "users" as AdminSection, opts: {} },
+              { label: "New signups", value: stats?.newUsers24h, color: "", section: "users" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "New listings", value: stats?.newListings24h, color: "", section: "listings" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "Deals started", value: stats?.newDeals24h, color: "", section: "deals" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "Deals completed", value: stats?.completedDeals24h, color: "text-green-600", section: "deals" as AdminSection, opts: { dealStateFilter: "completed", dateRangeFilter: "today" as DateRangeFilter } },
+            ].map(card => (
+              <Card
+                key={card.label}
+                className="cursor-pointer hover:shadow-md hover:border-primary/40 transition-all"
+                onClick={() => goToSection(card.section, card.opts)}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className={`text-2xl font-bold ${card.color}`}>{card.value ?? "—"}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-amber-600">{morningCheckLoading ? "…" : pending.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Pending moderation</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-red-600">{morningCheckLoading ? "…" : blocked.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Auto-blocked</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-orange-600">{morningCheckLoading ? "…" : unresponded.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Tickets waiting reply</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-red-700">{morningCheckLoading ? "…" : multiReported.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Multi-reported users</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="text-2xl font-bold text-yellow-600">{morningCheckLoading ? "…" : staleDeals.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Stale deals (7d+)</p>
-            </CardContent>
-          </Card>
+
+        {/* ── Action stats (items needing attention) — all clickable ─────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Needs action</p>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Pending moderation", value: pending.length, color: "text-amber-600", section: "listings" as AdminSection, opts: { listingStatusFilter: "pending" } },
+              { label: "Auto-blocked", value: blocked.length, color: "text-red-600", section: "logs" as AdminSection, opts: {} },
+              { label: "Tickets waiting reply", value: unresponded.length, color: "text-orange-600", section: "support" as AdminSection, opts: {} },
+              { label: "Multi-reported users", value: multiReported.length, color: "text-red-700", section: "reports" as AdminSection, opts: {} },
+              { label: "Stale deals (7d+)", value: staleDeals.length, color: "text-yellow-600", section: "deals" as AdminSection, opts: { dealStateFilter: "active" } },
+            ].map(card => (
+              <Card
+                key={card.label}
+                className={`cursor-pointer hover:shadow-md hover:border-primary/40 transition-all ${card.value > 0 ? "ring-1 ring-inset ring-destructive/20" : ""}`}
+                onClick={() => goToSection(card.section, card.opts)}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className={`text-2xl font-bold ${card.color}`}>{morningCheckLoading ? "…" : card.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
 
         {/* Queue 1: Pending listings */}
