@@ -384,7 +384,7 @@ function WarmupBanner() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999] bg-bareter-teal text-white text-sm py-2 px-4 flex items-center justify-center gap-3 shadow-md">
-      <HandshakeLoader size="sm" white />
+      <HandshakeLoader size="sm" inverted />
       <span>Starting up, please wait a moment…</span>
     </div>
   );
@@ -415,6 +415,8 @@ const isNative = Capacitor.isNativePlatform();
 
 // Handles all native-only startup side-effects in one place.
 // Runs once on mount; no-ops completely when isNative is false.
+// NOTE: SplashScreen.hide() is intentionally NOT called here — it is called by
+// NativeSplashGate once the auth check resolves, so there's no white flash.
 function NativeBootstrap() {
   useEffect(() => {
     if (!isNative) return;
@@ -425,12 +427,6 @@ function NativeBootstrap() {
         const { StatusBar, Style } = await import("@capacitor/status-bar");
         await StatusBar.setStyle({ style: Style.Light });
         await StatusBar.setBackgroundColor({ color: "#136c68" });
-      } catch {}
-
-      // Splash screen: fade out after first render settles
-      try {
-        const { SplashScreen } = await import("@capacitor/splash-screen");
-        await SplashScreen.hide({ fadeOutDuration: 400 });
       } catch {}
     })();
 
@@ -452,10 +448,71 @@ function NativeBootstrap() {
   return null;
 }
 
+/**
+ * On native: keeps a full-screen teal overlay visible while the /api/auth/me
+ * check is in-flight, then hides the native splash + fades out the overlay.
+ * On web: invisible no-op — zero impact on web behaviour.
+ */
+function NativeSplashGate() {
+  const [visible, setVisible] = useState(isNative);
+  const [fading, setFading] = useState(false);
+  const hidden = useRef(false);
+
+  const { isLoading } = useQuery<unknown>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!isNative || isLoading || hidden.current) return;
+    hidden.current = true;
+
+    // Auth resolved — hide native OS splash then fade out web overlay
+    (async () => {
+      try {
+        const { SplashScreen } = await import("@capacitor/splash-screen");
+        await SplashScreen.hide({ fadeOutDuration: 300 });
+      } catch {}
+      setFading(true);
+      setTimeout(() => setVisible(false), 350);
+    })();
+  }, [isLoading]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#136c68",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "32px",
+        zIndex: 99999,
+        transition: "opacity 350ms ease",
+        opacity: fading ? 0 : 1,
+        pointerEvents: fading ? "none" : "auto",
+      }}
+    >
+      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "36px", fontWeight: 800, letterSpacing: "0.12em", color: "#ffffff", textTransform: "uppercase" as const }}>
+        BARETER
+      </div>
+      <HandshakeLoader size="lg" inverted />
+      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "13px", color: "rgba(255,255,255,0.55)", letterSpacing: "0.05em" }}>
+        Loading…
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <NativeBootstrap />
+      <NativeSplashGate />
       <WarmupBanner />
       <ThemeProvider>
         <I18nProvider>
