@@ -131,6 +131,16 @@ import {
   internationalWaitlist,
   type InternationalWaitlistEntry,
   listingViews,
+  barterCredits,
+  barterCreditTransactions,
+  userWhatsappSettings,
+  successStories,
+  matchDigestLog,
+  type BarterCredit,
+  type BarterCreditTransaction,
+  type UserWhatsappSettings,
+  type SuccessStory,
+  type MatchDigestLog,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -3064,6 +3074,171 @@ export class DatabaseStorage implements IStorage {
         if (filters.niche && !cp.contentNiches?.some(n => n.toLowerCase().includes(filters.niche!.toLowerCase()))) return false;
         return true;
       }) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
+  }
+
+  // ── Barter Credits ────────────────────────────────────────────────────────────
+
+  async getBarterCredits(userId: string): Promise<{ balance: BarterCredit | null; transactions: BarterCreditTransaction[] }> {
+    const [balance, transactions] = await Promise.all([
+      db.select().from(barterCredits).where(eq(barterCredits.userId, userId)).then(r => r[0] ?? null),
+      db.select().from(barterCreditTransactions)
+        .where(eq(barterCreditTransactions.userId, userId))
+        .orderBy(desc(barterCreditTransactions.createdAt))
+        .limit(50),
+    ]);
+    return { balance, transactions };
+  }
+
+  async awardBarterCredits(userId: string, amountAed: number, dealId?: string, note?: string): Promise<void> {
+    if (amountAed === 0) return;
+    const existing = await db.select().from(barterCredits).where(eq(barterCredits.userId, userId));
+    if (existing.length === 0) {
+      await db.insert(barterCredits).values({
+        userId,
+        balanceAed: amountAed.toFixed(2),
+        lifetimeEarnedAed: amountAed > 0 ? amountAed.toFixed(2) : "0",
+        updatedAt: new Date(),
+      });
+    } else {
+      const current = parseFloat(existing[0].balanceAed);
+      const currentLifetime = parseFloat(existing[0].lifetimeEarnedAed);
+      await db.update(barterCredits).set({
+        balanceAed: (current + amountAed).toFixed(2),
+        lifetimeEarnedAed: amountAed > 0 ? (currentLifetime + amountAed).toFixed(2) : currentLifetime.toFixed(2),
+        updatedAt: new Date(),
+      }).where(eq(barterCredits.userId, userId));
+    }
+    await db.insert(barterCreditTransactions).values({
+      userId,
+      amountAed: amountAed.toFixed(2),
+      type: amountAed > 0 ? "earned" : "spent",
+      dealId: dealId ?? null,
+      note: note ?? null,
+    });
+  }
+
+  async adminAdjustBarterCredits(userId: string, amountAed: number, note: string): Promise<void> {
+    await this.awardBarterCredits(userId, amountAed, undefined, `Admin adjustment: ${note}`);
+    await db.update(barterCreditTransactions).set({ type: "adjusted" })
+      .where(and(
+        eq(barterCreditTransactions.userId, userId),
+        eq(barterCreditTransactions.type, amountAed > 0 ? "earned" : "spent"),
+      ));
+  }
+
+  async getAllBarterCredits(): Promise<(BarterCredit & { userEmail: string | null; userName: string | null })[]> {
+    const rows = await db.select({
+      id: barterCredits.id,
+      userId: barterCredits.userId,
+      balanceAed: barterCredits.balanceAed,
+      lifetimeEarnedAed: barterCredits.lifetimeEarnedAed,
+      updatedAt: barterCredits.updatedAt,
+      userEmail: users.email,
+      userName: users.fullName,
+    })
+      .from(barterCredits)
+      .leftJoin(users, eq(barterCredits.userId, users.id))
+      .orderBy(desc(barterCredits.balanceAed));
+    return rows as any;
+  }
+
+  // ── WhatsApp Settings ─────────────────────────────────────────────────────────
+
+  async getWhatsappSettings(userId: string): Promise<UserWhatsappSettings | null> {
+    const [row] = await db.select().from(userWhatsappSettings).where(eq(userWhatsappSettings.userId, userId));
+    return row ?? null;
+  }
+
+  async upsertWhatsappSettings(userId: string, data: Partial<Omit<UserWhatsappSettings, "id" | "userId" | "createdAt">>): Promise<UserWhatsappSettings> {
+    const existing = await this.getWhatsappSettings(userId);
+    if (!existing) {
+      const [row] = await db.insert(userWhatsappSettings).values({
+        userId,
+        ...data,
+        optedInAt: data.optedIn ? new Date() : null,
+        updatedAt: new Date(),
+      }).returning();
+      return row;
+    }
+    const [row] = await db.update(userWhatsappSettings).set({
+      ...data,
+      optedInAt: data.optedIn && !existing.optedIn ? new Date() : existing.optedInAt,
+      updatedAt: new Date(),
+    }).where(eq(userWhatsappSettings.userId, userId)).returning();
+    return row;
+  }
+
+  async getWhatsappOptInStats(): Promise<{ total: number; optedIn: number }> {
+    const [total, optedIn] = await Promise.all([
+      db.select({ count: drizzleCount() }).from(userWhatsappSettings).then(r => r[0]?.count ?? 0),
+      db.select({ count: drizzleCount() }).from(userWhatsappSettings).where(eq(userWhatsappSettings.optedIn, true)).then(r => r[0]?.count ?? 0),
+    ]);
+    return { total: Number(total), optedIn: Number(optedIn) };
+  }
+
+  // ── Success Stories ───────────────────────────────────────────────────────────
+
+  async createSuccessStory(data: {
+    dealId: string; authorId: string; partnerId: string;
+    caption?: string; imageUrl?: string; seekerItem?: string; providerItem?: string;
+  }): Promise<SuccessStory> {
+    const existing = await db.select().from(successStories).where(eq(successStories.dealId, data.dealId));
+    if (existing.length > 0) return existing[0];
+    const [row] = await db.insert(successStories).values({ ...data, status: "pending" }).returning();
+    return row;
+  }
+
+  async getSuccessStories(statusFilter?: string): Promise<(SuccessStory & { authorName: string | null; partnerName: string | null })[]> {
+    const query = db.select({
+      id: successStories.id,
+      dealId: successStories.dealId,
+      authorId: successStories.authorId,
+      partnerId: successStories.partnerId,
+      caption: successStories.caption,
+      imageUrl: successStories.imageUrl,
+      seekerItem: successStories.seekerItem,
+      providerItem: successStories.providerItem,
+      isFeatured: successStories.isFeatured,
+      status: successStories.status,
+      createdAt: successStories.createdAt,
+      updatedAt: successStories.updatedAt,
+      authorName: users.fullName,
+      partnerName: sql<string | null>`partner.full_name`,
+    })
+      .from(successStories)
+      .leftJoin(users, eq(successStories.authorId, users.id))
+      .leftJoin(sql`users as partner`, sql`${successStories.partnerId} = partner.id`);
+
+    if (statusFilter && statusFilter !== "all") {
+      return (await query.where(eq(successStories.status, statusFilter))
+        .orderBy(desc(successStories.createdAt))) as any;
+    }
+    return (await query.orderBy(desc(successStories.createdAt))) as any;
+  }
+
+  async updateSuccessStory(id: string, data: Partial<Pick<SuccessStory, "status" | "isFeatured">>): Promise<SuccessStory | undefined> {
+    const [row] = await db.update(successStories).set({ ...data, updatedAt: new Date() })
+      .where(eq(successStories.id, id)).returning();
+    return row;
+  }
+
+  // ── Match Digest ──────────────────────────────────────────────────────────────
+
+  async logMatchDigest(userId: string, listingId: string | null, matchesCount: number, emailSent: boolean): Promise<void> {
+    await db.insert(matchDigestLog).values({ userId, listingId, matchesCount, emailSent });
+  }
+
+  async getMatchDigestStats(): Promise<{ totalSent: number; last7Days: number; avgMatchesPerEmail: number }> {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [all, recent] = await Promise.all([
+      db.select({ count: drizzleCount(), avg: sql<number>`AVG(matches_count)` }).from(matchDigestLog).where(eq(matchDigestLog.emailSent, true)),
+      db.select({ count: drizzleCount() }).from(matchDigestLog).where(and(eq(matchDigestLog.emailSent, true), gte(matchDigestLog.sentAt, sevenDaysAgo))),
+    ]);
+    return {
+      totalSent: Number(all[0]?.count ?? 0),
+      last7Days: Number(recent[0]?.count ?? 0),
+      avgMatchesPerEmail: Math.round(Number(all[0]?.avg ?? 0)),
+    };
   }
 }
 

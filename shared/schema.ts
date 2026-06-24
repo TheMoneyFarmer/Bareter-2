@@ -2509,3 +2509,76 @@ export const listingViews = pgTable("listing_views", {
   listingIdx: index("listing_views_listing_idx").on(table.listingId),
   viewedAtIdx: index("listing_views_viewed_at_idx").on(table.viewedAt),
 }));
+
+// ── Barter Credits ─────────────────────────────────────────────────────────────
+export const barterCredits = pgTable("barter_credits", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().unique().references(() => users.id),
+  balanceAed: decimal("balance_aed", { precision: 12, scale: 2 }).notNull().default("0"),
+  lifetimeEarnedAed: decimal("lifetime_earned_aed", { precision: 12, scale: 2 }).notNull().default("0"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type BarterCredit = typeof barterCredits.$inferSelect;
+
+export const barterCreditTransactions = pgTable("barter_credit_transactions", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  amountAed: decimal("amount_aed", { precision: 12, scale: 2 }).notNull(),
+  type: text("type").notNull(), // "earned" | "spent" | "adjusted" | "expired"
+  dealId: varchar("deal_id", { length: 36 }).references(() => deals.id),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("bct_user_id_idx").on(table.userId),
+  dealIdx: index("bct_deal_id_idx").on(table.dealId),
+}));
+export type BarterCreditTransaction = typeof barterCreditTransactions.$inferSelect;
+
+// ── WhatsApp Settings ──────────────────────────────────────────────────────────
+export const userWhatsappSettings = pgTable("user_whatsapp_settings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().unique().references(() => users.id),
+  phone: text("phone"),
+  optedIn: boolean("opted_in").notNull().default(false),
+  notifyDealProposals: boolean("notify_deal_proposals").notNull().default(true),
+  notifyMessages: boolean("notify_messages").notNull().default(true),
+  notifyMatches: boolean("notify_matches").notNull().default(true),
+  optedInAt: timestamp("opted_in_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type UserWhatsappSettings = typeof userWhatsappSettings.$inferSelect;
+
+// ── Deal Success Stories ───────────────────────────────────────────────────────
+export const successStories = pgTable("success_stories", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  dealId: varchar("deal_id", { length: 36 }).notNull().unique().references(() => deals.id),
+  authorId: varchar("author_id", { length: 36 }).notNull().references(() => users.id),
+  partnerId: varchar("partner_id", { length: 36 }).notNull().references(() => users.id),
+  caption: text("caption"),
+  imageUrl: text("image_url"),
+  seekerItem: text("seeker_item"),
+  providerItem: text("provider_item"),
+  isFeatured: boolean("is_featured").notNull().default(false),
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  statusIdx: index("ss_status_idx").on(table.status),
+  authorIdx: index("ss_author_id_idx").on(table.authorId),
+}));
+export type SuccessStory = typeof successStories.$inferSelect;
+
+// ── Match Digest Log ───────────────────────────────────────────────────────────
+export const matchDigestLog = pgTable("match_digest_log", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  listingId: varchar("listing_id", { length: 36 }).references(() => listings.id),
+  matchesCount: integer("matches_count").notNull().default(0),
+  emailSent: boolean("email_sent").notNull().default(false),
+  sentAt: timestamp("sent_at").defaultNow(),
+}, (table) => ({
+  userIdx: index("mdl_user_id_idx").on(table.userId),
+  sentAtIdx: index("mdl_sent_at_idx").on(table.sentAt),
+}));
+export type MatchDigestLog = typeof matchDigestLog.$inferSelect;

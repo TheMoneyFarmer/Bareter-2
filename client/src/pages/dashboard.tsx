@@ -59,6 +59,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
+import { BarterCreditWidget } from "@/components/barter-credit-widget";
 import {
   AreaChart,
   Area,
@@ -411,6 +412,10 @@ export default function DashboardPage() {
 
         {/* ── Analytics Tab ── */}
         <TabsContent value="analytics" className="space-y-6">
+          {/* Barter Credits — shown at top of analytics so user always sees their balance */}
+          <div className="max-w-sm">
+            <BarterCreditWidget />
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Total Listings */}
             <Card

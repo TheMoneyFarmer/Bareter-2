@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { SuccessStoryModal } from "@/components/success-story-modal";
 import { trackEvent } from "@/lib/posthog";
 import { useI18n } from "@/lib/i18n";
 import { Link, useParams, useSearch, useLocation } from "wouter";
@@ -50,6 +51,7 @@ import {
   PenLine,
   RefreshCw,
   ScrollText,
+  Trophy,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -65,6 +67,19 @@ const STATE_COLORS: Record<string, { color: string; step: number }> = {
   completed: { color: "bg-emerald-500", step: 5 },
   cancelled: { color: "bg-red-500", step: -1 },
 };
+
+function ShareStoryButton({ dealId }: { dealId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button className="w-full gap-2 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setOpen(true)}>
+        <Trophy className="h-4 w-4" />
+        Share Your Trade Story
+      </Button>
+      <SuccessStoryModal dealId={dealId} open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
 
 export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -1014,15 +1029,18 @@ export function DealDetailPage() {
               )}
 
               {deal.state === "completed" && (
-                <Button
-                  className="w-full gap-2"
-                  variant="outline"
-                  onClick={() => setShowRatingModal(true)}
-                  data-testid="button-rate-deal"
-                >
-                  <Star className="h-4 w-4" />
-                  {t("dealDetail.rateExperience")}
-                </Button>
+                <>
+                  <Button
+                    className="w-full gap-2"
+                    variant="outline"
+                    onClick={() => setShowRatingModal(true)}
+                    data-testid="button-rate-deal"
+                  >
+                    <Star className="h-4 w-4" />
+                    {t("dealDetail.rateExperience")}
+                  </Button>
+                  <ShareStoryButton dealId={deal.id} />
+                </>
               )}
 
               {deal.state !== "completed" && deal.state !== "cancelled" && deal.state !== "proposed" && (

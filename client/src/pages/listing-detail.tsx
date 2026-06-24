@@ -73,6 +73,7 @@ import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForListing, type DeliverableItem } from "@shared/deliverables";
 import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
+import { InstantMatchSheet } from "@/components/instant-match-sheet";
 import { timeAgo, formatValue } from "@/lib/utils";
 import { ValueMatchBadge } from "@/components/ValueMatchBadge";
 import { ReviewModal } from "@/components/ReviewModal";
@@ -1775,6 +1776,7 @@ export function ListingDetailPage() {
                       )}
                       {inquirySent ? t("listingDetail.inquirySent") : t("listingDetail.isStillAvailable")}
                     </Button>
+                    <InstantMatchSheet listingId={listing.id} />
                   </>
                 )}
               </CardContent>

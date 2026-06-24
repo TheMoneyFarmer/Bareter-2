@@ -115,6 +115,8 @@ import {
   Camera,
   Zap,
   TrendingUp,
+  Coins,
+  Trophy,
   Instagram,
   Globe,
   MapPin,
@@ -147,7 +149,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats";
 
 type WaitlistEntryRow = {
   id: number;
@@ -444,6 +446,57 @@ export function AdminPage() {
     queryKey: ["/api/admin/analytics/funnel"],
     enabled: !!user?.isAdmin,
     staleTime: 0,
+  });
+
+  // ── New Feature queries ────────────────────────────────────────────────────
+  interface FeatureStats {
+    bulkListingsActive: number; successStoriesPending: number; successStoriesApproved: number;
+    digestEmailsSent: number; digestEmailsLast7d: number; digestAvgMatches: number;
+    whatsappOptIns: number; whatsappTotal: number; instantMatchCalls: number;
+  }
+  const { data: featureStats, isLoading: featureStatsLoading, refetch: refetchFeatureStats } = useQuery<FeatureStats>({
+    queryKey: ["/api/admin/features/stats"],
+    enabled: activeSection === "feature-stats" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  interface AdminBarterCredit { id: string; userId: string; balanceAed: string; lifetimeEarnedAed: string; updatedAt: string | null; userEmail: string | null; userName: string | null }
+  const { data: barterCreditsData, isLoading: creditsLoading, refetch: refetchCredits } = useQuery<AdminBarterCredit[]>({
+    queryKey: ["/api/admin/barter-credits"],
+    enabled: activeSection === "barter-credits" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  interface AdminSuccessStory { id: string; dealId: string; authorId: string; partnerId: string; caption: string | null; imageUrl: string | null; seekerItem: string | null; providerItem: string | null; isFeatured: boolean; status: string; createdAt: string | null; authorName: string | null; partnerName: string | null }
+  const [storyStatusFilter, setStoryStatusFilter] = useState("all");
+  const { data: successStoriesData, isLoading: storiesLoading, refetch: refetchStories } = useQuery<AdminSuccessStory[]>({
+    queryKey: ["/api/admin/success-stories", storyStatusFilter],
+    enabled: activeSection === "success-stories" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const updateStoryMutation = useMutation({
+    mutationFn: async ({ id, status, isFeatured }: { id: string; status?: string; isFeatured?: boolean }) =>
+      apiRequest("PATCH", `/api/admin/success-stories/${id}/status`, { status, isFeatured }),
+    onSuccess: () => { refetchStories(); toast({ title: "Story updated" }); },
+  });
+
+  const [creditAdjustUserId, setCreditAdjustUserId] = useState("");
+  const [creditAdjustAmount, setCreditAdjustAmount] = useState("");
+  const [creditAdjustNote, setCreditAdjustNote] = useState("");
+  const adjustCreditMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", `/api/admin/barter-credits/${creditAdjustUserId}/adjust`, {
+      amount: parseFloat(creditAdjustAmount), note: creditAdjustNote,
+    }),
+    onSuccess: () => { refetchCredits(); setCreditAdjustAmount(""); setCreditAdjustNote(""); toast({ title: "Credits adjusted" }); },
+    onError: () => toast({ title: "Error adjusting credits", variant: "destructive" }),
+  });
+
+  const [digestSending, setDigestSending] = useState(false);
+  const sendDigestMutation = useMutation({
+    mutationFn: async (userId?: string) => apiRequest("POST", "/api/admin/match-digest/send", userId ? { userId } : {}),
+    onSuccess: (data: any) => { toast({ title: `Digest sent to ${data?.sent ?? 0} users` }); setDigestSending(false); refetchFeatureStats(); },
+    onError: () => { toast({ title: "Digest send failed", variant: "destructive" }); setDigestSending(false); },
   });
 
   const { data: emailStats } = useQuery<{ total: number; sent: number; failed: number }>({
@@ -1181,6 +1234,9 @@ export function AdminPage() {
     { id: "creators", label: "Creators", icon: Camera },
     { id: "collabs", label: "Collabs", icon: Zap },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "feature-stats", label: "Feature Hub", icon: Zap },
+    { id: "barter-credits", label: "Barter Credits", icon: Coins },
+    { id: "success-stories", label: "Success Stories", icon: Trophy },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -3484,6 +3540,280 @@ export function AdminPage() {
   const auditAdmins = Array.from(new Set(auditLogs.map(l => ({ id: l.adminId, email: l.adminEmail })).filter(a => a.email).map(a => JSON.stringify(a)))).map(s => JSON.parse(s) as { id: string; email: string });
   const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();
 
+  // ── Feature Hub ──────────────────────────────────────────────────────────────
+  const renderFeatureHub = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Feature Hub</h2>
+          <p className="text-muted-foreground">Analytics and controls for v2 features</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchFeatureStats()}>
+          <RefreshCw className="h-4 w-4 mr-2" />Refresh
+        </Button>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Bulk Listings Active", value: featureStats?.bulkListingsActive, icon: Package, color: "text-blue-600", onClick: () => goToSection("listings") },
+          { label: "Stories Pending", value: featureStats?.successStoriesPending, icon: Trophy, color: "text-amber-600", onClick: () => setActiveSection("success-stories") },
+          { label: "Stories Approved", value: featureStats?.successStoriesApproved, icon: Trophy, color: "text-green-600", onClick: () => setActiveSection("success-stories") },
+          { label: "Digest Emails Sent", value: featureStats?.digestEmailsSent, icon: Mail, color: "", onClick: undefined },
+          { label: "Digests Last 7d", value: featureStats?.digestEmailsLast7d, icon: Mail, color: "text-primary", onClick: undefined },
+          { label: "Avg Matches/Email", value: featureStats?.digestAvgMatches, icon: TrendingUp, color: "", onClick: undefined },
+          { label: "WhatsApp Opt-ins", value: featureStats?.whatsappOptIns, icon: MessageSquare, color: "text-green-600", onClick: undefined },
+          { label: "Total WA Registered", value: featureStats?.whatsappTotal, icon: MessageSquare, color: "", onClick: undefined },
+          { label: "Instant Match Calls", value: featureStats?.instantMatchCalls, icon: Zap, color: "text-amber-500", onClick: undefined },
+        ].map(card => (
+          <Card key={card.label} className={card.onClick ? "cursor-pointer hover:shadow-md hover:border-primary/40 transition-all" : ""} onClick={card.onClick}>
+            <CardContent className="pt-4 pb-4">
+              <div className={`text-2xl font-bold ${card.color}`}>
+                {featureStatsLoading ? "…" : (card.value ?? "—")}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Match Digest Campaign */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="h-4 w-4" /> Smart Match Digest
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Send a weekly personalised email to all users with active listings, showing their top AI-matched trade opportunities.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              onClick={() => { setDigestSending(true); sendDigestMutation.mutate(undefined); }}
+              disabled={sendDigestMutation.isPending || digestSending}
+            >
+              {sendDigestMutation.isPending ? "Sending…" : "Send Digest to All Users"}
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-2">
+            {[
+              { label: "Total sent", value: featureStats?.digestEmailsSent },
+              { label: "Last 7 days", value: featureStats?.digestEmailsLast7d },
+              { label: "Avg matches/email", value: featureStats?.digestAvgMatches },
+            ].map(s => (
+              <div key={s.label} className="text-center p-3 rounded-lg bg-muted/50">
+                <div className="text-xl font-bold">{featureStatsLoading ? "…" : (s.value ?? 0)}</div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* WhatsApp stats */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-green-600" /> WhatsApp Notifications
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 rounded-lg bg-green-50 dark:bg-green-950/20">
+              <div className="text-3xl font-bold text-green-600">{featureStats?.whatsappOptIns ?? 0}</div>
+              <div className="text-sm text-muted-foreground">Users opted in</div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/50">
+              <div className="text-3xl font-bold">{featureStats?.whatsappTotal ?? 0}</div>
+              <div className="text-sm text-muted-foreground">Total registered</div>
+            </div>
+          </div>
+          {(featureStats?.whatsappTotal ?? 0) > 0 && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Opt-in rate</span>
+                <span>{Math.round(((featureStats?.whatsappOptIns ?? 0) / (featureStats?.whatsappTotal ?? 1)) * 100)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{ width: `${Math.round(((featureStats?.whatsappOptIns ?? 0) / (featureStats?.whatsappTotal ?? 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Barter Credits Ledger ─────────────────────────────────────────────────
+  const renderBarterCredits = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Barter Credits</h2>
+          <p className="text-muted-foreground">View and adjust user barter credit balances</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchCredits()}>
+          <RefreshCw className="h-4 w-4 mr-2" />Refresh
+        </Button>
+      </div>
+
+      {/* Adjust credits */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold">Manual Credit Adjustment</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              className="border rounded px-3 py-2 text-sm w-48"
+              placeholder="User ID"
+              value={creditAdjustUserId}
+              onChange={e => setCreditAdjustUserId(e.target.value)}
+            />
+            <input
+              className="border rounded px-3 py-2 text-sm w-32"
+              placeholder="Amount AED (±)"
+              type="number"
+              value={creditAdjustAmount}
+              onChange={e => setCreditAdjustAmount(e.target.value)}
+            />
+            <input
+              className="border rounded px-3 py-2 text-sm flex-1 min-w-40"
+              placeholder="Reason / note"
+              value={creditAdjustNote}
+              onChange={e => setCreditAdjustNote(e.target.value)}
+            />
+            <Button
+              size="sm"
+              onClick={() => adjustCreditMutation.mutate()}
+              disabled={adjustCreditMutation.isPending || !creditAdjustUserId || !creditAdjustAmount || !creditAdjustNote}
+            >
+              {adjustCreditMutation.isPending ? "Saving…" : "Apply"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* All balances */}
+      <Card>
+        <CardContent className="p-0">
+          {creditsLoading ? (
+            <div className="p-6 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-3 font-medium text-muted-foreground">User</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Balance (AED)</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Lifetime Earned</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(barterCreditsData ?? []).map(row => (
+                  <tr key={row.id} className="border-b hover:bg-muted/30">
+                    <td className="p-3">
+                      <div className="font-medium">{row.userName ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{row.userEmail}</div>
+                    </td>
+                    <td className="p-3 text-right font-bold text-amber-600">AED {parseFloat(row.balanceAed).toFixed(2)}</td>
+                    <td className="p-3 text-right text-muted-foreground">AED {parseFloat(row.lifetimeEarnedAed).toFixed(2)}</td>
+                    <td className="p-3 text-right text-xs text-muted-foreground">
+                      {row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {(barterCreditsData ?? []).length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No credits issued yet — they're awarded automatically when deals complete with a value imbalance.</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Success Stories ───────────────────────────────────────────────────────
+  const renderSuccessStories = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Success Stories</h2>
+          <p className="text-muted-foreground">Review and feature user trade stories</p>
+        </div>
+        <div className="flex gap-2">
+          {["all", "pending", "approved", "rejected"].map(s => (
+            <Button
+              key={s}
+              variant={storyStatusFilter === s ? "default" : "outline"}
+              size="sm"
+              onClick={() => setStoryStatusFilter(s)}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {storiesLoading
+          ? [...Array(6)].map((_, i) => <Skeleton key={i} className="h-48" />)
+          : (successStoriesData ?? []).length === 0
+          ? <p className="text-muted-foreground col-span-3 text-center py-12">No stories in this filter.</p>
+          : (successStoriesData ?? []).map(story => (
+            <Card key={story.id} className={`overflow-hidden ${story.isFeatured ? "ring-2 ring-amber-400" : ""}`}>
+              {story.imageUrl && (
+                <div className="h-36 bg-muted overflow-hidden">
+                  <img src={story.imageUrl} alt="story" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">{story.authorName ?? "Unknown"} × {story.partnerName ?? "Unknown"}</p>
+                    <p className="text-xs text-muted-foreground">{story.seekerItem} ↔ {story.providerItem}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Badge variant={story.status === "approved" ? "default" : story.status === "rejected" ? "destructive" : "secondary"}>
+                      {story.status}
+                    </Badge>
+                    {story.isFeatured && <Badge className="bg-amber-100 text-amber-700">Featured</Badge>}
+                  </div>
+                </div>
+                {story.caption && <p className="text-xs text-muted-foreground line-clamp-3">{story.caption}</p>}
+                <div className="flex gap-1.5 flex-wrap">
+                  {story.status !== "approved" && (
+                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => updateStoryMutation.mutate({ id: story.id, status: "approved" })}>
+                      Approve
+                    </Button>
+                  )}
+                  {story.status !== "rejected" && (
+                    <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => updateStoryMutation.mutate({ id: story.id, status: "rejected" })}>
+                      Reject
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`h-7 text-xs ${story.isFeatured ? "text-amber-600 border-amber-300" : ""}`}
+                    onClick={() => updateStoryMutation.mutate({ id: story.id, isFeatured: !story.isFeatured })}
+                  >
+                    {story.isFeatured ? "Unfeature" : "Feature"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        }
+      </div>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -5601,6 +5931,12 @@ export function AdminPage() {
         return renderCollabs();
       case "analytics":
         return renderAnalytics();
+      case "feature-stats":
+        return renderFeatureHub();
+      case "barter-credits":
+        return renderBarterCredits();
+      case "success-stories":
+        return renderSuccessStories();
       case "settings":
         return renderSettings();
       default:

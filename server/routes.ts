@@ -70,6 +70,7 @@ import {
   waitlistEntries,
   internationalWaitlist,
   mobileTokens,
+  successStories,
 } from "@shared/schema";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
@@ -3677,6 +3678,42 @@ export async function registerRoutes(
             );
           }
           await Promise.all(emailJobs);
+
+          // Award barter credits: value difference goes to the party who gave more
+          try {
+            const seekerVal = parseFloat(updated?.seekerValue ?? "0");
+            const providerVal = parseFloat(updated?.providerValue ?? "0");
+            const diff = Math.abs(seekerVal - providerVal);
+            if (diff > 0) {
+              const creditor = seekerVal > providerVal ? deal.seekerId : deal.providerId;
+              await storage.awardBarterCredits(
+                creditor, diff, deal.id,
+                `Trade surplus from deal ${updated?.dealNumber ?? deal.id}`
+              );
+            }
+          } catch (creditErr) {
+            console.error("Barter credit award error:", creditErr);
+          }
+
+          // Prompt for success story via in-app notification
+          try {
+            await Promise.all([
+              storage.createNotification({
+                userId: deal.seekerId,
+                type: "system",
+                title: "Share your trade story",
+                message: "Your deal completed! Share a success story to inspire other traders.",
+                relatedDealId: deal.id,
+              }),
+              storage.createNotification({
+                userId: deal.providerId,
+                type: "system",
+                title: "Share your trade story",
+                message: "Your deal completed! Share a success story to inspire other traders.",
+                relatedDealId: deal.id,
+              }),
+            ]);
+          } catch {}
         } catch (notifyError) {
           console.error("Deal completion notification error:", notifyError);
         }
@@ -10726,6 +10763,452 @@ export async function registerRoutes(
 
   // Keepalive endpoint — used by external uptime monitors to prevent cold starts.
   app.get("/ping", (_req, res) => res.status(200).send("ok"));
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ── NEW FEATURES (v2) ──────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── F1: Instant Match ──────────────────────────────────────────────────────
+  // Runs the AI matching agent for a specific listing and returns top matches.
+  app.get("/api/listings/:id/instant-match", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const listingId = param(req.params.id);
+      const targetListing = await storage.getListing(listingId);
+      if (!targetListing) return res.status(404).json({ message: "Listing not found" });
+
+      // Fetch candidate listings: exclude current user's own, exclude deleted/inactive
+      const allListings = await db.select({
+        id: listings.id,
+        title: listings.title,
+        description: listings.description,
+        categories: listings.categories,
+        retailValue: listings.retailValue,
+        location: listings.location,
+        country: listings.country,
+        city: listings.city,
+        type: listings.type,
+        wantedCategories: listings.wantedCategories,
+        isCollab: listings.isCollab,
+        userId: listings.userId,
+        userEmail: users.email,
+        userName: users.fullName,
+      })
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(and(
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+          sql`${listings.userId} != ${targetListing.userId}`,
+        ))
+        .limit(60);
+
+      const { findMatches } = await import("./agents/matchingAgent");
+      const matchResults = await findMatches(
+        {
+          id: targetListing.userId,
+          whatIOffer: (targetListing.categories as string[]).map(c => ({ name: c, value: parseFloat(targetListing.retailValue) })),
+          whatINeed: (targetListing.wantedCategories as string[]).map(c => ({ name: c, value: 0 })),
+          location: targetListing.location,
+          country: targetListing.country,
+          city: targetListing.city,
+          preferredCategories: targetListing.wantedCategories as string[],
+        },
+        allListings,
+      );
+
+      const matchedListings = matchResults.map(m => {
+        const listing = allListings.find(l => l.id === m.listingId);
+        return listing ? { ...listing, matchScore: m.score, matchReason: m.reason } : null;
+      }).filter(Boolean);
+
+      res.json(matchedListings);
+    } catch (error) {
+      console.error("Instant match error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F2: Bulk Deal Board ────────────────────────────────────────────────────
+  app.get("/api/listings/bulk", async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string || "1");
+      const limit = 20;
+      const offset = (page - 1) * limit;
+
+      const [rows, totalRes] = await Promise.all([
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          description: listings.description,
+          categories: listings.categories,
+          retailValue: listings.retailValue,
+          bulkQuantity: listings.bulkQuantity,
+          bulkUnit: listings.bulkUnit,
+          bulkMinOrder: listings.bulkMinOrder,
+          bulkMaxPartners: listings.bulkMaxPartners,
+          location: listings.location,
+          country: listings.country,
+          city: listings.city,
+          type: listings.type,
+          images: listings.images,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userName: users.fullName,
+          userEmail: users.email,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(and(
+            eq(listings.isBulkDeal, true),
+            eq(listings.isActive, true),
+            isNull(listings.deletedAt),
+          ))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit).offset(offset),
+        db.select({ count: count() }).from(listings).where(and(
+          eq(listings.isBulkDeal, true),
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+        )),
+      ]);
+
+      res.json({ listings: rows, total: Number(totalRes[0]?.count ?? 0), page, limit });
+    } catch (error) {
+      console.error("Bulk listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F3: Three-Way Chain Match ──────────────────────────────────────────────
+  // Find A→B→C→A cycles across listings. Pure in-memory graph traversal.
+  app.get("/api/listings/chain-matches", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      // Get current user's active listings
+      const myListings = await db.select().from(listings)
+        .where(and(
+          eq(listings.userId, user.id),
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+        )).limit(10);
+
+      if (myListings.length === 0) return res.json([]);
+
+      // Fetch all active listings from OTHER users (limited for performance)
+      const othersListings = await db.select({
+        id: listings.id,
+        title: listings.title,
+        categories: listings.categories,
+        wantedCategories: listings.wantedCategories,
+        retailValue: listings.retailValue,
+        userId: listings.userId,
+        images: listings.images,
+        userName: users.fullName,
+      })
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(and(
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+          sql`${listings.userId} != ${user.id}`,
+        ))
+        .limit(200);
+
+      const chains: Array<{
+        myListing: { id: string; title: string; categories: unknown };
+        nodeB: { id: string; title: string; userName: string | null; userId: string };
+        nodeC: { id: string; title: string; userName: string | null; userId: string };
+      }> = [];
+
+      const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+
+      for (const mine of myListings) {
+        const myCategories = (mine.categories as string[]) || [];
+        const myWanted = (mine.wantedCategories as string[]) || [];
+
+        // Find B: listings that want what I have
+        const bNodes = othersListings.filter(l =>
+          overlap(myCategories, (l.wantedCategories as string[]) || []) &&
+          l.userId !== user.id
+        );
+
+        for (const b of bNodes.slice(0, 20)) {
+          const bCats = (b.categories as string[]) || [];
+          // Find C: listings that want what B has and are owned by a 3rd user
+          const cNodes = othersListings.filter(l =>
+            l.userId !== b.userId &&
+            l.userId !== user.id &&
+            overlap(bCats, (l.wantedCategories as string[]) || [])
+          );
+
+          for (const c of cNodes.slice(0, 5)) {
+            const cCats = (c.categories as string[]) || [];
+            // Check: does C want what I have? (completes the cycle)
+            if (overlap(myWanted, cCats)) {
+              chains.push({ myListing: mine, nodeB: b as any, nodeC: c as any });
+              if (chains.length >= 10) break;
+            }
+          }
+          if (chains.length >= 10) break;
+        }
+        if (chains.length >= 10) break;
+      }
+
+      res.json(chains);
+    } catch (error) {
+      console.error("Chain match error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F4: Barter Credits ────────────────────────────────────────────────────
+  app.get("/api/me/barter-credits", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const data = await storage.getBarterCredits(user.id);
+      res.json(data);
+    } catch (error) {
+      console.error("Get barter credits error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/barter-credits", requireAdmin, async (req, res) => {
+    try {
+      const data = await storage.getAllBarterCredits();
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/barter-credits/:userId/adjust", requireAdmin, async (req, res) => {
+    try {
+      const { amount, note } = req.body;
+      if (typeof amount !== "number" || !note) return res.status(400).json({ message: "amount (number) and note required" });
+      await storage.awardBarterCredits(param(req.params.userId), amount, undefined, `Admin: ${note}`);
+      await logAdminAction(req, "barter_credit_adjusted", "user", param(req.params.userId), { amount, note });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Adjust credits error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F5: WhatsApp Settings ─────────────────────────────────────────────────
+  app.get("/api/me/whatsapp-settings", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const settings = await storage.getWhatsappSettings(user.id);
+      res.json(settings ?? { optedIn: false, phone: null, notifyDealProposals: true, notifyMessages: true, notifyMatches: true });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put("/api/me/whatsapp-settings", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { phone, optedIn, notifyDealProposals, notifyMessages, notifyMatches } = req.body;
+      const settings = await storage.upsertWhatsappSettings(user.id, {
+        phone, optedIn, notifyDealProposals, notifyMessages, notifyMatches,
+      });
+      res.json(settings);
+    } catch (error) {
+      console.error("WhatsApp settings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/whatsapp-stats", requireAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getWhatsappOptInStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F6: Deal Success Stories ──────────────────────────────────────────────
+  app.post("/api/deals/:id/success-story", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const dealId = param(req.params.id);
+      const deal = await storage.getDeal(dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (deal.state !== "completed") return res.status(400).json({ message: "Can only create a success story for a completed deal" });
+      if (deal.seekerId !== user.id && deal.providerId !== user.id) return res.status(403).json({ message: "Not your deal" });
+
+      const partnerId = deal.seekerId === user.id ? deal.providerId : deal.seekerId;
+      const { caption, imageUrl } = req.body;
+
+      const story = await storage.createSuccessStory({
+        dealId,
+        authorId: user.id,
+        partnerId,
+        caption: caption ?? null,
+        imageUrl: imageUrl ?? null,
+        seekerItem: deal.seekerOffer,
+        providerItem: deal.providerOffer,
+      });
+
+      res.json(story);
+    } catch (error) {
+      console.error("Success story error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/success-stories", async (req, res) => {
+    try {
+      const stories = await storage.getSuccessStories("approved");
+      res.json(stories);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: all stories + moderation
+  app.get("/api/admin/success-stories", requireAdmin, async (req, res) => {
+    try {
+      const status = (req.query.status as string) || "all";
+      const stories = await storage.getSuccessStories(status === "all" ? undefined : status);
+      res.json(stories);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/success-stories/:id/status", requireAdmin, async (req, res) => {
+    try {
+      const { status, isFeatured } = req.body;
+      const story = await storage.updateSuccessStory(param(req.params.id), { status, isFeatured });
+      if (!story) return res.status(404).json({ message: "Not found" });
+      await logAdminAction(req, "success_story_moderated", "success_story", story.id, { status, isFeatured });
+      res.json(story);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── F7: Smart Match Digest (Admin trigger) ────────────────────────────────
+  app.post("/api/admin/match-digest/send", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.body; // optional: send to specific user only
+      const { sendMatchDigestEmail } = await import("./emailService");
+
+      // Get target users (with at least one active listing)
+      const targetUsers = userId
+        ? await db.select().from(users).where(eq(users.id, userId)).limit(1)
+        : await db.select().from(users)
+            .where(and(eq(users.isActive, true), isNull(users.deletedAt as any)))
+            .limit(500);
+
+      let sent = 0;
+      const errors: string[] = [];
+
+      for (const u of targetUsers) {
+        try {
+          const userListings = await db.select().from(listings)
+            .where(and(eq(listings.userId, u.id), eq(listings.isActive, true), isNull(listings.deletedAt)))
+            .limit(3);
+
+          if (userListings.length === 0) continue;
+
+          // Get candidate listings for matching
+          const candidates = await db.select({
+            id: listings.id, title: listings.title, description: listings.description,
+            categories: listings.categories, retailValue: listings.retailValue,
+            location: listings.location, country: listings.country, city: listings.city,
+            type: listings.type, wantedCategories: listings.wantedCategories, isCollab: listings.isCollab,
+          })
+            .from(listings)
+            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt), sql`${listings.userId} != ${u.id}`))
+            .limit(50);
+
+          const { findMatches } = await import("./agents/matchingAgent");
+          const matches = await findMatches({
+            id: u.id,
+            whatIOffer: (u as any).whatIOffer || [],
+            whatINeed: (u as any).whatINeed || [],
+            location: u.location,
+            country: u.country,
+            city: u.city,
+            preferredCategories: (u as any).preferredCategories || [],
+          }, candidates);
+
+          if (matches.length > 0 && u.email) {
+            const matchedListings = matches.map(m => candidates.find(c => c.id === m.listingId)).filter(Boolean);
+            await sendMatchDigestEmail(u.email, {
+              fullName: u.fullName ?? undefined,
+              matches: matchedListings.slice(0, 3).map(l => ({
+                title: l!.title,
+                value: l!.retailValue,
+                reason: matches.find(m => m.listingId === l!.id)?.reason ?? "",
+              })),
+            }).catch(() => {});
+            await storage.logMatchDigest(u.id, userListings[0].id, matches.length, true);
+            sent++;
+          }
+        } catch (userErr) {
+          errors.push(u.id);
+        }
+      }
+
+      await logAdminAction(req, "match_digest_sent", "system", "bulk", { sent, errors: errors.length });
+      res.json({ sent, errors: errors.length });
+    } catch (error) {
+      console.error("Match digest error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/match-digest/stats", requireAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getMatchDigestStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: New Feature Analytics ──────────────────────────────────────────
+  app.get("/api/admin/features/stats", requireAdmin, async (req, res) => {
+    try {
+      const [
+        bulkListingsCount,
+        successStoriesPending,
+        successStoriesApproved,
+        digestStats,
+        whatsappStats,
+        chainMatchUsage,
+      ] = await Promise.all([
+        db.select({ count: count() }).from(listings).where(and(eq(listings.isBulkDeal, true), eq(listings.isActive, true), isNull(listings.deletedAt))).then(r => Number(r[0]?.count ?? 0)),
+        db.select({ count: count() }).from(successStories).where(eq(successStories.status, "pending")).then(r => Number(r[0]?.count ?? 0)),
+        db.select({ count: count() }).from(successStories).where(eq(successStories.status, "approved")).then(r => Number(r[0]?.count ?? 0)),
+        storage.getMatchDigestStats(),
+        storage.getWhatsappOptInStats(),
+        db.select({ count: count() }).from(agentInteractions).where(eq(agentInteractions.agentType, "matching")).then(r => Number(r[0]?.count ?? 0)),
+      ]);
+
+      res.json({
+        bulkListingsActive: bulkListingsCount,
+        successStoriesPending,
+        successStoriesApproved,
+        digestEmailsSent: digestStats.totalSent,
+        digestEmailsLast7d: digestStats.last7Days,
+        digestAvgMatches: digestStats.avgMatchesPerEmail,
+        whatsappOptIns: whatsappStats.optedIn,
+        whatsappTotal: whatsappStats.total,
+        instantMatchCalls: chainMatchUsage,
+      });
+    } catch (error) {
+      console.error("Feature stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   return httpServer;
 }

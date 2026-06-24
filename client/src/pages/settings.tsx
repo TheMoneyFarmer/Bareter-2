@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
+import { BarterCreditWidget } from "@/components/barter-credit-widget";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1028,6 +1030,11 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* WhatsApp notifications — additive, below the email notification card */}
+        <div className="mt-4">
+          <WhatsappSettingsToggle />
+        </div>
 
         <TabsContent value="privacy">
           <Card>
