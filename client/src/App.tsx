@@ -68,8 +68,6 @@ const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default
 const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ default: m.PostDetailPage })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
-const BulkDealsPage = lazy(() => import("@/pages/bulk-deals").then((m) => ({ default: m.BulkDealsPage })));
-
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
 initPostHog();
 
@@ -323,7 +321,6 @@ function Router() {
       <Route path="/browse" component={BrowsePage} />
       <Route path="/c/:category/:subcategory" component={BrowsePage} />
       <Route path="/c/:category" component={BrowsePage} />
-      <Route path="/bulk-deals" component={BulkDealsPage} />
       <Route path="/create-listing" component={CreateListingPage} />
       <Route path="/listings/:id" component={ListingDetailPage} />
       <Route path="/deals" component={DealsPage} />

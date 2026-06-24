@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
-import { BarterCreditWidget } from "@/components/barter-credit-widget";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

@@ -64,10 +64,16 @@ export function WhatsappSettingsToggle() {
   });
 
   if (!user) return null;
-  if (isLoading) return <Skeleton className="h-40 w-full" />;
 
   return (
-    <Card>
+    <Card className="relative overflow-hidden opacity-60 pointer-events-none select-none">
+      {/* Coming Soon overlay */}
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px]">
+        <span className="bg-muted text-muted-foreground text-xs font-semibold px-3 py-1 rounded-full border border-border">
+          Coming Soon
+        </span>
+      </div>
+
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-green-600" />
@@ -77,40 +83,20 @@ export function WhatsappSettingsToggle() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label htmlFor="wa-optin" className="font-medium">Enable WhatsApp alerts</Label>
-          <Switch id="wa-optin" checked={optedIn} onCheckedChange={setOptedIn} />
+          <Label className="font-medium">Enable WhatsApp alerts</Label>
+          <Switch checked={false} disabled />
         </div>
-
-        {optedIn && (
-          <>
-            <div className="space-y-1.5">
-              <Label htmlFor="wa-phone">WhatsApp number (with country code)</Label>
-              <Input
-                id="wa-phone"
-                placeholder="+971 50 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
+        <div className="space-y-2 pt-1">
+          <p className="text-xs font-medium text-muted-foreground">Notify me about:</p>
+          {["Deal proposals", "New messages", "Trade matches"].map((label) => (
+            <div key={label} className="flex items-center justify-between">
+              <Label className="text-sm font-normal">{label}</Label>
+              <Switch checked={false} disabled />
             </div>
-
-            <div className="space-y-2 pt-1">
-              <p className="text-xs font-medium text-muted-foreground">Notify me about:</p>
-              {[
-                { label: "Deal proposals", value: notifyProposals, set: setNotifyProposals, id: "wa-proposals" },
-                { label: "New messages", value: notifyMsgs, set: setNotifyMsgs, id: "wa-msgs" },
-                { label: "Trade matches", value: notifyMatches, set: setNotifyMatches, id: "wa-matches" },
-              ].map((item) => (
-                <div key={item.id} className="flex items-center justify-between">
-                  <Label htmlFor={item.id} className="text-sm font-normal">{item.label}</Label>
-                  <Switch id={item.id} checked={item.value} onCheckedChange={item.set} />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        <Button className="w-full" size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-          {mutation.isPending ? "Saving..." : "Save WhatsApp Settings"}
+          ))}
+        </div>
+        <Button className="w-full" size="sm" disabled>
+          Save WhatsApp Settings
         </Button>
       </CardContent>
     </Card>
