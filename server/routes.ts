@@ -5762,8 +5762,10 @@ export async function registerRoutes(
         pendingVerifications,
         openReports,
         openDisputes,
+        openSupportTickets,
         newUsersRes,
         newListingsRes,
+        newDealsRes,
       ] = await Promise.all([
         db.select({
           id: listings.id,
@@ -5823,8 +5825,26 @@ export async function registerRoutes(
           .orderBy(desc(disputes.createdAt))
           .limit(20),
 
+        db.select({
+          id: supportTickets.id,
+          ticketNumber: supportTickets.ticketNumber,
+          subject: supportTickets.subject,
+          category: supportTickets.category,
+          priority: supportTickets.priority,
+          status: supportTickets.status,
+          requesterEmail: supportTickets.requesterEmail,
+          requesterName: supportTickets.requesterName,
+          createdAt: supportTickets.createdAt,
+          lastActivityAt: supportTickets.lastActivityAt,
+        })
+          .from(supportTickets)
+          .where(inArray(supportTickets.status, ["open", "in_progress"]))
+          .orderBy(desc(supportTickets.priority), desc(supportTickets.createdAt))
+          .limit(25),
+
         db.select({ count: count() }).from(users).where(gte(users.createdAt, yesterday)),
         db.select({ count: count() }).from(listings).where(gte(listings.createdAt, yesterday)),
+        db.select({ count: count() }).from(deals).where(gte(deals.createdAt, yesterday)),
       ]);
 
       res.json({
@@ -5833,9 +5853,11 @@ export async function registerRoutes(
         pendingVerifications,
         openReports,
         openDisputes,
+        openSupportTickets,
         stats: {
           newUsers24h: Number(newUsersRes[0]?.count ?? 0),
           newListings24h: Number(newListingsRes[0]?.count ?? 0),
+          newDeals24h: Number(newDealsRes[0]?.count ?? 0),
         },
       });
     } catch (error) {

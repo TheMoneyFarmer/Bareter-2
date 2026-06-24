@@ -387,13 +387,15 @@ export function AdminPage() {
   interface MorningPendingVerif { id: string; email: string; fullName: string; accountType: string | null; verificationStatus: string | null; createdAt: string | null }
   interface MorningReport { id: string; targetType: string; reason: string; status: string; createdAt: string | null }
   interface MorningDispute { id: string; subject: string; status: string; partyAId: string; partyBId: string; createdAt: string | null }
+  interface MorningSupportTicket { id: string; ticketNumber: string; subject: string; category: string; priority: string; status: string; requesterEmail: string | null; requesterName: string | null; createdAt: string | null; lastActivityAt: string | null }
   interface MorningCheckData {
     pendingListings: MorningPendingListing[];
     autoBlockedQueue: ModerationLogEntry[];
     pendingVerifications: MorningPendingVerif[];
     openReports: MorningReport[];
     openDisputes: MorningDispute[];
-    stats: { newUsers24h: number; newListings24h: number };
+    openSupportTickets: MorningSupportTicket[];
+    stats: { newUsers24h: number; newListings24h: number; newDeals24h: number };
   }
 
   const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
@@ -4942,8 +4944,9 @@ export function AdminPage() {
     const verifs = morningCheck?.pendingVerifications ?? [];
     const openReps = morningCheck?.openReports ?? [];
     const openDisps = morningCheck?.openDisputes ?? [];
+    const tickets = morningCheck?.openSupportTickets ?? [];
     const stats = morningCheck?.stats;
-    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length;
+    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length + tickets.length;
 
     return (
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -4969,7 +4972,7 @@ export function AdminPage() {
         </div>
 
         {/* At-a-glance stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold">{stats?.newUsers24h ?? "—"}</div>
@@ -4984,6 +4987,12 @@ export function AdminPage() {
           </Card>
           <Card>
             <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold">{stats?.newDeals24h ?? "—"}</div>
+              <p className="text-xs text-muted-foreground mt-1">New deals (24h)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold text-amber-600">{morningCheckLoading ? "…" : pending.length}</div>
               <p className="text-xs text-muted-foreground mt-1">Pending moderation</p>
             </CardContent>
@@ -4991,7 +5000,13 @@ export function AdminPage() {
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="text-2xl font-bold text-red-600">{morningCheckLoading ? "…" : blocked.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Auto-blocked (review)</p>
+              <p className="text-xs text-muted-foreground mt-1">Auto-blocked</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-orange-600">{morningCheckLoading ? "…" : tickets.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Open tickets</p>
             </CardContent>
           </Card>
         </div>
@@ -5208,6 +5223,53 @@ export function AdminPage() {
               {openDisps.length > 10 && (
                 <p className="text-xs text-muted-foreground text-center pt-1">
                   +{openDisps.length - 10} more — <button className="underline" onClick={() => setActiveSection("disputes")}>view all in Disputes</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 6: Open support tickets */}
+        {tickets.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageSquare className="h-4 w-4 text-orange-600" />
+                Support Tickets
+                <Badge variant="destructive" className="ml-1">{tickets.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Open and in-progress tickets sorted by priority.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {tickets.slice(0, 15).map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        ticket.priority === "urgent" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
+                        ticket.priority === "high" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{ticket.priority}</span>
+                      <span className="text-xs text-muted-foreground">#{ticket.ticketNumber}</span>
+                    </div>
+                    <p className="font-medium text-sm truncate">{ticket.subject}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {ticket.requesterEmail ?? ticket.requesterName ?? "Unknown"} · {ticket.category} · {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("support")}
+                  >
+                    Reply
+                  </Button>
+                </div>
+              ))}
+              {tickets.length > 15 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{tickets.length - 15} more — <button className="underline" onClick={() => setActiveSection("support")}>view all in Support</button>
                 </p>
               )}
             </CardContent>
