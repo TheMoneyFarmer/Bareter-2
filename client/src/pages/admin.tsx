@@ -1054,6 +1054,7 @@ export function AdminPage() {
     if (listingStatusFilter === "paused" && (l.isActive || isDeleted)) return false;
     if (listingStatusFilter === "inactive" && l.isActive) return false;
     if (listingStatusFilter === "pending" && l.moderationStatus !== "pending") return false;
+    if (listingStatusFilter === "approved" && l.moderationStatus !== "approved") return false;
     if (listingStatusFilter === "flagged" && l.moderationStatus !== "flagged" && !l.valueFlagged && !l.imageFlagged) return false;
     if (listingStatusFilter === "rejected" && l.moderationStatus !== "rejected") return false;
     if (listingStatusFilter === "featured" && !l.isFeatured) return false;
@@ -1075,6 +1076,8 @@ export function AdminPage() {
   }).sort((a, b) => {
     if (listingSortBy === "value_desc") return parseFloat(b.retailValue || "0") - parseFloat(a.retailValue || "0");
     if (listingSortBy === "value_asc") return parseFloat(a.retailValue || "0") - parseFloat(b.retailValue || "0");
+    if (listingSortBy === "proposals_desc") return ((b as any).proposalCount ?? 0) - ((a as any).proposalCount ?? 0);
+    if (listingSortBy === "views_desc") return ((b as any).viewCount ?? 0) - ((a as any).viewCount ?? 0);
     const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return listingSortBy === "date_asc" ? aT - bT : bT - aT;
@@ -1883,12 +1886,14 @@ export function AdminPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="pending">Pending Review</SelectItem>
               <SelectItem value="flagged">Flagged</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
               <SelectItem value="featured">Featured</SelectItem>
+              <SelectItem value="deleted">Deleted</SelectItem>
             </SelectContent>
           </Select>
           <Select value={listingCategoryFilter} onValueChange={setListingCategoryFilter}>
@@ -1942,7 +1947,7 @@ export function AdminPage() {
           )}
           {renderDateRangeFilter()}
           <Select value={listingSortBy} onValueChange={setListingSortBy}>
-            <SelectTrigger className="w-[150px]" data-testid="select-listing-sort">
+            <SelectTrigger className="w-[160px]" data-testid="select-listing-sort">
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -1950,6 +1955,8 @@ export function AdminPage() {
               <SelectItem value="date_asc">Oldest First</SelectItem>
               <SelectItem value="value_desc">Highest Value</SelectItem>
               <SelectItem value="value_asc">Lowest Value</SelectItem>
+              <SelectItem value="proposals_desc">Most Proposals</SelectItem>
+              <SelectItem value="views_desc">Most Views</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative w-64">
