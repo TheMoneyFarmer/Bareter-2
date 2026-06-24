@@ -4261,34 +4261,39 @@ export async function registerRoutes(
 
   app.get("/api/admin/listings", requireAdmin, async (req, res) => {
     try {
-      const listings = await storage.getAllListingsAdmin();
-      const commentCounts = await storage.getListingCommentCounts();
-      // Fetch latest moderation reason for flagged/rejected listings
-      const flaggedIds = listings
-        .filter(l => l.moderationStatus === "flagged" || l.moderationStatus === "rejected")
-        .map(l => l.id);
-      const reasonMap = new Map<string, string>();
-      if (flaggedIds.length > 0) {
-        const { db } = await import("./db");
-        const { moderationLogs } = await import("@shared/schema");
-        const { inArray, desc } = await import("drizzle-orm");
-        const logs = await db
-          .select()
-          .from(moderationLogs)
-          .where(inArray(moderationLogs.targetId, flaggedIds))
-          .orderBy(desc(moderationLogs.createdAt));
-        for (const log of logs) {
-          if (!reasonMap.has(log.targetId) && log.reason) {
-            reasonMap.set(log.targetId, log.reason);
-          }
-        }
-      }
-      const enriched = listings.map(l => ({
+      const listingsData = await storage.getAllListingsAdmin();
+      // Run secondary enrichment queries independently so a failure in either
+      // never prevents the main listings list from returning.
+      const [commentCounts, reasonMap] = await Promise.all([
+        storage.getListingCommentCounts().catch(() => new Map<string, number>()),
+        (async () => {
+          const map = new Map<string, string>();
+          try {
+            const flaggedIds = listingsData
+              .filter(l => l.moderationStatus === "flagged" || l.moderationStatus === "rejected")
+              .map(l => l.id);
+            if (flaggedIds.length > 0) {
+              const { db } = await import("./db");
+              const { moderationLogs } = await import("@shared/schema");
+              const { inArray, desc } = await import("drizzle-orm");
+              const logs = await db
+                .select()
+                .from(moderationLogs)
+                .where(inArray(moderationLogs.targetId, flaggedIds))
+                .orderBy(desc(moderationLogs.createdAt));
+              for (const log of logs) {
+                if (!map.has(log.targetId) && log.reason) map.set(log.targetId, log.reason);
+              }
+            }
+          } catch { /* enrichment failure — return empty map, listings still load */ }
+          return map;
+        })(),
+      ]);
+      res.json(listingsData.map(l => ({
         ...l,
         commentCount: commentCounts.get(l.id) || 0,
         moderationReason: reasonMap.get(l.id) || null,
-      }));
-      res.json(enriched);
+      })));
     } catch (error) {
       console.error("Admin get listings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -5758,7 +5763,8 @@ export async function registerRoutes(
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      // Drizzle queries run in parallel
+      // Split into two batches (~6-7 each) to avoid exhausting the connection pool.
+      // Running all 13 in one Promise.all on a small Replit pool starves other endpoints.
       const [
         pendingListingsRaw,
         autoBlockedQueue,
@@ -5767,12 +5773,6 @@ export async function registerRoutes(
         openDisputes,
         openSupportTickets,
         flaggedPostsRaw,
-        staleDealsRaw,
-        newUsersRes,
-        newListingsRes,
-        newDealsRes,
-        completedDealsRes,
-        activeUsersRes,
       ] = await Promise.all([
         db.select({
           id: listings.id,
@@ -5849,7 +5849,6 @@ export async function registerRoutes(
           .orderBy(desc(supportTickets.priority), desc(supportTickets.createdAt))
           .limit(25),
 
-        // Flagged community posts needing review
         db.select({
           id: posts.id,
           caption: posts.caption,
@@ -5865,8 +5864,17 @@ export async function registerRoutes(
           .where(eq(posts.moderationStatus, "flagged"))
           .orderBy(desc(posts.createdAt))
           .limit(20),
+      ]);
 
-        // Active deals with no activity in 7+ days
+      // Second batch — stats + stale deals
+      const [
+        staleDealsRaw,
+        newUsersRes,
+        newListingsRes,
+        newDealsRes,
+        completedDealsRes,
+        activeUsersRes,
+      ] = await Promise.all([
         db.select({
           id: deals.id,
           dealNumber: deals.dealNumber,
