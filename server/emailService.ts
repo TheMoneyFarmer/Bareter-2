@@ -1944,3 +1944,30 @@ export async function sendInternationalWaitlistEmail(
   const text = `${greeting}\n\nBareter is coming to ${opts.countryName}!\n\nRight now we're live exclusively in the UAE, but you've been added to our early-access list for ${opts.countryName}. You'll be the first to know when we launch there.\n\nWant to start now? You can browse UAE listings immediately — just change your location to UAE in Settings.\n\nExplore UAE listings: ${baseUrl}/browse\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `${APP_NAME} is coming to ${opts.countryName} — you're on the list!`, html, text });
 }
+
+export async function sendMatchDigestEmail(
+  toEmail: string,
+  opts: { fullName?: string; matches: Array<{ title: string; value: string; reason: string }> },
+): Promise<boolean> {
+  const greeting = opts.fullName ? `Hi ${opts.fullName}` : "Hi there";
+  const baseUrl = getBaseUrl();
+  const matchRows = opts.matches.map(m => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f3f4f6;">
+        <p style="color:#111827;font-size:14px;font-weight:600;margin:0 0 2px;">${m.title}</p>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 2px;">AED ${m.value}</p>
+        <p style="color:#059669;font-size:12px;margin:0;">${m.reason}</p>
+      </td>
+    </tr>`).join("");
+  const html = emailShell(`
+    <h2 style="color:#111827;font-size:20px;font-weight:700;margin:0 0 12px;">Your weekly trade matches are in</h2>
+    <p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0 0 20px;">
+      ${greeting}, we found <strong>${opts.matches.length} potential trade${opts.matches.length !== 1 ? "s" : ""}</strong> that match your listings this week.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">${matchRows}</table>
+    <a href="${baseUrl}/browse" style="display:block;text-align:center;background:#136c68;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:700;">View All Matches →</a>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:16px 0 0;">You're getting this because you have active listings on ${APP_NAME}.</p>
+  `);
+  const text = `${greeting},\n\nYou have ${opts.matches.length} new trade match${opts.matches.length !== 1 ? "es" : ""} on Bareter this week:\n\n${opts.matches.map(m => `• ${m.title} (AED ${m.value}) — ${m.reason}`).join("\n")}\n\nView all: ${baseUrl}/browse\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your ${APP_NAME} weekly trade matches`, html, text });
+}

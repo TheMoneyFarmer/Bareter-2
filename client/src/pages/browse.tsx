@@ -5,6 +5,7 @@ import { categoryFromSlug, subcategoryFromSlug } from "@shared/category-slugs";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { TrendingTiles } from "@/components/TrendingTiles";
+import { ChainMatchSection } from "@/components/chain-match-section";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +82,7 @@ import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search" | "for-you" | "collabs";
+type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain";
 
 function ForYouTab({
   wishlistedIds,
@@ -184,7 +185,7 @@ export function BrowsePage() {
   const showCategoriesParam = initialParams.get("showCategories") === "true";
   const initialTab = initialParams.get("tab") as ExploreTab | null;
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialTab && ["discover","search","for-you","collabs"].includes(initialTab)
+    initialTab && ["discover","search","for-you","collabs","chain"].includes(initialTab)
       ? initialTab
       : showCategoriesParam ? "discover"
       : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
@@ -783,6 +784,17 @@ export function BrowsePage() {
           <CameraIcon className="h-4 w-4" />
           Brand Collabs
         </Button>
+        {user && (
+          <Button
+            variant={activeTab === "chain" ? "bareter" : "bareter-outline"}
+            onClick={() => setActiveTab("chain")}
+            className="gap-2 flex-shrink-0"
+            data-testid="tab-chain"
+          >
+            <ArrowLeftRight className="h-4 w-4" />
+            Chain Deals
+          </Button>
+        )}
       </div>
 
       {activeTab === "collabs" ? (
@@ -853,6 +865,8 @@ export function BrowsePage() {
           wishlistedIds={currentWishlistedIds}
           onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
         />
+      ) : activeTab === "chain" ? (
+        <ChainMatchSection />
       ) : activeTab === "discover" ? (
         <div className="space-y-8">
           {featuredListings && featuredListings.length > 0 && (

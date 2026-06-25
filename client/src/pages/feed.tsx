@@ -408,33 +408,43 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
       )}
 
       <div className="space-y-4 pt-2 border-t">
-        <p className="text-xs font-semibold flex items-center gap-1.5">
-          <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
-          Propose what you want to offer in exchange
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold flex items-center gap-1.5">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+            Propose what you want to offer in exchange
+          </p>
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+            Items &amp; services only · no cash
+          </span>
+        </div>
 
-        {/* Name + value */}
-        <div className="flex items-center gap-2">
+        {/* Item name — required first */}
+        <div className="space-y-1">
           <Input
             value={offerName}
             onChange={(e) => setOfferName(e.target.value)}
-            placeholder="What are you offering? (e.g. Photography Package)"
-            className="text-sm flex-1"
+            placeholder="What are you offering? (e.g. Photography Package, iPhone 14)"
+            className="text-sm"
             data-testid={`input-offer-name-${postId}`}
           />
-          <div className="relative flex-shrink-0 w-32">
+          <p className="text-[11px] text-muted-foreground">Name the item or service — value field unlocks after</p>
+        </div>
+
+        {/* Value — only shows once item name has content */}
+        {offerName.trim() && (
+          <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
             <Input
               type="number"
               value={offerValue}
               onChange={(e) => setOfferValue(e.target.value)}
-              placeholder="Value"
+              placeholder="Estimated value of your item"
               className="text-sm pl-10"
               min="1"
               data-testid={`input-offer-value-${postId}`}
             />
           </div>
-        </div>
+        )}
 
         {/* Description */}
         <Textarea
@@ -1694,31 +1704,41 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
       {/* Propose form — non-owners only, shown when compose is toggled */}
       {canPropose && showCompose && (
         <div className="pt-2 border-t border-bareter-border space-y-3">
-          <p className="text-xs font-semibold text-bareter-navy dark:text-foreground flex items-center gap-1.5">
-            <ArrowRightLeft className="h-3.5 w-3.5 text-bareter-teal" />
-            Propose a Barter
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-bareter-navy dark:text-foreground flex items-center gap-1.5">
+              <ArrowRightLeft className="h-3.5 w-3.5 text-bareter-teal" />
+              Propose a Barter
+            </p>
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+              Items &amp; services only · no cash
+            </span>
+          </div>
 
-          {/* Name + value */}
-          <div className="flex gap-2">
+          {/* Item name — required first */}
+          <div className="space-y-1">
             <Input
               value={offerName}
               onChange={(e) => setOfferName(e.target.value)}
-              placeholder="What are you offering?"
-              className="text-sm flex-1 h-9"
+              placeholder="What are you offering? (e.g. iPhone 14, Photography Package)"
+              className="text-sm h-9"
             />
-            <div className="relative flex-shrink-0 w-28">
+            <p className="text-[11px] text-muted-foreground">Name the item or service — value field unlocks after</p>
+          </div>
+
+          {/* Value — only unlocks once item name is filled */}
+          {offerName.trim() && (
+            <div className="relative">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
               <Input
                 type="number"
                 value={offerValue}
                 onChange={(e) => setOfferValue(e.target.value)}
-                placeholder="Value"
+                placeholder="Estimated value of your item"
                 className="text-sm pl-10 h-9"
                 min="1"
               />
             </div>
-          </div>
+          )}
 
           {/* Description */}
           <Textarea

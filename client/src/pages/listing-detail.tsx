@@ -73,6 +73,7 @@ import type { ExchangeItem } from "@shared/schema";
 import { getDeliverablesForListing, type DeliverableItem } from "@shared/deliverables";
 import { ShareMenu } from "@/components/share-menu";
 import { ReportModal } from "@/components/report-modal";
+import { InstantMatchSheet } from "@/components/instant-match-sheet";
 import { timeAgo, formatValue } from "@/lib/utils";
 import { ValueMatchBadge } from "@/components/ValueMatchBadge";
 import { ReviewModal } from "@/components/ReviewModal";
@@ -911,8 +912,11 @@ export function ListingDetailPage() {
             </div>
 
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="text-3xl md:text-4xl font-bold text-bareter-teal" data-testid="text-listing-detail-price">
-                AED {parseFloat(listing.retailValue as string).toLocaleString()}
+              <div data-testid="text-listing-detail-price">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">Estimated value · barter only</p>
+                <span className="text-3xl md:text-4xl font-bold text-bareter-teal">
+                  AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                </span>
               </div>
               {(listing as any).valueFlagged && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
@@ -939,7 +943,7 @@ export function ListingDetailPage() {
                     >
                       <Package className="h-3.5 w-3.5" />
                       {listing.title}
-                      <span className="opacity-80">AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
+                      <span className="opacity-80">est. AED {parseFloat(listing.retailValue as string).toLocaleString()}</span>
                     </span>
                   </div>
 
@@ -1455,33 +1459,43 @@ export function ListingDetailPage() {
 
               {user && !isOwnListing && (user.kycStatus === "APPROVED" || user.kybStatus === "APPROVED" || user.isVerified || !!(user as any).phoneVerified) && (
                 <div className="space-y-4 pt-3 border-t">
-                  <p className="text-sm font-semibold flex items-center gap-2">
-                    <ArrowRightLeft className="h-4 w-4 text-primary" />
-                    {t("listingDetail.proposeWhatYouOffer")}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      <ArrowRightLeft className="h-4 w-4 text-primary" />
+                      {t("listingDetail.proposeWhatYouOffer")}
+                    </p>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                      Items &amp; services only · no cash
+                    </span>
+                  </div>
 
-                  {/* Offer name + value */}
-                  <div className="flex items-center gap-2">
+                  {/* Offer name */}
+                  <div className="space-y-1">
                     <Input
                       value={commentOfferName}
                       onChange={(e) => setCommentOfferName(e.target.value)}
                       placeholder={t("listingDetail.whatAreYouOffering")}
-                      className="text-sm flex-1"
+                      className="text-sm"
                       data-testid="input-comment-offer-name"
                     />
-                    <div className="relative flex-shrink-0 w-32">
+                    <p className="text-[11px] text-muted-foreground">Name the item or service you're offering — e.g. "iPhone 14 Pro", "Photography Package"</p>
+                  </div>
+
+                  {/* Value — only unlocks once item name is filled */}
+                  {commentOfferName.trim() && (
+                    <div className="relative w-full">
                       <span className="absolute start-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">AED</span>
                       <Input
                         type="number"
                         value={commentOfferValue}
                         onChange={(e) => setCommentOfferValue(e.target.value)}
-                        placeholder="Value"
+                        placeholder="Estimated value of your item"
                         className="text-sm ps-10"
                         min="1"
                         data-testid="input-comment-offer-value"
                       />
                     </div>
-                  </div>
+                  )}
 
                   {/* Offer description */}
                   <div>
@@ -1710,8 +1724,11 @@ export function ListingDetailPage() {
                   </>
                 ) : (
                   <>
-                    <div className="text-3xl md:text-4xl font-bold text-bareter-teal">
-                      AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">Estimated value · barter only</p>
+                      <span className="text-3xl md:text-4xl font-bold text-bareter-teal">
+                        AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                      </span>
                     </div>
                     {listing.location && (
                       <div className="inline-flex items-center gap-1 text-sm text-bareter-muted">
@@ -1759,6 +1776,7 @@ export function ListingDetailPage() {
                       )}
                       {inquirySent ? t("listingDetail.inquirySent") : t("listingDetail.isStillAvailable")}
                     </Button>
+                    <InstantMatchSheet listingId={listing.id} />
                   </>
                 )}
               </CardContent>
@@ -1981,11 +1999,12 @@ export function ListingDetailPage() {
 
           {isOwnListing && (
             <Card className="rounded-bareter-card border-bareter-border shadow-bareter-card">
-              <CardContent className="p-4 text-center">
-                <p className="text-sm text-bareter-muted">{t("listingDetail.thisIsYourListing")}</p>
-                <Button variant="bareter-outline" className="mt-2 w-full" data-testid="button-edit-listing" onClick={() => navigate(`/dashboard?tab=listings&edit=${listing.id}`)}>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-sm text-bareter-muted text-center">{t("listingDetail.thisIsYourListing")}</p>
+                <Button variant="bareter-outline" className="w-full" data-testid="button-edit-listing" onClick={() => navigate(`/dashboard?tab=listings&edit=${listing.id}`)}>
                   {t("listingDetail.editListing")}
                 </Button>
+                <InstantMatchSheet listingId={listing.id} />
               </CardContent>
             </Card>
           )}

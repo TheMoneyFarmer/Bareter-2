@@ -68,7 +68,6 @@ const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default
 const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ default: m.PostDetailPage })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
-
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
 initPostHog();
 

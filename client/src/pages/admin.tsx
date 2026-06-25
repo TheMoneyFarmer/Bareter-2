@@ -52,7 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
+import { queryClient, apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report, DisputeWithParties, AdminAuditLog, FailedLoginAttempt } from "@shared/schema";
 import { CATEGORIES, COUNTRIES } from "@shared/schema";
 import {
@@ -115,6 +115,8 @@ import {
   Camera,
   Zap,
   TrendingUp,
+  Coins,
+  Trophy,
   Instagram,
   Globe,
   MapPin,
@@ -122,6 +124,7 @@ import {
   Percent,
   Wallet,
   ListChecks,
+  Sun,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -146,7 +149,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats";
 
 type WaitlistEntryRow = {
   id: number;
@@ -288,6 +291,8 @@ export function AdminPage() {
     open: false, listing: null, categories: [], retailValue: "",
   });
   const [disputeStatusFilter, setDisputeStatusFilter] = useState<string>("all");
+  const [reportStatusFilter, setReportStatusFilter] = useState<string>("all");
+  const [reportTypeFilter, setReportTypeFilter] = useState<string>("all");
   const [selectedDispute, setSelectedDispute] = useState<DisputeWithParties | null>(null);
   const [disputeDecisionDialog, setDisputeDecisionDialog] = useState<{ open: boolean; dispute: DisputeWithParties | null; decision: string; reasoning: string; outcome: string }>({
     open: false, dispute: null, decision: "", reasoning: "", outcome: "",
@@ -380,6 +385,35 @@ export function AdminPage() {
     staleTime: 0,
   });
 
+  interface MorningPendingListing { id: string; title: string; category: string | null; retailValue: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
+  interface MorningPendingVerif { id: string; email: string; fullName: string; accountType: string | null; verificationStatus: string | null; createdAt: string | null }
+  interface MorningReport { id: string; targetType: string; reason: string; status: string; createdAt: string | null }
+  interface MorningDispute { id: string; subject: string; status: string; partyAId: string; partyBId: string; createdAt: string | null }
+  interface MorningSupportTicket { id: string; ticketNumber: string; subject: string; category: string; priority: string; status: string; requesterEmail: string | null; requesterName: string | null; createdAt: string | null; lastActivityAt: string | null }
+  interface MorningFlaggedPost { id: string; caption: string; postType: string | null; moderationStatus: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
+  interface MorningStaleDeals { id: string; dealNumber: string; state: string; seekerOffer: string; providerOffer: string; updatedAt: string | null; createdAt: string | null }
+  interface MorningMultiReportedUser { userId: string; email: string | null; fullName: string | null; reportCount: number }
+  interface MorningCheckData {
+    pendingListings: MorningPendingListing[];
+    autoBlockedQueue: ModerationLogEntry[];
+    pendingVerifications: MorningPendingVerif[];
+    openReports: MorningReport[];
+    openDisputes: MorningDispute[];
+    openSupportTickets: MorningSupportTicket[];
+    unrespondedTickets: MorningSupportTicket[];
+    flaggedPosts: MorningFlaggedPost[];
+    staleDeals: MorningStaleDeals[];
+    multiReportedUsers: MorningMultiReportedUser[];
+    stats: { newUsers24h: number; newListings24h: number; newDeals24h: number; completedDeals24h: number; activeUsers24h: number };
+  }
+
+  const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
+    queryKey: ["/api/admin/morning-check"],
+    enabled: activeSection === "queue" && !!user?.isAdmin,
+    staleTime: 0,
+    refetchInterval: 7 * 60 * 60 * 1000,
+  });
+
   const { data: listingDraftsData, isLoading: listingDraftsLoading } = useQuery<{
     id: string; title: string | null; userId: string; userFullName: string | null; userEmail: string | null; createdAt: string; updatedAt: string;
   }[]>({
@@ -412,6 +446,57 @@ export function AdminPage() {
     queryKey: ["/api/admin/analytics/funnel"],
     enabled: !!user?.isAdmin,
     staleTime: 0,
+  });
+
+  // ── New Feature queries ────────────────────────────────────────────────────
+  interface FeatureStats {
+    bulkListingsActive: number; successStoriesPending: number; successStoriesApproved: number;
+    digestEmailsSent: number; digestEmailsLast7d: number; digestAvgMatches: number;
+    whatsappOptIns: number; whatsappTotal: number; instantMatchCalls: number;
+  }
+  const { data: featureStats, isLoading: featureStatsLoading, refetch: refetchFeatureStats } = useQuery<FeatureStats>({
+    queryKey: ["/api/admin/features/stats"],
+    enabled: activeSection === "feature-stats" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  interface AdminBarterCredit { id: string; userId: string; balanceAed: string; lifetimeEarnedAed: string; updatedAt: string | null; userEmail: string | null; userName: string | null }
+  const { data: barterCreditsData, isLoading: creditsLoading, refetch: refetchCredits } = useQuery<AdminBarterCredit[]>({
+    queryKey: ["/api/admin/barter-credits"],
+    enabled: activeSection === "barter-credits" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  interface AdminSuccessStory { id: string; dealId: string; authorId: string; partnerId: string; caption: string | null; imageUrl: string | null; seekerItem: string | null; providerItem: string | null; isFeatured: boolean; status: string; createdAt: string | null; authorName: string | null; partnerName: string | null }
+  const [storyStatusFilter, setStoryStatusFilter] = useState("all");
+  const { data: successStoriesData, isLoading: storiesLoading, refetch: refetchStories } = useQuery<AdminSuccessStory[]>({
+    queryKey: ["/api/admin/success-stories", storyStatusFilter],
+    enabled: activeSection === "success-stories" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const updateStoryMutation = useMutation({
+    mutationFn: async ({ id, status, isFeatured }: { id: string; status?: string; isFeatured?: boolean }) =>
+      apiRequest("PATCH", `/api/admin/success-stories/${id}/status`, { status, isFeatured }),
+    onSuccess: () => { refetchStories(); toast({ title: "Story updated" }); },
+  });
+
+  const [creditAdjustUserId, setCreditAdjustUserId] = useState("");
+  const [creditAdjustAmount, setCreditAdjustAmount] = useState("");
+  const [creditAdjustNote, setCreditAdjustNote] = useState("");
+  const adjustCreditMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", `/api/admin/barter-credits/${creditAdjustUserId}/adjust`, {
+      amount: parseFloat(creditAdjustAmount), note: creditAdjustNote,
+    }),
+    onSuccess: () => { refetchCredits(); setCreditAdjustAmount(""); setCreditAdjustNote(""); toast({ title: "Credits adjusted" }); },
+    onError: () => toast({ title: "Error adjusting credits", variant: "destructive" }),
+  });
+
+  const [digestSending, setDigestSending] = useState(false);
+  const sendDigestMutation = useMutation({
+    mutationFn: async (userId?: string) => apiRequest("POST", "/api/admin/match-digest/send", userId ? { userId } : {}),
+    onSuccess: (data: any) => { toast({ title: `Digest sent to ${data?.sent ?? 0} users` }); setDigestSending(false); refetchFeatureStats(); },
+    onError: () => { toast({ title: "Digest send failed", variant: "destructive" }); setDigestSending(false); },
   });
 
   const { data: emailStats } = useQuery<{ total: number; sent: number; failed: number }>({
@@ -583,6 +668,7 @@ export function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
       toast({ title: "Success", description: "Listing approved" });
     },
   });
@@ -593,8 +679,29 @@ export function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
       setRejectDialog({ open: false, listingId: null, reason: "" });
       toast({ title: "Success", description: "Listing rejected and user notified" });
+    },
+  });
+
+  const approvePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      await apiRequest("PATCH", `/api/admin/posts/${postId}/approve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
+      toast({ title: "Success", description: "Post approved" });
+    },
+  });
+
+  const rejectPostMutation = useMutation({
+    mutationFn: async ({ postId, reason }: { postId: string; reason: string }) => {
+      await apiRequest("PATCH", `/api/admin/posts/${postId}/reject`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/morning-check"] });
+      toast({ title: "Success", description: "Post rejected" });
     },
   });
 
@@ -1054,6 +1161,7 @@ export function AdminPage() {
     if (listingStatusFilter === "paused" && (l.isActive || isDeleted)) return false;
     if (listingStatusFilter === "inactive" && l.isActive) return false;
     if (listingStatusFilter === "pending" && l.moderationStatus !== "pending") return false;
+    if (listingStatusFilter === "approved" && l.moderationStatus !== "approved") return false;
     if (listingStatusFilter === "flagged" && l.moderationStatus !== "flagged" && !l.valueFlagged && !l.imageFlagged) return false;
     if (listingStatusFilter === "rejected" && l.moderationStatus !== "rejected") return false;
     if (listingStatusFilter === "featured" && !l.isFeatured) return false;
@@ -1075,6 +1183,8 @@ export function AdminPage() {
   }).sort((a, b) => {
     if (listingSortBy === "value_desc") return parseFloat(b.retailValue || "0") - parseFloat(a.retailValue || "0");
     if (listingSortBy === "value_asc") return parseFloat(a.retailValue || "0") - parseFloat(b.retailValue || "0");
+    if (listingSortBy === "proposals_desc") return ((b as any).proposalCount ?? 0) - ((a as any).proposalCount ?? 0);
+    if (listingSortBy === "views_desc") return ((b as any).viewCount ?? 0) - ((a as any).viewCount ?? 0);
     const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return listingSortBy === "date_asc" ? aT - bT : bT - aT;
@@ -1100,26 +1210,34 @@ export function AdminPage() {
     return dealSortBy === "date_asc" ? aT - bT : bT - aT;
   });
 
-  const navItems = [
-    { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-    { id: "users" as const, label: "Users", icon: Users },
-    { id: "listings" as const, label: "Listings", icon: Package },
-    { id: "deals" as const, label: "Deals", icon: Handshake },
-    { id: "disputes" as const, label: "Disputes", icon: Gavel },
-    { id: "reports" as const, label: "Reports", icon: Flag },
-    { id: "flags" as const, label: "Flags", icon: AlertTriangle },
-    { id: "logs" as const, label: "Logs", icon: ScrollText },
-    { id: "waitlist" as const, label: "Waitlist", icon: Sparkles },
-    { id: "feature-waitlist" as const, label: "Feature Waitlists", icon: Sparkles },
-    { id: "intl-waitlist" as const, label: "Intl. Waitlist", icon: Globe },
-    { id: "legal" as const, label: "Legal", icon: ScrollText },
-    { id: "email" as const, label: "Email", icon: Mail },
-    { id: "support" as const, label: "Support", icon: MessageSquare },
-    { id: "reviews" as const, label: "Reviews", icon: Star },
-    { id: "creators" as const, label: "Creators", icon: Camera },
-    { id: "collabs" as const, label: "Collabs", icon: Zap },
-    { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
-    { id: "settings" as const, label: "Settings", icon: Settings },
+  const pendingModerationCount = (listings || []).filter(l => l.moderationStatus === "pending").length;
+  const pendingVerifCount = (users || []).filter(u => u.verificationStatus === "submitted").length;
+  const morningBadge = pendingModerationCount + pendingVerifCount;
+
+  const navItems: { id: AdminSection; label: string; icon: React.ElementType; badge?: number }[] = [
+    { id: "queue", label: "Daily Queue", icon: ClipboardList, badge: morningBadge > 0 ? morningBadge : undefined },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "users", label: "Users", icon: Users },
+    { id: "listings", label: "Listings", icon: Package },
+    { id: "deals", label: "Deals", icon: Handshake },
+    { id: "disputes", label: "Disputes", icon: Gavel },
+    { id: "reports", label: "Reports", icon: Flag },
+    { id: "flags", label: "Flags", icon: AlertTriangle },
+    { id: "logs", label: "Logs", icon: ScrollText },
+    { id: "waitlist", label: "Waitlist", icon: Sparkles },
+    { id: "feature-waitlist", label: "Feature Waitlists", icon: Sparkles },
+    { id: "intl-waitlist", label: "Intl. Waitlist", icon: Globe },
+    { id: "legal", label: "Legal", icon: ScrollText },
+    { id: "email", label: "Email", icon: Mail },
+    { id: "support", label: "Support", icon: MessageSquare },
+    { id: "reviews", label: "Reviews", icon: Star },
+    { id: "creators", label: "Creators", icon: Camera },
+    { id: "collabs", label: "Collabs", icon: Zap },
+    { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "feature-stats", label: "Feature Hub", icon: Zap },
+    { id: "barter-credits", label: "Barter Credits", icon: Coins },
+    { id: "success-stories", label: "Success Stories", icon: Trophy },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   const categoryData = analytics?.categoryStats
@@ -1160,6 +1278,7 @@ export function AdminPage() {
     userStatusFilter?: string;
     userCountryFilter?: string;
     userSortBy?: string;
+    listingStatusFilter?: string;
     listingValueFilter?: string;
     listingCountryFilter?: string;
     listingSortBy?: string;
@@ -1167,12 +1286,14 @@ export function AdminPage() {
     dealSortBy?: string;
     dateRangeFilter?: DateRangeFilter;
   }) => {
+    setSearchQuery("");
     setDateRangeFilter(opts?.dateRangeFilter ?? "all");
     setCustomDateFrom("");
     setCustomDateTo("");
     setUserStatusFilter(opts?.userStatusFilter ?? "all");
     setUserCountryFilter(opts?.userCountryFilter ?? "all");
     setUserSortBy(opts?.userSortBy ?? "date_desc");
+    setListingStatusFilter(opts?.listingStatusFilter ?? "all");
     setListingValueFilter(opts?.listingValueFilter ?? "all");
     setListingCountryFilter(opts?.listingCountryFilter ?? "all");
     setListingSortBy(opts?.listingSortBy ?? "date_desc");
@@ -1524,24 +1645,36 @@ export function AdminPage() {
     toast({ title: "Exporting", description: "CSV download started" });
   };
 
-  const renderUsers = () => (
+  const renderUsers = () => {
+    const bannedCount = (users ?? []).filter(u => u.isBanned).length;
+    const pendingCount = (users ?? []).filter(u => (u.kycStatus === "PENDING" || u.kybStatus === "PENDING") && !u.isBanned).length;
+    const unverifiedCount = (users ?? []).filter(u => !u.isVerified && !u.isBanned && u.kycStatus !== "PENDING" && u.kybStatus !== "PENDING").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Users Management</h2>
-          <p className="text-muted-foreground">Manage registered users and verification status</p>
+          <p className="text-muted-foreground">
+            Manage registered users and verification status
+            {filteredUsers && users && filteredUsers.length !== users.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredUsers.length.toLocaleString()} of {users.length.toLocaleString()}</span>
+            )}
+            {filteredUsers && users && filteredUsers.length === users.length && users.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{users.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-user-status-filter">
+            <SelectTrigger className="w-[170px]" data-testid="select-user-status-filter">
               <SelectValue placeholder="Filter status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Users</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="banned">Banned</SelectItem>
-              <SelectItem value="pending">Pending Verification</SelectItem>
-              <SelectItem value="unverified">Unverified</SelectItem>
+              <SelectItem value="banned">Banned {bannedCount > 0 && `(${bannedCount})`}</SelectItem>
+              <SelectItem value="pending">Pending Verification {pendingCount > 0 && `(${pendingCount})`}</SelectItem>
+              <SelectItem value="unverified">Unverified {unverifiedCount > 0 && `(${unverifiedCount})`}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={userAccountTypeFilter} onValueChange={setUserAccountTypeFilter}>
@@ -1663,14 +1796,17 @@ export function AdminPage() {
       </Dialog>
 
       {selectedUserIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg">
-          <span className="text-sm font-medium">{selectedUserIds.size} selected</span>
-          <div className="flex items-center gap-2 ml-2">
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-primary/5 border border-primary/20 rounded-lg flex-wrap">
+          <span className="text-sm font-medium">{selectedUserIds.size} user{selectedUserIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex items-center gap-2 ml-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "ban" })} disabled={bulkUserMutation.isPending}>
               <Ban className="h-3.5 w-3.5 mr-1.5" />Ban
             </Button>
             <Button size="sm" variant="outline" onClick={() => bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "unban" })} disabled={bulkUserMutation.isPending}>
               <UserCheck className="h-3.5 w-3.5 mr-1.5" />Unban
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setActiveSection("email"); toast({ title: `${selectedUserIds.size} users selected`, description: "Use the broadcast tool to email this group. Apply your filters there to match the same audience." }); }}>
+              <Mail className="h-3.5 w-3.5" />Email {selectedUserIds.size}
             </Button>
             <Button size="sm" variant="destructive" onClick={() => { if (confirm(`Delete ${selectedUserIds.size} user(s) permanently? This cannot be undone.`)) bulkUserMutation.mutate({ ids: Array.from(selectedUserIds), action: "delete" }); }} disabled={bulkUserMutation.isPending}>
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete
@@ -1867,14 +2003,27 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
-  const renderListings = () => (
+  const renderListings = () => {
+    const approvedCount = (listings ?? []).filter(l => l.moderationStatus === "approved").length;
+    const pendingListCount = (listings ?? []).filter(l => l.moderationStatus === "pending").length;
+    const flaggedCount = (listings ?? []).filter(l => l.moderationStatus === "flagged" || l.valueFlagged || l.imageFlagged).length;
+    const rejectedCount = (listings ?? []).filter(l => l.moderationStatus === "rejected").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Listings Management</h2>
-          <p className="text-muted-foreground">View and moderate all platform listings</p>
+          <p className="text-muted-foreground">
+            View and moderate all platform listings
+            {filteredListings && listings && filteredListings.length !== listings.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredListings.length.toLocaleString()} of {listings.length.toLocaleString()}</span>
+            )}
+            {filteredListings && listings && filteredListings.length === listings.length && listings.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{listings.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={listingStatusFilter} onValueChange={setListingStatusFilter}>
@@ -1883,12 +2032,14 @@ export function AdminPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="approved">Approved {approvedCount > 0 && `(${approvedCount})`}</SelectItem>
+              <SelectItem value="pending">Pending {pendingListCount > 0 && `(${pendingListCount})`}</SelectItem>
+              <SelectItem value="flagged">Flagged {flaggedCount > 0 && `(${flaggedCount})`}</SelectItem>
+              <SelectItem value="rejected">Rejected {rejectedCount > 0 && `(${rejectedCount})`}</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="flagged">Flagged</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
               <SelectItem value="featured">Featured</SelectItem>
+              <SelectItem value="deleted">Deleted</SelectItem>
             </SelectContent>
           </Select>
           <Select value={listingCategoryFilter} onValueChange={setListingCategoryFilter}>
@@ -1942,7 +2093,7 @@ export function AdminPage() {
           )}
           {renderDateRangeFilter()}
           <Select value={listingSortBy} onValueChange={setListingSortBy}>
-            <SelectTrigger className="w-[150px]" data-testid="select-listing-sort">
+            <SelectTrigger className="w-[160px]" data-testid="select-listing-sort">
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -1950,6 +2101,8 @@ export function AdminPage() {
               <SelectItem value="date_asc">Oldest First</SelectItem>
               <SelectItem value="value_desc">Highest Value</SelectItem>
               <SelectItem value="value_asc">Lowest Value</SelectItem>
+              <SelectItem value="proposals_desc">Most Proposals</SelectItem>
+              <SelectItem value="views_desc">Most Views</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative w-64">
@@ -1962,6 +2115,10 @@ export function AdminPage() {
               data-testid="input-search-listings"
             />
           </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (listingStatusFilter !== "all") params.set("status", listingStatusFilter); if (listingCategoryFilter !== "all") params.set("category", listingCategoryFilter); window.open(`${API_BASE}/api/admin/listings/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Listings CSV download started" }); }} data-testid="button-export-listings-csv">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
@@ -2145,14 +2302,22 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
   const renderDeals = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Deals Management</h2>
-          <p className="text-muted-foreground">View all deals and their details</p>
+          <p className="text-muted-foreground">
+            View all deals and their details
+            {filteredDeals && deals && filteredDeals.length !== deals.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredDeals.length.toLocaleString()} of {deals.length.toLocaleString()}</span>
+            )}
+            {filteredDeals && deals && filteredDeals.length === deals.length && deals.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">{deals.length.toLocaleString()} total</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select value={dealStateFilter} onValueChange={setDealStateFilter}>
@@ -2314,6 +2479,7 @@ export function AdminPage() {
 
   const filteredDisputes = disputesData.filter(d => {
     if (disputeStatusFilter !== "all" && d.status !== disputeStatusFilter) return false;
+    if (!matchesDateRange(d.createdAt, dateRangeFilter, customDateFrom, customDateTo)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return d.subject.toLowerCase().includes(q) ||
@@ -2323,25 +2489,34 @@ export function AdminPage() {
     return true;
   });
 
-  const renderDisputes = () => (
+  const renderDisputes = () => {
+    const openCount = disputesData.filter(d => d.status === "open").length;
+    const mediationCount = disputesData.filter(d => d.status === "in_mediation").length;
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Disputes</h2>
-          <p className="text-muted-foreground">Manage disputes between parties</p>
+          <p className="text-muted-foreground">
+            Manage disputes between parties
+            {filteredDisputes.length !== disputesData.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredDisputes.length} of {disputesData.length}</span>
+            )}
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Select value={disputeStatusFilter} onValueChange={setDisputeStatusFilter}>
-            <SelectTrigger className="w-[140px]" data-testid="select-dispute-status-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-dispute-status-filter">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="in_mediation">In Mediation</SelectItem>
+              <SelectItem value="open">Open {openCount > 0 && `(${openCount})`}</SelectItem>
+              <SelectItem value="in_mediation">In Mediation {mediationCount > 0 && `(${mediationCount})`}</SelectItem>
               <SelectItem value="resolved">Resolved</SelectItem>
             </SelectContent>
           </Select>
+          {renderDateRangeFilter()}
           <Button onClick={() => setCreateDisputeDialog({ ...createDisputeDialog, open: true })} data-testid="button-create-dispute">
             Create Dispute
           </Button>
@@ -2455,7 +2630,7 @@ export function AdminPage() {
         </CardContent>
       </Card>
     </div>
-  );
+  );};
 
   const renderEmail = () => (
     <div className="space-y-6">
@@ -3365,6 +3540,280 @@ export function AdminPage() {
   const auditAdmins = Array.from(new Set(auditLogs.map(l => ({ id: l.adminId, email: l.adminEmail })).filter(a => a.email).map(a => JSON.stringify(a)))).map(s => JSON.parse(s) as { id: string; email: string });
   const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();
 
+  // ── Feature Hub ──────────────────────────────────────────────────────────────
+  const renderFeatureHub = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Feature Hub</h2>
+          <p className="text-muted-foreground">Analytics and controls for v2 features</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchFeatureStats()}>
+          <RefreshCw className="h-4 w-4 mr-2" />Refresh
+        </Button>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Bulk Listings Active", value: featureStats?.bulkListingsActive, icon: Package, color: "text-blue-600", onClick: () => goToSection("listings") },
+          { label: "Stories Pending", value: featureStats?.successStoriesPending, icon: Trophy, color: "text-amber-600", onClick: () => setActiveSection("success-stories") },
+          { label: "Stories Approved", value: featureStats?.successStoriesApproved, icon: Trophy, color: "text-green-600", onClick: () => setActiveSection("success-stories") },
+          { label: "Digest Emails Sent", value: featureStats?.digestEmailsSent, icon: Mail, color: "", onClick: undefined },
+          { label: "Digests Last 7d", value: featureStats?.digestEmailsLast7d, icon: Mail, color: "text-primary", onClick: undefined },
+          { label: "Avg Matches/Email", value: featureStats?.digestAvgMatches, icon: TrendingUp, color: "", onClick: undefined },
+          { label: "WhatsApp Opt-ins", value: featureStats?.whatsappOptIns, icon: MessageSquare, color: "text-green-600", onClick: undefined },
+          { label: "Total WA Registered", value: featureStats?.whatsappTotal, icon: MessageSquare, color: "", onClick: undefined },
+          { label: "Instant Match Calls", value: featureStats?.instantMatchCalls, icon: Zap, color: "text-amber-500", onClick: undefined },
+        ].map(card => (
+          <Card key={card.label} className={card.onClick ? "cursor-pointer hover:shadow-md hover:border-primary/40 transition-all" : ""} onClick={card.onClick}>
+            <CardContent className="pt-4 pb-4">
+              <div className={`text-2xl font-bold ${card.color}`}>
+                {featureStatsLoading ? "…" : (card.value ?? "—")}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Match Digest Campaign */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="h-4 w-4" /> Smart Match Digest
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Send a weekly personalised email to all users with active listings, showing their top AI-matched trade opportunities.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              onClick={() => { setDigestSending(true); sendDigestMutation.mutate(undefined); }}
+              disabled={sendDigestMutation.isPending || digestSending}
+            >
+              {sendDigestMutation.isPending ? "Sending…" : "Send Digest to All Users"}
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 pt-2">
+            {[
+              { label: "Total sent", value: featureStats?.digestEmailsSent },
+              { label: "Last 7 days", value: featureStats?.digestEmailsLast7d },
+              { label: "Avg matches/email", value: featureStats?.digestAvgMatches },
+            ].map(s => (
+              <div key={s.label} className="text-center p-3 rounded-lg bg-muted/50">
+                <div className="text-xl font-bold">{featureStatsLoading ? "…" : (s.value ?? 0)}</div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* WhatsApp stats */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-green-600" /> WhatsApp Notifications
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 rounded-lg bg-green-50 dark:bg-green-950/20">
+              <div className="text-3xl font-bold text-green-600">{featureStats?.whatsappOptIns ?? 0}</div>
+              <div className="text-sm text-muted-foreground">Users opted in</div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/50">
+              <div className="text-3xl font-bold">{featureStats?.whatsappTotal ?? 0}</div>
+              <div className="text-sm text-muted-foreground">Total registered</div>
+            </div>
+          </div>
+          {(featureStats?.whatsappTotal ?? 0) > 0 && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Opt-in rate</span>
+                <span>{Math.round(((featureStats?.whatsappOptIns ?? 0) / (featureStats?.whatsappTotal ?? 1)) * 100)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{ width: `${Math.round(((featureStats?.whatsappOptIns ?? 0) / (featureStats?.whatsappTotal ?? 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Barter Credits Ledger ─────────────────────────────────────────────────
+  const renderBarterCredits = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Barter Credits</h2>
+          <p className="text-muted-foreground">View and adjust user barter credit balances</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetchCredits()}>
+          <RefreshCw className="h-4 w-4 mr-2" />Refresh
+        </Button>
+      </div>
+
+      {/* Adjust credits */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold">Manual Credit Adjustment</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              className="border rounded px-3 py-2 text-sm w-48"
+              placeholder="User ID"
+              value={creditAdjustUserId}
+              onChange={e => setCreditAdjustUserId(e.target.value)}
+            />
+            <input
+              className="border rounded px-3 py-2 text-sm w-32"
+              placeholder="Amount AED (±)"
+              type="number"
+              value={creditAdjustAmount}
+              onChange={e => setCreditAdjustAmount(e.target.value)}
+            />
+            <input
+              className="border rounded px-3 py-2 text-sm flex-1 min-w-40"
+              placeholder="Reason / note"
+              value={creditAdjustNote}
+              onChange={e => setCreditAdjustNote(e.target.value)}
+            />
+            <Button
+              size="sm"
+              onClick={() => adjustCreditMutation.mutate()}
+              disabled={adjustCreditMutation.isPending || !creditAdjustUserId || !creditAdjustAmount || !creditAdjustNote}
+            >
+              {adjustCreditMutation.isPending ? "Saving…" : "Apply"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* All balances */}
+      <Card>
+        <CardContent className="p-0">
+          {creditsLoading ? (
+            <div className="p-6 space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-3 font-medium text-muted-foreground">User</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Balance (AED)</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Lifetime Earned</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(barterCreditsData ?? []).map(row => (
+                  <tr key={row.id} className="border-b hover:bg-muted/30">
+                    <td className="p-3">
+                      <div className="font-medium">{row.userName ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{row.userEmail}</div>
+                    </td>
+                    <td className="p-3 text-right font-bold text-amber-600">AED {parseFloat(row.balanceAed).toFixed(2)}</td>
+                    <td className="p-3 text-right text-muted-foreground">AED {parseFloat(row.lifetimeEarnedAed).toFixed(2)}</td>
+                    <td className="p-3 text-right text-xs text-muted-foreground">
+                      {row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {(barterCreditsData ?? []).length === 0 && (
+                  <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No credits issued yet — they're awarded automatically when deals complete with a value imbalance.</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ── Success Stories ───────────────────────────────────────────────────────
+  const renderSuccessStories = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Success Stories</h2>
+          <p className="text-muted-foreground">Review and feature user trade stories</p>
+        </div>
+        <div className="flex gap-2">
+          {["all", "pending", "approved", "rejected"].map(s => (
+            <Button
+              key={s}
+              variant={storyStatusFilter === s ? "default" : "outline"}
+              size="sm"
+              onClick={() => setStoryStatusFilter(s)}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {storiesLoading
+          ? [...Array(6)].map((_, i) => <Skeleton key={i} className="h-48" />)
+          : (successStoriesData ?? []).length === 0
+          ? <p className="text-muted-foreground col-span-3 text-center py-12">No stories in this filter.</p>
+          : (successStoriesData ?? []).map(story => (
+            <Card key={story.id} className={`overflow-hidden ${story.isFeatured ? "ring-2 ring-amber-400" : ""}`}>
+              {story.imageUrl && (
+                <div className="h-36 bg-muted overflow-hidden">
+                  <img src={assetUrl(story.imageUrl)} alt="story" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">{story.authorName ?? "Unknown"} × {story.partnerName ?? "Unknown"}</p>
+                    <p className="text-xs text-muted-foreground">{story.seekerItem} ↔ {story.providerItem}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Badge variant={story.status === "approved" ? "default" : story.status === "rejected" ? "destructive" : "secondary"}>
+                      {story.status}
+                    </Badge>
+                    {story.isFeatured && <Badge className="bg-amber-100 text-amber-700">Featured</Badge>}
+                  </div>
+                </div>
+                {story.caption && <p className="text-xs text-muted-foreground line-clamp-3">{story.caption}</p>}
+                <div className="flex gap-1.5 flex-wrap">
+                  {story.status !== "approved" && (
+                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => updateStoryMutation.mutate({ id: story.id, status: "approved" })}>
+                      Approve
+                    </Button>
+                  )}
+                  {story.status !== "rejected" && (
+                    <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => updateStoryMutation.mutate({ id: story.id, status: "rejected" })}>
+                      Reject
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`h-7 text-xs ${story.isFeatured ? "text-amber-600 border-amber-300" : ""}`}
+                    onClick={() => updateStoryMutation.mutate({ id: story.id, isFeatured: !story.isFeatured })}
+                  >
+                    {story.isFeatured ? "Unfeature" : "Feature"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        }
+      </div>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -3690,14 +4139,50 @@ export function AdminPage() {
       return null;
     };
 
+    const filteredReports = (reportsData as any[]).filter(r => {
+      if (reportStatusFilter !== "all" && r.status !== reportStatusFilter) return false;
+      if (reportTypeFilter !== "all" && r.targetType !== reportTypeFilter) return false;
+      return true;
+    });
+    const pendingReportsCount = (reportsData as any[]).filter(r => r.status === "pending").length;
+    const actionedReportsCount = (reportsData as any[]).filter(r => r.status === "actioned").length;
+
     return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold mb-1">Reports</h2>
-          <p className="text-muted-foreground">User-submitted reports for review</p>
+          <p className="text-muted-foreground">
+            User-submitted reports for review
+            {filteredReports.length !== reportsData.length && (
+              <span className="ml-2 text-xs font-medium text-primary">Showing {filteredReports.length} of {reportsData.length}</span>
+            )}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={reportStatusFilter} onValueChange={setReportStatusFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending {pendingReportsCount > 0 && `(${pendingReportsCount})`}</SelectItem>
+              <SelectItem value="actioned">Actioned {actionedReportsCount > 0 && `(${actionedReportsCount})`}</SelectItem>
+              <SelectItem value="dismissed">Dismissed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={reportTypeFilter} onValueChange={setReportTypeFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="listing">Listing</SelectItem>
+              <SelectItem value="user">User</SelectItem>
+              <SelectItem value="post">Post</SelectItem>
+              <SelectItem value="deal">Deal</SelectItem>
+            </SelectContent>
+          </Select>
           <Input type="date" value={reportsExportFrom} onChange={(e) => setReportsExportFrom(e.target.value)} className="w-36 h-9 text-xs" placeholder="From" data-testid="input-reports-export-from" />
           <Input type="date" value={reportsExportTo} onChange={(e) => setReportsExportTo(e.target.value)} className="w-36 h-9 text-xs" placeholder="To" data-testid="input-reports-export-to" />
           <Button variant="outline" size="sm" className="gap-2" onClick={() => { const params = new URLSearchParams(); if (reportsExportFrom) params.set("from", reportsExportFrom); if (reportsExportTo) params.set("to", reportsExportTo); window.open(`/api/admin/reports/export.csv${params.toString() ? `?${params}` : ""}`, "_blank"); toast({ title: "Exporting", description: "Reports & disputes CSV download started" }); }} data-testid="button-export-reports-csv">
@@ -3707,10 +4192,10 @@ export function AdminPage() {
         </div>
       </div>
       <div className="space-y-3">
-        {reportsData.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">No reports submitted yet</CardContent></Card>
+        {filteredReports.length === 0 ? (
+          <Card><CardContent className="py-12 text-center text-muted-foreground">No reports found</CardContent></Card>
         ) : (
-          (reportsData as any[]).map((report) => {
+          filteredReports.map((report) => {
             const targetUrl = getTargetUrl(report);
             return (
               <Card key={report.id} className={report.status === "pending" ? "border-orange-200 dark:border-orange-900" : ""} data-testid={`row-report-${report.id}`}>
@@ -3914,6 +4399,8 @@ export function AdminPage() {
     reason: string;
     confidence: string | null;
     rawResponse: { categories?: string[] } | null;
+    triggeredBy: string | null;
+    reviewedByAdmin: boolean | null;
     createdAt: string | null;
   }
 
@@ -4432,65 +4919,172 @@ export function AdminPage() {
               </Card>
             </div>
 
+            {/* ── Auto-blocked review queue ── */}
+            {(() => {
+              const autoBlocked = (aiLogs?.moderationLogs || []).filter(l =>
+                l.triggeredBy === "auto_ai" &&
+                (l.action === "flagged" || l.action === "rejected") &&
+                !l.reviewedByAdmin &&
+                inDate(l.createdAt)
+              );
+              return autoBlocked.length > 0 ? (
+                <Card className="border-amber-300 dark:border-amber-700">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <CardTitle className="text-base text-amber-700 dark:text-amber-400">
+                        Auto-blocked — Needs Review ({autoBlocked.length})
+                      </CardTitle>
+                      <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">AI flagged · unreviewed</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      These listings were automatically blocked by the moderation engine. Review and approve or confirm rejection.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Override</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {autoBlocked.map(log => (
+                          <TableRow key={log.id} className="bg-amber-50/50 dark:bg-amber-950/20">
+                            <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
+                            <TableCell>
+                              <Badge variant={log.action === "rejected" ? "destructive" : "secondary"}>
+                                {log.action}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[240px] text-xs text-muted-foreground">{log.reason}</TableCell>
+                            <TableCell className="text-sm font-medium">
+                              {log.confidence ? (
+                                <span className={parseFloat(log.confidence) < 0.6 ? "text-amber-600" : "text-red-600"}>
+                                  {Math.round(parseFloat(log.confidence) * 100)}%
+                                </span>
+                              ) : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "—"}
+                            </TableCell>
+                            <TableCell>
+                              {log.targetType === "listing" && (
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                                    onClick={() => approveListingMutation.mutate(log.targetId)}
+                                    disabled={approveListingMutation.isPending}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                                    onClick={() => setRejectDialog({ open: true, listingId: log.targetId, reason: "" })}
+                                  >
+                                    Confirm Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              ) : null;
+            })()}
+
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="text-base">Moderation Logs</CardTitle>
-                  <div className="flex gap-1">
-                    {(["all", "approved", "flagged", "rejected"] as const).map(f => (
-                      <Button key={f} variant={aiLogFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
-                        data-testid={`btn-filter-moderation-${f}`} onClick={() => setAiLogFilter(f)}>{f}</Button>
-                    ))}
+                  <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-1">
+                      {(["all", "approved", "flagged", "rejected"] as const).map(f => (
+                        <Button key={f} variant={aiLogFilter === f ? "default" : "outline"} size="sm" className="text-xs h-7 capitalize"
+                          data-testid={`btn-filter-moderation-${f}`} onClick={() => setAiLogFilter(f)}>{f}</Button>
+                      ))}
+                    </div>
+                    <Button
+                      variant={aiLogFilter === ("auto_blocked" as any) ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs h-7 border-amber-400 text-amber-700"
+                      onClick={() => setAiLogFilter("auto_blocked" as any)}
+                    >
+                      Auto-blocked only
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                {fMod.length === 0 ? (
-                  <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>Categories</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Confidence</TableHead>
-                        <TableHead>Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fMod.map(log => {
-                        const cats: string[] = log.rawResponse?.categories ?? [];
-                        return (
-                          <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
-                            <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
-                            <TableCell>
-                              <Badge variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}>
-                                {log.action}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {cats.length === 0
-                                  ? <span className="text-xs text-muted-foreground">—</span>
-                                  : cats.map(cat => (
-                                    <Badge key={cat} variant="outline" className={`text-xs ${cat === "off_platform" ? "border-amber-500/60 text-amber-600" : cat === "cash_price" ? "border-red-400/60 text-red-600" : ""}`}
-                                      data-testid={`badge-category-${log.id}-${cat}`}>{cat}</Badge>
-                                  ))}
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
-                            <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
+                {(() => {
+                  const displayed = aiLogFilter === ("auto_blocked" as any)
+                    ? fMod.filter(l => l.triggeredBy === "auto_ai" && (l.action === "flagged" || l.action === "rejected"))
+                    : fMod;
+                  return displayed.length === 0 ? (
+                    <p className="text-muted-foreground text-sm py-4 text-center">No moderation logs</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Categories</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead>Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {displayed.map(log => {
+                          const cats: string[] = log.rawResponse?.categories ?? [];
+                          return (
+                            <TableRow key={log.id} data-testid={`row-moderation-${log.id}`}>
+                              <TableCell><Badge variant="outline">{log.targetType}</Badge></TableCell>
+                              <TableCell>
+                                <Badge variant={log.action === "approved" ? "default" : log.action === "rejected" ? "destructive" : "secondary"}>
+                                  {log.action}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`text-xs ${log.triggeredBy === "auto_ai" ? "border-purple-400 text-purple-700" : "border-blue-400 text-blue-700"}`}>
+                                  {log.triggeredBy === "manual_admin" ? "admin" : "auto"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {cats.length === 0
+                                    ? <span className="text-xs text-muted-foreground">—</span>
+                                    : cats.map(cat => (
+                                      <Badge key={cat} variant="outline" className={`text-xs ${cat === "off_platform" ? "border-amber-500/60 text-amber-600" : cat === "cash_price" ? "border-red-400/60 text-red-600" : ""}`}
+                                        data-testid={`badge-category-${log.id}-${cat}`}>{cat}</Badge>
+                                    ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="max-w-[200px] truncate text-sm">{log.reason}</TableCell>
+                              <TableCell>{log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}%` : "N/A"}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : "N/A"}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
               </CardContent>
             </Card>
 
@@ -4705,8 +5299,602 @@ export function AdminPage() {
 
   const renderSupportSection = () => <AdminSupportSection />;
 
+  const renderMorningCheck = () => {
+    const pending = morningCheck?.pendingListings ?? [];
+    const blocked = morningCheck?.autoBlockedQueue ?? [];
+    const verifs = morningCheck?.pendingVerifications ?? [];
+    const openReps = morningCheck?.openReports ?? [];
+    const openDisps = morningCheck?.openDisputes ?? [];
+    const tickets = morningCheck?.openSupportTickets ?? [];
+    const unresponded = morningCheck?.unrespondedTickets ?? [];
+    const flaggedPosts = morningCheck?.flaggedPosts ?? [];
+    const staleDeals = morningCheck?.staleDeals ?? [];
+    const multiReported = morningCheck?.multiReportedUsers ?? [];
+    const stats = morningCheck?.stats;
+    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length + tickets.length + unresponded.length + flaggedPosts.length + multiReported.length;
+
+    return (
+      <div className="p-6 space-y-6 max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <ClipboardList className="h-6 w-6 text-primary" />
+              Daily Queue
+            </h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              {morningCheckLoading
+                ? "Loading queues…"
+                : totalQueue === 0
+                ? "All queues clear — nothing needs action right now."
+                : `${totalQueue} item${totalQueue !== 1 ? "s" : ""} need your attention`}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetchMorningCheck()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* ── Platform Overview (analytics summary) ─────────────────────── */}
+        {funnelData && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Platform Funnel</CardTitle>
+                <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => setActiveSection("analytics")}>
+                  Full analytics →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <div className="grid grid-cols-4 gap-0">
+                {[
+                  { label: "Waitlist", value: funnelData.waitlistCount, color: "text-blue-600", section: "waitlist" as AdminSection },
+                  { label: "Registered", value: funnelData.registeredCount, color: "text-teal-600", section: "users" as AdminSection },
+                  { label: "Listed", value: funnelData.listedCount, color: "text-amber-600", section: "listings" as AdminSection },
+                  { label: "Completed Deal", value: funnelData.dealtCount, color: "text-green-600", section: "deals" as AdminSection, opts: { dealStateFilter: "completed" } },
+                ].map((stage, i, arr) => (
+                  <div key={stage.label} className="flex items-center">
+                    <button
+                      className="flex-1 text-center p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => goToSection(stage.section, (stage as any).opts)}
+                    >
+                      <div className={`text-2xl font-bold ${stage.color}`}>{stage.value.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{stage.label}</div>
+                      {i > 0 && arr[i - 1].value > 0 && (
+                        <div className="text-[10px] text-muted-foreground/60">{Math.round((stage.value / arr[i - 1].value) * 100)}% conv.</div>
+                      )}
+                    </button>
+                    {i < arr.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* User growth sparkline */}
+        {userGrowth && userGrowth.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">User Growth — Last 30 days</CardTitle>
+                <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => goToSection("users", { dateRangeFilter: "month" })}>
+                  View users →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <LineChart width={740} height={80} data={userGrowth.slice(-30)} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                <RechartsTooltip
+                  contentStyle={{ fontSize: 11 }}
+                  formatter={(v: number) => [v, "New users"]}
+                  labelFormatter={(l: string) => new Date(l).toLocaleDateString()}
+                />
+              </LineChart>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Activity stats (last 24h) — all clickable ─────────────────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Last 24 hours</p>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Active users", value: stats?.activeUsers24h, color: "", section: "users" as AdminSection, opts: {} },
+              { label: "New signups", value: stats?.newUsers24h, color: "", section: "users" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "New listings", value: stats?.newListings24h, color: "", section: "listings" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "Deals started", value: stats?.newDeals24h, color: "", section: "deals" as AdminSection, opts: { dateRangeFilter: "today" as DateRangeFilter } },
+              { label: "Deals completed", value: stats?.completedDeals24h, color: "text-green-600", section: "deals" as AdminSection, opts: { dealStateFilter: "completed", dateRangeFilter: "today" as DateRangeFilter } },
+            ].map(card => (
+              <Card
+                key={card.label}
+                className="cursor-pointer hover:shadow-md hover:border-primary/40 transition-all"
+                onClick={() => goToSection(card.section, card.opts)}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className={`text-2xl font-bold ${card.color}`}>{card.value ?? "—"}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Action stats (items needing attention) — all clickable ─────── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Needs action</p>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Pending moderation", value: pending.length, color: "text-amber-600", section: "listings" as AdminSection, opts: { listingStatusFilter: "pending" } },
+              { label: "Auto-blocked", value: blocked.length, color: "text-red-600", section: "logs" as AdminSection, opts: {} },
+              { label: "Tickets waiting reply", value: unresponded.length, color: "text-orange-600", section: "support" as AdminSection, opts: {} },
+              { label: "Multi-reported users", value: multiReported.length, color: "text-red-700", section: "reports" as AdminSection, opts: {} },
+              { label: "Stale deals (7d+)", value: staleDeals.length, color: "text-yellow-600", section: "deals" as AdminSection, opts: { dealStateFilter: "active" } },
+            ].map(card => (
+              <Card
+                key={card.label}
+                className={`cursor-pointer hover:shadow-md hover:border-primary/40 transition-all ${card.value > 0 ? "ring-1 ring-inset ring-destructive/20" : ""}`}
+                onClick={() => goToSection(card.section, card.opts)}
+              >
+                <CardContent className="pt-4 pb-4">
+                  <div className={`text-2xl font-bold ${card.color}`}>{morningCheckLoading ? "…" : card.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* Queue 1: Pending listings */}
+        {pending.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="h-4 w-4 text-amber-600" />
+                Pending Listings
+                <Badge className="ml-1">{pending.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">New listings waiting for your approval before going live.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {pending.map((listing) => (
+                <div key={listing.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{listing.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {listing.userEmail ?? listing.userId} · {listing.category ?? "—"} · {listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                      onClick={() => approveListingMutation.mutate(listing.id)}
+                      disabled={approveListingMutation.isPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                      onClick={() => setRejectDialog({ open: true, listingId: listing.id, reason: "" })}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pending.length >= 30 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  Showing first 30 — <button className="underline" onClick={() => setActiveSection("listings")}>view all in Listings</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 2: Auto-blocked (AI) */}
+        {blocked.length > 0 && (
+          <Card className="border-amber-300 dark:border-amber-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+                Auto-blocked by AI
+                <Badge variant="outline" className="text-amber-600 border-amber-400 ml-1">{blocked.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">AI flagged these but wasn't confident — decide to override or confirm.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {blocked.map((log) => (
+                <div key={log.id} className="flex items-start justify-between p-3 border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50/40 dark:bg-amber-950/20">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant={log.action === "rejected" ? "destructive" : "secondary"} className="text-xs">{log.action}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {log.confidence ? `${Math.round(parseFloat(log.confidence) * 100)}% confidence` : ""}
+                      </span>
+                      <span className="text-xs text-muted-foreground">· {log.createdAt ? new Date(log.createdAt).toLocaleDateString() : ""}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{log.reason}</p>
+                  </div>
+                  {log.targetType === "listing" && (
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                        onClick={() => approveListingMutation.mutate(log.targetId)}
+                        disabled={approveListingMutation.isPending}
+                      >
+                        Override
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                        onClick={() => setRejectDialog({ open: true, listingId: log.targetId, reason: "" })}
+                      >
+                        Confirm
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {blocked.length >= 30 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  Showing first 30 — <button className="underline" onClick={() => setActiveSection("logs")}>view all in Logs → AI</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 3: Pending verifications */}
+        {verifs.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCheck className="h-4 w-4 text-blue-600" />
+                Pending Verifications
+                <Badge className="ml-1">{verifs.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Users who submitted verification documents.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {verifs.map((u) => (
+                <div key={u.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{u.email}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {u.fullName} · {u.accountType} · Joined {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => { setActiveSection("users"); setSearchQuery(u.email || ""); }}
+                  >
+                    Review
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 4: Open reports */}
+        {openReps.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Flag className="h-4 w-4 text-orange-600" />
+                Open Reports
+                <Badge variant="destructive" className="ml-1">{openReps.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">User-submitted reports waiting for action.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {openReps.slice(0, 10).map((report) => (
+                <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{report.reason}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.targetType} · {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("reports")}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+              {openReps.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{openReps.length - 10} more — <button className="underline" onClick={() => setActiveSection("reports")}>view all in Reports</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 5: Open disputes */}
+        {openDisps.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Gavel className="h-4 w-4 text-red-600" />
+                Open Disputes
+                <Badge variant="destructive" className="ml-1">{openDisps.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Active disputes needing admin mediation.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {openDisps.slice(0, 10).map((dispute) => (
+                <div key={dispute.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{dispute.subject}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: <span className="capitalize">{dispute.status.replace("_", " ")}</span> · {dispute.createdAt ? new Date(dispute.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("disputes")}
+                  >
+                    Review
+                  </Button>
+                </div>
+              ))}
+              {openDisps.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{openDisps.length - 10} more — <button className="underline" onClick={() => setActiveSection("disputes")}>view all in Disputes</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 6: Open support tickets */}
+        {tickets.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageSquare className="h-4 w-4 text-orange-600" />
+                Support Tickets
+                <Badge variant="destructive" className="ml-1">{tickets.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Open and in-progress tickets sorted by priority.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {tickets.slice(0, 15).map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        ticket.priority === "urgent" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
+                        ticket.priority === "high" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{ticket.priority}</span>
+                      <span className="text-xs text-muted-foreground">#{ticket.ticketNumber}</span>
+                    </div>
+                    <p className="font-medium text-sm truncate">{ticket.subject}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {ticket.requesterEmail ?? ticket.requesterName ?? "Unknown"} · {ticket.category} · {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("support")}
+                  >
+                    Reply
+                  </Button>
+                </div>
+              ))}
+              {tickets.length > 15 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{tickets.length - 15} more — <button className="underline" onClick={() => setActiveSection("support")}>view all in Support</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 7: Unresponded support tickets (ball in admin's court) */}
+        {unresponded.length > 0 && (
+          <Card className="border-orange-300 dark:border-orange-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-orange-700 dark:text-orange-400">
+                <MessageSquare className="h-4 w-4" />
+                Waiting for Your Reply
+                <Badge variant="destructive" className="ml-1">{unresponded.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">User sent a message 4h+ ago — no admin reply yet.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {unresponded.map((ticket) => (
+                <div key={ticket.id} className="flex items-center justify-between p-3 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/30 dark:bg-orange-950/20 hover:bg-orange-50/60">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        ticket.priority === "urgent" ? "bg-red-100 text-red-700" :
+                        ticket.priority === "high" ? "bg-orange-100 text-orange-700" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{ticket.priority}</span>
+                      <span className="text-xs text-muted-foreground">#{ticket.ticketNumber}</span>
+                    </div>
+                    <p className="font-medium text-sm truncate">{ticket.subject}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {ticket.requesterEmail ?? ticket.requesterName ?? "Unknown"} · Last activity: {ticket.lastActivityAt ? new Date(ticket.lastActivityAt).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="default" className="h-7 text-xs shrink-0" onClick={() => setActiveSection("support")}>
+                    Reply now
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 8: Multi-reported users */}
+        {multiReported.length > 0 && (
+          <Card className="border-red-300 dark:border-red-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-red-700 dark:text-red-400">
+                <AlertTriangle className="h-4 w-4" />
+                Multi-Reported Users
+                <Badge variant="destructive" className="ml-1">{multiReported.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">These users have 2+ pending reports in the last 7 days — likely a pattern.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {multiReported.map((u) => (
+                <div key={u.userId} className="flex items-center justify-between p-3 border border-red-200 dark:border-red-900 rounded-lg bg-red-50/30 dark:bg-red-950/20 hover:bg-red-50/60">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm truncate">{u.email ?? u.userId}</p>
+                    <p className="text-xs text-muted-foreground">{u.fullName ?? "—"} · <span className="font-semibold text-red-600">{u.reportCount} reports</span> in 7 days</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0 text-red-700 border-red-400"
+                    onClick={() => { setActiveSection("users"); setSearchQuery(u.email ?? ""); }}
+                  >
+                    Investigate
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 9: Flagged community posts */}
+        {flaggedPosts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Flag className="h-4 w-4 text-yellow-600" />
+                Flagged Posts
+                <Badge className="ml-1">{flaggedPosts.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Community posts caught by auto-moderation — approve or reject.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {flaggedPosts.slice(0, 12).map((post) => (
+                <div key={post.id} className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-sm truncate">{post.caption.length > 100 ? post.caption.slice(0, 100) + "…" : post.caption}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {post.userEmail ?? post.userId} · {post.postType ?? "post"} · {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                      onClick={() => approvePostMutation.mutate(post.id)}
+                      disabled={approvePostMutation.isPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                      onClick={() => rejectPostMutation.mutate({ postId: post.id, reason: "Rejected by admin" })}
+                      disabled={rejectPostMutation.isPending}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {flaggedPosts.length > 12 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{flaggedPosts.length - 12} more — <button className="underline" onClick={() => setActiveSection("logs")}>view all in Logs</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 10: Stale active deals */}
+        {staleDeals.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="h-4 w-4 text-yellow-600" />
+                Stale Deals (7+ days inactive)
+                <Badge variant="outline" className="ml-1">{staleDeals.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Active deals with no activity in over a week — users may be stuck.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {staleDeals.slice(0, 10).map((deal) => (
+                <div key={deal.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="font-medium text-sm">Deal #{deal.dealNumber}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {deal.seekerOffer} ↔ {deal.providerOffer}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      State: <span className="capitalize">{deal.state}</span> · Last update: {deal.updatedAt ? new Date(deal.updatedAt).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => setActiveSection("deals")}
+                  >
+                    View
+                  </Button>
+                </div>
+              ))}
+              {staleDeals.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{staleDeals.length - 10} more — <button className="underline" onClick={() => setActiveSection("deals")}>view all in Deals</button>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* All clear */}
+        {totalQueue === 0 && !morningCheckLoading && (
+          <div className="text-center py-20">
+            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold">All queues clear</h3>
+            <p className="text-muted-foreground text-sm mt-1 max-w-xs mx-auto">
+              No pending listings, verifications, reports, disputes, or tickets. Auto-refreshes every 7 hours.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeSection) {
+      case "queue":
+        return renderMorningCheck();
       case "dashboard":
         return renderDashboard();
       case "users":
@@ -4743,6 +5931,12 @@ export function AdminPage() {
         return renderCollabs();
       case "analytics":
         return renderAnalytics();
+      case "feature-stats":
+        return renderFeatureHub();
+      case "barter-credits":
+        return renderBarterCredits();
+      case "success-stories":
+        return renderSuccessStories();
       case "settings":
         return renderSettings();
       default:
@@ -4808,7 +6002,15 @@ export function AdminPage() {
               data-testid={`nav-${item.id}`}
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              {!sidebarCollapsed && <span>{item.label}</span>}
+              {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
+              {!sidebarCollapsed && item.badge ? (
+                <span className="ml-auto text-[10px] font-bold bg-destructive text-destructive-foreground rounded-full px-1.5 py-0.5 leading-none min-w-[1.25rem] text-center">
+                  {item.badge}
+                </span>
+              ) : null}
+              {sidebarCollapsed && item.badge ? (
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive" />
+              ) : null}
             </Button>
           ))}
           <Link href="/admin/company-os">
@@ -5424,7 +6626,7 @@ export function AdminPage() {
                   {listing.images && (listing.images as string[]).length > 0 && (
                     <div className="flex gap-2 flex-wrap">
                       {(listing.images as string[]).map((url, i) => (
-                        <img key={i} src={url} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
+                        <img key={i} src={assetUrl(url)} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
                       ))}
                     </div>
                   )}

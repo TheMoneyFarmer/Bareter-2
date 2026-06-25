@@ -295,6 +295,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               className="text-price"
               data-testid={`text-listing-price-${listing.id}`}
             >
+              <span className="text-[10px] font-normal text-muted-foreground uppercase tracking-wide block leading-none mb-0.5">Est. value</span>
               AED {Number.isFinite(valueNum) ? valueNum.toLocaleString() : listing.retailValue}
             </span>
             {listing.location && (
