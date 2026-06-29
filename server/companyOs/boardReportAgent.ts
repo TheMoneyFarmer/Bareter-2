@@ -844,7 +844,8 @@ export async function generateMonthlyReport(month?: string): Promise<GenerateRes
   }
 
   // Mirror PDF to Google Drive if configured (non-blocking).
-  if (await isDriveConfigured()) {
+  const driveEnabled = await isDriveConfigured().catch(() => false);
+  if (driveEnabled) {
     try {
       const driveResult = await uploadFileToDrive(
         `Bareter-Board-Report-${target}.pdf`,
@@ -860,7 +861,8 @@ export async function generateMonthlyReport(month?: string): Promise<GenerateRes
   }
 
   // Notify Slack if configured (non-blocking).
-  if (await isSlackConfigured()) {
+  const slackEnabled = await isSlackConfigured().catch(() => false);
+  if (slackEnabled) {
     try {
       await postSlackAlert(
         `Board Report Ready — ${target}`,

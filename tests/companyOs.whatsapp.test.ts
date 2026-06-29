@@ -352,7 +352,7 @@ describe("Company OS WhatsApp · command routing", () => {
 
     expect(sendCalls).toHaveLength(1);
     expect(sendCalls[0].body).toContain("*AI agent activity · last 24h*");
-    expect(sendCalls[0].body).toContain("No agent activity in the last 24 hours.");
+    expect(sendCalls[0].body).toContain(": idle");
   });
 
   it("answers `costs` with spend vs monthly budget", async () => {

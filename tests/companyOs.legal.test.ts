@@ -1038,7 +1038,7 @@ describe("Manager Agent — legal commands via WhatsApp webhook", () => {
     expect(httpRes.status).toBe(200);
     await sendPromise;
     const reply = hoisted.sendCalls[0]?.body ?? "";
-    expect(reply).toContain("`contract <partyA>");
+    expect(reply).toContain("`contract <A>");
     expect(reply).toContain("`dispute risk`");
     expect(reply).toContain("`vat check`");
   });

@@ -40,15 +40,16 @@ vi.mock("../server/companyOs/costTracker", async (importOriginal) => {
 // return a valid JSON string (happy path) or throw loudly (so a buggy
 // fallback path can be detected). Use vi.hoisted so the spy survives
 // vi.mock's automatic hoisting.
-const { openaiCreate } = vi.hoisted(() => ({
-  openaiCreate: vi.fn(async () => ({
-    choices: [{ message: { content: '{"ok":true,"echo":"live"}' } }],
-    usage: { total_tokens: 12 },
+const { anthropicCreate } = vi.hoisted(() => ({
+  anthropicCreate: vi.fn(async () => ({
+    content: [{ type: "text", text: '{"ok":true,"echo":"live"}' }],
+    usage: { input_tokens: 5, output_tokens: 7 },
   })),
 }));
-vi.mock("openai", () => ({
+vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
-    chat = { completions: { create: openaiCreate } };
+    constructor(_opts: unknown) {}
+    messages = { create: anthropicCreate };
   },
 }));
 
@@ -59,7 +60,7 @@ beforeEach(() => {
   ctState.agentSafe = true;
   ctState.globalSafe = true;
   ctState.loggedCalls = [];
-  openaiCreate.mockClear();
+  anthropicCreate.mockClear();
 });
 
 describe("jsonCompletion — per-agent budget graceful degradation", () => {
@@ -80,7 +81,7 @@ describe("jsonCompletion — per-agent budget graceful degradation", () => {
     expect(result.data).toEqual(fallback);
     expect(result.tokensUsed).toBe(0);
     // OpenAI must NOT have been called — the whole point is to skip it.
-    expect(openaiCreate).not.toHaveBeenCalled();
+    expect(anthropicCreate).not.toHaveBeenCalled();
     // We should have logged the blocked call for auditing.
     expect(ctState.loggedCalls.length).toBe(1);
     expect(ctState.loggedCalls[0].status).toBe("blocked_budget");
@@ -96,7 +97,7 @@ describe("jsonCompletion — per-agent budget graceful degradation", () => {
     expect(result.data).toBeNull();
     expect(result.tokensUsed).toBe(0);
     expect(result.budgetBlocked).toBe(true);
-    expect(openaiCreate).not.toHaveBeenCalled();
+    expect(anthropicCreate).not.toHaveBeenCalled();
     expect(ctState.loggedCalls[0].status).toBe("blocked_budget");
     expect(ctState.loggedCalls[0].outputPreview).toBe("json_null_returned");
   });
@@ -109,7 +110,7 @@ describe("jsonCompletion — per-agent budget graceful degradation", () => {
     );
     expect(result.data).toEqual({ ok: true, echo: "live" });
     expect(result.tokensUsed).toBe(12);
-    expect(openaiCreate).toHaveBeenCalledTimes(1);
+    expect(anthropicCreate).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -122,7 +123,7 @@ describe("chatCompletion — per-agent budget graceful degradation", () => {
     );
     expect(out.tokensUsed).toBe(0);
     expect(out.content).toMatch(/AI budget for marketingAgent reached/);
-    expect(openaiCreate).not.toHaveBeenCalled();
+    expect(anthropicCreate).not.toHaveBeenCalled();
   });
 
   it("still throws BudgetExceededError on global budget breach (per-agent gate is graceful, global is hard)", async () => {
@@ -134,6 +135,6 @@ describe("chatCompletion — per-agent budget graceful degradation", () => {
         { agentName: "marketingAgent" },
       ),
     ).rejects.toBeInstanceOf(BudgetExceededError);
-    expect(openaiCreate).not.toHaveBeenCalled();
+    expect(anthropicCreate).not.toHaveBeenCalled();
   });
 });

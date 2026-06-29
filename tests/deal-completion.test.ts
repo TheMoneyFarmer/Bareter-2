@@ -150,6 +150,13 @@ const inMemoryStorage = new Proxy(
     async markMessagesAsRead() {
       // no-op
     },
+    async updateUser(id: string, data: AnyRecord) {
+      const user = users.get(id);
+      if (!user) return undefined;
+      const updated = { ...user, ...data };
+      users.set(id, updated);
+      return updated;
+    },
   },
   {
     get(target, prop: string) {

@@ -86,7 +86,7 @@ const HELP_TEXT = [
   "*Marketing*",
   "• `marketing` — latest brief + campaigns",
   "• `draft post <topic>` — IG/LinkedIn/X draft",
-  "• `publish post <topic>` → `send` / `skip` / `edit <body>` / `tweak <hint>` (10 min window)",
+  "• `publish post <topic>` → `send` / `skip` / `edit <new body>` / `tweak <hint>` (10 min window)",
   "• `campaign update <name> ctr=X spend=Y conversions=Z`",
   "",
   "*Legal*",
