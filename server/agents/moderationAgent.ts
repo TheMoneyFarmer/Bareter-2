@@ -177,6 +177,31 @@ export async function moderateAndLog(
         }).catch(() => {});
       } else if (result.action === "approved") {
         await db.update(listings).set({ isActive: true }).where(eq(listings.id, targetId));
+        // Send "Your listing is live!" email now that moderation has approved it
+        if (listingOwner?.email) {
+          const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://bareter.com";
+          import("../emailService").then(({ sendListingPublishedEmail }) => {
+            sendListingPublishedEmail(listingOwner.email!, {
+              recipientName: listingOwner.fullName ?? undefined,
+              listingTitle: content.title ?? "Your listing",
+              listingId: targetId,
+              baseUrl,
+            }).catch((err: unknown) => console.error("[moderation] Failed to send listing published email:", err));
+          }).catch(() => {});
+        }
+      }
+
+      // Send rejection email for auto-rejected listings (not flagged — those are still under review)
+      if (!isAdminUser && result.action === "rejected" && listingOwner?.email) {
+        const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://bareter.com";
+        import("../emailService").then(({ sendListingRejectionEmail }) => {
+          sendListingRejectionEmail(listingOwner.email!, {
+            recipientName: listingOwner.fullName ?? undefined,
+            listingTitle: content.title ?? "Your listing",
+            reason: result.reason,
+            baseUrl,
+          }).catch((err: unknown) => console.error("[moderation] Failed to send listing rejection email:", err));
+        }).catch(() => {});
       }
     } catch (err) {
       console.error("Failed to update listing moderation status:", err);

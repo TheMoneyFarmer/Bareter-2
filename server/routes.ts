@@ -2258,19 +2258,9 @@ export async function registerRoutes(
       const listing = await storage.createListing(data);
       res.json(listing);
 
-      // Send listing created congratulations email
-      storage.getUser(req.session.userId!).then((listingOwner) => {
-        if (listingOwner?.email) {
-          import("./emailService").then(({ sendListingPublishedEmail }) => {
-            sendListingPublishedEmail(listingOwner.email!, {
-              recipientName: listingOwner.fullName ?? undefined,
-              listingTitle: listing.title,
-              listingId: listing.id,
-              baseUrl: process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://bareter.com",
-            }).catch(() => {});
-          }).catch(() => {});
-        }
-      }).catch(() => {});
+      // "Listing is live" email is sent by moderateAndLog() on approval — NOT here.
+      // Sending it at creation caused users to get "Your listing is live!" before moderation
+      // had run, then silently having it rejected seconds later with no follow-up email.
 
       import("./agents/moderationAgent").then(({ moderateAndLog }) => {
         moderateAndLog("listing", listing.id, {
@@ -6640,16 +6630,20 @@ export async function registerRoutes(
       });
       const owner = await storage.getUser(listing.userId);
       if (owner) {
-        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "")
+          || (() => {
+            const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+            const host = req.headers["x-forwarded-host"] || req.headers.host || "bareter.com";
+            return `${protocol}://${host}`;
+          })();
         const { sendListingRejectionEmail } = await import("./emailService");
-        sendListingRejectionEmail(owner.email, {
+        const emailSent = await sendListingRejectionEmail(owner.email, {
           recipientName: owner.fullName,
           listingTitle: listing.title,
           reason,
           baseUrl,
-        }).catch(err => console.error("Failed to send rejection email:", err));
+        }).catch(err => { console.error("Failed to send rejection email:", err); return false; });
+        if (!emailSent) console.warn(`[admin] Rejection email not sent for listing ${listingId} — check email config`);
       }
       await logAdminAction(req, "listing_rejected", "listing", listingId, { title: listing.title, reason });
       res.json(listing);
