@@ -156,7 +156,7 @@ describe("Moderation agent fail-closed", () => {
 import { sanitizeSupportReply } from "../server/agents/supportAgent";
 
 const SAFE_FALLBACK =
-  "Sorry, I can't answer that right now. Please email support@bareter.com and a human will help you out.";
+  "Sorry, I'm not able to help with that one right now — but our support team is on it! Please reach out to support@bareter.com with screenshots or any relevant details, and one of our support representatives will assist you shortly.";
 
 describe("sanitizeSupportReply", () => {
   it("returns the fallback for empty / non-string input", () => {
