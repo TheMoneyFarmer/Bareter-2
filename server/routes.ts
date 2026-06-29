@@ -77,6 +77,7 @@ import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
+  sanitizePublicUser,
 } from "./security";
 import {
   makeRegisterValidator,
@@ -7689,8 +7690,7 @@ export async function registerRoutes(
         profileData = ownData;
       } else {
         // Sanitized public profile — respects showEmail / showPhone privacy settings
-        const { sanitizePublicUser: spf } = await import("./security");
-        profileData = spf(user) as unknown as Record<string, unknown>;
+        profileData = sanitizePublicUser(user) as unknown as Record<string, unknown>;
       }
 
       res.json({ ...profileData, avgRating, totalRatings: ratings.length, ratings, listings: activeListings });
@@ -8119,7 +8119,7 @@ export async function registerRoutes(
   app.get("/api/recommendations/users", requireAuth, async (req, res) => {
     try {
       const recommended = await storage.getRecommendedUsers(req.session.userId!);
-      res.json(recommended.map(({ password, ...u }) => u));
+      res.json(recommended.map((u) => sanitizePublicUser(u)));
     } catch (error) {
       console.error("Get recommendations error:", error);
       res.status(500).json({ message: "Internal server error" });

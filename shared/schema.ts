@@ -2284,8 +2284,8 @@ export type SupportMessageWithSender = SupportMessage & {
   sender?: Omit<User, "password"> | null;
 };
 
-export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
-export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
+export type PostCommentWithUser = PostComment & { user: PublicUser };
+export type ListingCommentWithUser = ListingComment & { user: PublicUser };
 
 // Safe public subset of User — never includes credentials, tokens, or internal flags.
 // phone/email are present but sanitizePublicUser() nulls them out based on privacy settings.
@@ -2320,9 +2320,9 @@ export type PublicUser = Omit<User,
 
 // Extended types with relations
 export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number };
-export type DealWithUsers = Deal & { seeker: User; provider: User };
-export type MessageWithSender = Message & { sender: User };
-export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
+export type DealWithUsers = Deal & { seeker: PublicUser; provider: PublicUser };
+export type MessageWithSender = Message & { sender: PublicUser };
+export type RatingWithUsers = Rating & { fromUser: PublicUser; toUser: PublicUser };
 export type PostWithUser = Post & { user: PublicUser; liked?: boolean; bookmarked?: boolean; commentCount?: number };
 export type EndorsementWithUser = Endorsement & { fromUser: PublicUser };
 export type QuickInquiryWithUsers = QuickInquiry & { fromUser: PublicUser; toUser: PublicUser };

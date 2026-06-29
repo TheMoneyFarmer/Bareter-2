@@ -741,7 +741,7 @@ export class DatabaseStorage implements IStorage {
     if (dealRows.length === 0) return [];
     const uniqueUserIds = Array.from(new Set(dealRows.flatMap((d) => [d.seekerId, d.providerId])));
     const allUsers = await db.select().from(users).where(inArray(users.id, uniqueUserIds));
-    const userMap = new Map(allUsers.map((u) => [u.id, u]));
+    const userMap = new Map(allUsers.map((u) => [u.id, sanitizePublicUser(u)]));
     return dealRows.map((deal) => ({ ...deal, seeker: userMap.get(deal.seekerId)!, provider: userMap.get(deal.providerId)! }));
   }
 
@@ -774,7 +774,7 @@ export class DatabaseStorage implements IStorage {
 
     return result.map(({ messages: message, users: sender }) => ({
       ...message,
-      sender: sender!,
+      sender: sanitizePublicUser(sender!),
     }));
   }
 
@@ -847,7 +847,7 @@ export class DatabaseStorage implements IStorage {
     
     return result.map(r => ({
       ...r.followers,
-      follower: r.users,
+      follower: sanitizePublicUser(r.users),
     }));
   }
 
@@ -861,7 +861,7 @@ export class DatabaseStorage implements IStorage {
     
     return result.map(r => ({
       ...r.followers,
-      following: r.users,
+      following: sanitizePublicUser(r.users),
     }));
   }
 
@@ -1090,10 +1090,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(postComments.postId, postId))
       .orderBy(desc(postComments.createdAt));
 
-    return result.map(({ post_comments: comment, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...comment, user: safeUser };
-    });
+    return result.map(({ post_comments: comment, users: user }) => ({
+      ...comment,
+      user: sanitizePublicUser(user!),
+    }));
   }
 
   async getCommentCount(postId: string): Promise<number> {
@@ -1343,7 +1343,7 @@ export class DatabaseStorage implements IStorage {
     if (rows.length === 0) return [];
     const uniqueUserIds = Array.from(new Set(rows.flatMap((i) => [i.fromUserId, i.toUserId])));
     const allUsers = await db.select().from(users).where(inArray(users.id, uniqueUserIds));
-    const userMap = new Map(allUsers.map((u) => { const { password, ...safe } = u; return [u.id, safe]; }));
+    const userMap = new Map(allUsers.map((u) => [u.id, sanitizePublicUser(u)]));
     return rows.map((inquiry) => ({
       ...inquiry,
       fromUser: userMap.get(inquiry.fromUserId)!,
@@ -1597,10 +1597,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(listingComments.listingId, listingId))
       .orderBy(desc(listingComments.createdAt));
 
-    return result.map(({ listing_comments: comment, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...comment, user: safeUser };
-    });
+    return result.map(({ listing_comments: comment, users: user }) => ({
+      ...comment,
+      user: sanitizePublicUser(user!),
+    }));
   }
 
   async getListingCommentCount(listingId: string): Promise<number> {
@@ -2990,7 +2990,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(collabApplications.creatorId, users.id))
       .where(eq(collabApplications.listingId, listingId))
       .orderBy(desc(collabApplications.createdAt));
-    return rows.map(r => ({ ...r.app, creator: r.creator }));
+    return rows.map(r => ({ ...r.app, creator: sanitizePublicUser(r.creator) }));
   }
 
   async getCollabApplicationsByCreator(creatorId: string): Promise<(CollabApplication & { listing: Listing })[]> {
