@@ -284,6 +284,7 @@ export function AdminPage() {
   const [draftsDialogOpen, setDraftsDialogOpen] = useState(false);
   const [abandonedDialogOpen, setAbandonedDialogOpen] = useState(false);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [rejectSuggestPending, setRejectSuggestPending] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; listingId: string | null; reason: string }>({
     open: false, listingId: null, reason: "",
   });
@@ -393,9 +394,12 @@ export function AdminPage() {
   interface MorningFlaggedPost { id: string; caption: string; postType: string | null; moderationStatus: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
   interface MorningStaleDeals { id: string; dealNumber: string; state: string; seekerOffer: string; providerOffer: string; updatedAt: string | null; createdAt: string | null }
   interface MorningMultiReportedUser { userId: string; email: string | null; fullName: string | null; reportCount: number }
+  interface MorningRejectedListing { id: string; title: string; category: string | null; retailValue: string | null; moderationStatus: string | null; createdAt: string | null; userId: string; userEmail: string | null; userName: string | null }
   interface MorningCheckData {
     pendingListings: MorningPendingListing[];
     autoBlockedQueue: ModerationLogEntry[];
+    rejectedListings: MorningRejectedListing[];
+    valueFlaggedListings: MorningRejectedListing[];
     pendingVerifications: MorningPendingVerif[];
     openReports: MorningReport[];
     openDisputes: MorningDispute[];
@@ -5302,6 +5306,8 @@ export function AdminPage() {
   const renderMorningCheck = () => {
     const pending = morningCheck?.pendingListings ?? [];
     const blocked = morningCheck?.autoBlockedQueue ?? [];
+    const rejected = morningCheck?.rejectedListings ?? [];
+    const valueFlagged = morningCheck?.valueFlaggedListings ?? [];
     const verifs = morningCheck?.pendingVerifications ?? [];
     const openReps = morningCheck?.openReports ?? [];
     const openDisps = morningCheck?.openDisputes ?? [];
@@ -5311,7 +5317,7 @@ export function AdminPage() {
     const staleDeals = morningCheck?.staleDeals ?? [];
     const multiReported = morningCheck?.multiReportedUsers ?? [];
     const stats = morningCheck?.stats;
-    const totalQueue = pending.length + blocked.length + verifs.length + openReps.length + openDisps.length + tickets.length + unresponded.length + flaggedPosts.length + multiReported.length;
+    const totalQueue = pending.length + blocked.length + rejected.length + valueFlagged.length + verifs.length + openReps.length + openDisps.length + tickets.length + unresponded.length + flaggedPosts.length + multiReported.length;
 
     return (
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -5550,6 +5556,70 @@ export function AdminPage() {
                   Showing first 30 — <button className="underline" onClick={() => setActiveSection("logs")}>view all in Logs → AI</button>
                 </p>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 2b: Rejected listings (last 30 days) */}
+        {rejected.length > 0 && (
+          <Card className="border-red-300 dark:border-red-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-red-700 dark:text-red-400">
+                <XCircle className="h-4 w-4" />
+                Rejected Listings
+                <Badge variant="destructive" className="ml-1">{rejected.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Listings rejected in the last 30 days — review or re-approve if rejected in error.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {rejected.map((l) => (
+                <div key={l.id} className="flex items-center justify-between p-3 border border-red-200 dark:border-red-900 rounded-lg bg-red-50/30 dark:bg-red-950/20">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-sm font-medium truncate">{l.title}</p>
+                    <p className="text-xs text-muted-foreground">{l.userName ?? l.userEmail} · AED {Number(l.retailValue ?? 0).toLocaleString()} · {l.createdAt ? new Date(l.createdAt).toLocaleDateString() : ""}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50" onClick={() => approveListingMutation.mutate(l.id)}>
+                      Re-approve
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => goToSection("listings")}>
+                      View
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Queue 2c: Value-flagged listings */}
+        {valueFlagged.length > 0 && (
+          <Card className="border-amber-300 dark:border-amber-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+                Value-Flagged Listings
+                <Badge variant="outline" className="text-amber-600 border-amber-400 ml-1">{valueFlagged.length}</Badge>
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">These listings have a suspected unrealistic value — verify before approving.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {valueFlagged.map((l) => (
+                <div key={l.id} className="flex items-center justify-between p-3 border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50/30 dark:bg-amber-950/20">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-sm font-medium truncate">{l.title}</p>
+                    <p className="text-xs text-muted-foreground">{l.userName ?? l.userEmail} · <span className="text-amber-600 font-semibold">AED {Number(l.retailValue ?? 0).toLocaleString()}</span> · {l.moderationStatus}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-400 hover:bg-green-50" onClick={() => approveListingMutation.mutate(l.id)}>
+                      Approve
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-400 hover:bg-red-50" onClick={() => setRejectDialog({ open: true, listingId: l.id, reason: "" })}>
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
@@ -6771,7 +6841,33 @@ export function AdminPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-2">
-            <Label>Reason for rejection</Label>
+            <div className="flex items-center justify-between">
+              <Label>Reason for rejection</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 text-xs gap-1 text-primary border-primary/40"
+                disabled={rejectSuggestPending}
+                onClick={async () => {
+                  setRejectSuggestPending(true);
+                  try {
+                    const listing = (listings ?? []).find(l => l.id === rejectDialog.listingId);
+                    const prompt = listing
+                      ? `Write a short, professional rejection reason for a barter listing titled "${listing.title}" in category "${(listing as any).category ?? ""}" valued at AED ${listing.retailValue}. Be specific and constructive. 1-2 sentences max.`
+                      : "Write a short professional listing rejection reason for a barter marketplace. 1-2 sentences.";
+                    const res = await apiRequest("POST", "/api/admin/email/ai-draft", { prompt });
+                    const data = await res.json();
+                    if (data?.body) setRejectDialog(prev => ({ ...prev, reason: data.body.replace(/<[^>]*>/g, "").trim() }));
+                  } catch { /* silently ignore */ } finally {
+                    setRejectSuggestPending(false);
+                  }
+                }}
+              >
+                <Zap className="h-3 w-3" />
+                {rejectSuggestPending ? "Drafting…" : "AI Suggest"}
+              </Button>
+            </div>
             <Textarea
               placeholder="Enter the reason for rejection..."
               value={rejectDialog.reason}

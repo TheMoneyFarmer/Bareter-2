@@ -5903,7 +5903,7 @@ export async function registerRoutes(
           .limit(20),
       ]);
 
-      // Second batch — stats + stale deals
+      // Second batch — stats + stale deals + rejected/value-flagged listings
       const [
         staleDealsRaw,
         newUsersRes,
@@ -5911,6 +5911,8 @@ export async function registerRoutes(
         newDealsRes,
         completedDealsRes,
         activeUsersRes,
+        rejectedListingsRaw,
+        valueFlaggedListingsRaw,
       ] = await Promise.all([
         db.select({
           id: deals.id,
@@ -5937,6 +5939,45 @@ export async function registerRoutes(
           gte(deals.completedAt, yesterday),
         )),
         db.select({ count: count() }).from(users).where(gte(users.lastActiveAt, yesterday)),
+
+        // Rejected listings from the last 30 days — surface even if moderation_log was marked reviewed
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          category: listings.category,
+          retailValue: listings.retailValue,
+          moderationStatus: listings.moderationStatus,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userEmail: users.email,
+          userName: users.fullName,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(and(
+            eq(listings.moderationStatus, "rejected"),
+            gte(listings.createdAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+          ))
+          .orderBy(desc(listings.createdAt))
+          .limit(30),
+
+        // Value-flagged listings — always surface regardless of moderation status
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          category: listings.category,
+          retailValue: listings.retailValue,
+          moderationStatus: listings.moderationStatus,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userEmail: users.email,
+          userName: users.fullName,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(eq(listings.valueFlagged, true))
+          .orderBy(desc(listings.createdAt))
+          .limit(20),
       ]);
 
       // Raw SQL queries — complex joins; wrapped in try-catch so a slow/failing query
@@ -5981,6 +6022,8 @@ export async function registerRoutes(
       res.json({
         pendingListings: pendingListingsRaw,
         autoBlockedQueue,
+        rejectedListings: rejectedListingsRaw,
+        valueFlaggedListings: valueFlaggedListingsRaw,
         pendingVerifications,
         openReports,
         openDisputes,
