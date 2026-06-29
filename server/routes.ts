@@ -94,6 +94,8 @@ import {
   makeClientErrorRateLimiter,
   makeResetPasswordRateLimiter,
   makeSupportTicketRateLimiter,
+  makePublicListingsRateLimiter,
+  makeUserProfileRateLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -123,6 +125,8 @@ const registerLimiter = makeRegisterRateLimiter();
 const forgotPasswordLimiter = makeForgotPasswordRateLimiter();
 const resetPasswordLimiter = makeResetPasswordRateLimiter();
 const supportTicketLimiter = makeSupportTicketRateLimiter();
+const publicListingsLimiter = makePublicListingsRateLimiter();
+const userProfileLimiter = makeUserProfileRateLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -1342,19 +1346,11 @@ export async function registerRoutes(
 
   // Public client config — what features are wired up in this environment.
   app.get("/api/config", async (_req, res) => {
-    const [passwordResetEnabled, maintenanceMode] = await Promise.all([
-      isEmailConfigured(),
-      storage.getAppSetting("maintenance_mode"),
-    ]);
-    // Trim defensively — a stray space in PUBLIC_APP_URL produces malformed
-    // absolute URLs in emails (e.g. "https://bareter.com /reset-password").
-    const rawAppUrl = process.env.PUBLIC_APP_URL;
-    const appUrl = rawAppUrl ? rawAppUrl.trim().replace(/\/+$/, "") : null;
+    const maintenanceMode = await storage.getAppSetting("maintenance_mode");
+    // Only expose the absolute minimum the frontend needs — no operational status flags.
     res.json({
-      passwordResetEnabled,
       cookiePolicyVersion: COOKIE_POLICY_VERSION,
       maintenanceMode: maintenanceMode === "true",
-      appUrl,
     });
   });
 
@@ -1961,7 +1957,7 @@ export async function registerRoutes(
   });
 
   // Listings routes with search/filter
-  app.get("/api/listings", async (req, res) => {
+  app.get("/api/listings", publicListingsLimiter, async (req, res) => {
     try {
       const { search, type, category, location, verified, minValue, maxValue } = req.query;
       const worldwide = req.query.worldwide === "true";
@@ -7656,23 +7652,48 @@ export async function registerRoutes(
   });
 
   // User profile by ID (public)
-  app.get("/api/users/:id", requireAuth, async (req, res) => {
+  app.get("/api/users/:id", requireAuth, userProfileLimiter, async (req, res) => {
     try {
-      const user = await storage.getUser(param(req.params.id));
+      const targetId = param(req.params.id);
+      const user = await storage.getUser(targetId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      
-      const ratings = await storage.getRatingsByUser(param(req.params.id));
-      const avgRating = ratings.length > 0 
-        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length 
-        : 0;
 
-      const userListings = await storage.getListingsByUser(param(req.params.id));
+      const [ratings, userListings] = await Promise.all([
+        storage.getRatingsByUser(targetId),
+        storage.getListingsByUser(targetId),
+      ]);
+      const avgRating = ratings.length > 0
+        ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
+        : 0;
       const activeListings = userListings.filter(l => l.isActive);
-      
-      const { password, emailVerificationToken, passwordResetToken, ...publicUser } = user;
-      res.json({ ...publicUser, avgRating, totalRatings: ratings.length, ratings, listings: activeListings });
+
+      const isOwnProfile = req.session?.userId === targetId;
+      const isAdminCaller = req.session?.userId
+        ? await storage.getUser(req.session.userId).then(u => u?.isAdmin || u?.role === "admin" || u?.role === "super_admin").catch(() => false)
+        : false;
+
+      let profileData: Record<string, unknown>;
+      if (isOwnProfile || isAdminCaller) {
+        // Full data for self or admin — still strip credential/token fields
+        const {
+          password: _p, passwordResetToken: _prt, passwordResetExpires: _pre,
+          emailVerificationToken: _evt, emailVerificationExpires: _eve,
+          passwordChangeOtp: _pco, passwordChangeOtpExpires: _pcoe,
+          phoneVerificationCode: _pvc, phoneVerificationExpires: _pve,
+          diditSessionId: _dsi, diditVerificationData: _dvd,
+          unsubscribeToken: _ut, googleId: _gid, appleId: _aid,
+          ...ownData
+        } = user;
+        profileData = ownData;
+      } else {
+        // Sanitized public profile — respects showEmail / showPhone privacy settings
+        const { sanitizePublicUser: spf } = await import("./security");
+        profileData = spf(user) as unknown as Record<string, unknown>;
+      }
+
+      res.json({ ...profileData, avgRating, totalRatings: ratings.length, ratings, listings: activeListings });
     } catch (error) {
       console.error("Get user error:", error);
       res.status(500).json({ message: "Internal server error" });

@@ -1,5 +1,51 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import helmet from "helmet";
+import type { User, PublicUser } from "@shared/schema";
+
+/**
+ * Strip every sensitive field from a User before it leaves the server in a
+ * public API response. Applies showEmail / showPhone privacy settings.
+ * Use this wherever a User object is embedded in a listing, post, or profile
+ * response visible to non-admin callers.
+ */
+export function sanitizePublicUser(user: User): PublicUser {
+  const {
+    password: _password,
+    passwordResetToken: _prt,
+    passwordResetExpires: _pre,
+    emailVerificationToken: _evt,
+    emailVerificationExpires: _eve,
+    passwordChangeOtp: _pco,
+    passwordChangeOtpExpires: _pcoe,
+    phoneVerificationCode: _pvc,
+    phoneVerificationExpires: _pve,
+    diditSessionId: _dsi,
+    diditVerificationData: _dvd,
+    diditVerifiedAt: _dva,
+    unsubscribeToken: _ut,
+    googleId: _gid,
+    appleId: _aid,
+    businessLicenseUrl: _blu,
+    verificationDocUrl: _vdu,
+    isBanned: _ib,
+    bannedAt: _ba,
+    bannedReason: _br,
+    isAdmin: _ia,
+    reminderPreferences: _rp,
+    emailNotifications: _en,
+    dealNotifications: _dn,
+    messageNotifications: _mn,
+    marketingEmails: _me,
+    ...rest
+  } = user;
+
+  return {
+    ...rest,
+    // Respect privacy settings — null out unless the user opted in to share
+    email: user.showEmail ? user.email : null as unknown as string,
+    phone: user.showPhone ? (user.phone ?? null) : null,
+  };
+}
 
 export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 

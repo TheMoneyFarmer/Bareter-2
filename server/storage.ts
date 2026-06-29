@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray, isNotNull, isNull } from "drizzle-orm";
+import { sanitizePublicUser } from "./security";
 import {
   users,
   listings,
@@ -539,7 +540,7 @@ export class DatabaseStorage implements IStorage {
     if (result.length === 0) return undefined;
 
     const { listings: listing, users: user } = result[0];
-    return { ...listing, user: user! };
+    return { ...listing, user: sanitizePublicUser(user!) };
   }
 
   async getListings(): Promise<ListingWithUser[]> {
@@ -552,7 +553,7 @@ export class DatabaseStorage implements IStorage {
 
     return result.map(({ listings: listing, users: user }) => ({
       ...listing,
-      user: user!,
+      user: sanitizePublicUser(user!),
     }));
   }
 
@@ -616,7 +617,7 @@ export class DatabaseStorage implements IStorage {
 
     return result.map(({ listings: listing, users: user }) => ({
       ...listing,
-      user: user!,
+      user: sanitizePublicUser(user!),
     }));
   }
 
@@ -1025,10 +1026,9 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    return result.map(({ posts: post, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...post, user: safeUser };
-    });
+    return result.map(({ posts: post, users: user }) => ({
+      ...post, user: sanitizePublicUser(user!),
+    }));
   }
 
   async getPost(id: string): Promise<PostWithUser | undefined> {
@@ -1041,8 +1041,7 @@ export class DatabaseStorage implements IStorage {
     if (result.length === 0) return undefined;
 
     const { posts: post, users: user } = result[0];
-    const { password, ...safeUser } = user!;
-    return { ...post, user: safeUser };
+    return { ...post, user: sanitizePublicUser(user!) };
   }
 
   async getStories(): Promise<PostWithUser[]> {
@@ -1054,10 +1053,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.createdAt))
       .limit(20);
 
-    return result.map(({ posts: post, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...post, user: safeUser };
-    });
+    return result.map(({ posts: post, users: user }) => ({
+      ...post, user: sanitizePublicUser(user!),
+    }));
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {
@@ -1180,10 +1178,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(postBookmarks.userId, userId))
       .orderBy(desc(postBookmarks.createdAt));
 
-    return result.map(({ posts: post, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...post, user: safeUser };
-    });
+    return result.map(({ posts: post, users: user }) => ({
+      ...post, user: sanitizePublicUser(user!),
+    }));
   }
 
   // Endorsements
@@ -1195,10 +1192,9 @@ export class DatabaseStorage implements IStorage {
       .where(eq(endorsements.toUserId, userId))
       .orderBy(desc(endorsements.createdAt));
 
-    return result.map(({ endorsements: endorsement, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...endorsement, fromUser: safeUser };
-    });
+    return result.map(({ endorsements: endorsement, users: user }) => ({
+      ...endorsement, fromUser: sanitizePublicUser(user!),
+    }));
   }
 
   async getEndorsementCount(userId: string): Promise<number> {
@@ -1399,7 +1395,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(listings.createdAt))
       .limit(30);
 
-    const mapped = result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+    const mapped = result.map(({ listings: l, users: u }) => ({ ...l, user: sanitizePublicUser(u!) }));
 
     const scored = mapped.map((listing) => {
       const listingCategories = ((listing.categories as string[]) || []).map(c => c.toLowerCase());
@@ -1442,7 +1438,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(listings.createdAt))
       .limit(limit);
 
-    return result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+    return result.map(({ listings: l, users: u }) => ({ ...l, user: sanitizePublicUser(u!) }));
   }
 
   async getRecommendedUsers(userId: string): Promise<User[]> {
@@ -1495,7 +1491,7 @@ export class DatabaseStorage implements IStorage {
         desc(listings.createdAt)
       )
       .limit(limit);
-    return result.map(({ listings: l, users: u }) => ({ ...l, user: u! }));
+    return result.map(({ listings: l, users: u }) => ({ ...l, user: sanitizePublicUser(u!) }));
   }
 
   async getTrendingListings(limit = 10): Promise<ListingWithUser[]> {
@@ -1516,7 +1512,7 @@ export class DatabaseStorage implements IStorage {
       .groupBy(listings.id, users.id)
       .orderBy(desc(sql`count(${listingComments.id})`), desc(listings.createdAt))
       .limit(limit);
-    return result.map(({ listing, user }) => ({ ...listing, user: user! }));
+    return result.map(({ listing, user }) => ({ ...listing, user: sanitizePublicUser(user!) }));
   }
 
   async getFeaturedListings(): Promise<ListingWithUser[]> {
@@ -1536,7 +1532,7 @@ export class DatabaseStorage implements IStorage {
 
     return result.map(({ listings: listing, users: user }) => ({
       ...listing,
-      user: user!,
+      user: sanitizePublicUser(user!),
     }));
   }
 
@@ -1560,10 +1556,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(posts.likeCount))
       .limit(10);
 
-    return result.map(({ posts: post, users: user }) => {
-      const { password, ...safeUser } = user!;
-      return { ...post, user: safeUser };
-    });
+    return result.map(({ posts: post, users: user }) => ({
+      ...post, user: sanitizePublicUser(user!),
+    }));
   }
 
   // Listing Likes

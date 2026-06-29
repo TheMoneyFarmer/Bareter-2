@@ -142,3 +142,31 @@ export function makeSupportTicketRateLimiter(overrides: Partial<Options> = {}) {
     ...overrides,
   });
 }
+
+// Public listing browse — prevents automated scraping/enumeration of all listings.
+// 200 req/min for normal browsing; 30/min in production to slow scrapers.
+export function makePublicListingsRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit: process.env.NODE_ENV === "production" ? 60 : 300,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    skip: (req) => !!req.session?.userId, // authenticated users bypass listing scrape limit
+    message: { message: "Too many requests. Please slow down." },
+    ...overrides,
+  });
+}
+
+// User profile enumeration — prevents walking /api/users/:id to harvest accounts.
+export function makeUserProfileRateLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit: process.env.NODE_ENV === "production" ? 30 : 300,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many profile requests. Please slow down." },
+    ...overrides,
+  });
+}

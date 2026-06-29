@@ -57,8 +57,8 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const { data: config } = useQuery<{ passwordResetEnabled: boolean }>({ queryKey: ["/api/config"] });
-  const passwordResetEnabled = config?.passwordResetEnabled ?? false;
+  // Always show the forgot-password link — if email is not configured the page will show an error
+  const passwordResetEnabled = true;
   const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
   const googleEnabled = googleStatus?.enabled ?? false;
   const { data: appleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/apple/status"], staleTime: Infinity });

@@ -2287,14 +2287,45 @@ export type SupportMessageWithSender = SupportMessage & {
 export type PostCommentWithUser = PostComment & { user: Omit<User, "password"> };
 export type ListingCommentWithUser = ListingComment & { user: Omit<User, "password"> };
 
+// Safe public subset of User — never includes credentials, tokens, or internal flags.
+// phone/email are present but sanitizePublicUser() nulls them out based on privacy settings.
+export type PublicUser = Omit<User,
+  | "password"
+  | "passwordResetToken"
+  | "passwordResetExpires"
+  | "emailVerificationToken"
+  | "emailVerificationExpires"
+  | "passwordChangeOtp"
+  | "passwordChangeOtpExpires"
+  | "phoneVerificationCode"
+  | "phoneVerificationExpires"
+  | "diditSessionId"
+  | "diditVerificationData"
+  | "diditVerifiedAt"
+  | "unsubscribeToken"
+  | "googleId"
+  | "appleId"
+  | "businessLicenseUrl"
+  | "verificationDocUrl"
+  | "isBanned"
+  | "bannedAt"
+  | "bannedReason"
+  | "isAdmin"
+  | "reminderPreferences"
+  | "emailNotifications"
+  | "dealNotifications"
+  | "messageNotifications"
+  | "marketingEmails"
+>;
+
 // Extended types with relations
-export type ListingWithUser = Listing & { user: User; isLiked?: boolean; commentCount?: number };
+export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number };
 export type DealWithUsers = Deal & { seeker: User; provider: User };
 export type MessageWithSender = Message & { sender: User };
 export type RatingWithUsers = Rating & { fromUser: User; toUser: User };
-export type PostWithUser = Post & { user: Omit<User, "password">; liked?: boolean; bookmarked?: boolean; commentCount?: number };
-export type EndorsementWithUser = Endorsement & { fromUser: Omit<User, "password"> };
-export type QuickInquiryWithUsers = QuickInquiry & { fromUser: Omit<User, "password">; toUser: Omit<User, "password"> };
+export type PostWithUser = Post & { user: PublicUser; liked?: boolean; bookmarked?: boolean; commentCount?: number };
+export type EndorsementWithUser = Endorsement & { fromUser: PublicUser };
+export type QuickInquiryWithUsers = QuickInquiry & { fromUser: PublicUser; toUser: PublicUser };
 
 // ─── Task #248: Save user progress + completion reminders ───────────────
 //
