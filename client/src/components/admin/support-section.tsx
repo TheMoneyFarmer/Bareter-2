@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
+  Zap,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -89,6 +90,7 @@ function TicketDetailDialog({
   const [statusUpdate, setStatusUpdate] = useState(ticket.status);
   const [priorityUpdate, setPriorityUpdate] = useState(ticket.priority);
   const [isInternal, setIsInternal] = useState(false);
+  const [suggestPending, setSuggestPending] = useState(false);
 
   const { data: messages = [], isLoading: messagesLoading } = useQuery<
     SupportMessageWithSender[]
@@ -270,6 +272,32 @@ function TicketDetailDialog({
                   Internal note only
                 </label>
               </div>
+              {/* AI Suggest */}
+              {!isInternal && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="self-start h-6 text-xs gap-1 text-primary border-primary/40 mb-1"
+                  disabled={suggestPending}
+                  onClick={async () => {
+                    setSuggestPending(true);
+                    try {
+                      const lastUserMsg = [...messages].reverse().find(m => m.senderType === "user");
+                      const context = lastUserMsg?.content ?? ticket.subject;
+                      const prompt = `You are a friendly support agent for Bareter, a UAE barter marketplace. Write a helpful, concise reply (2-3 sentences) to this support message: "${context}". Ticket subject: "${ticket.subject}". Be warm, professional, and solution-focused.`;
+                      const res = await apiRequest("POST", "/api/admin/email/ai-draft", { prompt });
+                      const data = await res.json();
+                      if (data?.body) setReply(data.body.replace(/<[^>]*>/g, "").trim());
+                    } catch { /* silently ignore */ } finally {
+                      setSuggestPending(false);
+                    }
+                  }}
+                >
+                  <Zap className="h-3 w-3" />
+                  {suggestPending ? "Drafting…" : "AI Suggest"}
+                </Button>
+              )}
               <div className="flex gap-2">
                 <Textarea
                   data-testid="input-admin-support-reply"

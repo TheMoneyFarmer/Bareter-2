@@ -357,23 +357,61 @@ export function InboxPage() {
               </ScrollArea>
 
               {/* Reply Input */}
-              <div className="p-4 border-t flex gap-2">
-                <Input
-                  placeholder="Type a message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  data-testid="input-message"
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sendMutation.isPending}
-                  data-testid="button-send-message"
-                  size="icon"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+              <div className="p-4 border-t space-y-2">
+                {/* Suggestion chips — based on last message from the other person */}
+                {(() => {
+                  const lastOther = [...(thread?.messages ?? [])].reverse().find(m => m.fromUserId !== user.id);
+                  if (!lastOther || newMessage) return null;
+                  const msg = lastOther.message.toLowerCase();
+                  const chips: string[] = [];
+                  if (msg.includes("available") || msg.includes("still have") || msg.includes("interested")) {
+                    chips.push("Yes, still available!", "Let's arrange a swap", "Tell me more about what you have");
+                  } else if (msg.includes("deal") || msg.includes("agree") || msg.includes("accept") || msg.includes("sounds good")) {
+                    chips.push("Sounds good to me!", "Let's proceed", "When works for you?");
+                  } else if (msg.includes("value") || msg.includes("aed") || msg.includes("worth") || msg.includes("price")) {
+                    chips.push("That value works for me", "Can we adjust the value slightly?", "What condition is it in?");
+                  } else if (msg.includes("condition") || msg.includes("brand new") || msg.includes("used")) {
+                    chips.push("Good condition works!", "Can you share more photos?", "Understood, let's proceed");
+                  } else if (msg.includes("meet") || msg.includes("pickup") || msg.includes("delivery") || msg.includes("location")) {
+                    chips.push("I can meet in Dubai", "Delivery works for me", "Let's arrange pickup");
+                  } else if ((thread?.messages ?? []).length <= 2) {
+                    chips.push("Hi! Yes it's available", "Thanks for reaching out!", "What are you offering in return?");
+                  }
+                  if (!chips.length) return null;
+                  return (
+                    <div className="flex gap-1.5 flex-wrap">
+                      {chips.map(chip => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setNewMessage(chip)}
+                          className="text-xs px-2.5 py-1 rounded-full border border-primary/30 text-primary hover:bg-primary/5 transition-colors bg-background"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type a message..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    data-testid="input-message"
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={handleSend}
+                    disabled={!newMessage.trim() || sendMutation.isPending}
+                    data-testid="button-send-message"
+                    size="icon"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </>
           )}
