@@ -194,7 +194,7 @@ export interface IStorage {
   // Notifications
   getNotificationsByUser(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  markNotificationAsRead(id: string): Promise<void>;
+  markNotificationAsRead(id: string, userId: string): Promise<void>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
 
   // Followers
@@ -825,8 +825,10 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async markNotificationAsRead(id: string): Promise<void> {
-    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  async markNotificationAsRead(id: string, userId: string): Promise<void> {
+    // Scope to the owner so a user cannot mark another user's notifications read.
+    await db.update(notifications).set({ isRead: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
   }
 
   async markAllNotificationsAsRead(userId: string): Promise<void> {
@@ -1484,7 +1486,9 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(listings.isActive, true),
         sql`${listings.id} != ${listingId}`,
-        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.raw(cats.map(c => `'${c.replace(/'/g, "''")}'`).join(","))}]` : sql`true`,
+        // Parameterized array binding — never interpolate category strings via
+        // sql.raw(), which bypasses escaping and is a SQL-injection sink.
+        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.join(cats.map((c) => sql`${c}`), sql`, `)}]::text[]` : sql`true`,
       ))
       .orderBy(
         sql`abs(cast(${listings.retailValue} as numeric) - ${value})`,
@@ -3068,7 +3072,9 @@ export class DatabaseStorage implements IStorage {
         if (filters.maxFollowers && cp.followerCount > filters.maxFollowers) return false;
         if (filters.niche && !cp.contentNiches?.some(n => n.toLowerCase().includes(filters.niche!.toLowerCase()))) return false;
         return true;
-      }) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
+      })
+      // Strip secrets/tokens/OAuth IDs before these rows reach any caller.
+      .map(u => sanitizePublicUser(u)) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
   }
 
   // ── Barter Credits ────────────────────────────────────────────────────────────

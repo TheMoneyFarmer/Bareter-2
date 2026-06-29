@@ -87,6 +87,7 @@ import {
 import {
   hashPassword,
   hashResetToken,
+  hashOtp,
   detectAllowedFileType,
   makeLoginRateLimiter,
   makeRegisterRateLimiter,
@@ -440,7 +441,14 @@ export async function registerRoutes(
     app.get("/auth/google", (req, res, next) => {
       const redirect = (req.query.redirect as string) || "/browse";
       // stash redirect destination in session before we leave the app
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      // Only allow same-origin relative paths. Reject protocol-relative
+      // (`//evil.com`) and backslash (`/\evil.com`) forms that browsers treat
+      // as absolute URLs — otherwise this is an open redirect.
+      const safeRedirect =
+        redirect.startsWith("/") &&
+        !redirect.startsWith("//") &&
+        !redirect.startsWith("/\\");
+      (req.session as any).oauthRedirect = safeRedirect ? redirect : "/browse";
       // session must NOT be false here — passport needs to store the OAuth state
       // parameter in the session. Without it, Google rejects the request as
       // non-compliant with its OAuth 2.0 security policy.
@@ -456,7 +464,15 @@ export async function registerRoutes(
           const user = req.user;
           if (!user) return res.redirect("/login?google_error=1");
 
-          // Create our own session (consistent with email/password login)
+          // Capture the post-login destination from the pre-auth session before
+          // regenerating — regeneration clears the old session data.
+          const dest = (req.session as any).oauthRedirect || "/browse";
+
+          // SECURITY: regenerate the session ID to prevent session fixation,
+          // then create our own session (consistent with email/password login).
+          await new Promise<void>((resolve, reject) =>
+            req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+          );
           req.session.userId = user.id;
           (req.session as any).uaFingerprint = uaFingerprint(req);
           await new Promise<void>((resolve, reject) =>
@@ -469,8 +485,6 @@ export async function registerRoutes(
             return res.json({ id: user.id, mobileToken });
           }
 
-          const dest = (req.session as any).oauthRedirect || "/browse";
-          delete (req.session as any).oauthRedirect;
           res.redirect(dest);
         } catch {
           res.redirect("/login?google_error=1");
@@ -527,7 +541,14 @@ export async function registerRoutes(
     // Step 1 — redirect user to Apple's auth page
     app.get("/auth/apple", (req, res) => {
       const redirect = (req.query.redirect as string) || "/browse";
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      // Only allow same-origin relative paths. Reject protocol-relative
+      // (`//evil.com`) and backslash (`/\evil.com`) forms that browsers treat
+      // as absolute URLs — otherwise this is an open redirect.
+      const safeRedirect =
+        redirect.startsWith("/") &&
+        !redirect.startsWith("//") &&
+        !redirect.startsWith("/\\");
+      (req.session as any).oauthRedirect = safeRedirect ? redirect : "/browse";
       const params = new URLSearchParams({
         client_id:     APPLE_CLIENT_ID as string,
         redirect_uri:  `${baseUrl}/auth/apple/callback`,
@@ -585,6 +606,13 @@ export async function registerRoutes(
           } as any);
         }
 
+        // Capture redirect from the pre-auth session before regenerating.
+        const dest = (req.session as any).oauthRedirect || "/browse";
+
+        // SECURITY: regenerate the session ID to prevent session fixation.
+        await new Promise<void>((resolve, reject) =>
+          req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+        );
         req.session.userId = user.id;
         (req.session as any).uaFingerprint = uaFingerprint(req);
         await new Promise<void>((resolve, reject) =>
@@ -597,8 +625,6 @@ export async function registerRoutes(
           return res.json({ id: user.id, mobileToken });
         }
 
-        const dest = (req.session as any).oauthRedirect || "/browse";
-        delete (req.session as any).oauthRedirect;
         res.redirect(dest);
       } catch (err) {
         console.error("[Apple OAuth] callback error:", err);
@@ -894,20 +920,31 @@ export async function registerRoutes(
         }
       })();
 
-      req.session.userId = user.id;
-      (req.session as any).uaFingerprint = uaFingerprint(req);
-      const { password, ...userWithoutPassword } = user;
-      // Parallelize session save + admin-flag sanitization so neither blocks the other
-      const [, safeUser] = await Promise.all([
-        new Promise<void>((resolve, reject) => {
-          req.session.save((err) => {
-            if (err) { console.error("Session save error:", err); reject(err); }
-            else resolve();
-          });
-        }),
-        sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
-      ]);
-      res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
+      // SECURITY: regenerate the session ID to prevent session fixation.
+      req.session.regenerate(async (regenErr) => {
+        if (regenErr) {
+          console.error("Session regenerate error:", regenErr);
+          return res.status(500).json({ message: "Session error" });
+        }
+        req.session.userId = user.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        const { password, ...userWithoutPassword } = user;
+        // Parallelize session save + admin-flag sanitization so neither blocks the other
+        try {
+          const [, safeUser] = await Promise.all([
+            new Promise<void>((resolve, reject) => {
+              req.session.save((err) => {
+                if (err) { console.error("Session save error:", err); reject(err); }
+                else resolve();
+              });
+            }),
+            sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
+          ]);
+          res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
+        } catch {
+          res.status(500).json({ message: "Session error" });
+        }
+      });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1011,12 +1048,12 @@ export async function registerRoutes(
         return res.status(409).json({ message: "This phone number is already linked to another account" });
       }
 
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const code = crypto.randomInt(100000, 1000000).toString();
       const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       await db.update(users).set({
         phone,
-        phoneVerificationCode: code,
+        phoneVerificationCode: hashOtp(code),
         phoneVerificationExpires: expires,
         phoneVerified: false,
       }).where(eq(users.id, userId));
@@ -1081,7 +1118,7 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.phoneVerified) return res.json({ message: "Phone already verified", phoneVerified: true });
 
-      if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
+      if (!user.phoneVerificationCode || user.phoneVerificationCode !== hashOtp(code)) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (!user.phoneVerificationExpires || user.phoneVerificationExpires < new Date()) {
@@ -1139,23 +1176,32 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      req.session.userId = user.id;
-      (req.session as any).uaFingerprint = uaFingerprint(req);
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
+      // SECURITY: regenerate the session ID on login to prevent session
+      // fixation — any pre-auth session identifier is discarded here.
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("Session regenerate error:", regenErr);
           return res.status(500).json({ message: "Session error" });
         }
-        const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword)
-          .then(async (safe) => {
-            if (req.headers["x-client"] === "capacitor-app") {
-              const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
-              return res.json({ ...safe, mobileToken });
-            }
-            res.json(safe);
-          })
-          .catch(() => res.json(userWithoutPassword));
+        req.session.userId = user.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            return res.status(500).json({ message: "Session error" });
+          }
+          const { password, ...userWithoutPassword } = user;
+          sanitizeAdminFlag(userWithoutPassword)
+            .then(async (safe) => {
+              // Native app login: also return a bearer token.
+              if (req.headers["x-client"] === "capacitor-app") {
+                const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
+                return res.json({ ...safe, mobileToken });
+              }
+              res.json(safe);
+            })
+            .catch(() => res.json(userWithoutPassword));
+        });
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1220,8 +1266,14 @@ export async function registerRoutes(
   });
 
   // Dev-only: auth diagnostics — shows account state without exposing passwords.
+  // SECURITY: fail-closed. Gating on NODE_ENV alone is unsafe — if NODE_ENV is
+  // unset/misconfigured on a live host these endpoints would be exposed. Require
+  // an explicit opt-in env that is never set in production.
+  const devAuthEndpointsEnabled = () =>
+    process.env.NODE_ENV !== "production" &&
+    process.env.ENABLE_DEV_AUTH_ENDPOINTS === "true";
   app.get("/api/auth/dev-diag", async (req, res) => {
-    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    if (!devAuthEndpointsEnabled()) return res.status(404).end();
     try {
       const email = (req.query.email as string || "").toLowerCase().trim();
       if (!email) return res.json({ error: "pass ?email=... in the query string" });
@@ -1246,7 +1298,7 @@ export async function registerRoutes(
   // Dev-only: directly set a user's password without email verification.
   // Disabled in production — returns 404 so it's not discoverable.
   app.post("/api/auth/dev-set-password", async (req, res) => {
-    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    if (!devAuthEndpointsEnabled()) return res.status(404).end();
     try {
       const { email, password } = req.body;
       if (!email || !password || password.length < 8) {
@@ -1564,7 +1616,20 @@ export async function registerRoutes(
       let fileUrl: string;
 
       const isOnReplit = !!process.env.REPL_ID;
-      if (PRIVATE_UPLOAD_TYPES.has(uploadType) && isOnReplit) {
+      const isPrivateUpload = PRIVATE_UPLOAD_TYPES.has(uploadType);
+
+      // SECURITY: private documents (KYC, business licences) must only ever be
+      // written to the gated private bucket. If that backend is unavailable
+      // (e.g. running off-Replit), fail loudly — never fall through to the
+      // public /uploads disk path or public object-storage bucket below.
+      if (isPrivateUpload && !isOnReplit) {
+        return res.status(503).json({
+          message:
+            "Secure document storage is unavailable in this environment. Please try again later.",
+        });
+      }
+
+      if (isPrivateUpload && isOnReplit) {
         // Push to the private object-storage bucket. The object path is
         // `<PRIVATE_OBJECT_DIR>/private-docs/<userId>/<random>.<ext>`.
         const { objectStorageClient, ObjectStorageService } = await import(
@@ -1846,11 +1911,11 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otp = String(crypto.randomInt(100000, 1000000));
       const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       await storage.updateUser(user.id, {
-        passwordChangeOtp: otp,
+        passwordChangeOtp: hashOtp(otp),
         passwordChangeOtpExpires: expires,
       });
 
@@ -1898,7 +1963,7 @@ export async function registerRoutes(
       if (!user.passwordChangeOtp || !user.passwordChangeOtpExpires) {
         return res.status(400).json({ message: "No pending verification code. Please request a new one." });
       }
-      if (user.passwordChangeOtp !== otp.trim()) {
+      if (user.passwordChangeOtp !== hashOtp(otp.trim())) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (new Date() > new Date(user.passwordChangeOtpExpires)) {
@@ -3937,7 +4002,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     try {
-      await storage.markNotificationAsRead(param(req.params.id));
+      await storage.markNotificationAsRead(param(req.params.id), req.session.userId!);
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
@@ -4110,7 +4175,8 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       
       if (!user.referralCode) {
-        const code = "BG-" + user.id.substring(0, 4).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+        // Unguessable code — CSPRNG, not Math.random()/user-id (both predictable).
+        const code = "BG-" + crypto.randomBytes(6).toString("hex").toUpperCase();
         const updated = await storage.updateUser(user.id, { referralCode: code });
         return res.json({ referralCode: updated?.referralCode });
       }
@@ -10487,8 +10553,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/beta-invite-code/regenerate", requireAdmin, async (req, res) => {
     try {
-      const newCode = Math.random().toString(36).substring(2, 8).toUpperCase() +
-                      Math.random().toString(36).substring(2, 8).toUpperCase();
+      // CSPRNG — beta invite codes gate registration, so they must be unguessable.
+      const newCode = crypto.randomBytes(9).toString("hex").toUpperCase();
       await storage.setAppSetting("beta_invite_code", newCode, req.session.userId);
       const baseUrl = process.env.PUBLIC_APP_URL?.trim() || `${req.protocol}://${req.get("host")}`;
       res.json({ code: newCode, inviteUrl: `${baseUrl}/register?invite=${newCode}` });

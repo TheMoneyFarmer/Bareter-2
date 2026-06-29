@@ -102,8 +102,11 @@ export function getAllowedOriginHosts(req: Request): Set<string> {
       allowed.add(o);
     }
   }
-  const selfHost =
-    (req.headers["x-forwarded-host"] as string) || req.headers.host;
+  // SECURITY: do NOT trust x-forwarded-host here. It is attacker-controllable
+  // (the upstream proxy does not always strip it), and adding it to the allowed
+  // set would let any origin pass the CSRF check by forging the header. Trust
+  // only the real Host header and the explicit ALLOWED_ORIGINS env list.
+  const selfHost = req.headers.host;
   if (selfHost) allowed.add(selfHost);
   return allowed;
 }
