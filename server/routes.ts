@@ -6629,21 +6629,24 @@ export async function registerRoutes(
         triggeredBy: "manual_admin",
       });
       const owner = await storage.getUser(listing.userId);
-      if (owner) {
+      if (owner?.email) {
         const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "")
           || (() => {
             const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
             const host = req.headers["x-forwarded-host"] || req.headers.host || "bareter.com";
             return `${protocol}://${host}`;
           })();
-        const { sendListingRejectionEmail } = await import("./emailService");
-        const emailSent = await sendListingRejectionEmail(owner.email, {
-          recipientName: owner.fullName,
-          listingTitle: listing.title,
-          reason,
-          baseUrl,
-        }).catch(err => { console.error("Failed to send rejection email:", err); return false; });
-        if (!emailSent) console.warn(`[admin] Rejection email not sent for listing ${listingId} — check email config`);
+        // Fire-and-forget — don't block the HTTP response waiting for Resend
+        import("./emailService").then(({ sendListingRejectionEmail }) => {
+          sendListingRejectionEmail(owner.email!, {
+            recipientName: owner.fullName,
+            listingTitle: listing.title,
+            reason,
+            baseUrl,
+          }).then(sent => {
+            if (!sent) console.warn(`[admin] Rejection email not sent for listing ${listingId} — check email config`);
+          }).catch(err => console.error("[admin] Failed to send rejection email:", err));
+        }).catch(() => {});
       }
       await logAdminAction(req, "listing_rejected", "listing", listingId, { title: listing.title, reason });
       res.json(listing);
