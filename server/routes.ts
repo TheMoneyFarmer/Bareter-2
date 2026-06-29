@@ -6619,40 +6619,49 @@ export async function registerRoutes(
       if (!listing) {
         return res.status(404).json({ message: "Listing not found" });
       }
-      await db.insert(moderationLogs).values({
+
+      // Respond immediately — listing is rejected in DB; logs/email fire in background
+      res.json(listing);
+
+      const adminUserId = req.session.userId || null;
+      const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "")
+        || (() => {
+          const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+          const host = req.headers["x-forwarded-host"] || req.headers.host || "bareter.com";
+          return `${protocol}://${host}`;
+        })();
+
+      // Background: moderation log
+      db.insert(moderationLogs).values({
         targetType: "listing",
         targetId: listingId,
         action: "rejected",
         reason,
         reviewedByAdmin: true,
-        adminUserId: req.session.userId || null,
+        adminUserId,
         triggeredBy: "manual_admin",
-      });
-      const owner = await storage.getUser(listing.userId);
-      if (owner?.email) {
-        const baseUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "")
-          || (() => {
-            const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
-            const host = req.headers["x-forwarded-host"] || req.headers.host || "bareter.com";
-            return `${protocol}://${host}`;
-          })();
-        // Fire-and-forget — don't block the HTTP response waiting for Resend
-        import("./emailService").then(({ sendListingRejectionEmail }) => {
-          sendListingRejectionEmail(owner.email!, {
-            recipientName: owner.fullName,
-            listingTitle: listing.title,
-            reason,
-            baseUrl,
-          }).then(sent => {
-            if (!sent) console.warn(`[admin] Rejection email not sent for listing ${listingId} — check email config`);
-          }).catch(err => console.error("[admin] Failed to send rejection email:", err));
-        }).catch(() => {});
-      }
-      await logAdminAction(req, "listing_rejected", "listing", listingId, { title: listing.title, reason });
-      res.json(listing);
+      }).catch(err => console.error("[admin] Failed to insert moderation log:", err));
+
+      // Background: rejection email + audit log
+      storage.getUser(listing.userId).then(owner => {
+        if (owner?.email) {
+          import("./emailService").then(({ sendListingRejectionEmail }) => {
+            sendListingRejectionEmail(owner.email!, {
+              recipientName: owner.fullName,
+              listingTitle: listing.title,
+              reason,
+              baseUrl,
+            }).then(sent => {
+              if (!sent) console.warn(`[admin] Rejection email not sent for listing ${listingId} — check email config`);
+            }).catch(err => console.error("[admin] Failed to send rejection email:", err));
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+
+      logAdminAction(req, "listing_rejected", "listing", listingId, { title: listing.title, reason });
     } catch (error) {
       console.error("Admin reject listing error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      if (!res.headersSent) res.status(500).json({ message: "Internal server error" });
     }
   });
 
