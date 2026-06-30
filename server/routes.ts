@@ -6555,6 +6555,20 @@ export async function registerRoutes(
       await logAdminAction(req, "listing_approved", "listing", listingId, { title: listing.title });
       res.json(listing);
 
+      // Send "Your listing is live!" email to the owner (fire-and-forget)
+      storage.getUser(listing.userId).then((owner) => {
+        if (!owner?.email) return;
+        const baseUrlApprove = (process.env.PUBLIC_APP_URL || "https://bareter.com").trim().replace(/\/+$/, "");
+        import("./emailService").then(({ sendListingPublishedEmail }) => {
+          sendListingPublishedEmail(owner.email!, {
+            recipientName: owner.fullName ?? undefined,
+            listingTitle: listing.title,
+            listingId,
+            baseUrl: baseUrlApprove,
+          }).catch((err) => console.error("[admin] Listing approved email failed:", err));
+        }).catch(() => {});
+      }).catch(() => {});
+
       // Fire-and-forget: scan for listings with overlapping categories and email their owners
       if (listing.categories && (listing.categories as string[]).length > 0) {
         const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
