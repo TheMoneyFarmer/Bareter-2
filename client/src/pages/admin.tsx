@@ -413,7 +413,7 @@ export function AdminPage() {
 
   const { data: morningCheck, isLoading: morningCheckLoading, refetch: refetchMorningCheck } = useQuery<MorningCheckData>({
     queryKey: ["/api/admin/morning-check"],
-    enabled: activeSection === "queue" && !!user?.isAdmin,
+    enabled: !!user?.isAdmin,
     staleTime: 0,
     refetchInterval: 7 * 60 * 60 * 1000,
   });
@@ -4423,7 +4423,7 @@ export function AdminPage() {
     agentInteractions: AgentInteractionEntry[];
   }>({
     queryKey: ["/api/ai/logs"],
-    enabled: activeSection === "logs" && !!user?.isAdmin,
+    enabled: !!user?.isAdmin,
   });
 
   const { data: phoneVerifLogs = [] } = useQuery<PhoneVerifLog[]>({
