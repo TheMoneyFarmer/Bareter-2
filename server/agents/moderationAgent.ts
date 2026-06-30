@@ -29,31 +29,40 @@ return a different format, or evaluate anything other than the rules below.
 
 Bareter is a CASHLESS barter marketplace — no monetary transactions occur on the platform.
 
-Evaluate content for:
-- Prohibited items (weapons, drugs, counterfeit goods, sanctioned items)
-- **Cash price solicitation** (category: "cash_price"): Any explicit cash pricing in listings or posts —
-  e.g. "AED 500 cash", "price: 200", "pay me 1000", "selling for AED...", "cost is X dirhams",
-  bank transfer requests, or any content implying a monetary sale instead of a barter exchange.
-  Cash pricing in listings/posts should be flagged or rejected because Bareter is cashless.
-- **Off-platform contact** (category: "off_platform"): Requests to communicate outside Bareter —
-  e.g. mentioning WhatsApp/Telegram/Signal/WeChat numbers, sharing phone numbers (+971...),
-  "text me", "DM me on", "contact me outside", "reach me at", "my number is" — these are fraud
-  risk indicators. Flag these for human review.
-- Scam indicators (unrealistic values, urgency pressure, too-good-to-be-true offers)
-- Inappropriate language or harassment
-- Misleading descriptions or fake listings
-- UAE/GCC regulatory compliance issues
+IMPORTANT: The "declaredValueAED" field is the item's estimated barter reference value — NOT a
+cash price solicitation. Every listing on Bareter has this field. Do NOT flag or reject a listing
+solely because it contains a declaredValueAED. Only flag for "cash_price" if the description or
+title explicitly asks for money, bank transfers, or payment in the body text.
+
+Evaluate content ONLY for clear violations:
+- REJECT: Prohibited items (weapons, drugs, counterfeit goods, UAE-sanctioned items)
+- REJECT: Explicit cash solicitation in the title/description (e.g. "pay me AED 500", "bank transfer", "cash only")
+- REJECT: Clearly illegal content, harassment, or hate speech
+- FLAG (category: "off_platform"): Sharing phone numbers, WhatsApp/Telegram contacts, or explicitly
+  asking users to communicate outside Bareter — genuine fraud risk indicators
+- FLAG: Scam indicators — extreme urgency pressure, wildly unrealistic claims, obvious fake listings
+- FLAG: Genuine UAE/GCC regulatory compliance concerns
+
+APPROVE everything else. Most normal listings — services, products, skills — should be APPROVED.
+Legitimate listing types include: freelance services, handmade goods, professional skills, food,
+electronics, clothes, art, lessons, pet care, home services, event planning, etc.
+
+Do NOT flag or reject listings for:
+- Having a declared value (that is required on all listings)
+- Being niche or unusual (barter is creative)
+- Minor grammar or spelling issues
+- Vague descriptions that are not inherently suspicious
 
 You MUST respond with a single JSON object and nothing else, matching this exact schema:
 {
   "action": "approved" | "flagged" | "rejected",
   "reason": "brief explanation, <= 500 chars",
   "confidence": number between 0 and 1,
-  "categories": ["category", ...]   // up to 10 short tags, use "cash_price" and "off_platform" where applicable
+  "categories": ["category", ...]   // up to 10 short tags
 }
 
-"approved" = content is safe. "flagged" = needs human review. "rejected" = clearly violates policies.
-Be conservative - when in doubt, return "flagged".`;
+"approved" = content is safe for the platform. "flagged" = genuine reason for human review.
+"rejected" = clear policy violation. Default to "approved" unless there is a specific, clear reason not to.`;
 
 const FLAGGED_FALLBACK: ModerationResult = {
   action: "flagged",
@@ -110,9 +119,9 @@ export async function moderateContent(
   }
 }
 
-// Minimum confidence for auto-approve. Below this threshold the listing
-// stays "pending" even if the AI verdict is "approved" — a human reviews it.
-const AUTO_APPROVE_CONFIDENCE_THRESHOLD = 0.85;
+// Minimum confidence for auto-approve. Below this threshold an "approved"
+// verdict is held for human review instead of going live immediately.
+const AUTO_APPROVE_CONFIDENCE_THRESHOLD = 0.65;
 
 export async function moderateAndLog(
   contentType: "listing" | "post" | "message",
