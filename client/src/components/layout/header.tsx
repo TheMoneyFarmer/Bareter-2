@@ -457,7 +457,7 @@ export function Header() {
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => navigate("/dashboard")} className="cursor-pointer gap-2.5 px-4 py-2.5">
                         <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span>My Listings</span>
+                        <span>Dashboard</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => navigate("/profile?tab=drafts")} className="cursor-pointer gap-2.5 px-4 py-2.5">
                         <BookOpen className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -590,7 +590,7 @@ export function Header() {
                       <Menu className="h-5 w-5" />
                     </button>
                   </SheetTrigger>
-                  <SheetContent side={isRTL ? "left" : "right"} className="w-72 p-0">
+                  <SheetContent side={isRTL ? "left" : "right"} className="w-72 p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
                     {/* Mobile user info */}
                     <div className="flex items-center gap-3 p-4 border-b bg-muted/20">
                       <Avatar className="h-11 w-11 flex-shrink-0">
@@ -620,7 +620,7 @@ export function Header() {
                         { href: "/feed", icon: <Compass className="h-4 w-4" />, label: "Discover" },
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
-                        { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "My Listings" },
+                        { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "Dashboard" },
                         { href: "/profile?tab=drafts", icon: <BookOpen className="h-4 w-4" />, label: "My Drafts" },
                         { href: "/deals", icon: <Handshake className="h-4 w-4" />, label: "Deals" },
                         { href: "/saved", icon: <Heart className="h-4 w-4" />, label: "Favorites" },

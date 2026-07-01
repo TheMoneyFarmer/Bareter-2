@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, ArrowRight, Star } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
+import { assetUrl } from "@/lib/queryClient";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 
 interface MatchItem {
@@ -95,7 +96,7 @@ export default function AiMatchCards() {
                     {match.listing?.images?.[0] ? (
                       <div className="h-24 w-full rounded overflow-hidden bg-muted">
                         <img
-                          src={match.listing.images[0]}
+                          src={assetUrl(match.listing.images[0])}
                           alt={match.listing?.title || "Match"}
                           className="h-full w-full object-cover"
                         />

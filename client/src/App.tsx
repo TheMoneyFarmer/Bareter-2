@@ -387,7 +387,7 @@ function WarmupBanner() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[9999] bg-bareter-teal text-white text-sm py-2 px-4 flex items-center justify-center gap-3 shadow-md">
-      <HandshakeLoader size="sm" white />
+      <HandshakeLoader size="sm" inverted />
       <span>Starting up, please wait a moment…</span>
     </div>
   );
@@ -430,10 +430,13 @@ function NativeBootstrap() {
         await StatusBar.setBackgroundColor({ color: "#136c68" });
       } catch {}
 
-      // Splash screen: fade out after first render settles
+      // Hide the native OS splash after a short delay so the teal web overlay
+      // (NativeSplashGate) has time to render first — avoids any black flash.
+      // The web overlay stays up until auth resolves independently.
+      await new Promise((r) => setTimeout(r, 400));
       try {
         const { SplashScreen } = await import("@capacitor/splash-screen");
-        await SplashScreen.hide({ fadeOutDuration: 400 });
+        await SplashScreen.hide({ fadeOutDuration: 250 });
       } catch {}
     })();
 
@@ -455,10 +458,78 @@ function NativeBootstrap() {
   return null;
 }
 
+/**
+ * On native: shows a full-screen teal overlay from first render until the
+ * /api/auth/me check resolves (max 8 s safety cap so it never blocks forever).
+ * The teal web overlay bridges the gap between the native splash hiding and
+ * content being ready — so there is never a white or black flash.
+ * On web: invisible no-op.
+ */
+function NativeSplashGate() {
+  const [visible, setVisible] = useState(isNative);
+  const [fading, setFading] = useState(false);
+  const hidden = useRef(false);
+
+  const { isLoading } = useQuery<unknown>({
+    queryKey: ["/api/auth/me"],
+    retry: false,
+  });
+
+  const dismiss = useRef(() => {
+    if (hidden.current) return;
+    hidden.current = true;
+    setFading(true);
+    setTimeout(() => setVisible(false), 350);
+  });
+
+  // Dismiss once auth check finishes
+  useEffect(() => {
+    if (!isNative || isLoading) return;
+    dismiss.current();
+  }, [isLoading]);
+
+  // Safety cap: always dismiss after 8 s even if auth hangs
+  useEffect(() => {
+    if (!isNative) return;
+    const t = setTimeout(() => dismiss.current(), 8000);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#136c68",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "32px",
+        zIndex: 99999,
+        transition: "opacity 350ms ease",
+        opacity: fading ? 0 : 1,
+        pointerEvents: fading ? "none" : "auto",
+      }}
+    >
+      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "36px", fontWeight: 800, letterSpacing: "0.12em", color: "#ffffff", textTransform: "uppercase" as const }}>
+        BARETER
+      </div>
+      <HandshakeLoader size="lg" inverted />
+      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "13px", color: "rgba(255,255,255,0.55)", letterSpacing: "0.05em" }}>
+        Loading…
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <NativeBootstrap />
+      <NativeSplashGate />
       <WarmupBanner />
       <ThemeProvider>
         <I18nProvider>
@@ -482,7 +553,7 @@ function App() {
                         {!isNative && <AnnouncementBanner />}
                         <Header />
                         <VerificationReminder />
-                        <main className="flex-1 pb-20 md:pb-0">
+                        <main className="flex-1 pb-28 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
                               <Suspense fallback={<PageSkeleton />}>

@@ -1,71 +1,98 @@
 /**
- * HandshakeLoader — brand-specific loading indicator.
- * Two stylised hands slide in from each side, clasp, and release on loop.
- * Replaces generic spinning circles across the app.
+ * HandshakeLoader — two fists bump together and pull back on loop.
+ * Uses emoji-safe unicode fists rendered in a full-brand loading screen.
  */
 
-interface HandshakeLoaderProps {
-  /** "sm" = 36 px wide (banner), "md" = 56 px (page), "lg" = 72 px (full-screen) */
-  size?: "sm" | "md" | "lg";
-  /** Use white hands (for dark/teal backgrounds) */
-  white?: boolean;
-}
-
 const KEYFRAMES = `
-  @keyframes brt-hs-l {
-    0%, 100% { transform: translateX(-10px); opacity: 0.5; }
-    35%, 65% { transform: translateX(0);    opacity: 1;   }
-    50%       { transform: translateX(-2px); opacity: 1;   }
+  @keyframes brt-fist-l {
+    0%, 100% { transform: translateX(-48px); opacity: 0; }
+    25%       { transform: translateX(-48px); opacity: 0; }
+    55%, 70%  { transform: translateX(0);    opacity: 1; }
+    85%       { transform: translateX(-8px);  opacity: 1; }
   }
-  @keyframes brt-hs-r {
-    0%, 100% { transform: translateX(10px);  opacity: 0.5; }
-    35%, 65% { transform: translateX(0);     opacity: 1;   }
-    50%       { transform: translateX(2px);  opacity: 1;   }
+  @keyframes brt-fist-r {
+    0%, 100% { transform: translateX(48px);  opacity: 0; }
+    25%       { transform: translateX(48px);  opacity: 0; }
+    55%, 70%  { transform: translateX(0);     opacity: 1; }
+    85%       { transform: translateX(8px);   opacity: 1; }
+  }
+  @keyframes brt-impact {
+    0%, 50%    { transform: scale(0); opacity: 0; }
+    60%        { transform: scale(1.4); opacity: 1; }
+    70%        { transform: scale(1);   opacity: 0.6; }
+    80%, 100%  { transform: scale(0);   opacity: 0; }
+  }
+  @keyframes brt-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.05); }
   }
 `;
 
-const SIZES = {
-  sm: { w: 36, h: 20, vw: 52, vh: 28 },
-  md: { w: 56, h: 28, vw: 52, vh: 28 },
-  lg: { w: 72, h: 36, vw: 52, vh: 28 },
-};
+interface Props {
+  /** Use white fists on teal background (native splash). Default is teal on white. */
+  inverted?: boolean;
+  size?: "sm" | "md" | "lg";
+}
 
-export function HandshakeLoader({ size = "md", white = false }: HandshakeLoaderProps) {
-  const c = white ? "#ffffff" : "#0d9488";
-  const { w, h, vw, vh } = SIZES[size];
+export function HandshakeLoader({ inverted = false, size = "md" }: Props) {
+  const fontSize = size === "sm" ? 24 : size === "lg" ? 52 : 38;
+  const gap = size === "sm" ? 8 : size === "lg" ? 20 : 14;
+  const impactSize = size === "sm" ? 12 : size === "lg" ? 24 : 18;
 
   return (
     <>
-      {/* Inject keyframes once — duplicate <style> tags are harmless */}
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${vw} ${vh}`}
-        fill="none"
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          gap: `${gap}px`,
+          height: `${fontSize + 16}px`,
+        }}
         aria-label="Loading…"
         role="img"
       >
-        {/* Left hand: forearm + two finger bumps pointing right */}
-        <g style={{ animation: "brt-hs-l 1.8s ease-in-out infinite" }}>
-          {/* Forearm */}
-          <rect x="1" y="11" width="21" height="6" rx="3" fill={c} />
-          {/* Top finger */}
-          <rect x="18" y="3"  width="5" height="10" rx="2.5" fill={c} />
-          {/* Bottom finger */}
-          <rect x="18" y="15" width="5" height="10" rx="2.5" fill={c} />
-        </g>
+        {/* Left fist — 🤜 right-pointing, slides in from left */}
+        <span
+          style={{
+            fontSize: `${fontSize}px`,
+            lineHeight: 1,
+            display: "block",
+            animation: "brt-fist-l 2s ease-in-out infinite",
+            filter: inverted ? "brightness(0) invert(1)" : "none",
+          }}
+        >
+          🤜
+        </span>
 
-        {/* Right hand: forearm + two finger bumps pointing left (mirror) */}
-        <g style={{ animation: "brt-hs-r 1.8s ease-in-out infinite" }}>
-          {/* Forearm */}
-          <rect x="30" y="11" width="21" height="6" rx="3" fill={c} />
-          {/* Top finger */}
-          <rect x="29" y="3"  width="5" height="10" rx="2.5" fill={c} />
-          {/* Bottom finger */}
-          <rect x="29" y="15" width="5" height="10" rx="2.5" fill={c} />
-        </g>
-      </svg>
+        {/* Impact flash at center */}
+        <span
+          style={{
+            position: "absolute",
+            fontSize: `${impactSize}px`,
+            lineHeight: 1,
+            animation: "brt-impact 2s ease-in-out infinite",
+            pointerEvents: "none",
+          }}
+        >
+          ✨
+        </span>
+
+        {/* Right fist — 🤛 left-pointing, slides in from right */}
+        <span
+          style={{
+            fontSize: `${fontSize}px`,
+            lineHeight: 1,
+            display: "block",
+            animation: "brt-fist-r 2s ease-in-out infinite",
+            filter: inverted ? "brightness(0) invert(1)" : "none",
+          }}
+        >
+          🤛
+        </span>
+      </div>
     </>
   );
 }
@@ -73,7 +100,7 @@ export function HandshakeLoader({ size = "md", white = false }: HandshakeLoaderP
 /** Full-screen centred loader — drop-in replacement for page-level spinners */
 export function FullPageLoader() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-background">
       <HandshakeLoader size="lg" />
     </div>
   );

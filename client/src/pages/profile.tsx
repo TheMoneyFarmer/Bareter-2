@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import { LOCATIONS, type Listing, type Rating, type OfferNeedItem, type SocialProfile, type ListingDraft, type DealWithUsers } from "@shared/schema";
 import { Link } from "wouter";
 import { FileText, Trash2 } from "lucide-react";
@@ -51,6 +51,7 @@ import {
   MessageCircle,
   ArrowRight,
   RefreshCw,
+  Grid3x3,
 } from "lucide-react";
 import { VerifiedBadge, TrustBadges, isUserVerified } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -393,8 +394,15 @@ export function ProfilePage() {
     () => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab")) ? "section" : "menu"
   );
 
+  const [mobileTab, setMobileTab] = useState<"grid" | ProfileTabId>(() => {
+    if (typeof window === "undefined") return "grid";
+    const p = new URLSearchParams(window.location.search).get("tab") as ProfileTabId;
+    return PROFILE_TABS.some(t => t.id === p) ? p : "grid";
+  });
+
   const goToSection = (tab: ProfileTabId) => {
     setActiveTab(tab);
+    setMobileTab(tab);
     setMobileView("section");
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
@@ -403,6 +411,14 @@ export function ProfilePage() {
 
   const goBackToMenu = () => {
     setMobileView("menu");
+  };
+
+  const goToGrid = () => {
+    setMobileTab("grid");
+    setMobileView("menu");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    window.history.replaceState({}, "", url.toString());
   };
 
   const activeSectionLabel = PROFILE_TABS.find(t => t.id === activeTab)?.label ?? "Profile";
@@ -637,13 +653,13 @@ export function ProfilePage() {
 
   return (
     <div className="px-3 py-4 md:container md:px-4 md:py-8 mx-auto max-w-4xl">
-      {/* Mobile: header bar — shows back button when inside a section */}
+      {/* Mobile: header bar */}
       <div className="md:hidden flex items-center justify-between mb-4">
-        {mobileView === "section" ? (
+        {mobileTab !== "grid" ? (
           <>
             <button
               type="button"
-              onClick={goBackToMenu}
+              onClick={goToGrid}
               className="flex items-center gap-1.5 text-sm font-semibold text-bareter-teal"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -657,7 +673,7 @@ export function ProfilePage() {
           </>
         ) : (
           <>
-            <h1 className="text-lg font-bold">My Profile</h1>
+            <h1 className="text-lg font-bold">{user.fullName}</h1>
             <Link href="/settings">
               <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Settings">
                 <Settings className="h-5 w-5" />
@@ -677,7 +693,96 @@ export function ProfilePage() {
         </Alert>
       )}
 
-      <div className="flex flex-col md:flex-row gap-4 md:gap-6 mb-6 md:mb-8">
+      {/* Mobile-only TikTok/Instagram-style profile header */}
+      <div className="md:hidden mb-4">
+        {/* Avatar LEFT + Stats RIGHT */}
+        <div className="flex items-center gap-5 mb-3">
+          <div className="relative flex-shrink-0">
+            <Avatar className="h-20 w-20">
+              <AvatarImage src={user.avatarUrl || undefined} alt={user.fullName} className="object-cover" />
+              <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
+                {user.fullName.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="absolute bottom-0 right-0 h-7 w-7 rounded-full"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadFileMutation.isPending}
+              data-testid="button-change-avatar-mobile"
+            >
+              {uploadFileMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Camera className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
+          <div className="flex-1 flex items-center justify-around">
+            <div className="text-center">
+              <div className="text-xl font-bold">{listings?.length || 0}</div>
+              <div className="text-[11px] text-muted-foreground">{t("profile.listings")}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-bold flex items-center justify-center gap-0.5">
+                {averageRating || "–"}
+                {averageRating && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+              </div>
+              <div className="text-[11px] text-muted-foreground">Rating</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-bold">{credibility?.completedDeals || 0}</div>
+              <div className="text-[11px] text-muted-foreground">{t("profile.deals")}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Name + bio */}
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-bold text-sm">{user.fullName}</p>
+            <FounderBadge show={!!user.founderBadge} size="sm" />
+            <TrustBadges emailVerified={(user as any).emailVerified} phoneVerified={(user as any).phoneVerified} />
+          </div>
+          {user.businessName && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Building2 className="h-3 w-3" /> {user.businessName}
+            </p>
+          )}
+          {user.bio && <p className="text-sm mt-1 leading-snug">{user.bio}</p>}
+          {user.location && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <MapPin className="h-3 w-3" /> {user.location}
+            </p>
+          )}
+        </div>
+
+        {/* Edit / Share buttons */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => goToSection("profile")}
+            className="flex-1 h-8 border border-border rounded-lg text-sm font-semibold bg-muted/40 hover:bg-muted/60 transition-colors"
+          >
+            Edit profile
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (navigator.share) {
+                navigator.share({ url: window.location.href, title: user.fullName }).catch(() => {});
+              }
+            }}
+            className="flex-1 h-8 border border-border rounded-lg text-sm font-semibold bg-muted/40 hover:bg-muted/60 transition-colors"
+          >
+            Share
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop avatar + info section — hidden on mobile */}
+      <div className="hidden md:flex md:flex-row gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="flex flex-col items-center">
           <div className="relative">
             <Avatar className="h-24 w-24 md:h-32 md:w-32">
@@ -837,28 +942,66 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Mobile section list — shown when no section is active */}
-      {mobileView === "menu" && (
-        <div className="md:hidden rounded-xl border border-border overflow-hidden divide-y divide-border bg-card">
-          {PROFILE_TABS.map(({ id, label, desc, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => goToSection(id)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-muted/40 active:bg-muted/60 transition-colors text-start"
-            >
-              <div className="h-9 w-9 rounded-full bg-bareter-teal/10 flex items-center justify-center flex-shrink-0">
-                <Icon className="h-4.5 w-4.5 text-bareter-teal" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold leading-tight">{label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">{desc}</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Mobile horizontal icon tab row — scrollable, all sections */}
+      <div className="md:hidden flex overflow-x-auto border-b border-border mb-0 scrollbar-hide">
+        {([
+          { id: "grid"         as const,        Icon: Grid3x3,      label: "Listings"      },
+          { id: "offers"       as ProfileTabId,  Icon: Package,      label: "Offers"        },
+          { id: "needs"        as ProfileTabId,  Icon: ShoppingCart, label: "Needs"         },
+          { id: "deals"        as ProfileTabId,  Icon: Handshake,    label: "Deals"         },
+          { id: "endorsements" as ProfileTabId,  Icon: ThumbsUp,     label: "Reviews"       },
+          { id: "portfolio"    as ProfileTabId,  Icon: ImageIcon,    label: "Portfolio"     },
+          { id: "drafts"       as ProfileTabId,  Icon: FileText,     label: "Drafts"        },
+          { id: "verification" as ProfileTabId,  Icon: Shield,       label: "Verify"        },
+        ] as const).map(({ id, Icon, label }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => id === "grid" ? goToGrid() : goToSection(id)}
+            className={`flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-2 border-b-2 transition-colors ${
+              mobileTab === id
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground"
+            }`}
+          >
+            <Icon className="h-[18px] w-[18px]" strokeWidth={mobileTab === id ? 2.5 : 2} />
+            <span className="text-[9px] font-medium whitespace-nowrap">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile listing grid — shown when grid tab is active */}
+      <div className={`md:hidden mt-0.5 ${mobileTab === "grid" ? "" : "hidden"}`}>
+        {listings && listings.length > 0 ? (
+          <div className="grid grid-cols-3 gap-0.5">
+            {listings.map((l) => (
+              <Link key={l.id} href={`/listings/${l.id}`}>
+                <div className="aspect-square bg-muted overflow-hidden">
+                  {l.images?.[0] ? (
+                    <img
+                      src={assetUrl(l.images[0])}
+                      alt={l.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-muted">
+                      <Package className="h-6 w-6 text-muted-foreground opacity-40" />
+                    </div>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="py-14 text-center text-muted-foreground">
+            <Package className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No listings yet</p>
+            <Link href="/create-listing">
+              <Button size="sm" className="mt-3">Create your first listing</Button>
+            </Link>
+          </div>
+        )}
+      </div>
 
       <Tabs value={activeTab} onValueChange={(v) => goToSection(v as ProfileTabId)} className="space-y-6">
         {/* Desktop tab bar — hidden on mobile */}
@@ -899,8 +1042,8 @@ export function ProfilePage() {
           </TabsList>
         </div>
 
-        {/* Tab content — hidden on mobile until user taps into a section */}
-        <div className={mobileView === "menu" ? "hidden md:block" : ""}>
+        {/* Tab content — hidden on mobile when grid tab is active */}
+        <div className={mobileTab === "grid" ? "hidden md:block" : ""}>
 
         {/* Task #248 — Drafts tab: surface autosaved listings so users
             can pick up where they left off without going back to the

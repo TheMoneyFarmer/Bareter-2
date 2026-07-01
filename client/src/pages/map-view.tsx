@@ -19,6 +19,7 @@ import {
   Crown,
 } from "lucide-react";
 import { CATEGORIES, type ListingWithUser } from "@shared/schema";
+import { assetUrl } from "@/lib/queryClient";
 
 // Fix Leaflet default marker icon issue with Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -253,7 +254,7 @@ export function MapViewPage() {
                         <div className="flex gap-2">
                           {listing.images && listing.images[0] ? (
                             <img
-                              src={listing.images[0]}
+                              src={assetUrl(listing.images[0])}
                               alt={listing.title}
                               className="h-14 w-14 rounded-md object-cover flex-shrink-0"
                             />
@@ -326,7 +327,7 @@ export function MapViewPage() {
                   <div className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors active:bg-muted" data-testid={`map-mobile-listing-${listing.id}`}>
                     {listing.images && listing.images[0] ? (
                       <img
-                        src={listing.images[0]}
+                        src={assetUrl(listing.images[0])}
                         alt={listing.title}
                         className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
                       />
