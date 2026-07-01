@@ -23,8 +23,15 @@ export type DiditUserUpdate = Partial<
     | "diditVerificationData"
     | "emailVerified"
     | "updatedAt"
+    | "verificationLevel"
+    | "identityVerifiedAt"
   >
 >;
+
+export interface DiditBusinessUpdate {
+  kybStatus: string;
+  kybVerifiedAt?: Date | null;
+}
 
 export interface DiditWebhookStorage {
   getUserByDiditSessionId(
@@ -35,6 +42,14 @@ export interface DiditWebhookStorage {
     data: DiditUserUpdate,
   ): Promise<DiditUserProjection | undefined>;
   createNotification(notification: InsertNotification): Promise<unknown>;
+  // Business KYB — may not exist in all storage implementations (optional)
+  getBusinessProfileByDiditSession?(
+    sessionId: string,
+  ): Promise<{ id: string; ownerId: string } | undefined>;
+  updateBusinessProfile?(
+    id: string,
+    data: DiditBusinessUpdate,
+  ): Promise<unknown>;
 }
 
 export interface DiditWebhookDeps {
@@ -77,6 +92,37 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
         return res.status(400).json({ message: "Missing session_id" });
       }
 
+      // ── Try business KYB first ────────────────────────────────────────────
+      // business_profiles.didit_session_id is separate from users.didit_session_id.
+      // If this session belongs to a business profile, update kybStatus there
+      // and return — do NOT fall through to the user KYC path.
+      if (deps.storage.getBusinessProfileByDiditSession && deps.storage.updateBusinessProfile) {
+        const bizProfile = await deps.storage.getBusinessProfileByDiditSession(sessionId);
+        if (bizProfile) {
+          const bizUpdate: DiditBusinessUpdate = { kybStatus: status ?? "UNKNOWN" };
+          if (status === "APPROVED") {
+            bizUpdate.kybVerifiedAt = new Date();
+            await deps.storage.createNotification({
+              userId: bizProfile.ownerId,
+              type: "system",
+              title: "Business Verification Approved!",
+              message: "Your business has been verified. You can now publish business listings.",
+            });
+          } else if (status === "DECLINED" || status === "REJECTED") {
+            await deps.storage.createNotification({
+              userId: bizProfile.ownerId,
+              type: "system",
+              title: "Business Verification Not Approved",
+              message: "Your business verification was declined. Please try again or contact support.",
+            });
+          }
+          await deps.storage.updateBusinessProfile(bizProfile.id, bizUpdate);
+          console.log(`[didit] KYB webhook: businessProfileId=${bizProfile.id} status=${status}`);
+          return res.json({ received: true });
+        }
+      }
+
+      // ── Individual / legacy KYC path ─────────────────────────────────────
       const user = await deps.storage.getUserByDiditSessionId(sessionId);
 
       if (!user) {
@@ -88,6 +134,7 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
         updatedAt: new Date(),
       };
 
+      // Legacy: keep kycStatus / kybStatus in sync on the users row.
       if (user.accountType === "business") {
         updateData.kybStatus = status;
       } else {
@@ -111,6 +158,14 @@ export function makeDiditWebhookHandler(deps: DiditWebhookDeps) {
         updateData.emailVerified = true;
         updateData.diditVerificationData =
           (data.user_data ?? data.verification ?? {}) as Record<string, unknown>;
+
+        // Level 2 — individual identity verified.
+        // Only set for non-business KYC sessions (business KYB is handled above
+        // at the business_profiles level, not the user level).
+        if (user.accountType !== "business") {
+          updateData.verificationLevel = 2;
+          updateData.identityVerifiedAt = new Date();
+        }
 
         await deps.storage.createNotification({
           userId: user.id,

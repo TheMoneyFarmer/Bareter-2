@@ -71,7 +71,10 @@ import {
   internationalWaitlist,
   mobileTokens,
   successStories,
+  businessProfiles,
+  messageFlags,
 } from "@shared/schema";
+import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
 import {
@@ -2497,6 +2500,52 @@ export async function registerRoutes(
       const listing = await storage.getListing(listingId);
       if (!listing) return res.status(404).json({ message: "Listing not found" });
 
+      // ── Verification gate (Part 3) ───────────────────────────────────────
+      // Gate only applies to business_product, business_wholesale, and
+      // creator_service listings. individual_item listings are unchanged.
+      // Gate is point-in-time: once a proposal is accepted (deal created),
+      // no subsequent kycStatus/verificationLevel change affects it.
+      const listingType = (listing as any).listingType as string | null ?? "individual_item";
+
+      if (listingType === "business_product" || listingType === "business_wholesale") {
+        const actingAsBusinessId = req.body.actingAsBusinessId as string | undefined;
+        const actingUser = await storage.getUser(userId);
+        if (!actingUser) return res.status(404).json({ message: "User not found" });
+
+        if (actingAsBusinessId) {
+          // User is acting on behalf of a business membership.
+          const membership = await storage.getBusinessMembership(userId, actingAsBusinessId);
+          if (!membership) {
+            return res.status(403).json({ message: "You are not a member of that business.", code: "NOT_BUSINESS_MEMBER" });
+          }
+          const bizProfile = await storage.getBusinessProfile(actingAsBusinessId);
+          if (!bizProfile || bizProfile.kybStatus !== "verified") {
+            return res.status(403).json({ message: "Your business must complete KYB verification before proposing on business listings.", code: "BUSINESS_KYB_REQUIRED" });
+          }
+        } else {
+          // User is acting as an individual — requires Level 2 identity verification.
+          const verificationLevel = (actingUser as any).verificationLevel as number ?? 1;
+          if (verificationLevel < 2) {
+            return res.status(403).json({ message: "Identity verification is required to propose on business listings. Please verify your identity in Settings.", code: "IDENTITY_VERIFICATION_REQUIRED" });
+          }
+        }
+      } else if (listingType === "creator_service") {
+        // Creator services: individual counterparties need no extra gate.
+        // Business counterparties must apply the same Level 2 / KYB rule.
+        const actingAsBusinessId = req.body.actingAsBusinessId as string | undefined;
+        if (actingAsBusinessId) {
+          const membership = await storage.getBusinessMembership(userId, actingAsBusinessId);
+          if (!membership) {
+            return res.status(403).json({ message: "You are not a member of that business.", code: "NOT_BUSINESS_MEMBER" });
+          }
+          const bizProfile = await storage.getBusinessProfile(actingAsBusinessId);
+          if (!bizProfile || bizProfile.kybStatus !== "verified") {
+            return res.status(403).json({ message: "Your business must complete KYB verification before proposing on creator listings.", code: "BUSINESS_KYB_REQUIRED" });
+          }
+        }
+      }
+      // individual_item: no gate — fall through unchanged.
+
       const schema = z.object({
         offerItemName: z.string().min(1, "Offer item name is required"),
         offerItemValue: z.string().refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Value must be a positive number"),
@@ -3803,9 +3852,14 @@ export async function registerRoutes(
 
       const data = createMessageSchema.parse(req.body);
 
-      // Detect off-platform communication attempts (expanded keyword set)
+      // Contact-circumvention detection — covers phone numbers, emails,
+      // @handles, and platform URLs in addition to the original keyword list.
+      // Messages are NEVER blocked — we warn and log only.
+      const contactCheck = detectContactCircumvention(data.content);
+
+      // Legacy off-platform keyword check (kept for backward compat with existing warning field values)
       const OFF_PLATFORM_RE = /whatsapp|telegram|signal|wechat|viber|\+\d{5,}|text me\b|dm me\b|contact me (outside|off|directly)|my number is|outside the app|off.?platform|move (this|the convo|the conversation) (to|off)/i;
-      const isOffPlatform = OFF_PLATFORM_RE.test(data.content);
+      const isOffPlatform = contactCheck.detected || OFF_PLATFORM_RE.test(data.content);
       const warning = isOffPlatform ? "off_platform" : null;
 
       const message = await storage.createMessage({
@@ -3813,20 +3867,34 @@ export async function registerRoutes(
         senderId: req.session.userId!,
         content: data.content,
         isOffPlatform,
-        warning,
+        warning: warning ?? (contactCheck.flagType ?? null),
       });
 
-      // Log off-platform warnings to moderation_logs for admin review
-      if (warning) {
+      // Log to message_flags when contact circumvention is detected
+      // and the deal has not yet been accepted (gate only pre-acceptance).
+      if (contactCheck.detected && contactCheck.flagType &&
+          deal.state !== "accepted" && deal.state !== "in_progress" &&
+          deal.state !== "delivery_proof" && deal.state !== "completed") {
+        storage.createMessageFlag({
+          messageId: message.id,
+          conversationId: deal.id,
+          flagType: contactCheck.flagType,
+        }).catch((err: unknown) => console.error("[messageGuard] Failed to log flag:", err));
+      }
+
+      // Also log to moderation_logs for admin review (existing behaviour)
+      if (isOffPlatform) {
         try {
           const { moderationLogs: modLogsTable } = await import("@shared/schema");
           await db.insert(modLogsTable).values({
             targetType: "message",
             targetId: message.id,
             action: "flagged",
-            reason: `Chat message flagged for off-platform contact attempt`,
+            reason: contactCheck.detected
+              ? `Chat message flagged for contact circumvention (${contactCheck.flagType})`
+              : "Chat message flagged for off-platform contact attempt",
             confidence: "0.95",
-            rawResponse: { action: "flagged", reason: "off-platform contact attempt detected by regex", confidence: 0.95, categories: [warning] },
+            rawResponse: { action: "flagged", reason: contactCheck.flagType ?? "off_platform", confidence: 0.95, categories: [warning] },
           });
         } catch (err) {
           console.error("Failed to log message moderation:", err);
@@ -3979,11 +4047,143 @@ export async function registerRoutes(
     }
   });
 
-  // DIDIT CODE ARCHIVED
-  // See _archived/didit/routes-verification-endpoints.ts
-  // Re-integrate when ENABLE_DIDIT needed
-  // (POST /api/verification/session, GET /api/verification/status,
-  //  POST /api/webhooks/didit, POST /api/verification/refresh)
+  // ── Didit Verification Endpoints ────────────────────────────────────────────
+
+  app.post("/api/verification/session", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const userAccountType = (req.body.accountType as string | undefined) || user.accountType || "individual";
+      const workflowId = userAccountType === "business"
+        ? process.env.DIDIT_KYB_WORKFLOW_ID
+        : process.env.DIDIT_KYC_WORKFLOW_ID;
+      if (!workflowId) return res.status(500).json({ message: "Verification workflow not configured" });
+
+      const { createVerificationSession, getSessionStatus, getSessionUrl } = await import("./diditClient");
+      const baseUrl = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "");
+      const callbackUrl = `${baseUrl}/profile`;
+
+      const RESUME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+      const sameAccountType = (user.accountType ?? "individual") === userAccountType;
+      const startedAt = user.verificationSessionStartedAt ? new Date(user.verificationSessionStartedAt).getTime() : 0;
+      const sessionFresh = startedAt > 0 && Date.now() - startedAt < RESUME_WINDOW_MS;
+
+      if (user.diditSessionId && sameAccountType && sessionFresh) {
+        try {
+          const liveStatus = await getSessionStatus(user.diditSessionId);
+          const isResumable = liveStatus && !["EXPIRED","ABANDONED","DECLINED","REJECTED","APPROVED","PROCESSING"].includes(liveStatus);
+          if (isResumable) {
+            const resumeUrl = await getSessionUrl(user.diditSessionId).catch(() => null);
+            if (resumeUrl) return res.json({ sessionId: user.diditSessionId, verificationUrl: resumeUrl, resumed: true });
+          }
+          await storage.updateUser(user.id, { diditSessionId: null, verificationSessionStartedAt: null } as any);
+        } catch {
+          await storage.updateUser(user.id, { diditSessionId: null, verificationSessionStartedAt: null } as any).catch(() => {});
+        }
+      }
+
+      const session = await createVerificationSession(workflowId, user.id, callbackUrl);
+      if (!session) return res.status(500).json({ message: "Could not start verification. Please try again." });
+
+      await storage.updateUser(user.id, {
+        accountType: userAccountType,
+        diditSessionId: session.session_id,
+        verificationSessionStartedAt: new Date(),
+        ...(userAccountType === "business" ? { kybStatus: "IN_PROGRESS" } : { kycStatus: "IN_PROGRESS" }),
+      } as any);
+
+      res.json({ sessionId: session.session_id, verificationUrl: session.url, resumed: false });
+    } catch (error) {
+      console.error("Create verification session error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/verification/status", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const { getVerificationStatus, isUserVerified } = await import("./diditClient");
+      const accountType = user.accountType || "individual";
+      const statusInfo = getVerificationStatus(accountType, user.kycStatus || "NOT_STARTED", user.kybStatus || "NOT_STARTED");
+      const verified = isUserVerified(accountType, user.kycStatus || "NOT_STARTED", user.kybStatus || "NOT_STARTED", user.isVerified);
+      res.json({
+        accountType,
+        kycStatus: user.kycStatus,
+        kybStatus: user.kybStatus,
+        verificationLevel: (user as any).verificationLevel ?? 1,
+        identityVerifiedAt: (user as any).identityVerifiedAt ?? null,
+        isVerified: verified,
+        ...statusInfo,
+      });
+    } catch (error) {
+      console.error("Get verification status error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Didit webhook — signature-verified, processes KYC (Level 2) and KYB (business_profiles)
+  {
+    const { verifyWebhookSignature: verifyDiditSignature } = await import("./diditClient");
+    const { makeDiditWebhookHandler } = await import("./handlers/diditWebhook");
+    const {
+      sendVerificationApprovedEmail,
+      sendVerificationDeclinedEmail,
+      sendVerificationUnderReviewEmail,
+    } = await import("./emailService");
+    const diditWebhookHandler = makeDiditWebhookHandler({
+      storage,
+      verifyWebhookSignature: verifyDiditSignature,
+      sendApprovedEmail: sendVerificationApprovedEmail,
+      sendDeclinedEmail: sendVerificationDeclinedEmail,
+      sendUnderReviewEmail: sendVerificationUnderReviewEmail,
+    });
+    app.post("/api/webhooks/didit", diditWebhookHandler);
+  }
+
+  app.post("/api/verification/refresh", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user.diditSessionId) return res.json({ synced: false, message: "No active verification session." });
+      const { getSessionStatus, getVerificationStatus, isUserVerified } = await import("./diditClient");
+      const latestStatus = await getSessionStatus(user.diditSessionId);
+      if (!latestStatus) return res.json({ synced: false, message: "Could not reach verification service. Try again shortly." });
+      const isBusinessAccount = user.accountType === "business";
+      const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
+      if (latestStatus === currentStatus) {
+        const statusInfo = getVerificationStatus(user.accountType || "individual", user.kycStatus || "NOT_STARTED", user.kybStatus || "NOT_STARTED");
+        return res.json({ synced: false, message: "Status already up to date.", ...statusInfo, kycStatus: user.kycStatus, kybStatus: user.kybStatus, isVerified: user.isVerified });
+      }
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
+      if (isBusinessAccount) { updateData.kybStatus = latestStatus; } else { updateData.kycStatus = latestStatus; }
+      if (latestStatus === "APPROVED") {
+        updateData.isVerified = true;
+        updateData.verificationStatus = "verified";
+        updateData.diditVerifiedAt = new Date();
+        if (!isBusinessAccount) { updateData.verificationLevel = 2; updateData.identityVerifiedAt = new Date(); }
+      } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+        updateData.isVerified = false;
+        updateData.verificationStatus = "rejected";
+      } else if (latestStatus === "IN_REVIEW" || latestStatus === "PENDING_REVIEW") {
+        updateData.verificationStatus = "submitted";
+      } else if (latestStatus === "EXPIRED" || latestStatus === "ABANDONED") {
+        updateData.verificationStatus = "pending";
+        updateData.diditSessionId = null;
+      }
+      await storage.updateUser(user.id, updateData as any);
+      const updatedUser = await storage.getUser(user.id);
+      const newKycStatus = updatedUser?.kycStatus || "NOT_STARTED";
+      const newKybStatus = updatedUser?.kybStatus || "NOT_STARTED";
+      const statusInfo = getVerificationStatus(user.accountType || "individual", newKycStatus, newKybStatus);
+      const verified = isUserVerified(user.accountType || "individual", newKycStatus, newKybStatus, updatedUser?.isVerified);
+      return res.json({ synced: true, message: `Status updated to ${latestStatus}`, ...statusInfo, kycStatus: newKycStatus, kybStatus: newKybStatus, isVerified: verified });
+    } catch (error) {
+      console.error("Verification refresh error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   // Sanity CMS webhook — flushes the in-memory content cache immediately on publish.
   // Sanity signs each request with HMAC-SHA256; the header format is:
@@ -11290,6 +11490,177 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Feature stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Business Profiles ────────────────────────────────────────────────────────
+
+  app.get("/api/businesses/me", requireAuth, async (req, res) => {
+    try {
+      const profile = await storage.getBusinessProfileByOwnerId(req.session.userId!);
+      if (!profile) return res.status(404).json({ message: "No business profile found" });
+      res.json(profile);
+    } catch (error) {
+      console.error("Get business profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/businesses/:id", requireAuth, async (req, res) => {
+    try {
+      const profile = await storage.getBusinessProfile(param(req.params.id));
+      if (!profile) return res.status(404).json({ message: "Business profile not found" });
+      // Membership check: owner or member only
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (profile.ownerId !== userId && !user?.isAdmin) {
+        const membership = await storage.getBusinessMembership(userId, profile.id);
+        if (!membership) return res.status(403).json({ message: "Not authorised" });
+      }
+      res.json(profile);
+    } catch (error) {
+      console.error("Get business profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/businesses", requireAuth, async (req, res) => {
+    try {
+      const schema = z.object({
+        companyName: z.string().min(1).max(200),
+        tradeLicenseNumber: z.string().max(100).optional(),
+        category: z.string().max(100).optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const ownerId = req.session.userId!;
+
+      // One business profile per owner for now
+      const existing = await storage.getBusinessProfileByOwnerId(ownerId);
+      if (existing) return res.status(409).json({ message: "You already have a business profile", businessId: existing.id });
+
+      const profile = await storage.createBusinessProfile({ ownerId, ...parsed });
+      res.status(201).json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Create business profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Initiate KYB verification for a business profile
+  app.post("/api/businesses/:id/kyb/start", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business profile not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Only the business owner can start KYB" });
+      if (profile.kybStatus === "verified") return res.json({ message: "Business is already verified", kybStatus: "verified" });
+
+      const workflowId = process.env.DIDIT_KYB_WORKFLOW_ID;
+      if (!workflowId) return res.status(500).json({ message: "KYB workflow not configured" });
+
+      const { createVerificationSession } = await import("./diditClient");
+      const baseUrl = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "");
+      const session = await createVerificationSession(workflowId, userId, `${baseUrl}/profile`);
+      if (!session) return res.status(500).json({ message: "Could not start KYB session" });
+
+      await storage.updateBusinessProfile(businessId, {
+        kybStatus: "pending",
+        diditSessionId: session.session_id,
+      });
+
+      res.json({ sessionId: session.session_id, verificationUrl: session.url });
+    } catch (error) {
+      console.error("Start KYB error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Listing Claims (split-quantity) ─────────────────────────────────────────
+
+  app.get("/api/listings/:id/claims", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      // Only listing owner or admin can see all claims
+      if (listing.userId !== userId && !user?.isAdmin) {
+        return res.status(403).json({ message: "Not authorised" });
+      }
+      const claims = await storage.getListingClaims(listingId);
+      res.json(claims);
+    } catch (error) {
+      console.error("Get listing claims error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/listings/:id/claims", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const userId = req.session.userId!;
+
+      const listing = await storage.getListing(listingId);
+      if (!listing) return res.status(404).json({ message: "Listing not found" });
+      if (!(listing as any).totalQuantity) {
+        return res.status(400).json({ message: "This listing does not support split-quantity claims. Use the standard proposal flow." });
+      }
+      if ((listing as any).claimStatus === "fully_claimed") {
+        return res.status(409).json({ message: "This listing has been fully claimed." });
+      }
+
+      const schema = z.object({
+        claimedQuantity: z.number().int().min(1),
+        actingAsBusinessId: z.string().optional(),
+      });
+      const parsed = schema.parse(req.body);
+
+      // ── Verification gate (same rules as proposal handler) ───────────────
+      const listingType = (listing as any).listingType as string ?? "individual_item";
+      if (listingType === "business_product" || listingType === "business_wholesale") {
+        const actingUser = await storage.getUser(userId);
+        if (!actingUser) return res.status(404).json({ message: "User not found" });
+        if (parsed.actingAsBusinessId) {
+          const membership = await storage.getBusinessMembership(userId, parsed.actingAsBusinessId);
+          if (!membership) return res.status(403).json({ message: "Not a member of that business", code: "NOT_BUSINESS_MEMBER" });
+          const biz = await storage.getBusinessProfile(parsed.actingAsBusinessId);
+          if (!biz || biz.kybStatus !== "verified") return res.status(403).json({ message: "Business KYB verification required", code: "BUSINESS_KYB_REQUIRED" });
+        } else {
+          const verificationLevel = (actingUser as any).verificationLevel as number ?? 1;
+          if (verificationLevel < 2) return res.status(403).json({ message: "Identity verification required to claim business listings.", code: "IDENTITY_VERIFICATION_REQUIRED" });
+        }
+      }
+
+      let result: { claim: any; listingFullyClaimed: boolean };
+      try {
+        result = await storage.createListingClaim({
+          listingId,
+          claimantUserId: userId,
+          claimedQuantity: parsed.claimedQuantity,
+          status: "pending",
+        });
+      } catch (err: any) {
+        // Quantity errors surface as known messages from the transaction
+        if (err?.message?.includes("remaining") || err?.message?.includes("fully claimed")) {
+          return res.status(409).json({ message: err.message });
+        }
+        throw err;
+      }
+
+      res.status(201).json({
+        claim: result.claim,
+        listingFullyClaimed: result.listingFullyClaimed,
+        remainingQuantity: (listing as any).remainingQuantity != null
+          ? (listing as any).remainingQuantity - parsed.claimedQuantity
+          : null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Create listing claim error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -142,6 +142,24 @@ import {
   type UserWhatsappSettings,
   type SuccessStory,
   type MatchDigestLog,
+  businessProfiles,
+  businessMembers,
+  creatorProfiles,
+  creatorPortfolioItems,
+  listingClaims,
+  messageFlags,
+  type BusinessProfile,
+  type InsertBusinessProfile,
+  type BusinessMember,
+  type InsertBusinessMember,
+  type CreatorProfile,
+  type InsertCreatorProfile,
+  type CreatorPortfolioItem,
+  type InsertCreatorPortfolioItem,
+  type ListingClaim,
+  type InsertListingClaim,
+  type MessageFlag,
+  type InsertMessageFlag,
 } from "@shared/schema";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
@@ -152,8 +170,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
-  // DIDIT CODE ARCHIVED — See _archived/didit/storage-didit-methods.ts — Re-integrate when ENABLE_DIDIT needed
-  // getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
+  getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
   // getUsersWithPendingVerification(): Promise<User[]>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
@@ -462,6 +479,33 @@ export interface IStorage {
 
   // Creator Discovery
   searchCreators(filters: { niche?: string; platform?: string; minFollowers?: number; maxFollowers?: number; openToCollabs?: boolean; limit?: number; offset?: number }): Promise<(User & { creatorProfile: NonNullable<User["creatorProfile"]> })[]>;
+
+  // Business profiles
+  createBusinessProfile(data: InsertBusinessProfile): Promise<BusinessProfile>;
+  getBusinessProfile(id: string): Promise<BusinessProfile | undefined>;
+  getBusinessProfileByOwnerId(ownerId: string): Promise<BusinessProfile | undefined>;
+  getBusinessProfileByDiditSession(sessionId: string): Promise<{ id: string; ownerId: string } | undefined>;
+  updateBusinessProfile(id: string, data: Partial<Pick<BusinessProfile, "kybStatus" | "kybVerifiedAt" | "diditSessionId">>): Promise<BusinessProfile | undefined>;
+
+  // Business members
+  getBusinessMembership(userId: string, businessId: string): Promise<BusinessMember | undefined>;
+  getBusinessMemberships(userId: string): Promise<BusinessMember[]>;
+  createBusinessMember(data: InsertBusinessMember): Promise<BusinessMember>;
+
+  // Creator profiles
+  getCreatorProfile(userId: string): Promise<CreatorProfile | undefined>;
+  createCreatorProfile(data: InsertCreatorProfile): Promise<CreatorProfile>;
+
+  // Creator portfolio
+  getPortfolioItems(creatorId: string): Promise<CreatorPortfolioItem[]>;
+  createPortfolioItem(data: InsertCreatorPortfolioItem): Promise<CreatorPortfolioItem>;
+
+  // Listing claims (split-quantity)
+  getListingClaims(listingId: string): Promise<ListingClaim[]>;
+  createListingClaim(data: InsertListingClaim): Promise<{ claim: ListingClaim; listingFullyClaimed: boolean }>;
+
+  // Message flags
+  createMessageFlag(data: InsertMessageFlag): Promise<MessageFlag>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -486,10 +530,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // DIDIT CODE ARCHIVED
-  // See _archived/didit/storage-didit-methods.ts
-  // Re-integrate when ENABLE_DIDIT needed
-  // async getUserByDiditSessionId(...)
+  async getUserByDiditSessionId(sessionId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.diditSessionId, sessionId));
+    return user;
+  }
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
@@ -3234,6 +3278,163 @@ export class DatabaseStorage implements IStorage {
       last7Days: Number(recent[0]?.count ?? 0),
       avgMatchesPerEmail: Math.round(Number(all[0]?.avg ?? 0)),
     };
+  }
+
+  // ── Business Profiles ─────────────────────────────────────────────────────
+
+  async createBusinessProfile(data: InsertBusinessProfile): Promise<BusinessProfile> {
+    const [row] = await db.insert(businessProfiles).values(data).returning();
+    return row;
+  }
+
+  async getBusinessProfile(id: string): Promise<BusinessProfile | undefined> {
+    const [row] = await db.select().from(businessProfiles).where(eq(businessProfiles.id, id));
+    return row;
+  }
+
+  async getBusinessProfileByOwnerId(ownerId: string): Promise<BusinessProfile | undefined> {
+    const [row] = await db.select().from(businessProfiles).where(eq(businessProfiles.ownerId, ownerId));
+    return row;
+  }
+
+  async getBusinessProfileByDiditSession(sessionId: string): Promise<{ id: string; ownerId: string } | undefined> {
+    const [row] = await db
+      .select({ id: businessProfiles.id, ownerId: businessProfiles.ownerId })
+      .from(businessProfiles)
+      .where(eq(businessProfiles.diditSessionId, sessionId));
+    return row;
+  }
+
+  async updateBusinessProfile(
+    id: string,
+    data: Partial<Pick<BusinessProfile, "kybStatus" | "kybVerifiedAt" | "diditSessionId">>,
+  ): Promise<BusinessProfile | undefined> {
+    const [row] = await db
+      .update(businessProfiles)
+      .set(data)
+      .where(eq(businessProfiles.id, id))
+      .returning();
+    return row;
+  }
+
+  // ── Business Members ──────────────────────────────────────────────────────
+
+  async getBusinessMembership(userId: string, businessId: string): Promise<BusinessMember | undefined> {
+    const [row] = await db
+      .select()
+      .from(businessMembers)
+      .where(and(eq(businessMembers.userId, userId), eq(businessMembers.businessId, businessId)));
+    return row;
+  }
+
+  async getBusinessMemberships(userId: string): Promise<BusinessMember[]> {
+    return db.select().from(businessMembers).where(eq(businessMembers.userId, userId));
+  }
+
+  async createBusinessMember(data: InsertBusinessMember): Promise<BusinessMember> {
+    const [row] = await db.insert(businessMembers).values(data).returning();
+    return row;
+  }
+
+  // ── Creator Profiles ──────────────────────────────────────────────────────
+
+  async getCreatorProfile(userId: string): Promise<CreatorProfile | undefined> {
+    const [row] = await db.select().from(creatorProfiles).where(eq(creatorProfiles.userId, userId));
+    return row;
+  }
+
+  async createCreatorProfile(data: InsertCreatorProfile): Promise<CreatorProfile> {
+    const [row] = await db.insert(creatorProfiles).values(data).returning();
+    return row;
+  }
+
+  // ── Creator Portfolio ─────────────────────────────────────────────────────
+
+  async getPortfolioItems(creatorId: string): Promise<CreatorPortfolioItem[]> {
+    return db
+      .select()
+      .from(creatorPortfolioItems)
+      .where(eq(creatorPortfolioItems.creatorId, creatorId))
+      .orderBy(desc(creatorPortfolioItems.createdAt));
+  }
+
+  async createPortfolioItem(data: InsertCreatorPortfolioItem): Promise<CreatorPortfolioItem> {
+    const [row] = await db.insert(creatorPortfolioItems).values(data).returning();
+    return row;
+  }
+
+  // ── Listing Claims (split-quantity) ───────────────────────────────────────
+
+  async getListingClaims(listingId: string): Promise<ListingClaim[]> {
+    return db
+      .select()
+      .from(listingClaims)
+      .where(eq(listingClaims.listingId, listingId))
+      .orderBy(desc(listingClaims.createdAt));
+  }
+
+  async createListingClaim(
+    data: InsertListingClaim,
+  ): Promise<{ claim: ListingClaim; listingFullyClaimed: boolean }> {
+    // Use a serialisable transaction + FOR UPDATE row-lock to prevent
+    // simultaneous overclaiming when multiple users claim the last units.
+    return db.transaction(async (tx) => {
+      const [listing] = await tx
+        .select({
+          id: listings.id,
+          totalQuantity: listings.totalQuantity,
+          remainingQuantity: listings.remainingQuantity,
+          claimStatus: listings.claimStatus,
+        })
+        .from(listings)
+        .where(eq(listings.id, data.listingId))
+        .for("update");  // row-level write lock for the duration of the tx
+
+      if (!listing) {
+        throw new Error("Listing not found");
+      }
+
+      const remaining = listing.remainingQuantity ?? null;
+      const claimedQty = data.claimedQuantity ?? 1;
+
+      // Only enforce quantity gate when the listing actually has totalQuantity set.
+      if (remaining !== null) {
+        if (remaining < claimedQty) {
+          throw new Error(
+            `Only ${remaining} unit(s) remaining — cannot claim ${claimedQty}.`,
+          );
+        }
+        if (listing.claimStatus === "fully_claimed") {
+          throw new Error("This listing has already been fully claimed.");
+        }
+      }
+
+      const [claim] = await tx.insert(listingClaims).values(data).returning();
+
+      let listingFullyClaimed = false;
+
+      if (remaining !== null) {
+        const newRemaining = remaining - claimedQty;
+        listingFullyClaimed = newRemaining <= 0;
+        await tx
+          .update(listings)
+          .set({
+            remainingQuantity: newRemaining,
+            claimStatus: listingFullyClaimed ? "fully_claimed" : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(listings.id, data.listingId));
+      }
+
+      return { claim, listingFullyClaimed };
+    });
+  }
+
+  // ── Message Flags ─────────────────────────────────────────────────────────
+
+  async createMessageFlag(data: InsertMessageFlag): Promise<MessageFlag> {
+    const [row] = await db.insert(messageFlags).values(data).returning();
+    return row;
   }
 }
 
