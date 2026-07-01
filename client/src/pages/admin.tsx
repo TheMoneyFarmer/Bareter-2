@@ -149,7 +149,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses";
 
 type WaitlistEntryRow = {
   id: number;
@@ -1236,6 +1236,7 @@ export function AdminPage() {
     { id: "support", label: "Support", icon: MessageSquare },
     { id: "reviews", label: "Reviews", icon: Star },
     { id: "creators", label: "Creators", icon: Camera },
+    { id: "businesses", label: "Businesses", icon: Building2 },
     { id: "collabs", label: "Collabs", icon: Zap },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "feature-stats", label: "Feature Hub", icon: Zap },
@@ -4541,6 +4542,213 @@ export function AdminPage() {
     </div>
   );
 
+  // ── Businesses section ────────────────────────────────────────────────
+  const [bizKybFilter, setBizKybFilter] = useState("all");
+  const [bizActiveOnly, setBizActiveOnly] = useState(true);
+
+  const adminBizQs = new URLSearchParams();
+  if (bizKybFilter !== "all") adminBizQs.set("kybStatus", bizKybFilter);
+  if (bizActiveOnly) adminBizQs.set("isActive", "true");
+
+  const { data: adminBusinesses = [], refetch: refetchAdminBusinesses } = useQuery<any[]>({
+    queryKey: ["/api/admin/businesses", bizKybFilter, bizActiveOnly],
+    queryFn: async () => {
+      const qs = adminBizQs.toString();
+      const res = await fetch(`${API_BASE}/api/admin/businesses${qs ? `?${qs}` : ""}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeSection === "businesses",
+    staleTime: 0,
+  });
+
+  const toggleBizFeaturedMutation = useMutation({
+    mutationFn: async ({ id, isFeatured }: { id: string; isFeatured: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/businesses/${id}`, { isFeatured });
+      return res.json();
+    },
+    onSuccess: () => { refetchAdminBusinesses(); toast({ title: "Featured status updated" }); },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  const toggleBizActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/businesses/${id}`, { isActive });
+      return res.json();
+    },
+    onSuccess: () => { refetchAdminBusinesses(); toast({ title: "Active status updated" }); },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  const bizKybMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/businesses/${id}/kyb`, { status });
+      return res.json();
+    },
+    onSuccess: () => { refetchAdminBusinesses(); toast({ title: "KYB status updated" }); },
+    onError: () => toast({ title: "KYB update failed", variant: "destructive" }),
+  });
+
+  const KYB_COLORS: Record<string, string> = {
+    pending:  "bg-amber-100 text-amber-700 border-amber-200",
+    verified: "bg-green-100 text-green-700 border-green-200",
+    rejected: "bg-red-100 text-red-700 border-red-200",
+  };
+
+  const renderBusinesses = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-1">Business Profiles</h2>
+        <p className="text-muted-foreground">All registered business profiles. Toggle featured/active status and manage KYB verification.</p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={bizKybFilter} onValueChange={setBizKybFilter}>
+          <SelectTrigger className="w-40 h-8 text-xs" data-testid="select-biz-kyb-filter">
+            <SelectValue placeholder="KYB Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All KYB</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="verified">Verified</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="biz-active-only"
+            checked={bizActiveOnly}
+            onCheckedChange={setBizActiveOnly}
+            data-testid="toggle-biz-active-only"
+          />
+          <label htmlFor="biz-active-only" className="text-sm text-muted-foreground cursor-pointer">Active only</label>
+        </div>
+        <span className="text-xs text-muted-foreground ml-auto">{adminBusinesses.length} businesses</span>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Company</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>KYB</TableHead>
+                <TableHead>Active</TableHead>
+                <TableHead>Featured</TableHead>
+                <TableHead>Deals</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adminBusinesses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                    No business profiles found.
+                  </TableCell>
+                </TableRow>
+              ) : adminBusinesses.map((biz: any) => (
+                <TableRow key={biz.id}>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium text-sm">{biz.companyName}</p>
+                      <p className="text-xs text-muted-foreground">{biz.ownerName} · {biz.ownerEmail}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">{biz.category || "—"}</TableCell>
+                  <TableCell>
+                    <Badge className={`text-[10px] ${KYB_COLORS[biz.kybStatus] ?? "bg-gray-100 text-gray-600"}`}>
+                      {biz.kybStatus}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={biz.isActive ? "bg-green-100 text-green-700 border-green-200 text-[10px]" : "bg-red-100 text-red-700 border-red-200 text-[10px]"}>
+                      {biz.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {biz.isFeatured ? (
+                      <Badge className="bg-bareter-teal/10 text-bareter-teal border-bareter-teal/20 text-[10px]">Featured</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm font-mono">{biz.completedDeals ?? 0}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {biz.createdAt ? new Date(biz.createdAt).toLocaleDateString() : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {/* KYB */}
+                      {biz.kybStatus !== "verified" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] px-2 gap-1 text-green-700 border-green-300 hover:bg-green-50"
+                          onClick={() => bizKybMutation.mutate({ id: biz.id, status: "verified" })}
+                          disabled={bizKybMutation.isPending}
+                          data-testid={`btn-kyb-verify-${biz.id}`}
+                        >
+                          Verify KYB
+                        </Button>
+                      )}
+                      {biz.kybStatus === "verified" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] px-2 gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                          onClick={() => bizKybMutation.mutate({ id: biz.id, status: "rejected" })}
+                          disabled={bizKybMutation.isPending}
+                          data-testid={`btn-kyb-reject-${biz.id}`}
+                        >
+                          Reject KYB
+                        </Button>
+                      )}
+                      {/* Featured toggle */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={`h-6 text-[10px] px-2 gap-1 ${biz.isFeatured ? "text-muted-foreground" : "text-bareter-teal border-bareter-teal/30 hover:bg-bareter-teal/5"}`}
+                        onClick={() => toggleBizFeaturedMutation.mutate({ id: biz.id, isFeatured: !biz.isFeatured })}
+                        disabled={toggleBizFeaturedMutation.isPending}
+                        data-testid={`btn-biz-feature-${biz.id}`}
+                      >
+                        {biz.isFeatured ? "Unfeature" : "Feature"}
+                      </Button>
+                      {/* Active toggle */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={`h-6 text-[10px] px-2 gap-1 ${biz.isActive ? "text-destructive border-destructive/30 hover:bg-destructive/5" : "text-green-700 border-green-300 hover:bg-green-50"}`}
+                        onClick={() => toggleBizActiveMutation.mutate({ id: biz.id, isActive: !biz.isActive })}
+                        disabled={toggleBizActiveMutation.isPending}
+                        data-testid={`btn-biz-active-${biz.id}`}
+                      >
+                        {biz.isActive ? "Deactivate" : "Activate"}
+                      </Button>
+                      {/* Storefront link */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] px-2"
+                        onClick={() => window.open(`/businesses/${biz.id}`, "_blank")}
+                        data-testid={`btn-biz-storefront-${biz.id}`}
+                      >
+                        View
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   // ── Collab Applications section ───────────────────────────────────────
   const { data: adminCollabs = [] } = useQuery<any[]>({
     queryKey: ["/api/admin/collab-applications"],
@@ -5997,6 +6205,8 @@ export function AdminPage() {
         return renderReviews();
       case "creators":
         return renderCreators();
+      case "businesses":
+        return renderBusinesses();
       case "collabs":
         return renderCollabs();
       case "analytics":

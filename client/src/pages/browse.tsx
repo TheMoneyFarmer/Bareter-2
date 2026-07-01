@@ -360,10 +360,17 @@ export function BrowsePage() {
     staleTime: 60_000,
   });
 
-  // ── Businesses tab — client-side filtered from existing listings query ───
-  const businessListings = (listings || []).filter(l =>
-    (l as any).listingType === "business_product" || (l as any).listingType === "business_wholesale"
-  );
+  // ── Businesses tab — pulled from GET /api/businesses (active only, server-filtered) ───
+  const { data: businessDirectory, isLoading: bizDirLoading } = useQuery<any[]>({
+    queryKey: ["/api/businesses"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/businesses`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "businesses" && !!user,
+    staleTime: 60_000,
+  });
 
   const { data: recommendedUsers } = useQuery<any[]>({
     queryKey: ["/api/recommendations/users"],
@@ -1026,45 +1033,90 @@ export function BrowsePage() {
         </div>
       ) : activeTab === "businesses" ? (
         <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
-              Business Listings
-            </h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Products and services from verified businesses, available for barter.
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                Businesses
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Verified businesses available for barter — products, wholesale deals, and services.
+              </p>
+            </div>
+            <Link href="/businesses">
+              <Button variant="bareter-outline" size="sm" className="flex-shrink-0">View all</Button>
+            </Link>
           </div>
-          {isLoading ? (
+          {bizDirLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <Card key={i}><CardContent className="p-0"><Skeleton className="h-48 rounded-t-md" /><div className="p-4 space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div></CardContent></Card>
+                <Card key={i}><CardContent className="p-0"><Skeleton className="h-24 rounded-t-xl" /><div className="p-4 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></CardContent></Card>
               ))}
             </div>
-          ) : businessListings.length === 0 ? (
+          ) : !businessDirectory || businessDirectory.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Building2 className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
-                <h3 className="font-semibold text-lg mb-2">No business listings yet</h3>
+                <h3 className="font-semibold text-lg mb-2">No businesses yet</h3>
                 <p className="text-muted-foreground text-sm mb-4">
-                  Be the first — create a business profile and post a product or wholesale deal.
+                  Be the first — create a business profile and start bartering.
                 </p>
-                <Link href="/create-listing">
-                  <Button variant="bareter" size="sm">Post a Business Listing</Button>
+                <Link href="/settings">
+                  <Button variant="bareter" size="sm">Create Business Profile</Button>
                 </Link>
               </CardContent>
             </Card>
           ) : (
-            <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-businesses">
-              {businessListings.map((listing) => (
-                <BrandListingCard
-                  key={listing.id}
-                  listing={listing}
-                  isWishlisted={currentWishlistedIds.has(listing.id)}
-                  onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="grid-businesses">
+              {businessDirectory.slice(0, 9).map((biz: any) => (
+                <Link key={biz.id} href={`/businesses/${biz.id}`} className="group block">
+                  <article className="bg-white dark:bg-card rounded-xl border border-bareter-border dark:border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col">
+                    <div className="h-20 bg-gradient-to-br from-bareter-teal/20 to-bareter-navy/10 relative overflow-hidden flex-shrink-0">
+                      {biz.coverImageUrl && (
+                        <img src={biz.coverImageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      )}
+                      {biz.isFeatured && (
+                        <span className="absolute top-2 end-2 text-[9px] font-semibold text-white bg-bareter-gold/90 px-1.5 py-0.5 rounded-md">Featured</span>
+                      )}
+                    </div>
+                    <div className="p-3 flex flex-col flex-1 gap-1.5">
+                      <div className="flex items-center gap-2">
+                        {biz.logoUrl ? (
+                          <img src={biz.logoUrl} alt={biz.companyName} className="h-8 w-8 rounded-full object-cover ring-1 ring-bareter-teal/20 flex-shrink-0 -mt-6 bg-white shadow-sm" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-bareter-teal/10 flex items-center justify-center flex-shrink-0 -mt-6 ring-1 ring-background shadow-sm">
+                            <Building2 className="h-4 w-4 text-bareter-teal" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-bareter-navy dark:text-foreground truncate">{biz.companyName}</p>
+                          {biz.kybStatus === "verified" && (
+                            <p className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+                              <CheckCircle2 className="h-3 w-3" />Verified
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {biz.description && (
+                        <p className="text-[11px] text-muted-foreground line-clamp-2">{biz.description}</p>
+                      )}
+                      {biz.location && (
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-auto">
+                          <MapPin className="h-3 w-3" />{biz.location}
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                </Link>
               ))}
-            </StaggeredReveal>
+            </div>
+          )}
+          {businessDirectory && businessDirectory.length > 9 && (
+            <div className="text-center pt-2">
+              <Link href="/businesses">
+                <Button variant="bareter-outline" size="sm">View all {businessDirectory.length} businesses →</Button>
+              </Link>
+            </div>
           )}
         </div>
       ) : activeTab === "for-you" ? (

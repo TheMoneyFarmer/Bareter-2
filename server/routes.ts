@@ -4527,6 +4527,82 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/admin/businesses — all business profiles with owner info and deal count
+  app.get("/api/admin/businesses", requireAdmin, async (req, res) => {
+    try {
+      const kybFilter = req.query.kybStatus as string | undefined;
+      const isActiveFilter = req.query.isActive as string | undefined;
+
+      const whereClause = and(
+        kybFilter && kybFilter !== "all" ? eq(businessProfiles.kybStatus, kybFilter) : undefined,
+        isActiveFilter === "true" ? eq(businessProfiles.isActive, true) : undefined,
+        isActiveFilter === "false" ? eq(businessProfiles.isActive, false) : undefined,
+      );
+
+      const rows = await db
+        .select({
+          id: businessProfiles.id,
+          companyName: businessProfiles.companyName,
+          category: businessProfiles.category,
+          kybStatus: businessProfiles.kybStatus,
+          kybVerifiedAt: businessProfiles.kybVerifiedAt,
+          isActive: businessProfiles.isActive,
+          isFeatured: businessProfiles.isFeatured,
+          createdAt: businessProfiles.createdAt,
+          ownerId: businessProfiles.ownerId,
+          ownerName: users.fullName,
+          ownerEmail: users.email,
+        })
+        .from(businessProfiles)
+        .leftJoin(users, eq(businessProfiles.ownerId, users.id))
+        .where(whereClause)
+        .orderBy(desc(businessProfiles.createdAt));
+
+      // Count completed deals per business owner (seekerId or providerId = ownerId, state = completed)
+      const ownerIds = [...new Set(rows.map(r => r.ownerId))];
+      const dealCounts = new Map<string, number>();
+      if (ownerIds.length > 0) {
+        const countRows = await db
+          .select({ ownerId: deals.seekerId, cnt: count() })
+          .from(deals)
+          .where(and(inArray(deals.seekerId, ownerIds), eq(deals.state, "completed")))
+          .groupBy(deals.seekerId);
+        const countRows2 = await db
+          .select({ ownerId: deals.providerId, cnt: count() })
+          .from(deals)
+          .where(and(inArray(deals.providerId, ownerIds), eq(deals.state, "completed")))
+          .groupBy(deals.providerId);
+        for (const r of [...countRows, ...countRows2]) {
+          dealCounts.set(r.ownerId, (dealCounts.get(r.ownerId) ?? 0) + Number(r.cnt));
+        }
+      }
+
+      res.json(rows.map(r => ({ ...r, completedDeals: dealCounts.get(r.ownerId) ?? 0 })));
+    } catch (error) {
+      console.error("Admin get businesses error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/admin/businesses/:id/kyb — update business profile KYB status
+  app.patch("/api/admin/businesses/:id/kyb", requireAdmin, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!["pending", "verified", "rejected"].includes(status)) {
+        return res.status(400).json({ message: "Invalid KYB status" });
+      }
+      const updated = await storage.updateBusinessProfile(param(req.params.id), {
+        kybStatus: status,
+        kybVerifiedAt: status === "verified" ? new Date() : undefined,
+      });
+      if (!updated) return res.status(404).json({ message: "Business not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin KYB business error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/admin/deals", requireAdmin, async (req, res) => {
     try {
       const deals = await storage.getAllDeals();
@@ -11693,6 +11769,32 @@ export async function registerRoutes(
 
   // ── Business Profiles ────────────────────────────────────────────────────────
 
+  // GET /api/businesses — public directory of active businesses (WHERE is_active = true)
+  app.get("/api/businesses", requireAuth, async (req, res) => {
+    try {
+      const rows = await db
+        .select({
+          id: businessProfiles.id,
+          companyName: businessProfiles.companyName,
+          category: businessProfiles.category,
+          kybStatus: businessProfiles.kybStatus,
+          logoUrl: businessProfiles.logoUrl,
+          coverImageUrl: businessProfiles.coverImageUrl,
+          description: businessProfiles.description,
+          location: businessProfiles.location,
+          isFeatured: businessProfiles.isFeatured,
+          createdAt: businessProfiles.createdAt,
+        })
+        .from(businessProfiles)
+        .where(eq(businessProfiles.isActive, true))
+        .orderBy(desc(businessProfiles.isFeatured), desc(businessProfiles.createdAt));
+      res.json(rows);
+    } catch (error) {
+      console.error("Business directory error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/businesses/me", requireAuth, async (req, res) => {
     try {
       const profile = await storage.getBusinessProfileByOwnerId(req.session.userId!);
@@ -11722,12 +11824,19 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/businesses/:id/storefront — public-facing company page, any logged-in user
+  // GET /api/businesses/:id/storefront — public-facing company page, any logged-in user.
+  // Inactive businesses return 404 to everyone except their owner.
   app.get("/api/businesses/:id/storefront", requireAuth, async (req, res) => {
     try {
       const businessId = param(req.params.id);
       const profile = await storage.getBusinessProfile(businessId);
       if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const requestingUserId = req.session.userId!;
+      const isOwner = profile.ownerId === requestingUserId;
+      if (!profile.isActive && !isOwner) {
+        return res.status(404).json({ message: "Business not found" });
+      }
 
       const [ownerUser, activeListings] = await Promise.all([
         storage.getUser(profile.ownerId),
@@ -11744,11 +11853,177 @@ export async function registerRoutes(
         kybStatus: profile.kybStatus,
         kybVerifiedAt: profile.kybVerifiedAt,
         createdAt: profile.createdAt,
+        coverImageUrl: profile.coverImageUrl,
+        logoUrl: profile.logoUrl,
+        description: profile.description,
+        businessHours: profile.businessHours,
+        location: profile.location,
+        websiteDisplay: profile.websiteDisplay,
+        isFeatured: profile.isFeatured,
+        isActive: profile.isActive,
         owner: ownerUser ? sanitizePublicUser(ownerUser) : null,
         activeListings,
       });
     } catch (error) {
       console.error("Business storefront error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/businesses/:id — update storefront settings (owner or admin member).
+  // is_featured and is_active are admin-only fields.
+  app.patch("/api/businesses/:id", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const requestingUser = await storage.getUser(userId);
+      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner && !isAdmin) {
+        const membership = await storage.getBusinessMembership(userId, businessId);
+        if (!membership || membership.role !== "admin") {
+          return res.status(403).json({ message: "Not authorised" });
+        }
+      }
+
+      const schema = z.object({
+        description:    z.string().max(2000).optional(),
+        location:       z.string().max(200).optional(),
+        websiteDisplay: z.string().max(300).optional(),
+        businessHours:  z.record(z.object({
+          open:   z.string().optional(),
+          close:  z.string().optional(),
+          closed: z.boolean().optional(),
+        })).optional(),
+        // Admin-only
+        isFeatured: z.boolean().optional(),
+        isActive:   z.boolean().optional(),
+      });
+
+      const parsed = schema.parse(req.body);
+      const { isFeatured, isActive, ...ownerFields } = parsed;
+
+      const updateData: Parameters<typeof storage.updateBusinessProfileSettings>[1] = { ...ownerFields };
+      if (isFeatured !== undefined || isActive !== undefined) {
+        if (!isAdmin) return res.status(403).json({ message: "Only admins can set featured or active status" });
+        if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
+        if (isActive !== undefined) updateData.isActive = isActive;
+      }
+
+      const updated = await storage.updateBusinessProfileSettings(businessId, updateData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Patch business profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/businesses/:id/cover — replace cover image (owner or admin member, images only)
+  app.post("/api/businesses/:id/cover", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const requestingUser = await storage.getUser(userId);
+      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner && !isAdmin) {
+        const membership = await storage.getBusinessMembership(userId, businessId);
+        if (!membership || membership.role !== "admin") {
+          return res.status(403).json({ message: "Not authorised" });
+        }
+      }
+
+      if (!req.file?.buffer) return res.status(400).json({ message: "No file uploaded" });
+      const detected = await detectAllowedFileType(req.file.buffer);
+      if (!detected || !detected.mime.startsWith("image/")) {
+        return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
+      }
+
+      const random = crypto.randomBytes(24).toString("hex");
+      const filename = `${random}.${detected.ext}`;
+      const isOnReplit = !!process.env.REPL_ID;
+      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+      let fileUrl: string;
+      if (privateDir && isOnReplit) {
+        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+        const dirParts = privateDir.replace(/^\/+/, "").split("/");
+        const bucketName = dirParts[0];
+        const bucketSubDir = dirParts.slice(1).join("/");
+        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+          contentType: detected.mime,
+          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+        });
+        fileUrl = `/objects/public-uploads/${filename}`;
+      } else {
+        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+        fileUrl = `/uploads/${filename}`;
+      }
+
+      const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
+      res.json({ url: fileUrl, profile: updated });
+    } catch (error) {
+      console.error("Business cover upload error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/businesses/:id/logo — replace logo image (owner or admin member, images only)
+  app.post("/api/businesses/:id/logo", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const requestingUser = await storage.getUser(userId);
+      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner && !isAdmin) {
+        const membership = await storage.getBusinessMembership(userId, businessId);
+        if (!membership || membership.role !== "admin") {
+          return res.status(403).json({ message: "Not authorised" });
+        }
+      }
+
+      if (!req.file?.buffer) return res.status(400).json({ message: "No file uploaded" });
+      const detected = await detectAllowedFileType(req.file.buffer);
+      if (!detected || !detected.mime.startsWith("image/")) {
+        return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
+      }
+
+      const random = crypto.randomBytes(24).toString("hex");
+      const filename = `${random}.${detected.ext}`;
+      const isOnReplit = !!process.env.REPL_ID;
+      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+      let fileUrl: string;
+      if (privateDir && isOnReplit) {
+        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+        const dirParts = privateDir.replace(/^\/+/, "").split("/");
+        const bucketName = dirParts[0];
+        const bucketSubDir = dirParts.slice(1).join("/");
+        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+          contentType: detected.mime,
+          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+        });
+        fileUrl = `/objects/public-uploads/${filename}`;
+      } else {
+        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+        fileUrl = `/uploads/${filename}`;
+      }
+
+      const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
+      res.json({ url: fileUrl, profile: updated });
+    } catch (error) {
+      console.error("Business logo upload error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
