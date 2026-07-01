@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import type { ListingWithUser, Listing, ListingCommentWithUser } from "@shared/schema";
 import {
   MapPin,
@@ -793,7 +793,7 @@ export function ListingDetailPage() {
           >
             {listing.images && listing.images.length > 0 ? (
               <img
-                src={listing.images[0]}
+                src={assetUrl(listing.images[0])}
                 alt={listing.title}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               />
@@ -1360,9 +1360,9 @@ export function ListingDetailPage() {
                         {(comment as any).images && ((comment as any).images as string[]).length > 0 && (
                           <div className="flex gap-1.5 mt-1.5 flex-wrap">
                             {((comment as any).images as string[]).map((imgUrl: string, imgIdx: number) => (
-                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                              <a key={imgIdx} href={assetUrl(imgUrl)} target="_blank" rel="noopener noreferrer">
                                 <img
-                                  src={imgUrl}
+                                  src={assetUrl(imgUrl)}
                                   alt={`Offer image ${imgIdx + 1}`}
                                   className="h-14 w-14 object-cover rounded border hover:opacity-90 transition-opacity"
                                 />
@@ -2128,7 +2128,7 @@ export function ListingDetailPage() {
             {similarListings.map((l: any) => (
               <Link key={l.id} href={`/listings/${l.id}`} className="group block bg-white dark:bg-card border border-bareter-border rounded-xl overflow-hidden hover:shadow-bareter-hover transition-shadow">
                 {l.images?.[0] ? (
-                  <img src={l.images[0]} alt={l.title} className="w-full h-28 object-cover group-hover:scale-[1.02] transition-transform" />
+                  <img src={assetUrl(l.images[0])} alt={l.title} className="w-full h-28 object-cover group-hover:scale-[1.02] transition-transform" />
                 ) : (
                   <div className="w-full h-28 bg-muted/30 flex items-center justify-center">
                     <ArrowRightLeft className="h-6 w-6 text-muted-foreground/40" />
@@ -2354,7 +2354,7 @@ export function ListingDetailPage() {
             {lightboxIndex !== null && (
               <div className="relative">
                 <img
-                  src={listing.images[lightboxIndex]}
+                  src={assetUrl(listing.images[lightboxIndex])}
                   alt={`${listing.title} ${lightboxIndex + 1} ${t("common.of")} ${listing.images.length}`}
                   className="w-full max-h-[85vh] object-contain"
                   data-testid="img-lightbox"

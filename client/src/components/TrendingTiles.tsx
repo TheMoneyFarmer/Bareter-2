@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Heart, Package, TrendingUp, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { assetUrl } from "@/lib/queryClient";
 import type { ListingWithUser, PostWithUser, User } from "@shared/schema";
 
 type TileUser = Pick<User, "id" | "fullName"> & Partial<Pick<User, "username" | "avatarUrl">>;
@@ -86,7 +87,7 @@ export function TrendingTiles({
             >
               {t.cover ? (
                 <img
-                  src={t.cover}
+                  src={assetUrl(t.cover)}
                   alt={t.title}
                   loading="lazy"
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"

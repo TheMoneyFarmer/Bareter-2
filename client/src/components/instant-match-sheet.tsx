@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE } from "@/lib/queryClient";
+import { API_BASE, assetUrl, mobileHeaders } from "@/lib/queryClient";
 
 interface InstantMatch {
   id: string;
@@ -43,8 +43,10 @@ export function InstantMatchSheet({ listingId }: InstantMatchSheetProps) {
   const { data: matches, isLoading } = useQuery<InstantMatch[]>({
     queryKey: ["/api/listings/:id/instant-match", listingId],
     queryFn: async () => {
+      const extra = await mobileHeaders();
       const res = await fetch(`${API_BASE}/api/listings/${listingId}/instant-match`, {
         credentials: "include",
+        headers: extra,
       });
       if (!res.ok) return [];
       return res.json();
@@ -107,7 +109,7 @@ export function InstantMatchSheet({ listingId }: InstantMatchSheetProps) {
                 <div className="relative h-36 w-full bg-muted/30 overflow-hidden">
                   {match.images && match.images.length > 0 ? (
                     <img
-                      src={match.images[0]}
+                      src={assetUrl(match.images[0])}
                       alt={match.title}
                       className="w-full h-full object-cover"
                     />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1644,6 +1645,14 @@ export function SettingsPage() {
                         <p className="text-sm leading-relaxed">{creatorProfile.bio}</p>
                       </div>
                     )}
+                    <div className="pt-2 border-t border-border">
+                      <Link href={`/creators/${user?.id}`}>
+                        <Button variant="outline" size="sm" className="gap-2 text-xs">
+                          <Eye className="h-3.5 w-3.5" />
+                          View my creator page
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1756,6 +1765,14 @@ export function SettingsPage() {
                           <p className="font-medium text-sm">{businessProfile.tradeLicenseNumber}</p>
                         </div>
                       )}
+                    </div>
+                    <div className="pt-2 border-t border-border">
+                      <Link href={`/businesses/${businessProfile.id}`}>
+                        <Button variant="outline" size="sm" className="gap-2 text-xs">
+                          <Eye className="h-3.5 w-3.5" />
+                          View my business page
+                        </Button>
+                      </Link>
                     </div>
                     {businessProfile.kybStatus !== "verified" && (
                       <Alert>

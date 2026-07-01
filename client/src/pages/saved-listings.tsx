@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, assetUrl } from "@/lib/queryClient";
 import { Heart, MapPin, ArrowLeftRight, Bookmark } from "lucide-react";
 
 type WishlistEntry = {
@@ -88,7 +88,7 @@ function ListingGrid({
           <Link href={`/listings/${listing.id}`}>
             {listing.images?.[0] ? (
               <img
-                src={listing.images[0]}
+                src={assetUrl(listing.images[0])}
                 alt={listing.title}
                 className="w-full h-44 object-cover group-hover:scale-[1.02] transition-transform"
               />

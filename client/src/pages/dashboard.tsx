@@ -30,7 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, assetUrl } from "@/lib/queryClient";
 import {
   BarChart3,
   Users,
@@ -628,7 +628,7 @@ export default function DashboardPage() {
                       {/* Thumbnail */}
                       <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted border">
                         {thumb ? (
-                          <img src={thumb} alt={listing.title} className="w-full h-full object-cover" />
+                          <img src={assetUrl(thumb)} alt={listing.title} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <Package className="h-6 w-6 text-muted-foreground" />
@@ -1078,7 +1078,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-3 gap-2">
                   {editForm.images.map((url, idx) => (
                     <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden border">
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <img src={assetUrl(url)} alt="" className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => handleRemoveEditImage(idx)}

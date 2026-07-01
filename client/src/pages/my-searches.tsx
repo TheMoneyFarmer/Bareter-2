@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, assetUrl } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ListingWithUser } from "@shared/schema";
 import {
@@ -179,7 +179,7 @@ export function MySearchesPage() {
                   <div className="group bg-white dark:bg-card border border-bareter-border rounded-xl overflow-hidden hover:shadow-bareter-hover transition-shadow cursor-pointer">
                     {images?.[0] ? (
                       <img
-                        src={images[0]}
+                        src={assetUrl(images[0])}
                         alt={listing.title}
                         className="w-full h-40 object-cover group-hover:scale-[1.02] transition-transform"
                       />

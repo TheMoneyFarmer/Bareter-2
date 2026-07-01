@@ -52,7 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
+import { queryClient, apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import type { User, Listing, DealWithUsers, MessageWithSender, ListingWithUser, ModerationLog, Report, DisputeWithParties, AdminAuditLog, FailedLoginAttempt } from "@shared/schema";
 import { CATEGORIES, COUNTRIES } from "@shared/schema";
 import {
@@ -3773,7 +3773,7 @@ export function AdminPage() {
             <Card key={story.id} className={`overflow-hidden ${story.isFeatured ? "ring-2 ring-amber-400" : ""}`}>
               {story.imageUrl && (
                 <div className="h-36 bg-muted overflow-hidden">
-                  <img src={story.imageUrl} alt="story" className="w-full h-full object-cover" />
+                  <img src={assetUrl(story.imageUrl)} alt="story" className="w-full h-full object-cover" />
                 </div>
               )}
               <CardContent className="p-4 space-y-3">
@@ -6696,7 +6696,7 @@ export function AdminPage() {
                   {listing.images && (listing.images as string[]).length > 0 && (
                     <div className="flex gap-2 flex-wrap">
                       {(listing.images as string[]).map((url, i) => (
-                        <img key={i} src={url} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
+                        <img key={i} src={assetUrl(url)} alt={`Listing image ${i + 1}`} className="h-24 w-24 rounded-lg object-cover border" />
                       ))}
                     </div>
                   )}
