@@ -561,6 +561,10 @@ export const users = pgTable("users", {
   googleId: text("google_id").unique(),
   appleId: text("apple_id").unique(),
 
+  // Verification tier (1 = email+phone, 2 = identity verified via Didit KYC)
+  verificationLevel: integer("verification_level").notNull().default(1),
+  identityVerifiedAt: timestamp("identity_verified_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -752,6 +756,16 @@ export const listings = pgTable("listings", {
   bulkUnit: text("bulk_unit"),              // "units" | "hours" | "sessions" | "pieces"
   bulkMinOrder: integer("bulk_min_order"),  // minimum per trading partner
   bulkMaxPartners: integer("bulk_max_partners"), // how many partners can share the batch
+  // ── Business / Creator listing extension ──────────────────────────────
+  // All nullable — existing rows default to 'individual_item' / NULL.
+  listingType: text("listing_type").notNull().default("individual_item"),
+  // 'individual_item' | 'creator_service' | 'business_product' | 'business_wholesale'
+  businessId: varchar("business_id", { length: 36 }),  // FK set after business_profiles table defined
+  creatorId: varchar("creator_id", { length: 36 }),    // FK set after creator_profiles table defined
+  totalQuantity: integer("total_quantity"),
+  remainingQuantity: integer("remaining_quantity"),
+  unitLabel: text("unit_label"),
+  claimStatus: text("claim_status"), // NULL | 'fully_claimed'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -2613,3 +2627,98 @@ export const matchDigestLog = pgTable("match_digest_log", {
   sentAtIdx: index("mdl_sent_at_idx").on(table.sentAt),
 }));
 export type MatchDigestLog = typeof matchDigestLog.$inferSelect;
+
+// ── Business Profiles ──────────────────────────────────────────────────────────
+export const businessProfiles = pgTable("business_profiles", {
+  id:                  varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  ownerId:             varchar("owner_id", { length: 36 }).notNull().references(() => users.id),
+  companyName:         text("company_name").notNull(),
+  tradeLicenseNumber:  text("trade_license_number"),
+  category:            text("category"),
+  kybStatus:           text("kyb_status").notNull().default("pending"),
+  // 'pending' | 'verified' | 'rejected'
+  kybVerifiedAt:       timestamp("kyb_verified_at"),
+  diditSessionId:      text("didit_session_id"),
+  createdAt:           timestamp("created_at").defaultNow(),
+});
+export type BusinessProfile = typeof businessProfiles.$inferSelect;
+export type InsertBusinessProfile = typeof businessProfiles.$inferInsert;
+
+// ── Business Members ───────────────────────────────────────────────────────────
+export const businessMembers = pgTable("business_members", {
+  id:         varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  businessId: varchar("business_id", { length: 36 }).notNull().references(() => businessProfiles.id),
+  userId:     varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  role:       text("role").notNull().default("member"), // 'admin' | 'member'
+  invitedAt:  timestamp("invited_at").defaultNow(),
+  joinedAt:   timestamp("joined_at"),
+}, (table) => [
+  index("bm_business_id_idx").on(table.businessId),
+  index("bm_user_id_idx").on(table.userId),
+]);
+export type BusinessMember = typeof businessMembers.$inferSelect;
+export type InsertBusinessMember = typeof businessMembers.$inferInsert;
+
+// ── Creator Profiles ───────────────────────────────────────────────────────────
+// NO URL / LINK / HANDLE / EXTERNAL-REF FIELDS.
+// primary_platform: plain text label only (e.g. "Instagram").
+// audience_size: text string only (e.g. "50K").
+export const creatorProfiles = pgTable("creator_profiles", {
+  id:              varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId:          varchar("user_id", { length: 36 }).notNull().unique().references(() => users.id),
+  displayName:     text("display_name").notNull(),
+  bio:             text("bio"),
+  niche:           text("niche"),
+  primaryPlatform: text("primary_platform"), // text label only — NOT a URL or handle
+  audienceSize:    text("audience_size"),     // self-reported string — NOT a number or link
+  createdAt:       timestamp("created_at").defaultNow(),
+});
+export type CreatorProfile = typeof creatorProfiles.$inferSelect;
+export type InsertCreatorProfile = typeof creatorProfiles.$inferInsert;
+
+// ── Creator Portfolio Items ────────────────────────────────────────────────────
+// media_url: internal Bareter storage path only (same pipeline as listing photos).
+export const creatorPortfolioItems = pgTable("creator_portfolio_items", {
+  id:        varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  creatorId: varchar("creator_id", { length: 36 }).notNull().references(() => creatorProfiles.id),
+  mediaUrl:  text("media_url").notNull(),  // internal storage path only
+  mediaType: text("media_type").notNull().default("image"), // 'image' | 'video'
+  caption:   text("caption"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("cpi_creator_id_idx").on(table.creatorId),
+]);
+export type CreatorPortfolioItem = typeof creatorPortfolioItems.$inferSelect;
+export type InsertCreatorPortfolioItem = typeof creatorPortfolioItems.$inferInsert;
+
+// ── Listing Claims (split-quantity) ───────────────────────────────────────────
+export const listingClaims = pgTable("listing_claims", {
+  id:               varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  listingId:        varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
+  claimantUserId:   varchar("claimant_user_id", { length: 36 }).notNull().references(() => users.id),
+  claimedQuantity:  integer("claimed_quantity").notNull().default(1),
+  status:           text("status").notNull().default("pending"),
+  // 'pending' | 'proposed' | 'accepted' | 'completed' | 'cancelled'
+  linkedProposalId: varchar("linked_proposal_id", { length: 36 }).references(() => listingComments.id),
+  createdAt:        timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("lc_listing_id_idx").on(table.listingId),
+  index("lc_claimant_user_id_idx").on(table.claimantUserId),
+]);
+export type ListingClaim = typeof listingClaims.$inferSelect;
+export type InsertListingClaim = typeof listingClaims.$inferInsert;
+
+// ── Message Flags (contact-circumvention log) ─────────────────────────────────
+export const messageFlags = pgTable("message_flags", {
+  id:             varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  messageId:      varchar("message_id", { length: 36 }).notNull().references(() => messages.id),
+  conversationId: varchar("conversation_id", { length: 36 }).notNull().references(() => deals.id),
+  flagType:       text("flag_type").notNull(),
+  // 'phone' | 'email' | 'social_handle' | 'platform_url'
+  createdAt:      timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("mf_message_id_idx").on(table.messageId),
+  index("mf_conversation_id_idx").on(table.conversationId),
+]);
+export type MessageFlag = typeof messageFlags.$inferSelect;
+export type InsertMessageFlag = typeof messageFlags.$inferInsert;

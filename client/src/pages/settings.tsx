@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -144,38 +145,98 @@ export function SettingsPage() {
     return sl || {};
   });
 
-  // Creator profile state
-  const existingCp = (user as any)?.creatorProfile as Record<string, any> | null;
-  const [cpPlatform, setCpPlatform] = useState<string>(existingCp?.primaryPlatform ?? "instagram");
-  const [cpFollowers, setCpFollowers] = useState<string>(existingCp?.followerCount ? String(existingCp.followerCount) : "");
-  const [cpEngagement, setCpEngagement] = useState<string>(existingCp?.avgEngagementRate ? String(existingCp.avgEngagementRate) : "");
-  const [cpNiches, setCpNiches] = useState<string[]>(existingCp?.contentNiches ?? []);
-  const [cpOpenToCollabs, setCpOpenToCollabs] = useState<boolean>(existingCp?.openToCollabs ?? true);
-  const [cpInstagram, setCpInstagram] = useState<string>(existingCp?.instagramHandle ?? "");
-  const [cpTiktok, setCpTiktok] = useState<string>(existingCp?.tiktokHandle ?? "");
-  const [cpYoutube, setCpYoutube] = useState<string>(existingCp?.youtubeHandle ?? "");
+  // ── Profile Mode state (creator_profiles + business_profiles tables) ──────
+  const CREATOR_NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Finance", "Entertainment", "Gaming", "Education"];
+  const CREATOR_PLATFORMS = ["Instagram", "TikTok", "YouTube", "LinkedIn", "X (Twitter)", "Snapchat", "Podcast", "Blog"];
+  const AUDIENCE_SIZES = [
+    { value: "Under 1K",  label: "Under 1,000" },
+    { value: "1K–10K",    label: "1,000 – 10,000" },
+    { value: "10K–50K",   label: "10,000 – 50,000" },
+    { value: "50K–100K",  label: "50,000 – 100,000" },
+    { value: "100K–500K", label: "100,000 – 500,000" },
+    { value: "500K+",     label: "500,000+" },
+  ];
+  const BUSINESS_CATEGORIES = ["Retail", "Food & Beverage", "Technology", "Healthcare", "Real Estate", "Finance", "Education", "Beauty & Wellness", "Fashion", "Events", "Media", "Other"];
 
-  const CREATOR_NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Business", "Finance", "Entertainment", "Gaming", "Education"];
+  const [cpDisplayName, setCpDisplayName] = useState("");
+  const [cpBio, setCpBio] = useState("");
+  const [cpNiche, setCpNiche] = useState("");
+  const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState("");
+  const [cpAudienceSize, setCpAudienceSize] = useState("");
+  const [bizCompanyName, setBizCompanyName] = useState("");
+  const [bizTradeLicense, setBizTradeLicense] = useState("");
+  const [bizCategory, setBizCategory] = useState("");
 
-  const saveCreatorProfileMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PATCH", "/api/me/creator-profile", {
-        primaryPlatform: cpPlatform,
-        followerCount: cpFollowers ? parseInt(cpFollowers) : undefined,
-        avgEngagementRate: cpEngagement ? parseFloat(cpEngagement) : undefined,
-        contentNiches: cpNiches,
-        openToCollabs: cpOpenToCollabs,
-        instagramHandle: cpInstagram || undefined,
-        tiktokHandle: cpTiktok || undefined,
-        youtubeHandle: cpYoutube || undefined,
-      });
+  // Fetch existing profiles (404 → null, not an error)
+  const { data: creatorProfile, refetch: refetchCreatorProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/creators/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch creator profile");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const { data: businessProfile, refetch: refetchBusinessProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/businesses/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch business profile");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const createCreatorMutation = useMutation({
+    mutationFn: async (data: { displayName: string; bio?: string; niche?: string; primaryPlatform?: string; audienceSize?: string }) => {
+      const res = await apiRequest("POST", "/api/creators", data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      toast({ title: "Creator profile saved!", description: "Your profile is now visible to brands looking for creators." });
+      refetchCreatorProfile();
+      toast({ title: "Creator profile created!", description: "You're now discoverable in the Creators directory." });
     },
-    onError: (err: any) => toast({ title: err?.message || "Failed to save creator profile", variant: "destructive" }),
+    onError: (err: any) => toast({ title: err?.message || "Failed to create creator profile", variant: "destructive" }),
+  });
+
+  const createBusinessMutation = useMutation({
+    mutationFn: async (data: { companyName: string; tradeLicenseNumber?: string; category?: string }) => {
+      const res = await apiRequest("POST", "/api/businesses", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchBusinessProfile();
+      toast({ title: "Business profile created!", description: "Complete KYB verification to publish business listings." });
+    },
+    onError: (err: any) => {
+      if (err?.message?.includes("409")) {
+        refetchBusinessProfile();
+      } else {
+        toast({ title: err?.message || "Failed to create business profile", variant: "destructive" });
+      }
+    },
+  });
+
+  const startKybMutation = useMutation({
+    mutationFn: async (businessId: string) => {
+      const res = await apiRequest("POST", `/api/businesses/${businessId}/kyb/start`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.verificationUrl) {
+        window.location.href = data.verificationUrl;
+      } else {
+        toast({ title: "KYB session started", description: "Follow the verification link sent to you." });
+      }
+    },
+    onError: (err: any) => toast({ title: err?.message || "Could not start verification", variant: "destructive" }),
   });
 
   const RADIUS_OPTIONS = [
@@ -466,7 +527,7 @@ export function SettingsPage() {
     { id: "privacy",       label: t("settings.privacy"),       icon: Eye,       desc: "Who can see your profile" },
     { id: "trading",       label: t("settings.bartering"),     icon: RefreshCw, desc: "Categories, radius, preferences" },
     { id: "security",      label: t("settings.security"),      icon: Lock,      desc: "Password, verification, data" },
-    ...(user.signupType === "creator" ? [{ id: "creator", label: "Creator Profile", icon: Camera, desc: "Platform, followers, niches" }] : []),
+    { id: "profile-mode",  label: "Profile Mode",              icon: Users,     desc: "Creator and business profiles" },
   ];
 
   const activeSectionLabel = SECTIONS.find(s => s.id === activeTab)?.label ?? "";
@@ -533,7 +594,7 @@ export function SettingsPage() {
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setMobileView("section"); }} className="space-y-6">
         <div className="hidden md:block">
-        <TabsList className={`grid w-full ${user.signupType === "creator" ? "grid-cols-6" : "grid-cols-5"}`}>
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="account" data-testid="tab-account">
             <User className="h-4 w-4 mr-2" />
             {t("settings.account")}
@@ -554,12 +615,10 @@ export function SettingsPage() {
             <Lock className="h-4 w-4 mr-2" />
             {t("settings.security")}
           </TabsTrigger>
-          {user.signupType === "creator" && (
-            <TabsTrigger value="creator" data-testid="tab-creator">
-              <Camera className="h-4 w-4 mr-2" />
-              Creator
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="profile-mode" data-testid="tab-profile-mode">
+            <Users className="h-4 w-4 mr-2" />
+            Profile Mode
+          </TabsTrigger>
         </TabsList>
         </div>
 
@@ -1531,68 +1590,244 @@ export function SettingsPage() {
           </div>
         </TabsContent>
 
-        {user.signupType === "creator" && (
-          <TabsContent value="creator">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Camera className="h-5 w-5 text-primary" />
-                    Creator Hub
-                  </CardTitle>
-                  <CardDescription>
-                    Connect with brands and close collab deals — launching soon.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col items-center text-center py-10 px-4 gap-5">
-                    <div className="h-16 w-16 rounded-2xl bg-violet-500/10 flex items-center justify-center">
-                      <Camera className="h-8 w-8 text-violet-500" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-lg mb-1">Creator Hub — Coming Soon</p>
-                      <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-                        Browse brand deals, receive gifted products, and sign barter contracts — all in one place. No cold DMs. No agencies. Just real collabs.
-                      </p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-                      <Input
-                        type="email"
-                        placeholder="your@email.com"
-                        value={cpFollowers}
-                        onChange={(e) => setCpFollowers(e.target.value)}
-                        className="flex-1"
-                      />
-                      <Button
-                        onClick={() => {
-                          if (!cpFollowers.trim()) return;
-                          fetch(`${API_BASE}/api/feature-waitlist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: cpFollowers.trim(), feature: "creators" }) }).catch(() => {});
-                          toast({ title: "You're on the list!", description: "We'll notify you when Creator Hub launches." });
-                          setCpFollowers("");
-                        }}
-                        className="bg-violet-600 hover:bg-violet-700 text-white whitespace-nowrap"
-                      >
-                        Notify me
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 w-full max-w-sm mt-2">
-                      {[
-                        { icon: "🎁", label: "Gifted products" },
-                        { icon: "📄", label: "Auto contracts" },
-                        { icon: "🤝", label: "Brand matching" },
-                      ].map(({ icon, label }) => (
-                        <div key={label} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/40">
-                          <span className="text-xl">{icon}</span>
-                          <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
-                        </div>
-                      ))}
-                    </div>
+        <TabsContent value="profile-mode">
+          <div className="space-y-6">
+
+            {/* ── Creator Profile ── */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="h-5 w-5 text-primary" />
+                      Creator Profile
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Get discovered by brands. Show your niche, platform, and audience size.
+                    </CardDescription>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        )}
+                  {creatorProfile && (
+                    <Badge className="shrink-0 mt-0.5 bg-primary/10 text-primary border-primary/20">Active</Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {creatorProfile ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-0.5">Display Name</p>
+                        <p className="font-medium text-sm">{creatorProfile.displayName}</p>
+                      </div>
+                      {creatorProfile.niche && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Niche</p>
+                          <p className="font-medium text-sm">{creatorProfile.niche}</p>
+                        </div>
+                      )}
+                      {creatorProfile.primaryPlatform && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Primary Platform</p>
+                          <p className="font-medium text-sm">{creatorProfile.primaryPlatform}</p>
+                        </div>
+                      )}
+                      {creatorProfile.audienceSize && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Audience Size</p>
+                          <p className="font-medium text-sm">{creatorProfile.audienceSize}</p>
+                        </div>
+                      )}
+                    </div>
+                    {creatorProfile.bio && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-0.5">Bio</p>
+                        <p className="text-sm leading-relaxed">{creatorProfile.bio}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cp-display-name">Display Name <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="cp-display-name"
+                        placeholder="Your creator name"
+                        value={cpDisplayName}
+                        onChange={(e) => setCpDisplayName(e.target.value)}
+                        maxLength={100}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cp-bio">Bio</Label>
+                      <Textarea
+                        id="cp-bio"
+                        placeholder="Tell brands what you create..."
+                        value={cpBio}
+                        onChange={(e) => setCpBio(e.target.value)}
+                        rows={3}
+                        maxLength={500}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cp-niche">Niche</Label>
+                        <Select value={cpNiche} onValueChange={setCpNiche}>
+                          <SelectTrigger id="cp-niche"><SelectValue placeholder="Select niche" /></SelectTrigger>
+                          <SelectContent>
+                            {CREATOR_NICHES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cp-platform">Primary Platform</Label>
+                        <Select value={cpPrimaryPlatform} onValueChange={setCpPrimaryPlatform}>
+                          <SelectTrigger id="cp-platform"><SelectValue placeholder="Select platform" /></SelectTrigger>
+                          <SelectContent>
+                            {CREATOR_PLATFORMS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cp-audience">Audience Size</Label>
+                      <Select value={cpAudienceSize} onValueChange={setCpAudienceSize}>
+                        <SelectTrigger id="cp-audience"><SelectValue placeholder="Select range" /></SelectTrigger>
+                        <SelectContent>
+                          {AUDIENCE_SIZES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={() => createCreatorMutation.mutate({
+                        displayName: cpDisplayName.trim(),
+                        bio: cpBio.trim() || undefined,
+                        niche: cpNiche || undefined,
+                        primaryPlatform: cpPrimaryPlatform || undefined,
+                        audienceSize: cpAudienceSize || undefined,
+                      })}
+                      disabled={!cpDisplayName.trim() || createCreatorMutation.isPending}
+                      className="w-full"
+                    >
+                      {createCreatorMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                      Create Creator Profile
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ── Business Profile ── */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-primary" />
+                      Business Profile
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Sell products and services to other businesses. Requires business verification.
+                    </CardDescription>
+                  </div>
+                  {businessProfile && (
+                    <Badge className={`shrink-0 mt-0.5 ${businessProfile.kybStatus === "verified" ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
+                      {businessProfile.kybStatus === "verified" ? "Verified" : "Pending KYB"}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {businessProfile ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-0.5">Company Name</p>
+                        <p className="font-medium text-sm">{businessProfile.companyName}</p>
+                      </div>
+                      {businessProfile.category && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Category</p>
+                          <p className="font-medium text-sm">{businessProfile.category}</p>
+                        </div>
+                      )}
+                      {businessProfile.tradeLicenseNumber && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Trade License</p>
+                          <p className="font-medium text-sm">{businessProfile.tradeLicenseNumber}</p>
+                        </div>
+                      )}
+                    </div>
+                    {businessProfile.kybStatus !== "verified" && (
+                      <Alert>
+                        <Shield className="h-4 w-4" />
+                        <AlertTitle>Business verification required</AlertTitle>
+                        <AlertDescription className="mt-1">
+                          Complete KYB verification to publish business listings and access wholesale features.
+                        </AlertDescription>
+                        <Button
+                          size="sm"
+                          className="mt-3"
+                          disabled={startKybMutation.isPending}
+                          onClick={() => startKybMutation.mutate(businessProfile.id)}
+                        >
+                          {startKybMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+                          Start verification
+                        </Button>
+                      </Alert>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="biz-company-name">Company Name <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="biz-company-name"
+                        placeholder="Your company name"
+                        value={bizCompanyName}
+                        onChange={(e) => setBizCompanyName(e.target.value)}
+                        maxLength={200}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="biz-trade-license">Trade License Number</Label>
+                        <Input
+                          id="biz-trade-license"
+                          placeholder="e.g. CN-12345678"
+                          value={bizTradeLicense}
+                          onChange={(e) => setBizTradeLicense(e.target.value)}
+                          maxLength={100}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="biz-category">Category</Label>
+                        <Select value={bizCategory} onValueChange={setBizCategory}>
+                          <SelectTrigger id="biz-category"><SelectValue placeholder="Select category" /></SelectTrigger>
+                          <SelectContent>
+                            {BUSINESS_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => createBusinessMutation.mutate({
+                        companyName: bizCompanyName.trim(),
+                        tradeLicenseNumber: bizTradeLicense.trim() || undefined,
+                        category: bizCategory || undefined,
+                      })}
+                      disabled={!bizCompanyName.trim() || createBusinessMutation.isPending}
+                      className="w-full"
+                    >
+                      {createBusinessMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                      Create Business Profile
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+          </div>
+        </TabsContent>
       </Tabs>
       </div>{/* end content wrapper */}
     </div>

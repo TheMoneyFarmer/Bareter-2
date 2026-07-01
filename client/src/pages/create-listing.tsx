@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { PhoneVerificationModal } from "@/components/phone-verification-modal";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,7 @@ import {
   Package, ShoppingCart, Loader2, X, Plus, ImagePlus,
   Tag, MapPin, DollarSign, FileText, ArrowLeftRight, Star,
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
-  Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake,
+  Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake, Layers,
   Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
   Wrench, TreePine, Luggage, Watch, Utensils, PawPrint,
 } from "lucide-react";
@@ -131,6 +131,37 @@ export function CreateListingPage() {
   const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
   const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 
+  // ── Listing mode (individual / creator / business product / wholesale) ─────
+  const [listingMode, setListingMode] = useState<"individual" | "creator" | "business_product" | "business_wholesale">("individual");
+  const [totalQuantity, setTotalQuantity] = useState("");
+  const [unitLabel, setUnitLabel] = useState("");
+
+  const { data: creatorProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/creators/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const { data: businessProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/businesses/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
   // Phone verification gate
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<CreateListingForm | null>(null);
@@ -171,11 +202,34 @@ export function CreateListingPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateListingForm) => {
+      const listingTypeMap: Record<string, string> = {
+        individual: "individual_item",
+        creator: "creator_service",
+        business_product: "business_product",
+        business_wholesale: "business_wholesale",
+      };
+      const modeFields: Record<string, unknown> =
+        listingMode === "creator" && creatorProfile
+          ? { listingType: "creator_service", creatorId: creatorProfile.id }
+          : listingMode === "business_product" && businessProfile
+          ? { listingType: "business_product", businessId: businessProfile.id, actingAsBusinessId: businessProfile.id }
+          : listingMode === "business_wholesale" && businessProfile
+          ? {
+              listingType: "business_wholesale",
+              businessId: businessProfile.id,
+              actingAsBusinessId: businessProfile.id,
+              totalQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
+              remainingQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
+              unitLabel: unitLabel || undefined,
+              claimStatus: "available",
+            }
+          : { listingType: "individual_item" };
+
       const res = await apiRequest("POST", "/api/listings", {
         ...data,
         retailValue: data.retailValue,
         categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
-        isCollab,
+        isCollab: listingMode === "creator" ? true : isCollab,
         collabDetails: isCollab ? {
           contentType: collabContentType,
           requiredFollowers: collabRequiredFollowers ? parseInt(collabRequiredFollowers) : 0,
@@ -186,6 +240,7 @@ export function CreateListingPage() {
           deliverables: parseInt(collabDeliverables) || 1,
           productValue: collabProductValue ? parseFloat(collabProductValue) : 0,
         } : undefined,
+        ...modeFields,
         valuation: aiValuation
           ? {
               minAed: Math.round(aiValuation.estimatedRange.min),
@@ -533,6 +588,112 @@ export function CreateListingPage() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+          {/* ── 0. Listing mode (only shown when user has creator or business profile) ── */}
+          {(creatorProfile || businessProfile) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Listing Mode
+                </CardTitle>
+                <CardDescription>Choose how this listing is published</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className={`grid gap-2 ${[creatorProfile, businessProfile?.kybStatus === "verified"].filter(Boolean).length >= 2 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+                  {/* Individual — always available */}
+                  <button
+                    type="button"
+                    onClick={() => setListingMode("individual")}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "individual" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
+                  >
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-xs font-semibold">Individual</span>
+                    <span className="text-[10px] text-muted-foreground leading-tight">Standard P2P barter</span>
+                  </button>
+                  {/* Creator — only if creator profile exists */}
+                  {creatorProfile && (
+                    <button
+                      type="button"
+                      onClick={() => setListingMode("creator")}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "creator" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
+                    >
+                      <Camera className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-xs font-semibold">Creator</span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">Brand collab offer</span>
+                    </button>
+                  )}
+                  {/* Business Product — if business profile exists */}
+                  {businessProfile && (
+                    <button
+                      type="button"
+                      onClick={() => setListingMode("business_product")}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_product" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
+                    >
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-xs font-semibold">Business</span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">Company product/service</span>
+                    </button>
+                  )}
+                  {/* Business Wholesale — only if KYB verified */}
+                  {businessProfile?.kybStatus === "verified" && (
+                    <button
+                      type="button"
+                      onClick={() => setListingMode("business_wholesale")}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_wholesale" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
+                    >
+                      <Package className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-xs font-semibold">Wholesale</span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">Split-quantity bulk deal</span>
+                    </button>
+                  )}
+                </div>
+                {listingMode === "creator" && creatorProfile && (
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                    Listing as <strong>{creatorProfile.displayName}</strong>
+                  </p>
+                )}
+                {(listingMode === "business_product" || listingMode === "business_wholesale") && businessProfile && (
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                    Listing on behalf of <strong>{businessProfile.companyName}</strong>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Wholesale quantity fields (only for business_wholesale mode) ── */}
+          {listingMode === "business_wholesale" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Split-Quantity Details</CardTitle>
+                <CardDescription>Multiple buyers can each claim a portion of this listing</CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Total Quantity <span className="text-destructive">*</span></label>
+                  <Input
+                    type="number"
+                    min="2"
+                    placeholder="e.g. 100"
+                    value={totalQuantity}
+                    onChange={(e) => setTotalQuantity(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Unit Label</label>
+                  <Input
+                    placeholder="e.g. kg, boxes, units"
+                    value={unitLabel}
+                    onChange={(e) => setUnitLabel(e.target.value)}
+                    maxLength={30}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── 1. Listing type ─────────────────────────────────────────── */}
           <Card>

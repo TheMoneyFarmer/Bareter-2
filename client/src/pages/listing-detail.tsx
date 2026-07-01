@@ -65,6 +65,7 @@ import {
   Camera,
   TrendingUp,
   Clock,
+  Building2,
 } from "lucide-react";
 import type { ServiceTier } from "@shared/schema";
 import { VerifiedBadge, TrustBadges } from "@/components/verified-badge";
@@ -236,6 +237,10 @@ export function ListingDetailPage() {
   const [collabHandle, setCollabHandle] = useState("");
   const [collabFollowers, setCollabFollowers] = useState("");
   const [collabPortfolioLink, setCollabPortfolioLink] = useState("");
+
+  // Wholesale claim state
+  const [claimQty, setClaimQty] = useState("1");
+  const [claimSubmitted, setClaimSubmitted] = useState(false);
 
   const { data: listing, isLoading } = useQuery<ListingWithUser>({
     queryKey: ["/api/listings", id],
@@ -667,6 +672,25 @@ export function ListingDetailPage() {
     },
     onError: () => {
       toast({ title: t("listingDetail.couldNotSend"), description: t("listingDetail.pleaseRetry"), variant: "destructive" });
+    },
+  });
+
+  const claimMutation = useMutation({
+    mutationFn: async (qty: number) => {
+      const res = await apiRequest("POST", `/api/listings/${listing?.id}/claims`, { claimedQuantity: qty });
+      return res.json();
+    },
+    onSuccess: () => {
+      setClaimSubmitted(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
+      toast({ title: "Claim submitted!", description: "The seller will review your claim shortly." });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not submit claim",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1722,6 +1746,88 @@ export function ListingDetailPage() {
                       </Link>
                     )}
                   </>
+                ) : (listing as any).listingType === "business_wholesale" ? (
+                  <>
+                    {/* Wholesale listing CTA */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <Building2 className="h-4 w-4 text-bareter-teal" />
+                      <span className="text-sm font-semibold text-bareter-teal">Wholesale listing</span>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">Value per unit</p>
+                      <span className="text-3xl font-bold text-bareter-teal">
+                        AED {parseFloat(listing.retailValue as string).toLocaleString()}
+                      </span>
+                    </div>
+                    {(listing as any).totalQuantity != null && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{(listing as any).remainingQuantity ?? (listing as any).totalQuantity} of {(listing as any).totalQuantity}{(listing as any).unitLabel ? ` ${(listing as any).unitLabel}` : " units"} remaining</span>
+                          {(listing as any).claimStatus === "fully_claimed" && (
+                            <span className="text-destructive font-medium">Sold out</span>
+                          )}
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-bareter-teal transition-all"
+                            style={{ width: `${Math.max(0, Math.min(100, (((listing as any).remainingQuantity ?? (listing as any).totalQuantity) / (listing as any).totalQuantity) * 100))}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {user ? (
+                      claimSubmitted ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="wholesale-claim-success">
+                          <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <span className="text-sm font-medium text-green-700 dark:text-green-400">Claim submitted — the seller will be in touch.</span>
+                        </div>
+                      ) : (listing as any).claimStatus === "fully_claimed" ? (
+                        <Button variant="outline" disabled className="w-full h-[52px] gap-2 text-base" data-testid="wholesale-fully-claimed">
+                          <Package className="h-5 w-5" />
+                          Sold out
+                        </Button>
+                      ) : (
+                        <div className="space-y-2" data-testid="wholesale-claim-form">
+                          <Label htmlFor="claim-qty" className="text-xs text-muted-foreground">How many units?</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="claim-qty"
+                              type="number"
+                              min={1}
+                              max={(listing as any).remainingQuantity ?? (listing as any).totalQuantity ?? undefined}
+                              value={claimQty}
+                              onChange={(e) => setClaimQty(e.target.value)}
+                              className="w-24 text-center"
+                              data-testid="input-claim-qty"
+                            />
+                            <Button
+                              variant="bareter"
+                              className="flex-1 h-10 gap-2"
+                              disabled={!claimQty || parseInt(claimQty) < 1 || claimMutation.isPending}
+                              onClick={() => claimMutation.mutate(parseInt(claimQty))}
+                              data-testid="button-submit-claim"
+                            >
+                              {claimMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Handshake className="h-4 w-4" />}
+                              Claim {claimQty && parseInt(claimQty) > 1 ? `${claimQty} units` : "unit"}
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <Link href="/login">
+                        <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
+                          <Handshake className="h-5 w-5" />
+                          Sign in to claim
+                        </Button>
+                      </Link>
+                    )}
+                    <Link href={`/inbox?userId=${listing.userId}`}>
+                      <Button variant="bareter-outline" className="w-full h-11 gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        {t("listingDetail.messageSellerBtn")}
+                      </Button>
+                    </Link>
+                  </>
                 ) : (
                   <>
                     <div>
@@ -2169,6 +2275,49 @@ export function ListingDetailPage() {
                 <Button variant="bareter" className="w-full h-14 text-base gap-2">
                   <Camera className="h-5 w-5" />
                   Sign In to Apply
+                </Button>
+              </Link>
+            )
+          ) : (listing as any).listingType === "business_wholesale" ? (
+            user ? (
+              claimSubmitted ? (
+                <div className="flex items-center justify-center gap-2 h-14 text-green-600 font-semibold">
+                  <CheckCircle className="h-5 w-5" />
+                  Claim submitted!
+                </div>
+              ) : (listing as any).claimStatus === "fully_claimed" ? (
+                <Button variant="outline" disabled className="w-full h-14 text-base gap-2">
+                  <Package className="h-5 w-5" />
+                  Sold out
+                </Button>
+              ) : (
+                <div className="flex gap-2 items-center" data-testid="wholesale-claim-form-mobile">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={(listing as any).remainingQuantity ?? (listing as any).totalQuantity ?? undefined}
+                    value={claimQty}
+                    onChange={(e) => setClaimQty(e.target.value)}
+                    className="w-20 text-center h-12"
+                    data-testid="input-claim-qty-mobile"
+                  />
+                  <Button
+                    variant="bareter"
+                    className="flex-1 h-12 gap-2 text-base"
+                    disabled={!claimQty || parseInt(claimQty) < 1 || claimMutation.isPending}
+                    onClick={() => claimMutation.mutate(parseInt(claimQty))}
+                    data-testid="button-submit-claim-mobile"
+                  >
+                    {claimMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Handshake className="h-5 w-5" />}
+                    Claim {claimQty && parseInt(claimQty) > 1 ? `${claimQty} units` : "unit"}
+                  </Button>
+                </div>
+              )
+            ) : (
+              <Link href="/login">
+                <Button variant="bareter" className="w-full h-14 text-base gap-2">
+                  <Handshake className="h-5 w-5" />
+                  Sign in to claim
                 </Button>
               </Link>
             )
