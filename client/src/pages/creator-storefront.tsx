@@ -1,7 +1,9 @@
 import { useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,11 +15,15 @@ import {
   Package,
   ImageIcon,
   Video,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { API_BASE, assetUrl } from "@/lib/queryClient";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { useSeo } from "@/hooks/use-seo";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 
 interface PortfolioItem {
   id: string;
@@ -105,6 +111,10 @@ function CreatorStorefrontSkeleton() {
 
 export function CreatorStorefrontPage() {
   const { userId } = useParams<{ userId: string }>();
+  const { user: loggedInUser } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, isError } = useQuery<CreatorStorefrontData | null>({
     queryKey: ["/api/creators", userId],
@@ -120,6 +130,36 @@ export function CreatorStorefrontPage() {
     staleTime: 60_000,
     retry: false,
   });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}/api/creators/${userId}/portfolio`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message ?? "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creators", userId] });
+      toast({ title: "Portfolio item added!" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadMutation.mutate(file);
+    e.target.value = "";
+  };
 
   useSeo({
     title: data?.displayName ? `${data.displayName} — Bareter` : "Creator — Bareter",
@@ -141,6 +181,7 @@ export function CreatorStorefrontPage() {
   }
 
   const { user, portfolio, activeListings, displayName, bio, niche, primaryPlatform, audienceSize, totalCompletedDeals } = data as CreatorStorefrontData;
+  const isOwner = !!loggedInUser && loggedInUser.id === data.userId;
   const initials = displayName?.slice(0, 2).toUpperCase() ?? "CR";
 
   return (
@@ -224,18 +265,58 @@ export function CreatorStorefrontPage() {
         </CardContent>
       </Card>
 
+      {/* Hidden file input for portfolio upload */}
+      {isOwner && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      )}
+
       {/* Portfolio grid */}
-      {portfolio.length > 0 && (
+      {(portfolio.length > 0 || isOwner) && (
         <section>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            Portfolio
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {portfolio.map((item: PortfolioItem) => (
-              <PortfolioMediaCard key={item.id} item={item} />
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-muted-foreground" />
+              Portfolio
+            </h2>
+            {isOwner && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-xs"
+                disabled={uploadMutation.isPending}
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-upload-portfolio"
+              >
+                {uploadMutation.isPending
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Upload className="h-3.5 w-3.5" />}
+                Upload
+              </Button>
+            )}
           </div>
+          {portfolio.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {portfolio.map((item: PortfolioItem) => (
+                <PortfolioMediaCard key={item.id} item={item} />
+              ))}
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/40 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="portfolio-empty-upload-cta"
+            >
+              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-muted-foreground">Upload your first portfolio item</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Images and videos supported</p>
+            </div>
+          )}
         </section>
       )}
 
@@ -254,7 +335,7 @@ export function CreatorStorefrontPage() {
         </section>
       )}
 
-      {portfolio.length === 0 && activeListings.length === 0 && (
+      {portfolio.length === 0 && activeListings.length === 0 && !isOwner && (
         <div className="text-center py-12 text-muted-foreground">
           <Camera className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm">No portfolio or listings yet.</p>

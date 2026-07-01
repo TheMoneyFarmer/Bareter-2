@@ -211,24 +211,39 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                 </span>
               )}
 
-              {/* Listing-type badge — bottom-left of image */}
+              {/* Listing-type badge — bottom-left of image; clicks navigate to storefront */}
               {listing.listingType === "business_product" && (
-                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-navy/90 text-white shadow-sm">
-                  <Building2 className="h-3 w-3" />
-                  Business
-                </span>
+                <div
+                  className="absolute bottom-3 start-3"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (listing.businessId) navigate(`/businesses/${listing.businessId}`); }}
+                >
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-navy/90 text-white shadow-sm cursor-pointer hover:bg-bareter-navy transition-colors">
+                    <Building2 className="h-3 w-3" />
+                    Business
+                  </span>
+                </div>
               )}
               {listing.listingType === "business_wholesale" && (
-                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-teal/90 text-white shadow-sm">
-                  <Package className="h-3 w-3" />
-                  Wholesale
-                </span>
+                <div
+                  className="absolute bottom-3 start-3"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (listing.businessId) navigate(`/businesses/${listing.businessId}`); }}
+                >
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-teal/90 text-white shadow-sm cursor-pointer hover:bg-bareter-teal transition-colors">
+                    <Package className="h-3 w-3" />
+                    Wholesale
+                  </span>
+                </div>
               )}
               {listing.listingType === "creator_service" && (
-                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-violet-600/90 text-white shadow-sm">
-                  <Camera className="h-3 w-3" />
-                  Creator
-                </span>
+                <div
+                  className="absolute bottom-3 start-3"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/creators/${listing.userId}`); }}
+                >
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-violet-600/90 text-white shadow-sm cursor-pointer hover:bg-violet-600 transition-colors">
+                    <Camera className="h-3 w-3" />
+                    Creator
+                  </span>
+                </div>
               )}
 
               {onWishlistToggle && (
