@@ -454,6 +454,32 @@ export function ProfilePage() {
     enabled: !!user,
   });
 
+  const { data: creatorProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/creators/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const { data: businessProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/businesses/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
+
   const profileSchema = useMemo(() => z.object({
     fullName: z.string().min(2, t("validation.nameTooShort")),
     bio: z.string().optional(),
@@ -719,6 +745,23 @@ export function ProfilePage() {
             <Badge variant="outline" className="mt-2">
               {user.signupType === "creator" ? t("profile.signupCreator") : user.signupType === "business" ? t("profile.signupBusiness") : t("profile.signupPersonal")}
             </Badge>
+          )}
+          {(creatorProfile || businessProfile) && (
+            <div className="flex items-center justify-center md:justify-start gap-2 mt-2 flex-wrap">
+              {creatorProfile && (
+                <Badge variant="outline" className="gap-1 text-xs border-primary/30 text-primary bg-primary/5">
+                  <Camera className="h-3 w-3" />
+                  Creator
+                </Badge>
+              )}
+              {businessProfile && (
+                <Badge variant="outline" className={`gap-1 text-xs ${businessProfile.kybStatus === "verified" ? "border-green-300 text-green-700 bg-green-50 dark:bg-green-950/20" : "border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/20"}`}>
+                  <Building2 className="h-3 w-3" />
+                  {businessProfile.companyName}
+                  {businessProfile.kybStatus === "verified" && <CheckCircle className="h-3 w-3 ml-0.5" />}
+                </Badge>
+              )}
+            </div>
           )}
           {user.socialProfiles && (user.socialProfiles as SocialProfile[]).length > 0 && (
             <div className="flex items-center justify-center md:justify-start gap-3 mt-3 flex-wrap">

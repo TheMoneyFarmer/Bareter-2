@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSeo } from "@/hooks/use-seo";
-import { Link, useSearch, useRoute } from "wouter";
+import { Link, useSearch, useRoute, useLocation } from "wouter";
 import { categoryFromSlug, subcategoryFromSlug } from "@shared/category-slugs";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
@@ -82,7 +82,7 @@ import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain";
+type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain" | "creators" | "businesses";
 
 function ForYouTab({
   wishlistedIds,
@@ -183,9 +183,10 @@ export function BrowsePage() {
   const initialLocationParam = initialParams.get("location") || "";
 
   const showCategoriesParam = initialParams.get("showCategories") === "true";
+  const [, navigate] = useLocation();
   const initialTab = initialParams.get("tab") as ExploreTab | null;
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialTab && ["discover","search","for-you","collabs","chain"].includes(initialTab)
+    initialTab && ["discover","search","for-you","collabs","chain","creators","businesses"].includes(initialTab)
       ? initialTab
       : showCategoriesParam ? "discover"
       : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
@@ -334,6 +335,35 @@ export function BrowsePage() {
     },
     staleTime: 60_000,
   });
+
+  // ── Creators tab ────────────────────────────────────────────────────────
+  const CREATOR_NICHES_BROWSE = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Finance", "Entertainment", "Gaming", "Education"];
+  const CREATOR_PLATFORMS_BROWSE = ["Instagram", "TikTok", "YouTube", "LinkedIn", "X (Twitter)", "Snapchat", "Podcast", "Blog"];
+  const [creatorNiche, setCreatorNiche] = useState("");
+  const [creatorPlatform, setCreatorPlatform] = useState("");
+  const [creatorVerifiedOnly, setCreatorVerifiedOnly] = useState(false);
+
+  const creatorsQs = new URLSearchParams();
+  if (creatorNiche) creatorsQs.set("niche", creatorNiche);
+  if (creatorPlatform) creatorsQs.set("platform", creatorPlatform);
+  if (creatorVerifiedOnly) creatorsQs.set("verifiedOnly", "true");
+
+  const { data: creatorsData = [], isLoading: creatorsLoading } = useQuery<any[]>({
+    queryKey: ["/api/creators", creatorNiche, creatorPlatform, creatorVerifiedOnly],
+    queryFn: async () => {
+      const qs = creatorsQs.toString();
+      const res = await fetch(`${API_BASE}/api/creators${qs ? `?${qs}` : ""}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "creators",
+    staleTime: 60_000,
+  });
+
+  // ── Businesses tab — client-side filtered from existing listings query ───
+  const businessListings = (listings || []).filter(l =>
+    (l as any).listingType === "business_product" || (l as any).listingType === "business_wholesale"
+  );
 
   const { data: recommendedUsers } = useQuery<any[]>({
     queryKey: ["/api/recommendations/users"],
@@ -795,6 +825,24 @@ export function BrowsePage() {
             Chain Deals
           </Button>
         )}
+        <Button
+          variant={activeTab === "creators" ? "bareter" : "bareter-outline"}
+          onClick={() => setActiveTab("creators")}
+          className="gap-2 flex-shrink-0"
+          data-testid="tab-creators"
+        >
+          <CameraIcon className="h-4 w-4" />
+          Creators
+        </Button>
+        <Button
+          variant={activeTab === "businesses" ? "bareter" : "bareter-outline"}
+          onClick={() => setActiveTab("businesses")}
+          className="gap-2 flex-shrink-0"
+          data-testid="tab-businesses"
+        >
+          <Building2 className="h-4 w-4" />
+          Businesses
+        </Button>
       </div>
 
       {activeTab === "collabs" ? (
@@ -858,6 +906,165 @@ export function BrowsePage() {
                 </Link>
               </div>
             </>
+          )}
+        </div>
+      ) : activeTab === "creators" ? (
+        <div className="space-y-6">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CameraIcon className="h-5 w-5 text-primary" />
+                Creators
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Discover content creators open to barter collaborations.
+              </p>
+            </div>
+          </div>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <Select value={creatorNiche || "all"} onValueChange={v => setCreatorNiche(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-8 text-xs w-36">
+                <SelectValue placeholder="Niche" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All niches</SelectItem>
+                {CREATOR_NICHES_BROWSE.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={creatorPlatform || "all"} onValueChange={v => setCreatorPlatform(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-8 text-xs w-40">
+                <SelectValue placeholder="Platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All platforms</SelectItem>
+                {CREATOR_PLATFORMS_BROWSE.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <button
+              type="button"
+              onClick={() => setCreatorVerifiedOnly(v => !v)}
+              className={`flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors ${creatorVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40"}`}
+              data-testid="filter-creator-verified"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              Verified only
+            </button>
+            {(creatorNiche || creatorPlatform || creatorVerifiedOnly) && (
+              <button type="button" onClick={() => { setCreatorNiche(""); setCreatorPlatform(""); setCreatorVerifiedOnly(false); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </button>
+            )}
+          </div>
+          {/* Grid */}
+          {creatorsLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}><CardContent className="p-4"><div className="flex items-center gap-3"><Skeleton className="h-12 w-12 rounded-full" /><div className="space-y-2 flex-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></div></CardContent></Card>
+              ))}
+            </div>
+          ) : creatorsData.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
+                <h3 className="font-semibold text-lg mb-2">No creators found</h3>
+                <p className="text-muted-foreground text-sm">Try adjusting your filters or check back later.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {creatorsData.map((creator: any) => (
+                <Card
+                  key={creator.id}
+                  className="hover-elevate cursor-pointer"
+                  onClick={() => navigate(`/creators/${creator.id}`)}
+                  data-testid={`creator-card-${creator.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-12 w-12 shrink-0">
+                        <AvatarImage src={creator.avatarUrl || undefined} alt={creator.fullName} />
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                          {(creator.creatorProfile?.displayName || creator.fullName || "?")[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-sm truncate">
+                            {creator.creatorProfile?.displayName || creator.fullName}
+                          </p>
+                          {creator.isVerified && <VerifiedBadge />}
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {creator.creatorProfile?.niche && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 h-4">{creator.creatorProfile.niche}</Badge>
+                          )}
+                          {creator.creatorProfile?.primaryPlatform && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 h-4">{creator.creatorProfile.primaryPlatform}</Badge>
+                          )}
+                        </div>
+                        {creator.creatorProfile?.audienceSize && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            <Users className="h-3 w-3 inline mr-0.5" />
+                            {creator.creatorProfile.audienceSize}
+                          </p>
+                        )}
+                        {(creator.totalCompletedDeals ?? 0) > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <CheckCircle2 className="h-3 w-3 inline mr-0.5 text-green-500" />
+                            {creator.totalCompletedDeals} deals
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : activeTab === "businesses" ? (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              Business Listings
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Products and services from verified businesses, available for barter.
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}><CardContent className="p-0"><Skeleton className="h-48 rounded-t-md" /><div className="p-4 space-y-3"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/2" /></div></CardContent></Card>
+              ))}
+            </div>
+          ) : businessListings.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Building2 className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
+                <h3 className="font-semibold text-lg mb-2">No business listings yet</h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Be the first — create a business profile and post a product or wholesale deal.
+                </p>
+                <Link href="/create-listing">
+                  <Button variant="bareter" size="sm">Post a Business Listing</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-businesses">
+              {businessListings.map((listing) => (
+                <BrandListingCard
+                  key={listing.id}
+                  listing={listing}
+                  isWishlisted={currentWishlistedIds.has(listing.id)}
+                  onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined}
+                />
+              ))}
+            </StaggeredReveal>
           )}
         </div>
       ) : activeTab === "for-you" ? (

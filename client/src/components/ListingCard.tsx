@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight, UserPlus, UserMinus } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight, UserPlus, UserMinus, Building2, Camera, Package } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -211,6 +211,26 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
                 </span>
               )}
 
+              {/* Listing-type badge — bottom-left of image */}
+              {listing.listingType === "business_product" && (
+                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-navy/90 text-white shadow-sm">
+                  <Building2 className="h-3 w-3" />
+                  Business
+                </span>
+              )}
+              {listing.listingType === "business_wholesale" && (
+                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-bareter-teal/90 text-white shadow-sm">
+                  <Package className="h-3 w-3" />
+                  Wholesale
+                </span>
+              )}
+              {listing.listingType === "creator_service" && (
+                <span className="absolute bottom-3 start-3 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-violet-600/90 text-white shadow-sm">
+                  <Camera className="h-3 w-3" />
+                  Creator
+                </span>
+              )}
+
               {onWishlistToggle && (
                 <button
                   type="button"
@@ -305,6 +325,21 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               </span>
             )}
           </div>
+
+          {/* Wholesale quantity indicator */}
+          {listing.listingType === "business_wholesale" && listing.totalQuantity != null && (
+            <div className="flex items-center gap-2" data-testid={`row-quantity-${listing.id}`}>
+              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-bareter-teal transition-all"
+                  style={{ width: `${Math.max(0, Math.min(100, ((listing.remainingQuantity ?? listing.totalQuantity) / listing.totalQuantity) * 100))}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+                {listing.remainingQuantity ?? listing.totalQuantity}/{listing.totalQuantity}{listing.unitLabel ? ` ${listing.unitLabel}` : ""} left
+              </span>
+            </div>
+          )}
 
           {(listing.valuationMinAed != null && listing.valuationMaxAed != null) && (
             <div data-testid={`row-valuation-${listing.id}`}>

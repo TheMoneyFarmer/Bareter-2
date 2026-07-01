@@ -59,6 +59,8 @@ const ReferralsPage = lazy(() => import("@/pages/referrals").then((m) => ({ defa
 const FeedPage = lazy(() => import("@/pages/feed").then((m) => ({ default: m.FeedPage })));
 const CreatorsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.CreatorsComingSoonPage })));
 const BrandCollabsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.BrandCollabsComingSoonPage })));
+const CreatorStorefrontPage = lazy(() => import("@/pages/creator-storefront").then((m) => ({ default: m.CreatorStorefrontPage })));
+const BusinessStorefrontPage = lazy(() => import("@/pages/business-storefront").then((m) => ({ default: m.BusinessStorefrontPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const CreatePostPage = lazy(() => import("@/pages/create-post").then((m) => ({ default: m.CreatePostPage })));
 const InboxPage = lazy(() => import("@/pages/inbox").then((m) => ({ default: m.InboxPage })));
@@ -355,7 +357,9 @@ function Router() {
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/map" component={MapViewPage} />
       <Route path="/posts/:id" component={PostDetailPage} />
+      <Route path="/creators/:userId" component={CreatorStorefrontPage} />
       <Route path="/creators" component={CreatorsComingSoonPage} />
+      <Route path="/businesses/:id" component={BusinessStorefrontPage} />
       <Route path="/brand-collabs" component={BrandCollabsComingSoonPage} />
       <Route component={NotFound} />
     </Switch>

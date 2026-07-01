@@ -73,6 +73,9 @@ import {
   successStories,
   businessProfiles,
   messageFlags,
+  creatorProfiles,
+  creatorPortfolioItems,
+  businessMembers,
 } from "@shared/schema";
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
@@ -10715,38 +10718,232 @@ export async function registerRoutes(
   // BRAND COLLAB & CREATOR DISCOVERY ROUTES
   // ══════════════════════════════════════════════════════════════════════
 
-  // GET /api/creators — public creator discovery with filters
+  // GET /api/creators — public creator discovery.
+  // Primary source: creator_profiles table (Phase 1+).
+  // Fallback: old creatorProfile jsonb on users, for accounts not yet migrated.
   app.get("/api/creators", async (req, res) => {
     try {
-      const { niche, platform, minFollowers, maxFollowers, limit, offset } = req.query;
-      const creators = await storage.searchCreators({
+      const { niche, platform, verifiedOnly, limit, offset } = req.query;
+      const lim = Math.min(Number(limit) || 40, 60);
+      const off = Number(offset) || 0;
+
+      // ── New table (primary) ────────────────────────────────────────────
+      const conds: any[] = [];
+      if (niche) conds.push(ilike(creatorProfiles.niche, `%${String(niche)}%`));
+      if (platform) conds.push(ilike(creatorProfiles.primaryPlatform, `%${String(platform)}%`));
+      if (verifiedOnly === "true") conds.push(gte(users.verificationLevel as any, 2));
+
+      const newRows = await db
+        .select({
+          id: users.id,
+          fullName: users.fullName,
+          avatarUrl: users.avatarUrl,
+          location: users.location,
+          city: users.city,
+          country: users.country,
+          isVerified: users.isVerified,
+          verificationStatus: users.verificationStatus,
+          founderBadge: users.founderBadge,
+          credibilityScore: users.credibilityScore,
+          totalCompletedDeals: users.totalCompletedDeals,
+          signupType: users.signupType,
+          cpId: creatorProfiles.id,
+          displayName: creatorProfiles.displayName,
+          bio: creatorProfiles.bio,
+          niche: creatorProfiles.niche,
+          primaryPlatform: creatorProfiles.primaryPlatform,
+          audienceSize: creatorProfiles.audienceSize,
+        })
+        .from(creatorProfiles)
+        .innerJoin(users, eq(creatorProfiles.userId, users.id))
+        .where(conds.length ? and(...conds) : undefined)
+        .orderBy(desc(users.totalCompletedDeals))
+        .limit(lim)
+        .offset(off);
+
+      const newUserIds = new Set(newRows.map(p => p.id));
+
+      // ── Legacy jsonb fallback (exclude any already in new table) ──────
+      const legacyCreators = await storage.searchCreators({
         niche: niche as string | undefined,
         platform: platform as string | undefined,
-        minFollowers: minFollowers ? Number(minFollowers) : undefined,
-        maxFollowers: maxFollowers ? Number(maxFollowers) : undefined,
         openToCollabs: true,
-        limit: limit ? Math.min(Number(limit), 60) : 40,
-        offset: offset ? Number(offset) : 0,
+        limit: lim,
+        offset: off,
       });
-      res.json(creators.map(u => ({
-        id: u.id,
-        fullName: u.fullName,
-        avatarUrl: u.avatarUrl,
-        location: u.location,
-        city: u.city,
-        country: u.country,
-        isVerified: u.isVerified,
-        verificationStatus: u.verificationStatus,
-        founderBadge: u.founderBadge,
-        creatorProfile: u.creatorProfile,
-        signupType: u.signupType,
-        credibilityScore: u.credibilityScore,
-        totalCompletedDeals: u.totalCompletedDeals,
-      })));
+
+      const result = [
+        ...newRows.map(p => ({
+          id: p.id,
+          fullName: p.fullName,
+          avatarUrl: p.avatarUrl,
+          location: p.location,
+          city: p.city,
+          country: p.country,
+          isVerified: p.isVerified,
+          verificationStatus: p.verificationStatus,
+          founderBadge: p.founderBadge,
+          credibilityScore: p.credibilityScore,
+          totalCompletedDeals: p.totalCompletedDeals,
+          signupType: p.signupType,
+          creatorProfile: {
+            id: p.cpId,
+            displayName: p.displayName,
+            bio: p.bio,
+            niche: p.niche,
+            primaryPlatform: p.primaryPlatform,
+            audienceSize: p.audienceSize,
+          },
+        })),
+        ...legacyCreators
+          .filter(u => !newUserIds.has(u.id))
+          .map(u => ({
+            id: u.id,
+            fullName: u.fullName,
+            avatarUrl: u.avatarUrl,
+            location: u.location,
+            city: u.city,
+            country: u.country,
+            isVerified: u.isVerified,
+            verificationStatus: u.verificationStatus,
+            founderBadge: u.founderBadge,
+            credibilityScore: u.credibilityScore,
+            totalCompletedDeals: u.totalCompletedDeals,
+            signupType: u.signupType,
+            creatorProfile: u.creatorProfile,
+          })),
+      ];
+
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // POST /api/creators — create/upsert creator profile for current user (idempotent)
+  app.post("/api/creators", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await storage.getCreatorProfile(userId);
+      if (existing) return res.json(existing);
+
+      const schema = z.object({
+        displayName: z.string().min(1).max(100),
+        bio: z.string().max(500).optional(),
+        niche: z.string().max(100).optional(),
+        primaryPlatform: z.string().max(100).optional(),
+        audienceSize: z.string().max(50).optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const profile = await storage.createCreatorProfile({ userId, ...parsed });
+      res.status(201).json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Create creator profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/creators/me — current user's creator profile + portfolio items
+  // Must be defined before /api/creators/:userId to avoid route shadowing.
+  app.get("/api/creators/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await storage.getCreatorProfile(userId);
+      if (!profile) return res.status(404).json({ message: "No creator profile found" });
+      const portfolio = await storage.getPortfolioItems(profile.id);
+      res.json({ ...profile, portfolio });
+    } catch (error) {
+      console.error("Get own creator profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/creators/:userId — public storefront: profile + portfolio + active listings + stats
+  app.get("/api/creators/:userId", async (req, res) => {
+    try {
+      const targetUserId = param(req.params.userId);
+      const profile = await storage.getCreatorProfile(targetUserId);
+      if (!profile) return res.status(404).json({ message: "Creator profile not found" });
+
+      const [portfolio, activeListings, targetUser] = await Promise.all([
+        storage.getPortfolioItems(profile.id),
+        db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.userId, targetUserId), eq(listings.isActive, true), isNull(listings.deletedAt)))
+          .orderBy(desc(listings.createdAt))
+          .limit(12),
+        storage.getUser(targetUserId),
+      ]);
+
+      res.json({
+        ...profile,
+        portfolio,
+        activeListings,
+        totalCompletedDeals: targetUser?.totalCompletedDeals ?? 0,
+        user: targetUser ? sanitizePublicUser(targetUser) : null,
+      });
+    } catch (error) {
+      console.error("Get creator storefront error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/creators/:userId/portfolio — upload a portfolio item (images/video only)
+  app.post(
+    "/api/creators/:userId/portfolio",
+    requireAuth,
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        const targetUserId = param(req.params.userId);
+        const userId = req.session.userId!;
+        if (targetUserId !== userId) return res.status(403).json({ message: "Cannot upload to another user's portfolio" });
+
+        if (!req.file?.buffer) return res.status(400).json({ message: "No file uploaded" });
+
+        const detected = await detectAllowedFileType(req.file.buffer);
+        if (!detected) {
+          return res.status(400).json({ message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed." });
+        }
+
+        const profile = await storage.getCreatorProfile(userId);
+        if (!profile) return res.status(404).json({ message: "Creator profile not found. Create one first." });
+
+        const random = crypto.randomBytes(24).toString("hex");
+        const filename = `${random}.${detected.ext}`;
+        let mediaUrl: string;
+
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+          });
+          mediaUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          mediaUrl = `/uploads/${filename}`;
+        }
+
+        const mediaType = detected.mime.startsWith("video/") ? "video" : "image";
+        const caption = typeof req.body.caption === "string" ? req.body.caption.slice(0, 200) : undefined;
+
+        const item = await storage.createCreatorPortfolioItem({ creatorId: profile.id, mediaUrl, mediaType, caption });
+        res.status(201).json(item);
+      } catch (error) {
+        console.error("Portfolio upload error:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  );
 
   // GET /api/listings/:id/collab/applications — brand sees all applications for their collab listing
   app.get("/api/listings/:id/collab/applications", requireAuth, async (req, res) => {
@@ -11525,6 +11722,37 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/businesses/:id/storefront — public-facing company page, any logged-in user
+  app.get("/api/businesses/:id/storefront", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const [ownerUser, activeListings] = await Promise.all([
+        storage.getUser(profile.ownerId),
+        db.select().from(listings)
+          .where(and(eq(listings.businessId, businessId), eq(listings.isActive, true), isNull(listings.deletedAt)))
+          .orderBy(desc(listings.createdAt))
+          .limit(20),
+      ]);
+
+      res.json({
+        id: profile.id,
+        companyName: profile.companyName,
+        category: profile.category,
+        kybStatus: profile.kybStatus,
+        kybVerifiedAt: profile.kybVerifiedAt,
+        createdAt: profile.createdAt,
+        owner: ownerUser ? sanitizePublicUser(ownerUser) : null,
+        activeListings,
+      });
+    } catch (error) {
+      console.error("Business storefront error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/businesses", requireAuth, async (req, res) => {
     try {
       const schema = z.object({
@@ -11661,6 +11889,91 @@ export async function registerRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
       console.error("Create listing claim error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Business Members ─────────────────────────────────────────────────────────
+
+  // GET /api/businesses/:id/members — owner or any member can view the member list
+  app.get("/api/businesses/:id/members", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business profile not found" });
+      if (profile.ownerId !== userId) {
+        const membership = await storage.getBusinessMembership(userId, businessId);
+        if (!membership) return res.status(403).json({ message: "Not authorised" });
+      }
+      const members = await db
+        .select({
+          id: businessMembers.id,
+          userId: businessMembers.userId,
+          businessId: businessMembers.businessId,
+          role: businessMembers.role,
+          invitedAt: businessMembers.invitedAt,
+          joinedAt: businessMembers.joinedAt,
+          fullName: users.fullName,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(businessMembers)
+        .innerJoin(users, eq(businessMembers.userId, users.id))
+        .where(eq(businessMembers.businessId, businessId));
+      res.json(members);
+    } catch (error) {
+      console.error("Get business members error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/businesses/:id/members — owner invites a user by email
+  app.post("/api/businesses/:id/members", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business profile not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Only the business owner can invite members" });
+
+      const schema = z.object({ email: z.string().email() });
+      const { email } = schema.parse(req.body);
+
+      const invitee = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (!invitee) return res.status(404).json({ message: "No user found with that email address" });
+      if (invitee.id === userId) return res.status(400).json({ message: "Owner is already a member" });
+
+      const existing = await storage.getBusinessMembership(invitee.id, businessId);
+      if (existing) return res.status(409).json({ message: "User is already a member of this business" });
+
+      const member = await storage.createBusinessMember({ businessId, userId: invitee.id, role: "member" });
+      res.status(201).json(member);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Invite business member error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/businesses/:id/members/:memberId — remove a member (owner only; cannot remove owner)
+  app.delete("/api/businesses/:id/members/:memberId", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const memberId = param(req.params.memberId);
+      const userId = req.session.userId!;
+
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business profile not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Only the business owner can remove members" });
+      if (memberId === profile.ownerId) return res.status(403).json({ message: "Cannot remove the business owner" });
+
+      await db
+        .delete(businessMembers)
+        .where(and(eq(businessMembers.businessId, businessId), eq(businessMembers.userId, memberId)));
+      res.json({ message: "Member removed" });
+    } catch (error) {
+      console.error("Remove business member error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
