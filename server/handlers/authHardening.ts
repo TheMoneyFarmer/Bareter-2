@@ -13,6 +13,13 @@ export function hashResetToken(raw: string): string {
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
+// One-time codes (phone verification, password-change OTP) are stored hashed,
+// never in plaintext, so a DB read alone cannot reveal an in-flight code.
+// Compare by hashing the submitted code and matching against the stored hash.
+export function hashOtp(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
 export const ALLOWED_UPLOAD_MIMES = new Set([
   "image/jpeg",
   "image/png",

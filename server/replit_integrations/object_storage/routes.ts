@@ -54,6 +54,23 @@ export function registerObjectStorageRoutes(app: Express): void {
         });
       }
 
+      // SECURITY: only permit the media types the app actually accepts. This
+      // blocks issuing signed URLs for text/html and other active content that
+      // could be served back as stored XSS via the /objects/ route.
+      const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+      ]);
+      if (!contentType || !ALLOWED_UPLOAD_CONTENT_TYPES.has(contentType)) {
+        return res.status(400).json({
+          error:
+            "Unsupported contentType. Allowed: JPEG, PNG, GIF, WEBP, PDF.",
+        });
+      }
+
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
 
       // Extract object path from the presigned URL for later reference
