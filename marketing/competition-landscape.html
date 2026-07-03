@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bareter — Competition Landscape</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #ffffff;
+      width: 1400px;
+      min-height: 780px;
+      padding: 40px 56px 36px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Corner accents ── */
+    .accent-top-right {
+      position: absolute;
+      top: 0; right: 0;
+      width: 120px; height: 120px;
+      background: #0d7a62;
+      border-radius: 0 0 0 100%;
+      opacity: 0.85;
+    }
+    .accent-bottom-left {
+      position: absolute;
+      bottom: 0; left: 0;
+      width: 110px; height: 110px;
+      background: #0d7a62;
+      border-radius: 0 100% 0 0;
+      opacity: 0.85;
+    }
+    .accent-bottom-right {
+      position: absolute;
+      bottom: 0; right: 0;
+      width: 180px; height: 90px;
+      background: linear-gradient(135deg, #0d7a62, #14b894);
+      border-radius: 80px 0 0 0;
+      opacity: 0.9;
+    }
+
+    /* ── Header ── */
+    .header { text-align: center; margin-bottom: 18px; }
+    .header h1 {
+      font-size: 30px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      color: #111;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .header p {
+      font-size: 13.5px;
+      color: #333;
+      max-width: 900px;
+      margin: 0 auto;
+      line-height: 1.65;
+    }
+
+    /* ── Body: quadrant + table ── */
+    .body {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+      margin-top: 24px;
+    }
+
+    /* ── Quadrant ── */
+    .quadrant-wrap {
+      flex: 0 0 420px;
+      position: relative;
+      height: 480px;
+    }
+
+    /* Arrows */
+    .arrow-h, .arrow-v {
+      position: absolute;
+      background: #b0bec5;
+    }
+    .arrow-h {
+      height: 2px;
+      width: 360px;
+      top: 50%;
+      left: 30px;
+      transform: translateY(-50%);
+    }
+    .arrow-v {
+      width: 2px;
+      height: 420px;
+      left: 50%;
+      top: 30px;
+      transform: translateX(-50%);
+    }
+    /* Arrow heads */
+    .arrow-h::before, .arrow-h::after,
+    .arrow-v::before, .arrow-v::after {
+      content: '';
+      position: absolute;
+      border: 6px solid transparent;
+    }
+    .arrow-h::before { border-right-color: #8fa8b5; top: -5px; left: -4px; }
+    .arrow-h::after  { border-left-color: #8fa8b5;  top: -5px; right: -4px; }
+    .arrow-v::before { border-bottom-color: #8fa8b5; left: -5px; top: -4px; }
+    .arrow-v::after  { border-top-color: #8fa8b5;    left: -5px; bottom: -4px; }
+
+    /* Axis labels */
+    .axis-label {
+      position: absolute;
+      font-size: 10px;
+      font-weight: 600;
+      color: #7a9aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .axis-left   { top: 50%; left: 4px; transform: translateY(-50%) rotate(-90deg); }
+    .axis-right  { top: 50%; right: 2px; transform: translateY(-50%) rotate(-90deg); }
+    .axis-top    { top: 10px; left: 50%; transform: translateX(-50%); }
+    .axis-bottom { bottom: 8px; left: 50%; transform: translateX(-50%); }
+
+    /* Quadrant boxes */
+    .quad-box {
+      position: absolute;
+      width: 158px;
+      height: 178px;
+      background: #dce8f0;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 14px 10px;
+    }
+    .quad-tl { top: 44px;  left: 44px;  }
+    .quad-tr { top: 44px;  right: 44px; background: #c4dde9; }
+    .quad-bl { bottom: 44px; left: 44px; }
+    .quad-br { bottom: 44px; right: 44px; }
+
+    .quad-box.highlight {
+      background: #0d7a62;
+      color: #fff;
+      box-shadow: 0 4px 18px rgba(13,122,98,0.30);
+    }
+    .quad-box.highlight .quad-title { color: #fff; }
+    .quad-box.highlight .quad-sub   { color: rgba(255,255,255,0.85); }
+
+    .quad-box.competitor {
+      border: 2px solid #9b9eff;
+    }
+
+    .quad-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1a2e2a;
+      margin-bottom: 6px;
+      line-height: 1.2;
+    }
+    .quad-sub {
+      font-size: 11px;
+      color: #4a6a62;
+      line-height: 1.45;
+    }
+
+    /* ── Table ── */
+    .table-wrap { flex: 1; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead tr {
+      border-bottom: 2px solid #e5e7eb;
+    }
+    thead th {
+      padding: 10px 12px;
+      font-weight: 700;
+      color: #1a1a1a;
+      text-align: center;
+    }
+    thead th:first-child { text-align: left; }
+    thead th.bareter-col {
+      color: #0d7a62;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #f0f0f0;
+    }
+    tbody tr:last-child { border-bottom: none; }
+
+    tbody td {
+      padding: 13px 12px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    tbody td:first-child {
+      text-align: left;
+      font-weight: 600;
+      color: #222;
+      font-size: 12.5px;
+      line-height: 1.4;
+    }
+
+    .check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px; height: 26px;
+      background: #22c55e;
+      border-radius: 5px;
+    }
+    .check::after {
+      content: '';
+      display: block;
+      width: 10px; height: 6px;
+      border-left: 2.5px solid #fff;
+      border-bottom: 2.5px solid #fff;
+      transform: rotate(-45deg) translateY(-1px);
+    }
+
+    .cross {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px; height: 26px;
+    }
+    .cross::before, .cross::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 2.5px;
+      background: #ef4444;
+      border-radius: 2px;
+    }
+    .cross::before { transform: rotate(45deg); }
+    .cross::after  { transform: rotate(-45deg); }
+    .cross { position: relative; }
+
+    /* Page number */
+    .page-num {
+      position: absolute;
+      bottom: 20px;
+      right: 60px;
+      font-size: 13px;
+      color: #999;
+    }
+    .footer-credit {
+      position: absolute;
+      bottom: 20px;
+      left: 56px;
+      font-size: 11px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="accent-top-right"></div>
+  <div class="accent-bottom-left"></div>
+  <div class="accent-bottom-right"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Competition Landscape — Where Bareter Stands Apart</h1>
+    <p>
+      Bareter is the first open barter marketplace built for everyone — P2P, B2B, creators, and professionals.
+      Where Facebook Marketplace and Craigslist list items for cash, Bareter enables direct value exchange.
+      The swap economy is underserved by general classifieds, but none match trades intelligently or serve businesses and creators.
+      Bareter bridges this gap with smart matching, a native mobile experience, and a platform built for every type of trader.
+    </p>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- Quadrant -->
+    <div class="quadrant-wrap">
+
+      <!-- Arrows -->
+      <div class="arrow-h"></div>
+      <div class="arrow-v"></div>
+
+      <!-- Axis labels -->
+      <span class="axis-label axis-top">All User Types</span>
+      <span class="axis-label axis-bottom">P2P Only</span>
+      <span class="axis-label axis-left">General</span>
+      <span class="axis-label axis-right">Dedicated Barter</span>
+
+      <!-- Top-Left: FB Marketplace / Gumtree -->
+      <div class="quad-box quad-tl competitor">
+        <div class="quad-title">Facebook Marketplace<br>Gumtree</div>
+        <div class="quad-sub">(General classifieds,<br>no barter intent)</div>
+      </div>
+
+      <!-- Top-Right: BARETER -->
+      <div class="quad-box quad-tr highlight">
+        <div class="quad-title">BARETER</div>
+        <div class="quad-sub">First open barter<br>marketplace for P2P,<br>B2B, creators &amp;<br>professionals</div>
+      </div>
+
+      <!-- Bottom-Left: Craigslist / OLX -->
+      <div class="quad-box quad-bl">
+        <div class="quad-title">Craigslist, OLX,<br>eBay Classifieds</div>
+        <div class="quad-sub">(Cash-first listings,<br>no barter layer)</div>
+      </div>
+
+      <!-- Bottom-Right: Swapright / TradeAway -->
+      <div class="quad-box quad-br">
+        <div class="quad-title">Swapright,<br>TradeAway</div>
+        <div class="quad-sub">Niche swap apps,<br>individual-only,<br>no smart matching</div>
+      </div>
+
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="bareter-col">Bareter</th>
+            <th>Facebook<br>Marketplace</th>
+            <th>Craigslist</th>
+            <th>Swapright /<br>TradeAway</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Dedicated Barter Platform</td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="check"></span></td>
+          </tr>
+          <tr>
+            <td>Smart Matching<br>(BarterBot)</td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+          </tr>
+          <tr>
+            <td>B2B + Creators +<br>Professionals</td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+          </tr>
+          <tr>
+            <td>Mobile-First Native App</td>
+            <td><span class="check"></span></td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+          </tr>
+          <tr>
+            <td>Services, Skills &amp;<br>Experiences (not just goods)</td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+          </tr>
+          <tr>
+            <td>Verified Listings &amp;<br>Trust Layer</td>
+            <td><span class="check"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+            <td><span class="cross"></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div class="footer-credit">All Rights Reserved</div>
+  <div class="page-num">7</div>
+
+</body>
+</html>
