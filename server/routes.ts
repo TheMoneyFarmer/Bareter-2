@@ -4522,23 +4522,23 @@ export async function registerRoutes(
       if (rows.length === 0) return res.json([]);
 
       const ids = rows.map(u => u.id);
-      const [listingCounts, dealRows] = await Promise.all([
+      const [listingCounts, dealResult] = await Promise.all([
         db.select({ userId: listings.userId, cnt: count() })
           .from(listings)
           .where(and(inArray(listings.userId, ids), isNull(listings.deletedAt)))
           .groupBy(listings.userId),
-        db.execute(sqlOperator`
-          SELECT user_id, COUNT(*)::int AS cnt FROM (
-            SELECT seeker_id AS user_id FROM deals WHERE state = 'completed' AND seeker_id = ANY(${ids})
-            UNION ALL
-            SELECT provider_id AS user_id FROM deals WHERE state = 'completed' AND provider_id = ANY(${ids})
-          ) t GROUP BY user_id
-        `),
+        pool.query<{ user_id: string; cnt: number }>(
+          `SELECT user_id, COUNT(*)::int AS cnt FROM (
+             SELECT seeker_id AS user_id FROM deals WHERE state = 'completed' AND seeker_id = ANY($1)
+             UNION ALL
+             SELECT provider_id AS user_id FROM deals WHERE state = 'completed' AND provider_id = ANY($1)
+           ) t GROUP BY user_id`,
+          [ids],
+        ),
       ]);
 
       const lcMap = new Map(listingCounts.map(r => [r.userId!, Number(r.cnt)]));
-      const dcRaw = (dealRows as { rows?: unknown[] }).rows ?? (dealRows as unknown[]);
-      const dcMap = new Map((dcRaw as { user_id: string; cnt: number }[]).map(r => [r.user_id, Number(r.cnt)]));
+      const dcMap = new Map(dealResult.rows.map(r => [r.user_id, Number(r.cnt)]));
 
       res.json(rows.map(u => ({
         ...u,
@@ -5123,8 +5123,8 @@ export async function registerRoutes(
       res.json({
         users: {
           total: Number(totalUsersRow[0]?.cnt ?? 0),
-          newToday: Number(newTodayRow[0]?.cnt ?? 0),
-          newThisWeek: Number(newThisWeekRow[0]?.cnt ?? 0),
+          today: Number(newTodayRow[0]?.cnt ?? 0),
+          thisWeek: Number(newThisWeekRow[0]?.cnt ?? 0),
           level1: byLevel.get(1) ?? 0,
           level2: byLevel.get(2) ?? 0,
           kybVerified: Number(kybVerifiedRow[0]?.cnt ?? 0),
@@ -5132,7 +5132,7 @@ export async function registerRoutes(
         listings: {
           total: [...byType.values()].reduce((a, b) => a + b, 0),
           pendingReview: byStatus.get("pending") ?? 0,
-          approved: byStatus.get("approved") ?? 0,
+          active: byStatus.get("approved") ?? 0,
           rejected: byStatus.get("rejected") ?? 0,
           byType: {
             individual_item: byType.get("individual_item") ?? 0,
@@ -5141,7 +5141,7 @@ export async function registerRoutes(
             business_wholesale: byType.get("business_wholesale") ?? 0,
           },
         },
-        exchanges: {
+        deals: {
           total: totalDeals,
           proposed: byState.get("proposed") ?? 0,
           accepted: byState.get("accepted") ?? 0,
@@ -5288,7 +5288,7 @@ export async function registerRoutes(
         });
       }
 
-      res.json({ period: periodParam, data });
+      res.json(data);
     } catch (error) {
       console.error("Admin stats growth error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -5366,7 +5366,7 @@ export async function registerRoutes(
 
       const msPerDay = 86_400_000;
       res.json({
-        listingsPendingReview: pendingListings.map(l => ({
+        pendingListings: pendingListings.map(l => ({
           ...l,
           daysWaiting: l.createdAt ? Math.floor((now.getTime() - new Date(l.createdAt).getTime()) / msPerDay) : 0,
           user: { id: l.userId, fullName: l.userFullName, verificationLevel: l.userVerificationLevel },
@@ -12214,7 +12214,7 @@ export async function registerRoutes(
   // ── Business Profiles ────────────────────────────────────────────────────────
 
   // GET /api/businesses — public directory of active businesses (WHERE is_active = true)
-  app.get("/api/businesses", requireAuth, async (req, res) => {
+  app.get("/api/businesses", async (req, res) => {
     try {
       const rows = await db
         .select({
@@ -12270,14 +12270,14 @@ export async function registerRoutes(
 
   // GET /api/businesses/:id/storefront — public-facing company page, any logged-in user.
   // Inactive businesses return 404 to everyone except their owner.
-  app.get("/api/businesses/:id/storefront", requireAuth, async (req, res) => {
+  app.get("/api/businesses/:id/storefront", async (req, res) => {
     try {
       const businessId = param(req.params.id);
       const profile = await storage.getBusinessProfile(businessId);
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
-      const requestingUserId = req.session.userId!;
-      const isOwner = profile.ownerId === requestingUserId;
+      const requestingUserId = req.session.userId ?? null;
+      const isOwner = !!requestingUserId && profile.ownerId === requestingUserId;
       if (!profile.isActive && !isOwner) {
         return res.status(404).json({ message: "Business not found" });
       }

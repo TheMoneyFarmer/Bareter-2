@@ -75,7 +75,7 @@ import {
   ThumbsUp,
   RefreshCw,
 } from "lucide-react";
-import { VerifiedBadge } from "@/components/verified-badge";
+import { VerifiedBadge, VerificationLevelBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import { timeAgo, formatValue } from "@/lib/utils";
 import type { ListingCommentWithUser } from "@shared/schema";
@@ -342,6 +342,10 @@ export function BrowsePage() {
   const [creatorNiche, setCreatorNiche] = useState("");
   const [creatorPlatform, setCreatorPlatform] = useState("");
   const [creatorVerifiedOnly, setCreatorVerifiedOnly] = useState(false);
+  const [creatorAudienceSize, setCreatorAudienceSize] = useState("");
+
+  const [bizCategory, setBizCategory] = useState("");
+  const [bizVerifiedOnly, setBizVerifiedOnly] = useState(false);
 
   const creatorsQs = new URLSearchParams();
   if (creatorNiche) creatorsQs.set("niche", creatorNiche);
@@ -368,8 +372,27 @@ export function BrowsePage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: activeTab === "businesses" && !!user,
+    enabled: activeTab === "businesses",
     staleTime: 60_000,
+  });
+
+  const filteredCreators = creatorsData.filter((creator: any) => {
+    if (!creatorAudienceSize) return true;
+    const raw = (creator.creatorProfile?.audienceSize ?? "").replace(/,/g, "").toLowerCase();
+    const m = raw.match(/([\d.]+)\s*([km]?)/);
+    if (!m) return true;
+    const n = parseFloat(m[1]) * (m[2] === "k" ? 1_000 : m[2] === "m" ? 1_000_000 : 1);
+    if (creatorAudienceSize === "1K–10K") return n >= 1_000 && n < 10_000;
+    if (creatorAudienceSize === "10K–100K") return n >= 10_000 && n < 100_000;
+    if (creatorAudienceSize === "100K–1M") return n >= 100_000 && n < 1_000_000;
+    if (creatorAudienceSize === "1M+") return n >= 1_000_000;
+    return true;
+  });
+
+  const filteredBusinesses = (businessDirectory ?? []).filter((biz: any) => {
+    if (bizCategory && biz.category !== bizCategory) return false;
+    if (bizVerifiedOnly && biz.kybStatus !== "verified") return false;
+    return true;
   });
 
   const { data: recommendedUsers } = useQuery<any[]>({
@@ -929,40 +952,66 @@ export function BrowsePage() {
             </div>
           </div>
           {/* Filters */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <Select value={creatorNiche || "all"} onValueChange={v => setCreatorNiche(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 text-xs w-36">
-                <SelectValue placeholder="Niche" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All niches</SelectItem>
-                {CREATOR_NICHES_BROWSE.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={creatorPlatform || "all"} onValueChange={v => setCreatorPlatform(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 text-xs w-40">
-                <SelectValue placeholder="Platform" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All platforms</SelectItem>
-                {CREATOR_PLATFORMS_BROWSE.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <button
-              type="button"
-              onClick={() => setCreatorVerifiedOnly(v => !v)}
-              className={`flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors ${creatorVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40"}`}
-              data-testid="filter-creator-verified"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              Verified only
-            </button>
-            {(creatorNiche || creatorPlatform || creatorVerifiedOnly) && (
-              <button type="button" onClick={() => { setCreatorNiche(""); setCreatorPlatform(""); setCreatorVerifiedOnly(false); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <X className="h-3.5 w-3.5" />
-                Clear
+          <div className="space-y-2">
+            {/* Niche chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {["", ...CREATOR_NICHES_BROWSE].map(n => (
+                <button
+                  key={n || "all"}
+                  type="button"
+                  onClick={() => setCreatorNiche(n)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorNiche === n ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                >
+                  {n || "All niches"}
+                </button>
+              ))}
+            </div>
+            {/* Platform chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {["", ...CREATOR_PLATFORMS_BROWSE].map(p => (
+                <button
+                  key={p || "all"}
+                  type="button"
+                  onClick={() => setCreatorPlatform(p)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorPlatform === p ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                >
+                  {p || "All platforms"}
+                </button>
+              ))}
+            </div>
+            {/* Audience size + Verified toggle */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(["1K–10K", "10K–100K", "100K–1M", "1M+"] as const).map(bucket => (
+                <button
+                  key={bucket}
+                  type="button"
+                  onClick={() => setCreatorAudienceSize(v => v === bucket ? "" : bucket)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorAudienceSize === bucket ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  data-testid={`filter-audience-${bucket}`}
+                >
+                  <Users className="h-3 w-3 inline mr-1" />{bucket}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCreatorVerifiedOnly(v => !v)}
+                className={`flex-shrink-0 flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                data-testid="filter-creator-verified"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Verified only
               </button>
-            )}
+              {(creatorNiche || creatorPlatform || creatorVerifiedOnly || creatorAudienceSize) && (
+                <button
+                  type="button"
+                  onClick={() => { setCreatorNiche(""); setCreatorPlatform(""); setCreatorVerifiedOnly(false); setCreatorAudienceSize(""); }}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           {/* Grid */}
           {creatorsLoading ? (
@@ -971,7 +1020,7 @@ export function BrowsePage() {
                 <Card key={i}><CardContent className="p-4"><div className="flex items-center gap-3"><Skeleton className="h-12 w-12 rounded-full" /><div className="space-y-2 flex-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></div></CardContent></Card>
               ))}
             </div>
-          ) : creatorsData.length === 0 ? (
+          ) : filteredCreators.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
@@ -981,7 +1030,7 @@ export function BrowsePage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {creatorsData.map((creator: any) => (
+              {filteredCreators.map((creator: any) => (
                 <Card
                   key={creator.id}
                   className="hover-elevate cursor-pointer"
@@ -1002,6 +1051,7 @@ export function BrowsePage() {
                             {creator.creatorProfile?.displayName || creator.fullName}
                           </p>
                           {creator.isVerified && <VerifiedBadge />}
+                          <VerificationLevelBadge level={creator.verificationLevel} />
                         </div>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {creator.creatorProfile?.niche && (
@@ -1047,28 +1097,75 @@ export function BrowsePage() {
               <Button variant="bareter-outline" size="sm" className="flex-shrink-0">View all</Button>
             </Link>
           </div>
+          {/* Business Filters */}
+          {!bizDirLoading && businessDirectory && businessDirectory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {["", ...Array.from(new Set((businessDirectory as any[]).map((b: any) => b.category).filter(Boolean))) as string[]].map((cat: string) => (
+                  <button
+                    key={cat || "all"}
+                    type="button"
+                    onClick={() => setBizCategory(cat)}
+                    className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${bizCategory === cat ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  >
+                    {cat || "All types"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setBizVerifiedOnly(v => !v)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${bizVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  data-testid="filter-biz-verified"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  KYB Verified only
+                </button>
+                {(bizCategory || bizVerifiedOnly) && (
+                  <button
+                    type="button"
+                    onClick={() => { setBizCategory(""); setBizVerifiedOnly(false); }}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {bizDirLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}><CardContent className="p-0"><Skeleton className="h-24 rounded-t-xl" /><div className="p-4 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></CardContent></Card>
               ))}
             </div>
-          ) : !businessDirectory || businessDirectory.length === 0 ? (
+          ) : filteredBusinesses.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Building2 className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
-                <h3 className="font-semibold text-lg mb-2">No businesses yet</h3>
-                <p className="text-muted-foreground text-sm mb-4">
-                  Be the first — create a business profile and start bartering.
-                </p>
-                <Link href="/settings">
-                  <Button variant="bareter" size="sm">Create Business Profile</Button>
-                </Link>
+                {businessDirectory && businessDirectory.length > 0 ? (
+                  <>
+                    <h3 className="font-semibold text-lg mb-2">No matching businesses</h3>
+                    <p className="text-muted-foreground text-sm">Try clearing your filters to see all businesses.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="font-semibold text-lg mb-2">No businesses yet</h3>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Be the first — create a business profile and start bartering.
+                    </p>
+                    <Link href="/settings">
+                      <Button variant="bareter" size="sm">Create Business Profile</Button>
+                    </Link>
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="grid-businesses">
-              {businessDirectory.slice(0, 9).map((biz: any) => (
+              {filteredBusinesses.slice(0, 9).map((biz: any) => (
                 <Link key={biz.id} href={`/businesses/${biz.id}`} className="group block">
                   <article className="bg-white dark:bg-card rounded-xl border border-bareter-border dark:border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col">
                     <div className="h-20 bg-gradient-to-br from-bareter-teal/20 to-bareter-navy/10 relative overflow-hidden flex-shrink-0">
@@ -1111,10 +1208,10 @@ export function BrowsePage() {
               ))}
             </div>
           )}
-          {businessDirectory && businessDirectory.length > 9 && (
+          {filteredBusinesses.length > 9 && (
             <div className="text-center pt-2">
               <Link href="/businesses">
-                <Button variant="bareter-outline" size="sm">View all {businessDirectory.length} businesses →</Button>
+                <Button variant="bareter-outline" size="sm">View all {filteredBusinesses.length} businesses →</Button>
               </Link>
             </div>
           )}
