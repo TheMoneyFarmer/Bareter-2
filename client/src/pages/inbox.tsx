@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -80,13 +80,25 @@ const DEAL_STATE_LABEL: Record<string, string> = {
 export function InboxPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const queryClient = useQueryClient();
-  const initialUserId = new URLSearchParams(window.location.search).get("userId");
+  const initialUserId = new URLSearchParams(searchString).get("userId");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialUserId);
   const [newMessage, setNewMessage] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "thread">(initialUserId ? "thread" : "list");
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const isInitialMessagesLoad = useRef(true);
+
+  // Sync selected conversation when URL search changes (e.g. iOS bfcache restore,
+  // or navigating from /inbox?userId=A back then forward to /inbox?userId=B)
+  useEffect(() => {
+    const urlUserId = new URLSearchParams(searchString).get("userId");
+    if (urlUserId && urlUserId !== selectedUserId) {
+      isInitialMessagesLoad.current = true;
+      setSelectedUserId(urlUserId);
+      setMobileView("thread");
+    }
+  }, [searchString]);
 
   const { data: conversations = [], isLoading } = useQuery<ConversationEntry[]>({
     queryKey: ["/api/inbox"],
