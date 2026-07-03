@@ -149,7 +149,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses" | "verifications";
 
 type WaitlistEntryRow = {
   id: number;
@@ -462,6 +462,71 @@ export function AdminPage() {
     queryKey: ["/api/admin/features/stats"],
     enabled: activeSection === "feature-stats" && !!user?.isAdmin,
     staleTime: 0,
+  });
+
+  // ── Operational dashboard queries ─────────────────────────────────────────
+  const [growthPeriod, setGrowthPeriod] = useState<"7d" | "30d" | "90d">("7d");
+
+  const { data: overviewData, refetch: refetchOverview } = useQuery<any>({
+    queryKey: ["/api/admin/stats/overview"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/stats/overview`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+
+  const { data: funnelV2Data } = useQuery<any>({
+    queryKey: ["/api/admin/stats/funnel"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/stats/funnel`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const { data: growthData } = useQuery<any>({
+    queryKey: ["/api/admin/stats/growth", growthPeriod],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/stats/growth?period=${growthPeriod}`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const { data: pendingQueue, refetch: refetchPendingQueue } = useQuery<any>({
+    queryKey: ["/api/admin/queues/pending"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/queues/pending`, { credentials: "include" });
+      return res.ok ? res.json() : null;
+    },
+    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+
+  const { data: categoriesData } = useQuery<any[]>({
+    queryKey: ["/api/admin/stats/categories"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/stats/categories`, { credentials: "include" });
+      return res.ok ? res.json() : [];
+    },
+    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  const dismissFlagMutation = useMutation({
+    mutationFn: async (flagId: string) => apiRequest("PATCH", `/api/admin/message-flags/${flagId}/dismiss`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/queues/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats/overview"] });
+      toast({ title: "Flag dismissed" });
+    },
+    onError: () => toast({ title: "Failed to dismiss flag", variant: "destructive" }),
   });
 
   interface AdminBarterCredit { id: string; userId: string; balanceAed: string; lifetimeEarnedAed: string; updatedAt: string | null; userEmail: string | null; userName: string | null }
@@ -1237,6 +1302,7 @@ export function AdminPage() {
     { id: "reviews", label: "Reviews", icon: Star },
     { id: "creators", label: "Creators", icon: Camera },
     { id: "businesses", label: "Businesses", icon: Building2 },
+    { id: "verifications", label: "Verifications", icon: UserCheck },
     { id: "collabs", label: "Collabs", icon: Zap },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "feature-stats", label: "Feature Hub", icon: Zap },
@@ -1333,252 +1399,320 @@ export function AdminPage() {
     </Card>
   );
 
-  const renderDashboard = () => (
+  const renderDashboard = () => {
+    const attentionItems = [
+      (overviewData?.listings?.pendingReview ?? 0) > 0
+        ? { label: `${overviewData.listings.pendingReview} listings pending review`, section: "listings" as AdminSection } : null,
+      (overviewData?.businesses?.pendingKyb ?? 0) > 0
+        ? { label: `${overviewData.businesses.pendingKyb} KYB applications pending`, section: "businesses" as AdminSection } : null,
+      (overviewData?.messageFlags?.today ?? 0) > 0
+        ? { label: `${overviewData.messageFlags.today} new message flags today`, section: "flags" as AdminSection } : null,
+    ].filter(Boolean) as { label: string; section: AdminSection }[];
+
+    const userFunnel: { stage: string; count: number }[] = funnelV2Data?.userFunnel ?? [];
+    const exchangeFunnel: { stage: string; count: number }[] = funnelV2Data?.listingFunnel ?? [];
+
+    return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-1">Dashboard Overview</h2>
-        <p className="text-muted-foreground">Platform metrics and quick actions — click any card to drill in</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold mb-1">Dashboard</h2>
+          <p className="text-muted-foreground">Real-time platform overview — refreshes every 60s</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => { refetchOverview(); refetchPendingQueue(); }} className="gap-2">
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard
-          testId="stat-total-users" label="Total Users" value={analytics?.totalUsers || 0}
-          icon={<Users className="h-5 w-5 text-primary" />} color="bg-primary/10"
-          onClick={() => goToSection("users")}
-        />
-        <StatCard
-          testId="stat-new-users-today" label="New Users Today" value={analytics?.newUsersToday || 0}
-          icon={<UserPlus className="h-5 w-5 text-cyan-500" />} color="bg-cyan-500/10"
-          onClick={() => goToSection("users", { dateRangeFilter: "today" })}
-        />
-        <StatCard
-          testId="stat-new-users-week" label="New Users This Week" value={analytics?.newUsersThisWeek || 0}
-          icon={<UserPlus className="h-5 w-5 text-sky-500" />} color="bg-sky-500/10"
-          onClick={() => goToSection("users", { dateRangeFilter: "week" })}
-        />
-        <StatCard
-          testId="stat-active-deals" label="Active Deals" value={analytics?.activeDeals || 0}
-          icon={<Handshake className="h-5 w-5 text-blue-500" />} color="bg-blue-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "active" })}
-        />
-        <StatCard
-          testId="stat-total-deals" label="Total Deals" value={analytics?.totalDeals || 0}
-          icon={<ListChecks className="h-5 w-5 text-indigo-500" />} color="bg-indigo-500/10"
-          onClick={() => goToSection("deals")}
-        />
-
-        <StatCard
-          testId="stat-completed-deals" label="Completed Deals" value={analytics?.completedDeals || 0}
-          icon={<CheckCircle className="h-5 w-5 text-green-500" />} color="bg-green-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "completed" })}
-        />
-        <StatCard
-          testId="stat-completion-rate" label="Completion Rate"
-          value={analytics?.completionRate !== undefined ? `${analytics.completionRate.toFixed(0)}%` : "0%"}
-          icon={<Percent className="h-5 w-5 text-emerald-500" />} color="bg-emerald-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "completed" })}
-        />
-        <StatCard
-          testId="stat-monthly-gmv" label="GMV This Month"
-          value={analytics?.monthlyGMV ? `${(analytics.monthlyGMV / 1000).toFixed(0)}K` : "0"}
-          sub="AED" icon={<DollarSign className="h-5 w-5 text-green-500" />} color="bg-green-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc", dateRangeFilter: "month" })}
-        />
-        <StatCard
-          testId="stat-total-gmv" label="Total GMV (All Time)"
-          value={analytics?.totalGMV ? `${(analytics.totalGMV / 1000).toFixed(0)}K` : "0"}
-          sub="AED" icon={<Wallet className="h-5 w-5 text-teal-500" />} color="bg-teal-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc" })}
-        />
-        <StatCard
-          testId="stat-avg-deal-value" label="Avg Deal Value"
-          value={analytics?.avgDealValue ? `${Math.round(analytics.avgDealValue).toLocaleString()}` : "0"}
-          sub="AED" icon={<DollarSign className="h-5 w-5 text-lime-500" />} color="bg-lime-500/10"
-          onClick={() => goToSection("deals", { dealStateFilter: "completed", dealSortBy: "value_desc" })}
-        />
-
-        <StatCard
-          testId="stat-total-listings" label="Total Listings" value={analytics?.totalListings || 0}
-          icon={<Package className="h-5 w-5 text-purple-500" />} color="bg-purple-500/10"
-          onClick={() => goToSection("listings")}
-        />
-        <StatCard
-          testId="stat-active-listings" label="Active Listings" value={analytics?.activeListings || 0}
-          icon={<Package className="h-5 w-5 text-fuchsia-500" />} color="bg-fuchsia-500/10"
-          onClick={() => goToSection("listings")}
-        />
-        <StatCard
-          testId="stat-new-listings-today" label="New Listings Today" value={analytics?.newListingsToday || 0}
-          icon={<Package className="h-5 w-5 text-violet-500" />} color="bg-violet-500/10"
-          onClick={() => goToSection("listings", { dateRangeFilter: "today" })}
-        />
-        <StatCard
-          testId="stat-pending-verifications" label="Pending Verifications" value={analytics?.pendingVerifications || 0}
-          icon={<Clock className="h-5 w-5 text-orange-500" />} color="bg-orange-500/10"
-          onClick={() => goToSection("users", { userStatusFilter: "pending" })}
-        />
-        {/* Task #248: completion-funnel KPIs surfaced from /api/admin/analytics */}
-        <StatCard
-          testId="stat-incomplete-verifications" label="Incomplete Verifications" value={analytics?.incompleteVerifications || 0}
-          icon={<Clock className="h-5 w-5 text-amber-500" />} color="bg-amber-500/10"
-          onClick={() => goToSection("users", { userStatusFilter: "pending" })}
-        />
-
-        <StatCard
-          testId="stat-open-drafts" label="Open Drafts" value={analytics?.openDrafts || 0}
-          icon={<Package className="h-5 w-5 text-blue-500" />} color="bg-blue-500/10"
-          onClick={() => setDraftsDialogOpen(true)}
-        />
-        <StatCard
-          testId="stat-abandoned-engagement" label="Abandoned Engagement" value={analytics?.abandonedEngagement || 0}
-          icon={<Clock className="h-5 w-5 text-rose-500" />} color="bg-rose-500/10"
-          onClick={() => setAbandonedDialogOpen(true)}
-        />
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base"><Tag className="h-4 w-4" /> Top Categories</CardTitle>
-            <CardDescription>Most-listed categories, click to filter listings</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {(analytics?.topCategories?.length ? analytics.topCategories : []).map((c) => (
+      {/* Action Required Banner */}
+      {attentionItems.length > 0 && (
+        <div className="flex flex-col gap-2 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-sm">
+            <AlertTriangle className="h-4 w-4" />
+            Action Required
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {attentionItems.map((item) => (
               <button
-                key={c.category}
-                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
-                onClick={() => goToSection("listings")}
-                data-testid={`top-category-${c.category}`}
+                key={item.label}
+                onClick={() => setActiveSection(item.section)}
+                className="text-sm text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:no-underline"
               >
-                <span className="truncate">{c.category}</span>
-                <Badge variant="secondary">{c.count}</Badge>
+                {item.label}
               </button>
             ))}
-            {!analytics?.topCategories?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4" /> Top Countries</CardTitle>
-            <CardDescription>Listings by country, click to filter</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {(analytics?.topCountries?.length ? analytics.topCountries : []).map((c) => (
-              <button
-                key={c.country}
-                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
-                onClick={() => goToSection("listings", { listingCountryFilter: c.country })}
-                data-testid={`top-country-${c.country}`}
-              >
-                <span className="truncate">{c.country}</span>
-                <Badge variant="secondary">{c.count}</Badge>
-              </button>
-            ))}
-            {!analytics?.topCountries?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base"><MapPin className="h-4 w-4" /> Top Cities</CardTitle>
-            <CardDescription>Listings by city, click to filter</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {(analytics?.topCities?.length ? analytics.topCities : []).map((c) => (
-              <button
-                key={c.city}
-                className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
-                onClick={() => goToSection("listings")}
-                data-testid={`top-city-${c.city}`}
-              >
-                <span className="truncate">{c.city}</span>
-                <Badge variant="secondary">{c.count}</Badge>
-              </button>
-            ))}
-            {!analytics?.topCities?.length && <p className="text-sm text-muted-foreground">No data yet</p>}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Deals Per Week</CardTitle>
-            <CardDescription>Deal creation trend over the last 12 weeks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={analytics?.dealsPerWeek || []}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="week" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <RechartsTooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={{ fill: "hsl(var(--primary))" }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+      {/* Key Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setActiveSection("users")}>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-md bg-blue-500/10"><Users className="h-5 w-5 text-blue-500" /></div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{(overviewData?.users?.total ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Total Users</p>
+              </div>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">+{overviewData?.users?.today ?? 0} today · +{overviewData?.users?.thisWeek ?? 0} this week</p>
           </CardContent>
         </Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setActiveSection("listings")}>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-md bg-purple-500/10"><Package className="h-5 w-5 text-purple-500" /></div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{(overviewData?.listings?.active ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Active Listings</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">{overviewData?.listings?.pendingReview ?? 0} pending review · {overviewData?.listings?.total ?? 0} total</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setActiveSection("deals")}>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-md bg-green-500/10"><CheckCircle className="h-5 w-5 text-green-500" /></div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{(overviewData?.deals?.completed ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Completed Exchanges</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">{overviewData?.deals?.active ?? 0} active · {overviewData?.deals?.abandoned ?? 0} abandoned</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-md bg-teal-500/10"><Percent className="h-5 w-5 text-teal-500" /></div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">
+                  {(overviewData?.deals?.total ?? 0) > 0
+                    ? `${(((overviewData?.deals?.completed ?? 0) / overviewData.deals.total) * 100).toFixed(1)}%`
+                    : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">Completion Rate</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">{overviewData?.deals?.total ?? 0} total exchanges</p>
+          </CardContent>
+        </Card>
+      </div>
 
+      {/* Growth Chart */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <CardTitle className="text-base">Platform Growth</CardTitle>
+              <CardDescription>Daily new users, listings, and completed exchanges</CardDescription>
+            </div>
+            <div className="flex items-center gap-1 rounded-md border p-1">
+              {(["7d", "30d", "90d"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setGrowthPeriod(p)}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${growthPeriod === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {p === "7d" ? "7 days" : p === "30d" ? "30 days" : "90 days"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={growthData ?? []}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                <RechartsTooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <Line type="monotone" dataKey="newUsers" name="New Users" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="newListings" name="New Listings" stroke="#a855f7" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="completedExchanges" name="Completed" stroke="#22c55e" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center gap-6 mt-2 text-xs text-muted-foreground justify-center">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 bg-blue-500" />New Users</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 bg-purple-500" />New Listings</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 bg-green-500" />Completed</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Conversion Funnels */}
+      <div className="grid lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest deals and user actions — click a row for details</CardDescription>
+            <CardTitle className="text-base">User Activation Funnel</CardTitle>
+            <CardDescription>From signup to first completed exchange</CardDescription>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[300px]">
-              <div className="space-y-4">
-                {deals?.slice(0, 10).map((deal) => (
-                  <div
-                    key={deal.id}
-                    className="flex items-start gap-3 cursor-pointer hover:bg-muted/50 rounded-md p-1.5 -m-1.5 transition-colors"
-                    onClick={() => setSelectedDeal(deal)}
-                    data-testid={`recent-activity-${deal.id}`}
-                  >
-                    <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
-                      deal.state === "completed" ? "bg-green-500/10" :
-                      deal.state === "cancelled" ? "bg-red-500/10" :
-                      "bg-blue-500/10"
-                    }`}>
-                      {deal.state === "completed" ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : deal.state === "cancelled" ? (
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      ) : (
-                        <Activity className="h-4 w-4 text-blue-500" />
+            {userFunnel.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No data yet</p>
+            ) : (
+              <div className="space-y-3">
+                {userFunnel.map((stage, i) => {
+                  const pct = userFunnel[0].count > 0 ? Math.round((stage.count / userFunnel[0].count) * 100) : 0;
+                  const dropOff = i > 0 && userFunnel[i - 1].count > 0
+                    ? Math.round(((userFunnel[i - 1].count - stage.count) / userFunnel[i - 1].count) * 100) : null;
+                  return (
+                    <div key={stage.stage} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground truncate">{stage.stage}</span>
+                        <span className="font-medium tabular-nums">{stage.count.toLocaleString()} <span className="text-muted-foreground font-normal">({pct}%)</span></span>
+                      </div>
+                      <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      {dropOff !== null && dropOff > 0 && (
+                        <p className="text-xs text-rose-500">{dropOff}% drop-off from previous stage</p>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {deal.seeker.fullName} ↔ {deal.provider.fullName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {deal.dealNumber} • {deal.state}
-                      </p>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {deal.createdAt ? new Date(deal.createdAt).toLocaleDateString() : "-"}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </ScrollArea>
+            )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Exchange Funnel</CardTitle>
+            <CardDescription>From listing creation to completed exchange</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {exchangeFunnel.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No data yet</p>
+            ) : (
+              <div className="space-y-3">
+                {exchangeFunnel.map((stage, i) => {
+                  const pct = exchangeFunnel[0].count > 0 ? Math.round((stage.count / exchangeFunnel[0].count) * 100) : 0;
+                  const dropOff = i > 0 && exchangeFunnel[i - 1].count > 0
+                    ? Math.round(((exchangeFunnel[i - 1].count - stage.count) / exchangeFunnel[i - 1].count) * 100) : null;
+                  return (
+                    <div key={stage.stage} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground truncate">{stage.stage}</span>
+                        <span className="font-medium tabular-nums">{stage.count.toLocaleString()} <span className="text-muted-foreground font-normal">({pct}%)</span></span>
+                      </div>
+                      <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      {dropOff !== null && dropOff > 0 && (
+                        <p className="text-xs text-rose-500">{dropOff}% drop-off from previous stage</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Category Performance Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Top Categories by Exchange Completion</CardTitle>
+          <CardDescription>Which listing categories convert to completed exchanges</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(!categoriesData || categoriesData.length === 0) ? (
+            <p className="text-sm text-muted-foreground">No category data yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground w-8">#</th>
+                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Category</th>
+                    <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Listings</th>
+                    <th className="text-right py-2 font-medium text-muted-foreground">Completed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoriesData.map((cat, i) => (
+                    <tr key={cat.category} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
+                      <td className="py-2 pr-4 font-medium">{cat.category}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{(cat.listingCount ?? 0).toLocaleString()}</td>
+                      <td className="py-2 text-right tabular-nums font-semibold text-green-600 dark:text-green-400">{(cat.completedExchanges ?? 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pending Queue Summary */}
+      <div>
+        <h3 className="text-base font-semibold mb-3">Pending Queues</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-orange-500/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-md bg-orange-500/10"><Package className="h-4 w-4 text-orange-500" /></div>
+                <Badge variant="outline" className="text-orange-600 border-orange-300">{pendingQueue?.pendingListings?.length ?? 0}</Badge>
+              </div>
+              <p className="text-sm font-semibold">Listings Review</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Awaiting moderation</p>
+              <Button size="sm" variant="outline" className="w-full mt-3 text-xs" onClick={() => setActiveSection("listings")}>Review</Button>
+            </CardContent>
+          </Card>
+          <Card className="border-blue-500/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-md bg-blue-500/10"><UserCheck className="h-4 w-4 text-blue-500" /></div>
+                <Badge variant="outline" className="text-blue-600 border-blue-300">{pendingQueue?.kycPending?.length ?? 0}</Badge>
+              </div>
+              <p className="text-sm font-semibold">KYC Pending</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Identity verification</p>
+              <Button size="sm" variant="outline" className="w-full mt-3 text-xs" onClick={() => setActiveSection("verifications")}>Review</Button>
+            </CardContent>
+          </Card>
+          <Card className="border-violet-500/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-md bg-violet-500/10"><Building2 className="h-4 w-4 text-violet-500" /></div>
+                <Badge variant="outline" className="text-violet-600 border-violet-300">{pendingQueue?.kybPending?.length ?? 0}</Badge>
+              </div>
+              <p className="text-sm font-semibold">KYB Pending</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Business verification</p>
+              <Button size="sm" variant="outline" className="w-full mt-3 text-xs" onClick={() => setActiveSection("verifications")}>Review</Button>
+            </CardContent>
+          </Card>
+          <Card className="border-rose-500/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 rounded-md bg-rose-500/10"><Flag className="h-4 w-4 text-rose-500" /></div>
+                <Badge variant="outline" className="text-rose-600 border-rose-300">{pendingQueue?.flaggedMessages?.length ?? 0}</Badge>
+              </div>
+              <p className="text-sm font-semibold">Flagged Messages</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Awaiting review</p>
+              <Button size="sm" variant="outline" className="w-full mt-3 text-xs" onClick={() => setActiveSection("flags")}>Review</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Quick links to legacy detail dialogs */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5" onClick={() => setDraftsDialogOpen(true)}>
+          <Package className="h-3.5 w-3.5" />
+          Open Drafts ({analytics?.openDrafts ?? 0})
+        </Button>
+        <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1.5" onClick={() => setAbandonedDialogOpen(true)}>
+          <Clock className="h-3.5 w-3.5" />
+          Abandoned Engagement ({analytics?.abandonedEngagement ?? 0})
+        </Button>
       </div>
 
       <Dialog open={draftsDialogOpen} onOpenChange={setDraftsDialogOpen}>
@@ -1643,7 +1777,7 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
+  );};
 
   const handleExportCSV = () => {
     window.open("/api/admin/users/export.csv", "_blank");
@@ -4279,6 +4413,148 @@ export function AdminPage() {
     );
   };
 
+  const [verifSubTab, setVerifSubTab] = useState<"kyc" | "kyb">("kyc");
+
+  const renderVerifications = () => {
+    const kycList: any[] = pendingQueue?.kycPending ?? [];
+    const kybList: any[] = pendingQueue?.kybPending ?? [];
+
+    const daysSince = (dateStr: string | null) => {
+      if (!dateStr) return "—";
+      const diff = Date.now() - new Date(dateStr).getTime();
+      return `${Math.floor(diff / 86400000)}d`;
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold mb-1">Verifications</h2>
+            <p className="text-muted-foreground">KYC identity checks and KYB business approvals</p>
+          </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => refetchPendingQueue()}>
+            <RefreshCw className="h-4 w-4" />Refresh
+          </Button>
+        </div>
+
+        <div className="flex gap-2 border-b">
+          <button
+            onClick={() => setVerifSubTab("kyc")}
+            className={`pb-3 px-4 text-sm font-medium border-b-2 transition-colors ${verifSubTab === "kyc" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
+            KYC Pending
+            {kycList.length > 0 && <Badge className="ml-2 text-xs" variant="destructive">{kycList.length}</Badge>}
+          </button>
+          <button
+            onClick={() => setVerifSubTab("kyb")}
+            className={`pb-3 px-4 text-sm font-medium border-b-2 transition-colors ${verifSubTab === "kyb" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
+            KYB Pending
+            {kybList.length > 0 && <Badge className="ml-2 text-xs" variant="destructive">{kybList.length}</Badge>}
+          </button>
+        </div>
+
+        {verifSubTab === "kyc" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">KYC Pending — Identity Verification</CardTitle>
+              <CardDescription>{kycList.length} user{kycList.length !== 1 ? "s" : ""} awaiting identity review</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {kycList.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">No KYC submissions pending.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Waiting</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {kycList.map((u: any) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.fullName || "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
+                        <TableCell className="text-sm">{u.kycSubmittedAt ? new Date(u.kycSubmittedAt).toLocaleDateString() : "—"}</TableCell>
+                        <TableCell className="text-sm">{daysSince(u.kycSubmittedAt)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50"
+                              onClick={() => verifyUserMutation.mutate({ userId: u.id, verified: true })}>
+                              <UserCheck className="h-3.5 w-3.5 mr-1" />Verify
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
+                              onClick={() => verifyUserMutation.mutate({ userId: u.id, verified: false })}>
+                              <XCircle className="h-3.5 w-3.5 mr-1" />Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {verifSubTab === "kyb" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">KYB Pending — Business Verification</CardTitle>
+              <CardDescription>{kybList.length} business{kybList.length !== 1 ? "es" : ""} awaiting KYB approval</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {kybList.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">No KYB submissions pending.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Business</TableHead>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Waiting</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {kybList.map((b: any) => (
+                      <TableRow key={b.id}>
+                        <TableCell className="font-medium">{b.businessName || "—"}</TableCell>
+                        <TableCell className="text-sm">{b.ownerName || "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{b.ownerEmail || "—"}</TableCell>
+                        <TableCell className="text-sm">{b.kybSubmittedAt ? new Date(b.kybSubmittedAt).toLocaleDateString() : "—"}</TableCell>
+                        <TableCell className="text-sm">{daysSince(b.kybSubmittedAt)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50"
+                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "approved" })}>
+                              <UserCheck className="h-3.5 w-3.5 mr-1" />Approve
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
+                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "rejected" })}>
+                              <XCircle className="h-3.5 w-3.5 mr-1" />Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
   const renderFlags = () => (
     <div className="space-y-6">
       <div>
@@ -4385,6 +4661,60 @@ export function AdminPage() {
                       <Button size="sm" variant="outline" onClick={() => pauseAccount.mutate({ id: u.userId, isPaused: true })}>
                         <Pause className="h-3 w-3 mr-1" />Pause
                       </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Message Flags */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Flag className="h-4 w-4 text-rose-500" />
+            Message Flags
+          </CardTitle>
+          <CardDescription>Flagged conversation messages awaiting admin review</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!pendingQueue?.flaggedMessages?.length ? (
+            <p className="text-sm text-muted-foreground">No undismissed message flags.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Flagged</TableHead>
+                  <TableHead>Conversation</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingQueue.flaggedMessages.map((f: any) => (
+                  <TableRow key={f.id} className={f.dismissedAt ? "opacity-50" : ""}>
+                    <TableCell><Badge variant="outline" className="text-rose-600 border-rose-300">{f.flagType}</Badge></TableCell>
+                    <TableCell className="text-sm">{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{f.conversationId?.slice(0, 8)}…</TableCell>
+                    <TableCell>
+                      {f.dismissedAt
+                        ? <Badge variant="secondary">Dismissed {new Date(f.dismissedAt).toLocaleDateString()}</Badge>
+                        : <Badge variant="destructive">Pending</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      {!f.dismissedAt && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={dismissFlagMutation.isPending}
+                          onClick={() => dismissFlagMutation.mutate(f.id)}
+                        >
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />Dismiss
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -6207,6 +6537,8 @@ export function AdminPage() {
         return renderCreators();
       case "businesses":
         return renderBusinesses();
+      case "verifications":
+        return renderVerifications();
       case "collabs":
         return renderCollabs();
       case "analytics":

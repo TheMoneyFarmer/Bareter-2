@@ -620,6 +620,28 @@ export function LandingPage() {
   const [heroQuery, setHeroQuery] = useState("");
   const [showSugg, setShowSugg] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [displayCount, setDisplayCount] = useState(0);
+
+  const { data: exchangeCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/stats/exchanges/count"],
+    queryFn: () => fetch(`${API_BASE}/api/stats/exchanges/count`).then(r => r.json()),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  // Animated count-up when the real count first arrives
+  useEffect(() => {
+    const target = exchangeCountData?.count ?? 0;
+    if (target <= 0) return;
+    let current = 0;
+    const step = Math.max(1, Math.floor(target / 40));
+    const timer = setInterval(() => {
+      current = Math.min(current + step, target);
+      setDisplayCount(current);
+      if (current >= target) clearInterval(timer);
+    }, 30);
+    return () => clearInterval(timer);
+  }, [exchangeCountData?.count]);
 
   // Redirect logged-in users away from the marketing landing page
   useEffect(() => {
@@ -999,6 +1021,16 @@ export function LandingPage() {
                   List Your Barter
                 </Button>
               </div>
+
+              {/* Live exchange counter */}
+              {displayCount > 0 && (
+                <div className="flex items-center gap-2 mb-6 sm:mb-8" data-testid="exchange-counter">
+                  <span className="text-2xl sm:text-3xl font-extrabold text-bareter-teal tabular-nums">
+                    {displayCount.toLocaleString()}
+                  </span>
+                  <span className="text-sm sm:text-base text-white/70 font-medium">exchanges completed on Bareter</span>
+                </div>
+              )}
 
               {/* Trust row */}
               <div className="flex items-center gap-4 text-white/50 text-xs">

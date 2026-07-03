@@ -2726,6 +2726,8 @@ export const messageFlags = pgTable("message_flags", {
   flagType:       text("flag_type").notNull(),
   // 'phone' | 'email' | 'social_handle' | 'platform_url'
   createdAt:      timestamp("created_at").defaultNow(),
+  dismissedAt:    timestamp("dismissed_at"),
+  reviewedBy:     varchar("reviewed_by", { length: 36 }).references(() => users.id),
 }, (table) => [
   index("mf_message_id_idx").on(table.messageId),
   index("mf_conversation_id_idx").on(table.conversationId),

@@ -768,6 +768,18 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/stats/exchanges/count — public, no auth, powers homepage live counter
+  app.get("/api/stats/exchanges/count", async (_req, res) => {
+    try {
+      const [row] = await db.select({ cnt: count() }).from(deals).where(eq(deals.state, "completed"));
+      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      res.json({ count: Number(row?.cnt ?? 0) });
+    } catch (error) {
+      console.error("Exchange count error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Auth routes. The strict-schema validation is mounted as a separate
   // middleware so the security test suite can exercise the 400 response
   // for unknown fields without needing a database.
@@ -4478,8 +4490,61 @@ export async function registerRoutes(
 
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      res.json(users.map(({ password, ...u }) => u));
+      const search = (req.query.search as string | undefined)?.trim();
+      const verLevel = req.query.verificationLevel as string | undefined;
+      const sortBy = (req.query.sortBy as string | undefined) || "newest";
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 200));
+
+      const whereClause = and(
+        search ? or(ilike(users.fullName, `%${search}%`), ilike(users.email, `%${search}%`)) : undefined,
+        verLevel && verLevel !== "all" && !isNaN(parseInt(verLevel))
+          ? eq(users.verificationLevel, parseInt(verLevel)) : undefined,
+      );
+
+      const orderCol = sortBy === "mostActive" ? desc(users.lastActiveAt) : desc(users.createdAt);
+
+      const rows = await db
+        .select({
+          id: users.id, fullName: users.fullName, email: users.email, phone: users.phone,
+          role: users.role, accountType: users.accountType, isAdmin: users.isAdmin,
+          signupType: users.signupType, country: users.country, city: users.city,
+          avatarUrl: users.avatarUrl, isVerified: users.isVerified, isBanned: users.isBanned,
+          verificationLevel: users.verificationLevel, kycStatus: users.kycStatus,
+          createdAt: users.createdAt, updatedAt: users.updatedAt, lastActiveAt: users.lastActiveAt,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(orderCol)
+        .limit(limit)
+        .offset((page - 1) * limit);
+
+      if (rows.length === 0) return res.json([]);
+
+      const ids = rows.map(u => u.id);
+      const [listingCounts, dealRows] = await Promise.all([
+        db.select({ userId: listings.userId, cnt: count() })
+          .from(listings)
+          .where(and(inArray(listings.userId, ids), isNull(listings.deletedAt)))
+          .groupBy(listings.userId),
+        db.execute(sqlOperator`
+          SELECT user_id, COUNT(*)::int AS cnt FROM (
+            SELECT seeker_id AS user_id FROM deals WHERE state = 'completed' AND seeker_id = ANY(${ids})
+            UNION ALL
+            SELECT provider_id AS user_id FROM deals WHERE state = 'completed' AND provider_id = ANY(${ids})
+          ) t GROUP BY user_id
+        `),
+      ]);
+
+      const lcMap = new Map(listingCounts.map(r => [r.userId!, Number(r.cnt)]));
+      const dcRaw = (dealRows as { rows?: unknown[] }).rows ?? (dealRows as unknown[]);
+      const dcMap = new Map((dcRaw as { user_id: string; cnt: number }[]).map(r => [r.user_id, Number(r.cnt)]));
+
+      res.json(rows.map(u => ({
+        ...u,
+        listingCount: lcMap.get(u.id) ?? 0,
+        completedExchangeCount: dcMap.get(u.id) ?? 0,
+      })));
     } catch (error) {
       console.error("Admin get users error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4996,6 +5061,385 @@ export async function registerRoutes(
       res.json(data);
     } catch (error) {
       console.error("Top listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin Stats / Operational Dashboard ─────────────────────────────────────
+
+  // GET /api/admin/stats/overview — single-call platform snapshot
+  app.get("/api/admin/stats/overview", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalUsersRow, newTodayRow, newThisWeekRow,
+        usersByLevel,
+        kybVerifiedRow,
+        listingsByStatus, listingsByType,
+        dealsByState, abandonedRow,
+        bizByKyb, featuredBizRow, activeBizRow,
+        creatorsRow, creatorsPortfolioRow, creatorActiveListingsRow,
+        flagsTotal, flagsToday, flagsByType,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, todayStart)),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, weekStart)),
+        db.select({ level: users.verificationLevel, cnt: count() }).from(users).groupBy(users.verificationLevel),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.kybStatus, "verified")),
+        db.select({ status: listings.moderationStatus, cnt: count() }).from(listings)
+          .where(isNull(listings.deletedAt)).groupBy(listings.moderationStatus),
+        db.select({ type: listings.listingType, cnt: count() }).from(listings)
+          .where(isNull(listings.deletedAt)).groupBy(listings.listingType),
+        db.select({ state: deals.state, cnt: count() }).from(deals).groupBy(deals.state),
+        db.select({ cnt: count() }).from(deals)
+          .where(and(eq(deals.state, "proposed"), lt(deals.createdAt, sevenDaysAgo))),
+        db.select({ status: businessProfiles.kybStatus, cnt: count() }).from(businessProfiles).groupBy(businessProfiles.kybStatus),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.isFeatured, true)),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.isActive, true)),
+        db.select({ cnt: count() }).from(creatorProfiles),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT creator_id)::int AS cnt FROM creator_portfolio_items`),
+        db.select({ cnt: count() }).from(listings)
+          .where(and(eq(listings.listingType, "creator_service"), eq(listings.isActive, true), isNull(listings.deletedAt))),
+        db.select({ cnt: count() }).from(messageFlags),
+        db.select({ cnt: count() }).from(messageFlags).where(gte(messageFlags.createdAt, todayStart)),
+        db.select({ type: messageFlags.flagType, cnt: count() }).from(messageFlags).groupBy(messageFlags.flagType),
+      ]);
+
+      const byLevel = new Map(usersByLevel.map(r => [r.level, Number(r.cnt)]));
+      const byStatus = new Map(listingsByStatus.map(r => [r.status, Number(r.cnt)]));
+      const byType = new Map(listingsByType.map(r => [r.type, Number(r.cnt)]));
+      const byState = new Map(dealsByState.map(r => [r.state, Number(r.cnt)]));
+      const bizByStatus = new Map(bizByKyb.map(r => [r.status, Number(r.cnt)]));
+      const byFlagType = new Map(flagsByType.map(r => [r.type, Number(r.cnt)]));
+
+      const totalDeals = [...byState.values()].reduce((a, b) => a + b, 0);
+      const completedDeals = byState.get("completed") ?? 0;
+      const portfolioRaw = (creatorsPortfolioRow as { rows?: unknown[] }).rows ?? (creatorsPortfolioRow as unknown[]);
+
+      res.json({
+        users: {
+          total: Number(totalUsersRow[0]?.cnt ?? 0),
+          newToday: Number(newTodayRow[0]?.cnt ?? 0),
+          newThisWeek: Number(newThisWeekRow[0]?.cnt ?? 0),
+          level1: byLevel.get(1) ?? 0,
+          level2: byLevel.get(2) ?? 0,
+          kybVerified: Number(kybVerifiedRow[0]?.cnt ?? 0),
+        },
+        listings: {
+          total: [...byType.values()].reduce((a, b) => a + b, 0),
+          pendingReview: byStatus.get("pending") ?? 0,
+          approved: byStatus.get("approved") ?? 0,
+          rejected: byStatus.get("rejected") ?? 0,
+          byType: {
+            individual_item: byType.get("individual_item") ?? 0,
+            creator_service: byType.get("creator_service") ?? 0,
+            business_product: byType.get("business_product") ?? 0,
+            business_wholesale: byType.get("business_wholesale") ?? 0,
+          },
+        },
+        exchanges: {
+          total: totalDeals,
+          proposed: byState.get("proposed") ?? 0,
+          accepted: byState.get("accepted") ?? 0,
+          completed: completedDeals,
+          abandoned: Number(abandonedRow[0]?.cnt ?? 0),
+          completionRate: totalDeals > 0 ? Math.round((completedDeals / totalDeals) * 100) : 0,
+        },
+        businesses: {
+          total: [...bizByStatus.values()].reduce((a, b) => a + b, 0),
+          pendingKyb: bizByStatus.get("pending") ?? 0,
+          verified: bizByStatus.get("verified") ?? 0,
+          rejected: bizByStatus.get("rejected") ?? 0,
+          featured: Number(featuredBizRow[0]?.cnt ?? 0),
+          active: Number(activeBizRow[0]?.cnt ?? 0),
+        },
+        creators: {
+          total: Number(creatorsRow[0]?.cnt ?? 0),
+          withPortfolio: Number((portfolioRaw[0] as { cnt?: number })?.cnt ?? 0),
+          activeListings: Number(creatorActiveListingsRow[0]?.cnt ?? 0),
+        },
+        claims: { total: 0, pending: 0, completed: 0 },
+        messageFlags: {
+          total: Number(flagsTotal[0]?.cnt ?? 0),
+          today: Number(flagsToday[0]?.cnt ?? 0),
+          byType: {
+            phone: byFlagType.get("phone") ?? 0,
+            email: byFlagType.get("email") ?? 0,
+            social_handle: byFlagType.get("social_handle") ?? 0,
+            platform_url: byFlagType.get("platform_url") ?? 0,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin stats overview error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/funnel — conversion funnel at every stage
+  app.get("/api/admin/stats/funnel", requireAdmin, async (_req, res) => {
+    try {
+      const [
+        totalUsersRow, emailVerifiedRow,
+        listedRow, receivedProposalRow, completedExchangeRow,
+        totalListingsRow, approvedListingsRow, listingWithProposalRow, listingCompletedRow,
+        level1Row, level2Row, kybRow,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(eq(users.emailVerified, true)),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT user_id)::int AS cnt FROM listings WHERE deleted_at IS NULL`),
+        db.execute(sqlOperator`
+          SELECT COUNT(DISTINCT l.user_id)::int AS cnt FROM deals d
+          JOIN listings l ON l.id = d.seeker_listing_id OR l.id = d.provider_listing_id
+        `),
+        db.execute(sqlOperator`
+          SELECT COUNT(DISTINCT user_id)::int AS cnt FROM (
+            SELECT seeker_id AS user_id FROM deals WHERE state = 'completed'
+            UNION SELECT provider_id AS user_id FROM deals WHERE state = 'completed'
+          ) t
+        `),
+        db.select({ cnt: count() }).from(listings).where(isNull(listings.deletedAt)),
+        db.select({ cnt: count() }).from(listings).where(and(eq(listings.moderationStatus, "approved"), isNull(listings.deletedAt))),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT COALESCE(seeker_listing_id, provider_listing_id))::int AS cnt FROM deals`),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT COALESCE(seeker_listing_id, provider_listing_id))::int AS cnt FROM deals WHERE state = 'completed'`),
+        db.select({ cnt: count() }).from(users).where(gte(users.verificationLevel, 1)),
+        db.select({ cnt: count() }).from(users).where(gte(users.verificationLevel, 2)),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.kybStatus, "verified")),
+      ]);
+
+      const n = (rows: unknown, field = "cnt") => {
+        const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+        return Number((raw[0] as Record<string, unknown>)?.[field] ?? 0);
+      };
+
+      res.json({
+        userFunnel: [
+          { stage: "Registered", count: Number(totalUsersRow[0]?.cnt ?? 0) },
+          { stage: "Email Verified", count: Number(emailVerifiedRow[0]?.cnt ?? 0) },
+          { stage: "Listed Something", count: n(listedRow) },
+          { stage: "Received Proposal", count: n(receivedProposalRow) },
+          { stage: "Completed Exchange", count: n(completedExchangeRow) },
+        ],
+        listingFunnel: [
+          { stage: "Created", count: Number(totalListingsRow[0]?.cnt ?? 0) },
+          { stage: "Approved", count: Number(approvedListingsRow[0]?.cnt ?? 0) },
+          { stage: "Received Proposal", count: n(listingWithProposalRow) },
+          { stage: "Exchange Completed", count: n(listingCompletedRow) },
+        ],
+        verificationFunnel: [
+          { stage: "Level 1 (Email+Phone)", count: Number(level1Row[0]?.cnt ?? 0) },
+          { stage: "Level 2 (Identity)", count: Number(level2Row[0]?.cnt ?? 0) },
+          { stage: "Level 3 (KYB Business)", count: Number(kybRow[0]?.cnt ?? 0) },
+        ],
+      });
+    } catch (error) {
+      console.error("Admin stats funnel error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/growth?period=7d|30d|90d — daily growth data
+  app.get("/api/admin/stats/growth", requireAdmin, async (req, res) => {
+    try {
+      const periodParam = (req.query.period as string) || "7d";
+      const days = periodParam === "90d" ? 90 : periodParam === "30d" ? 30 : 7;
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const [userRows, listingRows, proposedRows, completedRows] = await Promise.all([
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM users
+          WHERE created_at >= ${startDate} GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM listings
+          WHERE created_at >= ${startDate} AND deleted_at IS NULL GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM deals
+          WHERE created_at >= ${startDate} GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(completed_at)::text AS date, COUNT(*)::int AS cnt FROM deals
+          WHERE completed_at >= ${startDate} AND state = 'completed' GROUP BY DATE(completed_at) ORDER BY date
+        `),
+      ]);
+
+      const toMap = (rows: unknown) => {
+        const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) as { date: string; cnt: number }[];
+        return new Map(raw.map(r => [r.date, Number(r.cnt)]));
+      };
+
+      const uMap = toMap(userRows), lMap = toMap(listingRows), eMap = toMap(proposedRows), cMap = toMap(completedRows);
+
+      const data: { date: string; newUsers: number; newListings: number; newExchanges: number; completedExchanges: number }[] = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+        const dateStr = d.toISOString().split("T")[0];
+        data.push({
+          date: dateStr,
+          newUsers: uMap.get(dateStr) ?? 0,
+          newListings: lMap.get(dateStr) ?? 0,
+          newExchanges: eMap.get(dateStr) ?? 0,
+          completedExchanges: cMap.get(dateStr) ?? 0,
+        });
+      }
+
+      res.json({ period: periodParam, data });
+    } catch (error) {
+      console.error("Admin stats growth error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/queues/pending — operational action queue
+  app.get("/api/admin/queues/pending", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+
+      const [pendingListings, kycPending, kybPending, flaggedMessages] = await Promise.all([
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          listingType: listings.listingType,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userFullName: users.fullName,
+          userVerificationLevel: users.verificationLevel,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(and(eq(listings.moderationStatus, "pending"), isNull(listings.deletedAt), eq(listings.isActive, true)))
+          .orderBy(asc(listings.createdAt))
+          .limit(20),
+
+        db.select({
+          userId: users.id,
+          fullName: users.fullName,
+          email: users.email,
+          verificationLevel: users.verificationLevel,
+          diditSessionId: users.diditSessionId,
+          startedAt: users.createdAt,
+        })
+          .from(users)
+          .where(and(
+            eq(users.verificationLevel, 1),
+            or(eq(users.kycStatus, "IN_PROGRESS"), eq(users.kycStatus, "IN_REVIEW")),
+          ))
+          .orderBy(asc(users.createdAt))
+          .limit(20),
+
+        db.select({
+          businessId: businessProfiles.id,
+          companyName: businessProfiles.companyName,
+          diditSessionId: businessProfiles.diditSessionId,
+          createdAt: businessProfiles.createdAt,
+          ownerName: users.fullName,
+          ownerEmail: users.email,
+        })
+          .from(businessProfiles)
+          .leftJoin(users, eq(businessProfiles.ownerId, users.id))
+          .where(eq(businessProfiles.kybStatus, "pending"))
+          .orderBy(asc(businessProfiles.createdAt))
+          .limit(20),
+
+        db.select({
+          id: messageFlags.id,
+          flagType: messageFlags.flagType,
+          createdAt: messageFlags.createdAt,
+          conversationId: messageFlags.conversationId,
+          messageId: messageFlags.messageId,
+          senderFullName: users.fullName,
+          senderId: users.id,
+          messageContent: messages.content,
+        })
+          .from(messageFlags)
+          .leftJoin(messages, eq(messageFlags.messageId, messages.id))
+          .leftJoin(users, eq(messages.senderId, users.id))
+          .where(isNull(messageFlags.dismissedAt))
+          .orderBy(desc(messageFlags.createdAt))
+          .limit(20),
+      ]);
+
+      const msPerDay = 86_400_000;
+      res.json({
+        listingsPendingReview: pendingListings.map(l => ({
+          ...l,
+          daysWaiting: l.createdAt ? Math.floor((now.getTime() - new Date(l.createdAt).getTime()) / msPerDay) : 0,
+          user: { id: l.userId, fullName: l.userFullName, verificationLevel: l.userVerificationLevel },
+        })),
+        kycPending,
+        kybPending: kybPending.map(b => ({
+          ...b,
+          daysWaiting: b.createdAt ? Math.floor((now.getTime() - new Date(b.createdAt).getTime()) / msPerDay) : 0,
+        })),
+        flaggedMessages: flaggedMessages.map(f => ({
+          id: f.id,
+          flagType: f.flagType,
+          createdAt: f.createdAt,
+          conversationId: f.conversationId,
+          sender: { id: f.senderId, fullName: f.senderFullName },
+          preview: f.messageContent ? f.messageContent.slice(0, 100) : "",
+        })),
+      });
+    } catch (error) {
+      console.error("Admin queues pending error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/categories — top 10 categories by exchange completion
+  app.get("/api/admin/stats/categories", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await db.execute(sqlOperator`
+        SELECT
+          cat AS category,
+          COUNT(DISTINCT l.id)::int AS "totalListings",
+          COUNT(DISTINCT d.id)::int AS "totalProposals",
+          COUNT(DISTINCT CASE WHEN d.state = 'completed' THEN d.id END)::int AS "completedExchanges"
+        FROM listings l,
+             jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(l.categories::jsonb) = 'array' THEN l.categories::jsonb ELSE '[]'::jsonb END
+             ) AS cat
+        LEFT JOIN deals d ON d.seeker_listing_id = l.id OR d.provider_listing_id = l.id
+        WHERE l.deleted_at IS NULL AND l.categories IS NOT NULL
+        GROUP BY cat
+        ORDER BY "completedExchanges" DESC, "totalProposals" DESC
+        LIMIT 10
+      `);
+
+      const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) as {
+        category: string; totalListings: number; totalProposals: number; completedExchanges: number;
+      }[];
+
+      res.json(raw.map(r => ({
+        ...r,
+        conversionRate: r.totalProposals > 0
+          ? Math.round((r.completedExchanges / r.totalProposals) * 100)
+          : 0,
+      })));
+    } catch (error) {
+      console.error("Admin stats categories error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/admin/message-flags/:id/dismiss — mark a flag as reviewed
+  app.patch("/api/admin/message-flags/:id/dismiss", requireAdmin, async (req, res) => {
+    try {
+      const flagId = param(req.params.id);
+      const adminId = req.session.userId!;
+      const [updated] = await db.update(messageFlags)
+        .set({ dismissedAt: new Date(), reviewedBy: adminId })
+        .where(eq(messageFlags.id, flagId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Flag not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Dismiss flag error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
