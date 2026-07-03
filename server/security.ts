@@ -31,6 +31,7 @@ export function sanitizePublicUser(user: User): PublicUser {
     bannedAt: _ba,
     bannedReason: _br,
     isAdmin: _ia,
+    role: _role,
     reminderPreferences: _rp,
     emailNotifications: _en,
     dealNotifications: _dn,

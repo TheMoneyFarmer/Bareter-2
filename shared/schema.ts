@@ -2325,6 +2325,7 @@ export type PublicUser = Omit<User,
   | "bannedAt"
   | "bannedReason"
   | "isAdmin"
+  | "role"
   | "reminderPreferences"
   | "emailNotifications"
   | "dealNotifications"
@@ -2640,6 +2641,16 @@ export const businessProfiles = pgTable("business_profiles", {
   kybVerifiedAt:       timestamp("kyb_verified_at"),
   diditSessionId:      text("didit_session_id"),
   createdAt:           timestamp("created_at").defaultNow(),
+  // Storefront fields
+  coverImageUrl:       text("cover_image_url"),
+  logoUrl:             text("logo_url"),
+  description:         text("description"),
+  businessHours:       jsonb("business_hours"),
+  location:            text("location"),
+  websiteDisplay:      text("website_display"),
+  // Admin-controlled flags
+  isFeatured:          boolean("is_featured").notNull().default(false),
+  isActive:            boolean("is_active").notNull().default(true),
 });
 export type BusinessProfile = typeof businessProfiles.$inferSelect;
 export type InsertBusinessProfile = typeof businessProfiles.$inferInsert;
@@ -2716,6 +2727,8 @@ export const messageFlags = pgTable("message_flags", {
   flagType:       text("flag_type").notNull(),
   // 'phone' | 'email' | 'social_handle' | 'platform_url'
   createdAt:      timestamp("created_at").defaultNow(),
+  dismissedAt:    timestamp("dismissed_at"),
+  reviewedBy:     varchar("reviewed_by", { length: 36 }).references(() => users.id),
 }, (table) => [
   index("mf_message_id_idx").on(table.messageId),
   index("mf_conversation_id_idx").on(table.conversationId),

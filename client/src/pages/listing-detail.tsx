@@ -80,6 +80,7 @@ import { ValueMatchBadge } from "@/components/ValueMatchBadge";
 import { ReviewModal } from "@/components/ReviewModal";
 import { ReputationBadge } from "@/components/ReputationBadge";
 import { StarRating } from "@/components/StarRating";
+import { BusinessProductCard } from "@/components/BusinessProductCard";
 
 const _listingTranslationCache = new Map<string, { title: string; description: string }>();
 
@@ -254,6 +255,18 @@ export function ListingDetailPage() {
   const { data: wishlistCheck } = useQuery<{ isWishlisted: boolean }>({
     queryKey: ["/api/wishlist/check", id],
     enabled: !!user && !!id,
+  });
+
+  const bizId = (listing as any)?.businessId as string | undefined;
+  const { data: bizStorefront } = useQuery({
+    queryKey: ["/api/businesses", bizId, "storefront"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/businesses/${bizId}/storefront`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!bizId,
+    staleTime: 30_000,
   });
 
   const toggleWishlistMutation = useMutation({
@@ -753,6 +766,7 @@ export function ListingDetailPage() {
   }
 
   const isOwnListing = user?.id === listing.userId;
+  const isBizListing = ["business_product", "business_wholesale"].includes((listing as any).listingType ?? "");
   const createdDate = listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "N/A";
 
   return (
@@ -819,20 +833,36 @@ export function ListingDetailPage() {
           </button>
 
           {listing.images && listing.images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-1" data-testid="strip-thumbnails">
-              {listing.images.map((img, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setLightboxIndex(i)}
-                  className="relative h-20 w-20 flex-shrink-0 rounded-md overflow-hidden border border-bareter-border dark:border-border hover:border-bareter-teal transition-colors"
-                  data-testid={`button-thumbnail-${i}`}
-                  aria-label={`Open image ${i + 1}`}
-                >
-                  <img src={img} alt={`${listing.title} ${i + 1}`} className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
+            isBizListing ? (
+              <div className="grid grid-cols-4 gap-2" data-testid="biz-photo-grid">
+                {listing.images.slice(1).map((img, i) => (
+                  <button
+                    key={i + 1}
+                    type="button"
+                    onClick={() => setLightboxIndex(i + 1)}
+                    className="aspect-square rounded-lg overflow-hidden border border-bareter-border dark:border-border hover:border-bareter-teal transition-colors"
+                    aria-label={`Open image ${i + 2}`}
+                  >
+                    <img src={assetUrl(img)} alt={`${listing.title} ${i + 2}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-200" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto pb-1" data-testid="strip-thumbnails">
+                {listing.images.map((img, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setLightboxIndex(i)}
+                    className="relative h-20 w-20 flex-shrink-0 rounded-md overflow-hidden border border-bareter-border dark:border-border hover:border-bareter-teal transition-colors"
+                    data-testid={`button-thumbnail-${i}`}
+                    aria-label={`Open image ${i + 1}`}
+                  >
+                    <img src={img} alt={`${listing.title} ${i + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )
           )}
 
           {/* Video embed */}
@@ -1681,6 +1711,58 @@ export function ListingDetailPage() {
               data-testid="button-share-listing"
             />
           </div>
+
+          {/* Business attribution panel — only for business_product / business_wholesale */}
+          {isBizListing && bizStorefront && (
+            <div className="bg-white dark:bg-card rounded-bareter-card border border-bareter-border dark:border-border shadow-bareter-card p-4 flex items-center gap-4">
+              {bizStorefront.logoUrl ? (
+                <img
+                  src={assetUrl(bizStorefront.logoUrl)}
+                  alt={bizStorefront.companyName}
+                  className="h-12 w-12 rounded-full object-cover ring-2 ring-bareter-teal/20 flex-shrink-0"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-full bg-bareter-teal/10 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="h-6 w-6 text-bareter-teal" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">Offered by</p>
+                <Link
+                  href={`/businesses/${bizStorefront.id}`}
+                  className="text-sm font-semibold text-bareter-navy dark:text-foreground hover:text-bareter-teal transition-colors line-clamp-1"
+                >
+                  {bizStorefront.companyName}
+                </Link>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  {bizStorefront.kybStatus === "verified" && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 dark:bg-green-950/40 dark:text-green-400 px-1.5 py-0.5 rounded-full">
+                      <CheckCircle className="h-3 w-3" />
+                      Verified
+                    </span>
+                  )}
+                  {(listing as any).listingType === "business_wholesale" && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-bareter-teal bg-bareter-teal/10 px-1.5 py-0.5 rounded-full">
+                      <Package className="h-3 w-3" />
+                      Wholesale
+                    </span>
+                  )}
+                  {(listing as any).listingType === "business_product" && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-bareter-navy/80 bg-bareter-navy/10 dark:text-foreground/70 dark:bg-muted px-1.5 py-0.5 rounded-full">
+                      <Package className="h-3 w-3" />
+                      Product
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Link
+                href={`/businesses/${bizStorefront.id}`}
+                className="flex-shrink-0 text-[11px] font-semibold text-bareter-teal hover:underline"
+              >
+                View store →
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
@@ -2116,6 +2198,29 @@ export function ListingDetailPage() {
           )}
         </div>
       </div>
+
+      {/* More from this business — only for business listings */}
+      {isBizListing && bizStorefront && (() => {
+        const otherListings = ((bizStorefront.activeListings ?? []) as any[]).filter(
+          (l: any) => l.id !== listing.id
+        );
+        if (otherListings.length === 0) return null;
+        return (
+          <div className="mt-6 px-4 lg:px-0">
+            <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-bareter-teal" />
+              More from {bizStorefront.companyName}
+            </h2>
+            <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+              {otherListings.slice(0, 8).map((l: any) => (
+                <div key={l.id} className="flex-shrink-0 w-48 snap-start">
+                  <BusinessProductCard listing={l} />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Similar listings */}
       {similarListings && similarListings.length > 0 && (

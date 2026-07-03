@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
 import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
 import { useForm } from "react-hook-form";
@@ -238,6 +238,71 @@ export function SettingsPage() {
       }
     },
     onError: (err: any) => toast({ title: err?.message || "Could not start verification", variant: "destructive" }),
+  });
+
+  // ── Business profile settings (storefront fields) ───────────────────────
+  const [bizDescription, setBizDescription] = useState("");
+  const [bizLocation, setBizLocation] = useState("");
+  const [bizWebsiteDisplay, setBizWebsiteDisplay] = useState("");
+  const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+  const DAY_LABELS: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+  type DayKey = typeof DAYS[number];
+  const defaultHours = () => Object.fromEntries(DAYS.map(d => [d, { open: "09:00", close: "18:00", closed: d === "sun" }]));
+  const [bizHours, setBizHours] = useState<Record<DayKey, { open: string; close: string; closed: boolean }>>(defaultHours() as any);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Seed editable fields when businessProfile loads
+  useEffect(() => {
+    if (!businessProfile) return;
+    setBizDescription(businessProfile.description ?? "");
+    setBizLocation(businessProfile.location ?? "");
+    setBizWebsiteDisplay(businessProfile.websiteDisplay ?? "");
+    if (businessProfile.businessHours && typeof businessProfile.businessHours === "object") {
+      setBizHours({ ...defaultHours(), ...businessProfile.businessHours } as any);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessProfile?.id]);
+
+  const saveBusinessSettingsMutation = useMutation({
+    mutationFn: async (businessId: string) => {
+      const res = await apiRequest("PATCH", `/api/businesses/${businessId}`, {
+        description: bizDescription.trim() || undefined,
+        location: bizLocation.trim() || undefined,
+        websiteDisplay: bizWebsiteDisplay.trim() || undefined,
+        businessHours: bizHours,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchBusinessProfile();
+      toast({ title: "Business profile saved" });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Save failed", variant: "destructive" }),
+  });
+
+  const uploadCoverMutation = useMutation({
+    mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
+      return res.json();
+    },
+    onSuccess: () => { refetchBusinessProfile(); toast({ title: "Cover image updated" }); },
+    onError: (err: any) => toast({ title: err?.message || "Upload failed", variant: "destructive" }),
+  });
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
+      return res.json();
+    },
+    onSuccess: () => { refetchBusinessProfile(); toast({ title: "Logo updated" }); },
+    onError: (err: any) => toast({ title: err?.message || "Upload failed", variant: "destructive" }),
   });
 
   const RADIUS_OPTIONS = [
@@ -1747,7 +1812,8 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent>
                 {businessProfile ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
+                    {/* Read-only identity row */}
                     <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                       <div>
                         <p className="text-xs text-muted-foreground mb-0.5">Company Name</p>
@@ -1766,6 +1832,140 @@ export function SettingsPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Cover + Logo uploads */}
+                    <div className="border-t border-border pt-4 space-y-3">
+                      <p className="text-sm font-medium">Storefront images</p>
+                      <div className="flex flex-wrap gap-4">
+                        {/* Cover */}
+                        <div className="space-y-1.5">
+                          <p className="text-xs text-muted-foreground">Cover banner</p>
+                          {businessProfile.coverImageUrl ? (
+                            <div className="relative w-40 h-20 rounded-md overflow-hidden border border-border">
+                              <img src={`${API_BASE}${businessProfile.coverImageUrl}`} alt="Cover" className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="w-40 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">
+                              <Camera className="h-6 w-6" />
+                            </div>
+                          )}
+                          <input ref={coverInputRef} type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadCoverMutation.mutate({ businessId: businessProfile.id, file: f }); e.target.value = ""; }} />
+                          <Button variant="outline" size="sm" className="gap-1.5 text-xs w-40"
+                            disabled={uploadCoverMutation.isPending}
+                            onClick={() => coverInputRef.current?.click()}>
+                            {uploadCoverMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                            {businessProfile.coverImageUrl ? "Change cover" : "Upload cover"}
+                          </Button>
+                        </div>
+                        {/* Logo */}
+                        <div className="space-y-1.5">
+                          <p className="text-xs text-muted-foreground">Logo</p>
+                          {businessProfile.logoUrl ? (
+                            <div className="relative w-20 h-20 rounded-full overflow-hidden border border-border">
+                              <img src={`${API_BASE}${businessProfile.logoUrl}`} alt="Logo" className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">
+                              <Building2 className="h-6 w-6" />
+                            </div>
+                          )}
+                          <input ref={logoInputRef} type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogoMutation.mutate({ businessId: businessProfile.id, file: f }); e.target.value = ""; }} />
+                          <Button variant="outline" size="sm" className="gap-1.5 text-xs w-20"
+                            disabled={uploadLogoMutation.isPending}
+                            onClick={() => logoInputRef.current?.click()}>
+                            {uploadLogoMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                            Logo
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Editable fields */}
+                    <div className="border-t border-border pt-4 space-y-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="biz-description">Description</Label>
+                        <Textarea
+                          id="biz-description"
+                          placeholder="Tell visitors what your business offers…"
+                          value={bizDescription}
+                          onChange={e => setBizDescription(e.target.value)}
+                          maxLength={2000}
+                          rows={3}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="biz-location">Location</Label>
+                          <Input
+                            id="biz-location"
+                            placeholder="e.g. Dubai Marina, UAE"
+                            value={bizLocation}
+                            onChange={e => setBizLocation(e.target.value)}
+                            maxLength={200}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="biz-website-display">Website</Label>
+                          <Input
+                            id="biz-website-display"
+                            placeholder="e.g. www.example.com"
+                            value={bizWebsiteDisplay}
+                            onChange={e => setBizWebsiteDisplay(e.target.value)}
+                            maxLength={300}
+                          />
+                          <p className="text-[10px] text-muted-foreground">Displayed as plain text only. Not a clickable link.</p>
+                        </div>
+                      </div>
+
+                      {/* Business hours */}
+                      <div className="space-y-2">
+                        <Label>Business Hours <span className="text-[10px] text-muted-foreground font-normal">(Dubai time)</span></Label>
+                        <div className="space-y-1.5">
+                          {DAYS.map(day => (
+                            <div key={day} className="flex items-center gap-3">
+                              <span className="w-8 text-xs font-medium text-muted-foreground shrink-0">{DAY_LABELS[day]}</span>
+                              <Checkbox
+                                checked={!bizHours[day]?.closed}
+                                onCheckedChange={v => setBizHours(h => ({ ...h, [day]: { ...h[day], closed: !v } }))}
+                                id={`biz-hours-open-${day}`}
+                              />
+                              <label htmlFor={`biz-hours-open-${day}`} className="text-xs text-muted-foreground sr-only">Open</label>
+                              {!bizHours[day]?.closed ? (
+                                <>
+                                  <Input
+                                    type="time"
+                                    value={bizHours[day]?.open ?? "09:00"}
+                                    onChange={e => setBizHours(h => ({ ...h, [day]: { ...h[day], open: e.target.value } }))}
+                                    className="h-7 w-28 text-xs"
+                                  />
+                                  <span className="text-xs text-muted-foreground">–</span>
+                                  <Input
+                                    type="time"
+                                    value={bizHours[day]?.close ?? "18:00"}
+                                    onChange={e => setBizHours(h => ({ ...h, [day]: { ...h[day], close: e.target.value } }))}
+                                    className="h-7 w-28 text-xs"
+                                  />
+                                </>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Closed</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Button
+                        className="w-full"
+                        disabled={saveBusinessSettingsMutation.isPending}
+                        onClick={() => saveBusinessSettingsMutation.mutate(businessProfile.id)}
+                      >
+                        {saveBusinessSettingsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                        Save business profile
+                      </Button>
+                    </div>
+
                     <div className="pt-2 border-t border-border">
                       <Link href={`/businesses/${businessProfile.id}`}>
                         <Button variant="outline" size="sm" className="gap-2 text-xs">
@@ -1774,6 +1974,7 @@ export function SettingsPage() {
                         </Button>
                       </Link>
                     </div>
+
                     {businessProfile.kybStatus !== "verified" && (
                       <Alert>
                         <Shield className="h-4 w-4" />
