@@ -2325,6 +2325,7 @@ export type PublicUser = Omit<User,
   | "bannedAt"
   | "bannedReason"
   | "isAdmin"
+  | "role"
   | "reminderPreferences"
   | "emailNotifications"
   | "dealNotifications"
