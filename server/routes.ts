@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
@@ -84,6 +85,7 @@ import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
   sanitizePublicUser,
+  stripAuthTokens,
 } from "./security";
 import {
   makeRegisterValidator,
@@ -103,6 +105,8 @@ import {
   makeSupportTicketRateLimiter,
   makePublicListingsRateLimiter,
   makeUserProfileRateLimiter,
+  makePhoneOtpSendLimiter,
+  makePhoneOtpVerifyLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -134,6 +138,8 @@ const resetPasswordLimiter = makeResetPasswordRateLimiter();
 const supportTicketLimiter = makeSupportTicketRateLimiter();
 const publicListingsLimiter = makePublicListingsRateLimiter();
 const userProfileLimiter = makeUserProfileRateLimiter();
+const phoneOtpSendLimiter = makePhoneOtpSendLimiter();
+const phoneOtpVerifyLimiter = makePhoneOtpVerifyLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -310,6 +316,10 @@ async function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: bo
 }
 
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  // Reject requests where a bearer token was presented but was invalid/expired
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -328,6 +338,9 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
 // Only the founder/super_admins can invite new admins — a regular department-lead
 // admin must never be able to mint invite links for someone else.
 const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -462,6 +475,8 @@ export async function registerRoutes(
           const user = req.user;
           if (!user) return res.redirect("/login?google_error=1");
 
+          if (user.isBanned) return res.redirect("/login?error=suspended");
+
           // Create our own session (consistent with email/password login)
           req.session.userId = user.id;
           (req.session as any).uaFingerprint = uaFingerprint(req);
@@ -590,6 +605,8 @@ export async function registerRoutes(
             signupType: "personal",
           } as any);
         }
+
+        if (user.isBanned) return res.redirect("/login?error=suspended");
 
         req.session.userId = user.id;
         (req.session as any).uaFingerprint = uaFingerprint(req);
@@ -914,7 +931,7 @@ export async function registerRoutes(
 
       req.session.userId = user.id;
       (req.session as any).uaFingerprint = uaFingerprint(req);
-      const { password, ...userWithoutPassword } = user;
+      const stripped = stripAuthTokens(user);
       // Parallelize session save + admin-flag sanitization so neither blocks the other
       const [, safeUser] = await Promise.all([
         new Promise<void>((resolve, reject) => {
@@ -923,7 +940,7 @@ export async function registerRoutes(
             else resolve();
           });
         }),
-        sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
+        sanitizeAdminFlag(stripped).catch(() => stripped),
       ]);
       res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
     } catch (error) {
@@ -996,7 +1013,7 @@ export async function registerRoutes(
   });
 
   // ── Phone OTP (WhatsApp) ─────────────────────────────────────────────────
-  app.post("/api/auth/phone/send-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/send-otp", requireAuth, phoneOtpSendLimiter, async (req, res) => {
     const userId = req.session.userId!;
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
 
@@ -1089,7 +1106,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/phone/verify-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/verify-otp", requireAuth, phoneOtpVerifyLimiter, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const code: string | undefined = typeof req.body.code === "string" ? req.body.code.trim() : undefined;
@@ -1157,6 +1174,10 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
+      if (user.isBanned) {
+        return res.status(403).json({ message: "Your account has been suspended. Contact support." });
+      }
+
       req.session.userId = user.id;
       (req.session as any).uaFingerprint = uaFingerprint(req);
       req.session.save((err) => {
@@ -1164,8 +1185,8 @@ export async function registerRoutes(
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Session error" });
         }
-        const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword)
+        const stripped = stripAuthTokens(user);
+        sanitizeAdminFlag(stripped)
           .then(async (safe) => {
             if (req.headers["x-client"] === "capacitor-app") {
               const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
@@ -1173,7 +1194,7 @@ export async function registerRoutes(
             }
             res.json(safe);
           })
-          .catch(() => res.json(userWithoutPassword));
+          .catch(() => res.json(stripped));
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1544,8 +1565,8 @@ export async function registerRoutes(
       return res.status(401).json({ message: "User not found" });
     }
 
-    const { password, ...userWithoutPassword } = user;
-    res.json(await sanitizeAdminFlag(userWithoutPassword));
+    const stripped = stripAuthTokens(user);
+    res.json(await sanitizeAdminFlag(stripped));
   });
 
   // Serve uploaded files
@@ -1615,37 +1636,33 @@ export async function registerRoutes(
       } else {
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        // Only use Replit object storage when actually running on Replit (REPL_ID is set).
-        // Locally, always write to disk even if PRIVATE_OBJECT_DIR is set in .env.local.
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          // Persistent object storage — survives redeploys.
-          const { objectStorageClient } = await import(
-            "./replit_integrations/object_storage/objectStorage"
-          );
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir
-            ? `${bucketSubDir}/public-uploads/${filename}`
-            : `public-uploads/${filename}`;
-          await objectStorageClient
-            .bucket(bucketName)
-            .file(objectName)
-            .save(req.file.buffer, {
-              contentType: detected.mime,
-              metadata: {
-                metadata: {
-                  "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }),
-                },
-              },
-            });
-          fileUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          fileUrl = await uploadToR2(generateR2Key("public-uploads", detected.ext), req.file.buffer, detected.mime);
         } else {
-          // Local dev (or Replit without object storage) — write to disk.
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          fileUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          if (privateDir && isOnReplit) {
+            const { objectStorageClient } = await import(
+              "./replit_integrations/object_storage/objectStorage"
+            );
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir
+              ? `${bucketSubDir}/public-uploads/${filename}`
+              : `public-uploads/${filename}`;
+            await objectStorageClient
+              .bucket(bucketName)
+              .file(objectName)
+              .save(req.file.buffer, {
+                contentType: detected.mime,
+                metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+              });
+            fileUrl = `/objects/public-uploads/${filename}`;
+          } else {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            fileUrl = `/uploads/${filename}`;
+          }
         }
       }
 
@@ -4020,7 +4037,12 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     try {
-      await storage.markNotificationAsRead(param(req.params.id));
+      const userId = req.session.userId!;
+      const notifId = param(req.params.id);
+      await db
+        .update(notifications)
+        .set({ isRead: true })
+        .where(and(eq(notifications.id, notifId), eq(notifications.userId, userId)));
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
@@ -6428,6 +6450,7 @@ export async function registerRoutes(
       }
       if (banned && user.email) {
         await storage.addBannedEmail(user.email, req.session.userId!, reason || undefined);
+        await destroyUserSessions(user.id);
       } else if (!banned && user.email) {
         await storage.removeBannedEmail(user.email);
       }
@@ -8367,9 +8390,8 @@ export async function registerRoutes(
           id: users.id,
           fullName: users.fullName,
           businessName: users.businessName,
-          profileImageUrl: users.profileImageUrl,
+          avatarUrl: users.avatarUrl,
           location: users.location,
-          role: users.role,
         })
         .from(users)
         .where(
@@ -8409,7 +8431,14 @@ export async function registerRoutes(
 
       const isOwnProfile = req.session?.userId === targetId;
       const isAdminCaller = req.session?.userId
-        ? await storage.getUser(req.session.userId).then(u => u?.isAdmin || u?.role === "admin" || u?.role === "super_admin").catch(() => false)
+        ? await storage.getUser(req.session.userId).then(async (u) => {
+            if (!u) return false;
+            const hasAdminRole = u.isAdmin || u.role === "admin" || u.role === "super_admin";
+            if (!hasAdminRole) return false;
+            const allowlist = await getAdminEmailAllowlist();
+            if (allowlist && !allowlist.has((u.email ?? "").trim().toLowerCase())) return false;
+            return true;
+          }).catch(() => false)
         : false;
 
       let profileData: Record<string, unknown>;
@@ -11435,22 +11464,26 @@ export async function registerRoutes(
         const filename = `${random}.${detected.ext}`;
         let mediaUrl: string;
 
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-            contentType: detected.mime,
-            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-          });
-          mediaUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          mediaUrl = await uploadToR2(generateR2Key("portfolio", detected.ext), req.file.buffer, detected.mime);
         } else {
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          mediaUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          if (privateDir && isOnReplit) {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            mediaUrl = `/objects/public-uploads/${filename}`;
+          } else {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            mediaUrl = `/uploads/${filename}`;
+          }
         }
 
         const mediaType = detected.mime.startsWith("video/") ? "video" : "image";
@@ -12392,23 +12425,27 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
       let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+          });
+          fileUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
@@ -12445,23 +12482,27 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
       let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+          });
+          fileUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
