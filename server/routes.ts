@@ -4548,9 +4548,10 @@ export async function registerRoutes(
         .select({
           id: users.id, fullName: users.fullName, email: users.email, phone: users.phone,
           role: users.role, accountType: users.accountType, isAdmin: users.isAdmin,
-          signupType: users.signupType, country: users.country, city: users.city,
+          signupType: users.signupType, country: users.country, city: users.city, location: users.location,
           avatarUrl: users.avatarUrl, isVerified: users.isVerified, isBanned: users.isBanned,
-          verificationLevel: users.verificationLevel, kycStatus: users.kycStatus,
+          verificationLevel: users.verificationLevel, kycStatus: users.kycStatus, kybStatus: users.kybStatus,
+          emailVerified: users.emailVerified, phoneVerified: users.phoneVerified,
           createdAt: users.createdAt, updatedAt: users.updatedAt, lastActiveAt: users.lastActiveAt,
         })
         .from(users)

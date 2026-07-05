@@ -364,7 +364,7 @@ export function AdminPage() {
     setter(prev => prev.size === ids.length && ids.every(id => prev.has(id)) ? new Set() : new Set(ids));
   }, []);
 
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users, isLoading: usersLoading, isError: usersError } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
     enabled: !!user?.isAdmin,
     staleTime: 0,
@@ -1999,6 +1999,11 @@ export function AdminPage() {
                 <Skeleton key={i} className="h-16" />
               ))}
             </div>
+          ) : usersError ? (
+            <div className="p-8 text-center text-destructive">
+              <p className="font-medium">Failed to load users</p>
+              <p className="text-sm text-muted-foreground mt-1">Check the server logs for details</p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -2020,7 +2025,13 @@ export function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers?.map((u) => (
+                {!filteredUsers || filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      {searchQuery ? `No users match "${searchQuery}" — clear the search to see all users` : "No users found"}
+                    </TableCell>
+                  </TableRow>
+                ) : filteredUsers.map((u) => (
                   <TableRow key={u.id} className={`${u.isBanned ? "opacity-50" : ""} ${selectedUserIds.has(u.id) ? "bg-primary/5" : ""} cursor-pointer`} onClick={() => setSelectedUserId(u.id)}>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedUserIds.has(u.id)} onCheckedChange={() => toggleId(u.id, setSelectedUserIds)} />
@@ -6649,6 +6660,7 @@ export function AdminPage() {
               className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-2" : ""}`}
               onClick={() => {
                 if (item.id === "users") setUserSubFilter("all");
+                setSearchQuery("");
                 setActiveSection(item.id);
               }}
               data-testid={`nav-${item.id}`}
