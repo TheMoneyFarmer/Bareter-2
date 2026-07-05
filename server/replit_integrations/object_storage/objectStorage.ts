@@ -95,38 +95,30 @@ export class ObjectStorageService {
   }
 
   // Downloads an object to the response.
+  // Single getMetadata() call covers both content-type and ACL policy — avoids the
+  // double-getMetadata() that was costing 2 Advanced Ops per request.
   async downloadObject(file: File, res: Response, cacheTtlSec: number = 3600) {
     try {
-      // Get file metadata
       const [metadata] = await file.getMetadata();
-      // Get the ACL policy for the object.
-      const aclPolicy = await getObjectAclPolicy(file);
+      const aclPolicyRaw = metadata?.metadata?.["custom:aclPolicy"];
+      const aclPolicy = aclPolicyRaw ? JSON.parse(aclPolicyRaw as string) : null;
       const isPublic = aclPolicy?.visibility === "public";
-      // Set appropriate headers
       res.set({
         "Content-Type": metadata.contentType || "application/octet-stream",
         "Content-Length": metadata.size,
-        "Cache-Control": `${
-          isPublic ? "public" : "private"
-        }, max-age=${cacheTtlSec}`,
+        "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
+        "ETag": metadata.etag || "",
       });
 
-      // Stream the file to the response
       const stream = file.createReadStream();
-
       stream.on("error", (err) => {
         console.error("Stream error:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Error streaming file" });
-        }
+        if (!res.headersSent) res.status(500).json({ error: "Error streaming file" });
       });
-
       stream.pipe(res);
     } catch (error) {
       console.error("Error downloading file:", error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Error downloading file" });
-      }
+      if (!res.headersSent) res.status(500).json({ error: "Error downloading file" });
     }
   }
 
@@ -155,6 +147,8 @@ export class ObjectStorageService {
   }
 
   // Gets the object entity file from the object path.
+  // Does NOT call file.exists() — that's 1 Advanced Op saved per request.
+  // The caller's downloadObject() will surface a 404 naturally via stream error.
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
@@ -173,12 +167,7 @@ export class ObjectStorageService {
     const objectEntityPath = `${entityDir}${entityId}`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
-    const objectFile = bucket.file(objectName);
-    const [exists] = await objectFile.exists();
-    if (!exists) {
-      throw new ObjectNotFoundError();
-    }
-    return objectFile;
+    return bucket.file(objectName);
   }
 
   normalizeObjectEntityPath(
