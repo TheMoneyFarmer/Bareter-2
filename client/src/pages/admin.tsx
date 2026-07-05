@@ -1400,14 +1400,15 @@ export function AdminPage() {
   );
 
   const renderDashboard = () => {
+    type AttentionItem = { label: string; section: AdminSection; subFilter?: "all" | "creators" | "businesses" | "collabs" | "verifications" };
     const attentionItems = [
       (overviewData?.listings?.pendingReview ?? 0) > 0
         ? { label: `${overviewData.listings.pendingReview} listings pending review`, section: "listings" as AdminSection } : null,
       (overviewData?.businesses?.pendingKyb ?? 0) > 0
-        ? { label: `${overviewData.businesses.pendingKyb} KYB applications pending`, section: "businesses" as AdminSection } : null,
+        ? { label: `${overviewData.businesses.pendingKyb} KYB applications pending`, section: "users" as AdminSection, subFilter: "businesses" as const } : null,
       (overviewData?.messageFlags?.today ?? 0) > 0
         ? { label: `${overviewData.messageFlags.today} new message flags today`, section: "flags" as AdminSection } : null,
-    ].filter(Boolean) as { label: string; section: AdminSection }[];
+    ].filter(Boolean) as AttentionItem[];
 
     const userFunnel: { stage: string; count: number }[] = funnelV2Data?.userFunnel ?? [];
     const exchangeFunnel: { stage: string; count: number }[] = funnelV2Data?.listingFunnel ?? [];
@@ -1436,7 +1437,7 @@ export function AdminPage() {
             {attentionItems.map((item) => (
               <button
                 key={item.label}
-                onClick={() => setActiveSection(item.section)}
+                onClick={() => { if (item.subFilter) setUserSubFilter(item.subFilter); setActiveSection(item.section); }}
                 className="text-sm text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:no-underline"
               >
                 {item.label}
@@ -1783,6 +1784,44 @@ export function AdminPage() {
     window.open("/api/admin/users/export.csv", "_blank");
     toast({ title: "Exporting", description: "CSV download started" });
   };
+
+  const USER_HUB_FILTERS: { id: "all" | "creators" | "businesses" | "collabs" | "verifications"; label: string; icon: React.ElementType }[] = [
+    { id: "all", label: "All Users", icon: Users },
+    { id: "creators", label: "Creators", icon: Camera },
+    { id: "businesses", label: "Businesses", icon: Building2 },
+    { id: "collabs", label: "Collabs", icon: Zap },
+    { id: "verifications", label: "Verifications", icon: UserCheck },
+  ];
+
+  const renderUsersHub = () => (
+    <div className="space-y-6">
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-2">
+        {USER_HUB_FILTERS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setUserSubFilter(id)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+              userSubFilter === id
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-muted text-muted-foreground border-border hover:bg-accent"
+            }`}
+            data-testid={`users-hub-filter-${id}`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {userSubFilter === "all" && renderUsers()}
+      {userSubFilter === "creators" && renderCreators()}
+      {userSubFilter === "businesses" && renderBusinesses()}
+      {userSubFilter === "collabs" && renderCollabs()}
+      {userSubFilter === "verifications" && renderVerifications()}
+    </div>
+  );
 
   const renderUsers = () => {
     const bannedCount = (users ?? []).filter(u => u.isBanned).length;
@@ -4525,20 +4564,20 @@ export function AdminPage() {
                   </TableHeader>
                   <TableBody>
                     {kybList.map((b: any) => (
-                      <TableRow key={b.id}>
-                        <TableCell className="font-medium">{b.businessName || "—"}</TableCell>
+                      <TableRow key={b.businessId}>
+                        <TableCell className="font-medium">{b.companyName || "—"}</TableCell>
                         <TableCell className="text-sm">{b.ownerName || "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{b.ownerEmail || "—"}</TableCell>
-                        <TableCell className="text-sm">{b.kybSubmittedAt ? new Date(b.kybSubmittedAt).toLocaleDateString() : "—"}</TableCell>
-                        <TableCell className="text-sm">{daysSince(b.kybSubmittedAt)}</TableCell>
+                        <TableCell className="text-sm">{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "—"}</TableCell>
+                        <TableCell className="text-sm">{daysSince(b.createdAt)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50"
-                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "approved" })}>
+                              onClick={() => bizKybMutation.mutate({ id: b.businessId, status: "verified" })}>
                               <UserCheck className="h-3.5 w-3.5 mr-1" />Approve
                             </Button>
                             <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
-                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "rejected" })}>
+                              onClick={() => bizKybMutation.mutate({ id: b.businessId, status: "rejected" })}>
                               <XCircle className="h-3.5 w-3.5 mr-1" />Reject
                             </Button>
                           </div>
@@ -4787,7 +4826,7 @@ export function AdminPage() {
   // ── Creators section ──────────────────────────────────────────────────
   const { data: adminCreators = [] } = useQuery<any[]>({
     queryKey: ["/api/admin/creators"],
-    enabled: activeSection === "creators",
+    enabled: activeSection === "creators" || (activeSection === "users" && userSubFilter === "creators"),
   });
 
   const renderCreators = () => (
@@ -4888,7 +4927,7 @@ export function AdminPage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: activeSection === "businesses",
+    enabled: activeSection === "businesses" || (activeSection === "users" && userSubFilter === "businesses"),
     staleTime: 0,
   });
 
@@ -5082,7 +5121,7 @@ export function AdminPage() {
   // ── Collab Applications section ───────────────────────────────────────
   const { data: adminCollabs = [] } = useQuery<any[]>({
     queryKey: ["/api/admin/collab-applications"],
-    enabled: activeSection === "collabs",
+    enabled: activeSection === "collabs" || (activeSection === "users" && userSubFilter === "collabs"),
   });
 
   const STATUS_COLORS: Record<string, string> = {
@@ -6506,7 +6545,11 @@ export function AdminPage() {
       case "dashboard":
         return renderDashboard();
       case "users":
-        return renderUsers();
+      case "creators":
+      case "businesses":
+      case "verifications":
+      case "collabs":
+        return renderUsersHub();
       case "listings":
         return renderListings();
       case "deals":
@@ -6533,14 +6576,6 @@ export function AdminPage() {
         return renderSupportSection();
       case "reviews":
         return renderReviews();
-      case "creators":
-        return renderCreators();
-      case "businesses":
-        return renderBusinesses();
-      case "verifications":
-        return renderVerifications();
-      case "collabs":
-        return renderCollabs();
       case "analytics":
         return renderAnalytics();
       case "feature-stats":
@@ -6608,9 +6643,18 @@ export function AdminPage() {
           {navItems.map((item) => (
             <Button
               key={item.id}
-              variant={activeSection === item.id ? "secondary" : "ghost"}
+              variant={
+                activeSection === item.id ||
+                (item.id === "users" &&
+                  (["creators", "businesses", "collabs", "verifications"] as AdminSection[]).includes(activeSection))
+                  ? "secondary"
+                  : "ghost"
+              }
               className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-2" : ""}`}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => {
+                if (item.id === "users") setUserSubFilter("all");
+                setActiveSection(item.id);
+              }}
               data-testid={`nav-${item.id}`}
             >
               <item.icon className="h-4 w-4 shrink-0" />

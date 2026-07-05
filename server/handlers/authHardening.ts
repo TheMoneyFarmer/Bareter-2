@@ -177,3 +177,31 @@ export function makeUserProfileRateLimiter(overrides: Partial<Options> = {}) {
     ...overrides,
   });
 }
+
+// Phone OTP send — prevent cost attacks via SMS/WhatsApp spam.
+// 3 sends per 15 minutes per IP is more than enough for any real user.
+export function makePhoneOtpSendLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: process.env.NODE_ENV === "production" ? 3 : 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many verification code requests. Please wait 15 minutes before trying again." },
+    ...overrides,
+  });
+}
+
+// Phone OTP verify — prevent brute-force of the 6-digit code (900,000 space).
+// 5 attempts per 10-minute window per IP; code expires after 10 min anyway.
+export function makePhoneOtpVerifyLimiter(overrides: Partial<Options> = {}) {
+  return rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: process.env.NODE_ENV === "production" ? 5 : 50,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: ipKey,
+    message: { message: "Too many verification attempts. Please request a new code." },
+    ...overrides,
+  });
+}

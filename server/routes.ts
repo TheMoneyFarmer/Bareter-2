@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
@@ -84,6 +85,7 @@ import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
   sanitizePublicUser,
+  stripAuthTokens,
 } from "./security";
 import {
   makeRegisterValidator,
@@ -104,6 +106,8 @@ import {
   makeSupportTicketRateLimiter,
   makePublicListingsRateLimiter,
   makeUserProfileRateLimiter,
+  makePhoneOtpSendLimiter,
+  makePhoneOtpVerifyLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -135,6 +139,8 @@ const resetPasswordLimiter = makeResetPasswordRateLimiter();
 const supportTicketLimiter = makeSupportTicketRateLimiter();
 const publicListingsLimiter = makePublicListingsRateLimiter();
 const userProfileLimiter = makeUserProfileRateLimiter();
+const phoneOtpSendLimiter = makePhoneOtpSendLimiter();
+const phoneOtpVerifyLimiter = makePhoneOtpVerifyLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -311,6 +317,10 @@ async function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: bo
 }
 
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  // Reject requests where a bearer token was presented but was invalid/expired
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -329,6 +339,9 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
 // Only the founder/super_admins can invite new admins — a regular department-lead
 // admin must never be able to mint invite links for someone else.
 const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -342,6 +355,17 @@ const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction
   }
   next();
 };
+
+// Shared helper: checks if a user has admin role AND is on the email allowlist.
+// Use this wherever inline admin checks appear outside of requireAdmin middleware.
+async function isAllowlistedAdmin(user: { isAdmin?: boolean | null; role?: string | null; email?: string | null } | null | undefined): Promise<boolean> {
+  if (!user) return false;
+  const hasRole = !!(user.isAdmin || user.role === "admin" || user.role === "super_admin");
+  if (!hasRole) return false;
+  const allow = await getAdminEmailAllowlist();
+  if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) return false;
+  return true;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -469,6 +493,8 @@ export async function registerRoutes(
         try {
           const user = req.user;
           if (!user) return res.redirect("/login?google_error=1");
+
+          if (user.isBanned) return res.redirect("/login?error=suspended");
 
           // Capture the post-login destination from the pre-auth session before
           // regenerating — regeneration clears the old session data.
@@ -612,6 +638,8 @@ export async function registerRoutes(
           } as any);
         }
 
+        if (user.isBanned) return res.redirect("/login?error=suspended");
+
         // Capture redirect from the pre-auth session before regenerating.
         const dest = (req.session as any).oauthRedirect || "/browse";
 
@@ -666,7 +694,7 @@ export async function registerRoutes(
       if (await isMaintenanceMode()) {
         if (req.session?.userId) {
           const sessionUser = await storage.getUser(req.session.userId).catch(() => null);
-          if (sessionUser?.isAdmin || sessionUser?.role === "admin" || sessionUser?.role === "super_admin") {
+          if (await isAllowlistedAdmin(sessionUser)) {
             return next();
           }
         }
@@ -946,7 +974,7 @@ export async function registerRoutes(
         }
         req.session.userId = user.id;
         (req.session as any).uaFingerprint = uaFingerprint(req);
-        const { password, ...userWithoutPassword } = user;
+        const stripped = stripAuthTokens(user);
         // Parallelize session save + admin-flag sanitization so neither blocks the other
         try {
           const [, safeUser] = await Promise.all([
@@ -956,7 +984,7 @@ export async function registerRoutes(
                 else resolve();
               });
             }),
-            sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
+            sanitizeAdminFlag(stripped).catch(() => stripped),
           ]);
           res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
         } catch {
@@ -1033,7 +1061,7 @@ export async function registerRoutes(
   });
 
   // ── Phone OTP (WhatsApp) ─────────────────────────────────────────────────
-  app.post("/api/auth/phone/send-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/send-otp", requireAuth, phoneOtpSendLimiter, async (req, res) => {
     const userId = req.session.userId!;
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
 
@@ -1126,7 +1154,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/phone/verify-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/verify-otp", requireAuth, phoneOtpVerifyLimiter, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const code: string | undefined = typeof req.body.code === "string" ? req.body.code.trim() : undefined;
@@ -1194,6 +1222,10 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
+      if (user.isBanned) {
+        return res.status(403).json({ message: "Your account has been suspended. Contact support." });
+      }
+
       // SECURITY: regenerate the session ID on login to prevent session
       // fixation — any pre-auth session identifier is discarded here.
       req.session.regenerate((regenErr) => {
@@ -1208,8 +1240,8 @@ export async function registerRoutes(
             console.error("Session save error:", err);
             return res.status(500).json({ message: "Session error" });
           }
-          const { password, ...userWithoutPassword } = user;
-          sanitizeAdminFlag(userWithoutPassword)
+          const stripped = stripAuthTokens(user);
+          sanitizeAdminFlag(stripped)
             .then(async (safe) => {
               // Native app login: also return a bearer token.
               if (req.headers["x-client"] === "capacitor-app") {
@@ -1218,7 +1250,7 @@ export async function registerRoutes(
               }
               res.json(safe);
             })
-            .catch(() => res.json(userWithoutPassword));
+            .catch(() => res.json(stripped));
         });
       });
     } catch (error) {
@@ -1596,8 +1628,8 @@ export async function registerRoutes(
       return res.status(401).json({ message: "User not found" });
     }
 
-    const { password, ...userWithoutPassword } = user;
-    res.json(await sanitizeAdminFlag(userWithoutPassword));
+    const stripped = stripAuthTokens(user);
+    res.json(await sanitizeAdminFlag(stripped));
   });
 
   // Serve uploaded files
@@ -1680,37 +1712,33 @@ export async function registerRoutes(
       } else {
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        // Only use Replit object storage when actually running on Replit (REPL_ID is set).
-        // Locally, always write to disk even if PRIVATE_OBJECT_DIR is set in .env.local.
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          // Persistent object storage — survives redeploys.
-          const { objectStorageClient } = await import(
-            "./replit_integrations/object_storage/objectStorage"
-          );
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir
-            ? `${bucketSubDir}/public-uploads/${filename}`
-            : `public-uploads/${filename}`;
-          await objectStorageClient
-            .bucket(bucketName)
-            .file(objectName)
-            .save(req.file.buffer, {
-              contentType: detected.mime,
-              metadata: {
-                metadata: {
-                  "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }),
-                },
-              },
-            });
-          fileUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          fileUrl = await uploadToR2(generateR2Key("public-uploads", detected.ext), req.file.buffer, detected.mime);
         } else {
-          // Local dev (or Replit without object storage) — write to disk.
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          fileUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          if (privateDir && isOnReplit) {
+            const { objectStorageClient } = await import(
+              "./replit_integrations/object_storage/objectStorage"
+            );
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir
+              ? `${bucketSubDir}/public-uploads/${filename}`
+              : `public-uploads/${filename}`;
+            await objectStorageClient
+              .bucket(bucketName)
+              .file(objectName)
+              .save(req.file.buffer, {
+                contentType: detected.mime,
+                metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+              });
+            fileUrl = `/objects/public-uploads/${filename}`;
+          } else {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            fileUrl = `/uploads/${filename}`;
+          }
         }
       }
 
@@ -1841,8 +1869,7 @@ export async function registerRoutes(
       if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
       }
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
 
       // Send profile updated confirmation email
       if (updatedUser.email) {
@@ -1863,13 +1890,15 @@ export async function registerRoutes(
   app.patch("/api/users/settings", requireAuth, async (req, res) => {
     try {
       const allowedFields = [
-        "fullName", "email", "phone", "website", "businessName", "location",
+        "fullName", "website", "businessName", "location",
         "country", "city", "locationPrompted",
         "timezone", "currency", "language",
         "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
         "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
         "preferredCategories", "tradingRadius", "minTradeValue", "maxTradeValue", "autoMatchEnabled",
         "socialLinks",
+        // "email" and "phone" intentionally excluded — changes must go through the OTP
+        // verification flow to prevent bypassing emailVerified / phoneVerified flags
       ];
       
       const data: Record<string, any> = {};
@@ -1899,8 +1928,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
     } catch (error) {
       console.error("Update settings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4375,8 +4403,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       console.error("Update account type error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4766,8 +4793,7 @@ export async function registerRoutes(
           sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined, reason: "Your verification status was updated by the Bareter team." }).catch(() => {});
         }
       }
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verify user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6275,8 +6301,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, isAdmin ? "add" : "remove", req.session.userId);
       }
       await logAdminAction(req, "user_role_changed", "user", user.id, { role, email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin change role error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6295,8 +6320,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "add", req.session.userId);
       }
       await logAdminAction(req, "admin_promote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin promote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6315,8 +6339,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "remove", req.session.userId);
       }
       await logAdminAction(req, "admin_demote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin demote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6494,12 +6517,12 @@ export async function registerRoutes(
       }
       if (banned && user.email) {
         await storage.addBannedEmail(user.email, req.session.userId!, reason || undefined);
+        await destroyUserSessions(user.id);
       } else if (!banned && user.email) {
         await storage.removeBannedEmail(user.email);
       }
       await logAdminAction(req, banned ? "user_banned" : "user_unbanned", "user", user.id, { email: user.email, reason });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin ban user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -7031,8 +7054,7 @@ export async function registerRoutes(
         });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verification tier error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -7074,9 +7096,8 @@ export async function registerRoutes(
       }
       const userListings = await storage.getListingsByUser(user.id);
       const userDeals = await storage.getDealsByUser(user.id);
-      const { password, ...userWithoutPassword } = user;
       res.json({
-        ...userWithoutPassword,
+        ...stripAuthTokens(user),
         listings: userListings,
         deals: userDeals,
       });
@@ -8081,8 +8102,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       await logAdminAction(req, "marketing_consent_updated", "user", user.id, { marketingEmails: !!marketingEmails });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin marketing consent error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -8135,8 +8155,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -8433,9 +8452,8 @@ export async function registerRoutes(
           id: users.id,
           fullName: users.fullName,
           businessName: users.businessName,
-          profileImageUrl: users.profileImageUrl,
+          avatarUrl: users.avatarUrl,
           location: users.location,
-          role: users.role,
         })
         .from(users)
         .where(
@@ -8475,7 +8493,14 @@ export async function registerRoutes(
 
       const isOwnProfile = req.session?.userId === targetId;
       const isAdminCaller = req.session?.userId
-        ? await storage.getUser(req.session.userId).then(u => u?.isAdmin || u?.role === "admin" || u?.role === "super_admin").catch(() => false)
+        ? await storage.getUser(req.session.userId).then(async (u) => {
+            if (!u) return false;
+            const hasAdminRole = u.isAdmin || u.role === "admin" || u.role === "super_admin";
+            if (!hasAdminRole) return false;
+            const allowlist = await getAdminEmailAllowlist();
+            if (allowlist && !allowlist.has((u.email ?? "").trim().toLowerCase())) return false;
+            return true;
+          }).catch(() => false)
         : false;
 
       let profileData: Record<string, unknown>;
@@ -9361,9 +9386,13 @@ export async function registerRoutes(
         const msgs = await db.select().from(messages)
           .where(eq(messages.dealId, deal.id))
           .orderBy(asc(messages.createdAt));
-        // Mark as read
+        // Mark only messages sent BY the other party as read (not the current user's own messages)
         await db.update(messages).set({ isRead: true })
-          .where(and(eq(messages.dealId, deal.id), eq(messages.isRead, false)));
+          .where(and(
+            eq(messages.dealId, deal.id),
+            eq(messages.isRead, false),
+            sql`${messages.senderId} != ${myId}`,
+          ));
         for (const m of msgs) {
           dealMsgs.push({
             id: m.id,
@@ -11501,22 +11530,26 @@ export async function registerRoutes(
         const filename = `${random}.${detected.ext}`;
         let mediaUrl: string;
 
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-            contentType: detected.mime,
-            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-          });
-          mediaUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          mediaUrl = await uploadToR2(generateR2Key("portfolio", detected.ext), req.file.buffer, detected.mime);
         } else {
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          mediaUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          if (privateDir && isOnReplit) {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            mediaUrl = `/objects/public-uploads/${filename}`;
+          } else {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            mediaUrl = `/uploads/${filename}`;
+          }
         }
 
         const mediaType = detected.mime.startsWith("video/") ? "video" : "image";
@@ -11816,6 +11849,10 @@ export async function registerRoutes(
       return res.redirect(302, "/browse");
     }
     const safe = dest.replace(/[^\w\-/?=&#%.]/g, ""); // strip anything unexpected
+    // Reject protocol-relative URLs like //evil.com that start with / but redirect off-site
+    if (!safe.startsWith("/") || safe.startsWith("//")) {
+      return res.redirect(302, "/browse");
+    }
     if (req.session?.userId) {
       return res.redirect(302, safe);
     }
@@ -12323,7 +12360,7 @@ export async function registerRoutes(
       // Membership check: owner or member only
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      if (profile.ownerId !== userId && !user?.isAdmin) {
+      if (profile.ownerId !== userId && !(await isAllowlistedAdmin(user))) {
         const membership = await storage.getBusinessMembership(userId, profile.id);
         if (!membership) return res.status(403).json({ message: "Not authorised" });
       }
@@ -12390,9 +12427,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12441,9 +12477,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12458,23 +12493,27 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
       let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+          });
+          fileUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
@@ -12494,9 +12533,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12511,23 +12549,27 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
       let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        if (privateDir && isOnReplit) {
+          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const dirParts = privateDir.replace(/^\/+/, "").split("/");
+          const bucketName = dirParts[0];
+          const bucketSubDir = dirParts.slice(1).join("/");
+          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            contentType: detected.mime,
+            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+          });
+          fileUrl = `/objects/public-uploads/${filename}`;
+        } else {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
@@ -12600,8 +12642,8 @@ export async function registerRoutes(
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      // Only listing owner or admin can see all claims
-      if (listing.userId !== userId && !user?.isAdmin) {
+      // Only listing owner or allowlisted admin can see all claims
+      if (listing.userId !== userId && !(await isAllowlistedAdmin(user))) {
         return res.status(403).json({ message: "Not authorised" });
       }
       const claims = await storage.getListingClaims(listingId);
