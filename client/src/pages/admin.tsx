@@ -4525,20 +4525,20 @@ export function AdminPage() {
                   </TableHeader>
                   <TableBody>
                     {kybList.map((b: any) => (
-                      <TableRow key={b.id}>
-                        <TableCell className="font-medium">{b.businessName || "—"}</TableCell>
+                      <TableRow key={b.businessId}>
+                        <TableCell className="font-medium">{b.companyName || "—"}</TableCell>
                         <TableCell className="text-sm">{b.ownerName || "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{b.ownerEmail || "—"}</TableCell>
-                        <TableCell className="text-sm">{b.kybSubmittedAt ? new Date(b.kybSubmittedAt).toLocaleDateString() : "—"}</TableCell>
-                        <TableCell className="text-sm">{daysSince(b.kybSubmittedAt)}</TableCell>
+                        <TableCell className="text-sm">{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "—"}</TableCell>
+                        <TableCell className="text-sm">{daysSince(b.createdAt)}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50"
-                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "approved" })}>
+                              onClick={() => bizKybMutation.mutate({ id: b.businessId, status: "verified" })}>
                               <UserCheck className="h-3.5 w-3.5 mr-1" />Approve
                             </Button>
                             <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
-                              onClick={() => bizKybMutation.mutate({ id: b.id, status: "rejected" })}>
+                              onClick={() => bizKybMutation.mutate({ id: b.businessId, status: "rejected" })}>
                               <XCircle className="h-3.5 w-3.5 mr-1" />Reject
                             </Button>
                           </div>
