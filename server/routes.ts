@@ -355,6 +355,17 @@ const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction
   next();
 };
 
+// Shared helper: checks if a user has admin role AND is on the email allowlist.
+// Use this wherever inline admin checks appear outside of requireAdmin middleware.
+async function isAllowlistedAdmin(user: { isAdmin?: boolean | null; role?: string | null; email?: string | null } | null | undefined): Promise<boolean> {
+  if (!user) return false;
+  const hasRole = !!(user.isAdmin || user.role === "admin" || user.role === "super_admin");
+  if (!hasRole) return false;
+  const allow = await getAdminEmailAllowlist();
+  if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) return false;
+  return true;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -458,8 +469,9 @@ export async function registerRoutes(
     // Kick off the OAuth flow
     app.get("/auth/google", (req, res, next) => {
       const redirect = (req.query.redirect as string) || "/browse";
-      // stash redirect destination in session before we leave the app
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      // stash redirect destination in session before we leave the app; reject protocol-relative URLs
+      const safeRedirect = redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/browse";
+      (req.session as any).oauthRedirect = safeRedirect;
       // session must NOT be false here — passport needs to store the OAuth state
       // parameter in the session. Without it, Google rejects the request as
       // non-compliant with its OAuth 2.0 security policy.
@@ -548,7 +560,8 @@ export async function registerRoutes(
     // Step 1 — redirect user to Apple's auth page
     app.get("/auth/apple", (req, res) => {
       const redirect = (req.query.redirect as string) || "/browse";
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      const safeRedirect = redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/browse";
+      (req.session as any).oauthRedirect = safeRedirect;
       const params = new URLSearchParams({
         client_id:     APPLE_CLIENT_ID as string,
         redirect_uri:  `${baseUrl}/auth/apple/callback`,
@@ -657,7 +670,7 @@ export async function registerRoutes(
       if (await isMaintenanceMode()) {
         if (req.session?.userId) {
           const sessionUser = await storage.getUser(req.session.userId).catch(() => null);
-          if (sessionUser?.isAdmin || sessionUser?.role === "admin" || sessionUser?.role === "super_admin") {
+          if (await isAllowlistedAdmin(sessionUser)) {
             return next();
           }
         }
@@ -1116,7 +1129,10 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.phoneVerified) return res.json({ message: "Phone already verified", phoneVerified: true });
 
-      if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
+      const codeMatch = user.phoneVerificationCode &&
+        user.phoneVerificationCode.length === code.length &&
+        crypto.timingSafeEqual(Buffer.from(user.phoneVerificationCode), Buffer.from(code));
+      if (!codeMatch) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (!user.phoneVerificationExpires || user.phoneVerificationExpires < new Date()) {
@@ -1793,8 +1809,7 @@ export async function registerRoutes(
       if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
       }
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
 
       // Send profile updated confirmation email
       if (updatedUser.email) {
@@ -1815,13 +1830,15 @@ export async function registerRoutes(
   app.patch("/api/users/settings", requireAuth, async (req, res) => {
     try {
       const allowedFields = [
-        "fullName", "email", "phone", "website", "businessName", "location",
+        "fullName", "website", "businessName", "location",
         "country", "city", "locationPrompted",
         "timezone", "currency", "language",
         "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
         "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
         "preferredCategories", "tradingRadius", "minTradeValue", "maxTradeValue", "autoMatchEnabled",
         "socialLinks",
+        // "email" and "phone" intentionally excluded — changes must go through the OTP
+        // verification flow to prevent bypassing emailVerified / phoneVerified flags
       ];
       
       const data: Record<string, any> = {};
@@ -1851,8 +1868,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
     } catch (error) {
       console.error("Update settings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1933,7 +1949,10 @@ export async function registerRoutes(
       if (!user.passwordChangeOtp || !user.passwordChangeOtpExpires) {
         return res.status(400).json({ message: "No pending verification code. Please request a new one." });
       }
-      if (user.passwordChangeOtp !== otp.trim()) {
+      const trimmedOtp = otp.trim();
+      const otpMatch = user.passwordChangeOtp.length === trimmedOtp.length &&
+        crypto.timingSafeEqual(Buffer.from(user.passwordChangeOtp), Buffer.from(trimmedOtp));
+      if (!otpMatch) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (new Date() > new Date(user.passwordChangeOtpExpires)) {
@@ -4332,8 +4351,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       console.error("Update account type error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4722,8 +4740,7 @@ export async function registerRoutes(
           sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined, reason: "Your verification status was updated by the Bareter team." }).catch(() => {});
         }
       }
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verify user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6231,8 +6248,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, isAdmin ? "add" : "remove", req.session.userId);
       }
       await logAdminAction(req, "user_role_changed", "user", user.id, { role, email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin change role error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6251,8 +6267,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "add", req.session.userId);
       }
       await logAdminAction(req, "admin_promote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin promote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6271,8 +6286,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "remove", req.session.userId);
       }
       await logAdminAction(req, "admin_demote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin demote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6455,8 +6469,7 @@ export async function registerRoutes(
         await storage.removeBannedEmail(user.email);
       }
       await logAdminAction(req, banned ? "user_banned" : "user_unbanned", "user", user.id, { email: user.email, reason });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin ban user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6988,8 +7001,7 @@ export async function registerRoutes(
         });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verification tier error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -7031,9 +7043,8 @@ export async function registerRoutes(
       }
       const userListings = await storage.getListingsByUser(user.id);
       const userDeals = await storage.getDealsByUser(user.id);
-      const { password, ...userWithoutPassword } = user;
       res.json({
-        ...userWithoutPassword,
+        ...stripAuthTokens(user),
         listings: userListings,
         deals: userDeals,
       });
@@ -8038,8 +8049,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       await logAdminAction(req, "marketing_consent_updated", "user", user.id, { marketingEmails: !!marketingEmails });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin marketing consent error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -8092,8 +8102,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -9324,9 +9333,13 @@ export async function registerRoutes(
         const msgs = await db.select().from(messages)
           .where(eq(messages.dealId, deal.id))
           .orderBy(asc(messages.createdAt));
-        // Mark as read
+        // Mark only messages sent BY the other party as read (not the current user's own messages)
         await db.update(messages).set({ isRead: true })
-          .where(and(eq(messages.dealId, deal.id), eq(messages.isRead, false)));
+          .where(and(
+            eq(messages.dealId, deal.id),
+            eq(messages.isRead, false),
+            sql`${messages.senderId} != ${myId}`,
+          ));
         for (const m of msgs) {
           dealMsgs.push({
             id: m.id,
@@ -11783,6 +11796,10 @@ export async function registerRoutes(
       return res.redirect(302, "/browse");
     }
     const safe = dest.replace(/[^\w\-/?=&#%.]/g, ""); // strip anything unexpected
+    // Reject protocol-relative URLs like //evil.com that start with / but redirect off-site
+    if (!safe.startsWith("/") || safe.startsWith("//")) {
+      return res.redirect(302, "/browse");
+    }
     if (req.session?.userId) {
       return res.redirect(302, safe);
     }
@@ -12290,7 +12307,7 @@ export async function registerRoutes(
       // Membership check: owner or member only
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      if (profile.ownerId !== userId && !user?.isAdmin) {
+      if (profile.ownerId !== userId && !(await isAllowlistedAdmin(user))) {
         const membership = await storage.getBusinessMembership(userId, profile.id);
         if (!membership) return res.status(403).json({ message: "Not authorised" });
       }
@@ -12357,9 +12374,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12408,9 +12424,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12465,9 +12480,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12575,8 +12589,8 @@ export async function registerRoutes(
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      // Only listing owner or admin can see all claims
-      if (listing.userId !== userId && !user?.isAdmin) {
+      // Only listing owner or allowlisted admin can see all claims
+      if (listing.userId !== userId && !(await isAllowlistedAdmin(user))) {
         return res.status(403).json({ message: "Not authorised" });
       }
       const claims = await storage.getListingClaims(listingId);

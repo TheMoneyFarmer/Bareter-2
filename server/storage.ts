@@ -1529,7 +1529,9 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(listings.isActive, true),
         sql`${listings.id} != ${listingId}`,
-        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.raw(cats.map(c => `'${c.replace(/'/g, "''")}'`).join(","))}]` : sql`true`,
+        cats.length > 0
+          ? sql`${listings.categories} ?| ARRAY[${sql.join(cats.map(c => sql`${c}`), sql`, `)}]`
+          : sql`true`,
       ))
       .orderBy(
         sql`abs(cast(${listings.retailValue} as numeric) - ${value})`,
