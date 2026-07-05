@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -250,6 +251,7 @@ export function AdminPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
+  const [userSubFilter, setUserSubFilter] = useState<"all" | "creators" | "businesses" | "collabs" | "verifications">("all");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDeal, setSelectedDeal] = useState<DealWithUsers | null>(null);
@@ -362,7 +364,7 @@ export function AdminPage() {
     setter(prev => prev.size === ids.length && ids.every(id => prev.has(id)) ? new Set() : new Set(ids));
   }, []);
 
-  const { data: users, isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users, isLoading: usersLoading, isError: usersError } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
     enabled: !!user?.isAdmin,
     staleTime: 0,
@@ -1300,10 +1302,6 @@ export function AdminPage() {
     { id: "email", label: "Email", icon: Mail },
     { id: "support", label: "Support", icon: MessageSquare },
     { id: "reviews", label: "Reviews", icon: Star },
-    { id: "creators", label: "Creators", icon: Camera },
-    { id: "businesses", label: "Businesses", icon: Building2 },
-    { id: "verifications", label: "Verifications", icon: UserCheck },
-    { id: "collabs", label: "Collabs", icon: Zap },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "feature-stats", label: "Feature Hub", icon: Zap },
     { id: "barter-credits", label: "Barter Credits", icon: Coins },
@@ -1400,7 +1398,7 @@ export function AdminPage() {
   );
 
   const renderDashboard = () => {
-    type AttentionItem = { label: string; section: AdminSection; subFilter?: "all" | "creators" | "businesses" | "collabs" | "verifications" };
+    type AttentionItem = { label: string; section: AdminSection; subFilter?: typeof userSubFilter };
     const attentionItems = [
       (overviewData?.listings?.pendingReview ?? 0) > 0
         ? { label: `${overviewData.listings.pendingReview} listings pending review`, section: "listings" as AdminSection } : null,
@@ -1785,21 +1783,21 @@ export function AdminPage() {
     toast({ title: "Exporting", description: "CSV download started" });
   };
 
-  const USER_HUB_FILTERS: { id: "all" | "creators" | "businesses" | "collabs" | "verifications"; label: string; icon: React.ElementType }[] = [
-    { id: "all", label: "All Users", icon: Users },
-    { id: "creators", label: "Creators", icon: Camera },
-    { id: "businesses", label: "Businesses", icon: Building2 },
-    { id: "collabs", label: "Collabs", icon: Zap },
-    { id: "verifications", label: "Verifications", icon: UserCheck },
+  const USER_HUB_FILTERS = [
+    { id: "all" as const, label: "All Users", icon: Users },
+    { id: "creators" as const, label: "Creators", icon: Camera },
+    { id: "businesses" as const, label: "Businesses", icon: Building2 },
+    { id: "collabs" as const, label: "Collabs", icon: Zap },
+    { id: "verifications" as const, label: "Verifications", icon: UserCheck },
   ];
 
   const renderUsersHub = () => (
     <div className="space-y-6">
-      {/* Filter bar */}
       <div className="flex flex-wrap gap-2">
         {USER_HUB_FILTERS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
+            type="button"
             onClick={() => setUserSubFilter(id)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
               userSubFilter === id
@@ -1813,8 +1811,6 @@ export function AdminPage() {
           </button>
         ))}
       </div>
-
-      {/* Content */}
       {userSubFilter === "all" && renderUsers()}
       {userSubFilter === "creators" && renderCreators()}
       {userSubFilter === "businesses" && renderBusinesses()}
@@ -2003,6 +1999,11 @@ export function AdminPage() {
                 <Skeleton key={i} className="h-16" />
               ))}
             </div>
+          ) : usersError ? (
+            <div className="p-8 text-center text-destructive">
+              <p className="font-medium">Failed to load users</p>
+              <p className="text-sm text-muted-foreground mt-1">Check the server logs for details</p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -2024,7 +2025,13 @@ export function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers?.map((u) => (
+                {!filteredUsers || filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      {searchQuery ? `No users match "${searchQuery}" — clear the search to see all users` : "No users found"}
+                    </TableCell>
+                  </TableRow>
+                ) : filteredUsers.map((u) => (
                   <TableRow key={u.id} className={`${u.isBanned ? "opacity-50" : ""} ${selectedUserIds.has(u.id) ? "bg-primary/5" : ""} cursor-pointer`} onClick={() => setSelectedUserId(u.id)}>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedUserIds.has(u.id)} onCheckedChange={() => toggleId(u.id, setSelectedUserIds)} />
@@ -6653,6 +6660,7 @@ export function AdminPage() {
               className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-2" : ""}`}
               onClick={() => {
                 if (item.id === "users") setUserSubFilter("all");
+                setSearchQuery("");
                 setActiveSection(item.id);
               }}
               data-testid={`nav-${item.id}`}
