@@ -20,7 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, assetUrl } from "@/lib/queryClient";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   Settings,
@@ -1842,7 +1842,7 @@ export function SettingsPage() {
                           <p className="text-xs text-muted-foreground">Cover banner</p>
                           {businessProfile.coverImageUrl ? (
                             <div className="relative w-40 h-20 rounded-md overflow-hidden border border-border">
-                              <img src={`${API_BASE}${businessProfile.coverImageUrl}`} alt="Cover" className="w-full h-full object-cover" />
+                              <img src={assetUrl(businessProfile.coverImageUrl)} alt="Cover" className="w-full h-full object-cover" />
                             </div>
                           ) : (
                             <div className="w-40 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">
@@ -1863,7 +1863,7 @@ export function SettingsPage() {
                           <p className="text-xs text-muted-foreground">Logo</p>
                           {businessProfile.logoUrl ? (
                             <div className="relative w-20 h-20 rounded-full overflow-hidden border border-border">
-                              <img src={`${API_BASE}${businessProfile.logoUrl}`} alt="Logo" className="w-full h-full object-cover" />
+                              <img src={assetUrl(businessProfile.logoUrl)} alt="Logo" className="w-full h-full object-cover" />
                             </div>
                           ) : (
                             <div className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">

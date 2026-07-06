@@ -237,7 +237,7 @@ export function BusinessStorefrontPage() {
       <div className="relative w-full h-44 sm:h-56 bg-bareter-navy overflow-hidden">
         {profile.coverImageUrl ? (
           <img
-            src={`${API_BASE}${profile.coverImageUrl}`}
+            src={assetUrl(profile.coverImageUrl)}
             alt={`${profile.companyName} cover`}
             className="w-full h-full object-cover"
           />
@@ -277,7 +277,7 @@ export function BusinessStorefrontPage() {
           <div className="relative flex-shrink-0">
             {profile.logoUrl ? (
               <img
-                src={`${API_BASE}${profile.logoUrl}`}
+                src={assetUrl(profile.logoUrl)}
                 alt={`${profile.companyName} logo`}
                 className="h-20 w-20 rounded-xl object-cover ring-4 ring-background shadow-md"
               />
