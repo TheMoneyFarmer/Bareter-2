@@ -12521,7 +12521,7 @@ export async function registerRoutes(
       res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business cover upload error:", error);
-      res.status(500).json({ message: "Internal server error", detail: (error as Error)?.message });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -12577,7 +12577,7 @@ export async function registerRoutes(
       res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business logo upload error:", error);
-      res.status(500).json({ message: "Internal server error", detail: (error as Error)?.message });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

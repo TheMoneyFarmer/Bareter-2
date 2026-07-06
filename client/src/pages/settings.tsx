@@ -286,7 +286,7 @@ export function SettingsPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error([(e as any).message, (e as any).detail].filter(Boolean).join(": ") || "Upload failed"); }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
     onSuccess: () => { refetchBusinessProfile(); toast({ title: "Cover image updated" }); },
@@ -298,7 +298,7 @@ export function SettingsPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error([(e as any).message, (e as any).detail].filter(Boolean).join(": ") || "Upload failed"); }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
     onSuccess: () => { refetchBusinessProfile(); toast({ title: "Logo updated" }); },
