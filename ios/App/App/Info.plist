@@ -47,5 +47,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Bareter needs camera access to take photos for your listings and profile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Bareter needs photo library access to upload images for your listings and profile.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Bareter needs permission to save photos to your library.</string>
 </dict>
 </plist>
