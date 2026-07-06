@@ -506,7 +506,7 @@ export function AdminPage() {
       const res = await fetch(`${API_BASE}/api/admin/queues/pending`, { credentials: "include" });
       return res.ok ? res.json() : null;
     },
-    enabled: activeSection === "dashboard" && !!user?.isAdmin,
+    enabled: !!user?.isAdmin && (activeSection === "dashboard" || (activeSection === "users" && userSubFilter === "verifications")),
     refetchInterval: 60_000,
     staleTime: 0,
   });
@@ -4961,7 +4961,7 @@ export function AdminPage() {
       const res = await apiRequest("PATCH", `/api/admin/businesses/${id}/kyb`, { status });
       return res.json();
     },
-    onSuccess: () => { refetchAdminBusinesses(); toast({ title: "KYB status updated" }); },
+    onSuccess: () => { refetchAdminBusinesses(); refetchPendingQueue(); toast({ title: "KYB status updated" }); },
     onError: () => toast({ title: "KYB update failed", variant: "destructive" }),
   });
 
