@@ -999,24 +999,6 @@ export function CreateListingPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
-                <FormLabel className="text-base mb-2 block">{t("create.preferredCategories")}</FormLabel>
-                <p className="text-sm text-muted-foreground mb-3">{t("create.selectCategoriesAccept")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((category) => (
-                    <Badge
-                      key={`wanted-${category}`}
-                      variant={wantedCategories.includes(category) ? "default" : "outline"}
-                      className="cursor-pointer text-sm py-1.5 px-3"
-                      onClick={() => toggleWantedCategory(category)}
-                      data-testid={`badge-wanted-${category.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      {category}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <FormLabel className="text-base mb-1 block">{t("create.specificExchangeItems")}</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">{t("create.addSpecificItems")}</p>
 
@@ -1067,6 +1049,24 @@ export function CreateListingPage() {
                   <Button type="button" variant="outline" size="icon" onClick={addExchangeItem} data-testid="button-add-exchange-item">
                     <Plus className="h-4 w-4" />
                   </Button>
+                </div>
+              </div>
+
+              <div>
+                <FormLabel className="text-base mb-2 block">{t("create.preferredCategories")}</FormLabel>
+                <p className="text-sm text-muted-foreground mb-3">{t("create.selectCategoriesAccept")}</p>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((category) => (
+                    <Badge
+                      key={`wanted-${category}`}
+                      variant={wantedCategories.includes(category) ? "default" : "outline"}
+                      className="cursor-pointer text-sm py-1.5 px-3"
+                      onClick={() => toggleWantedCategory(category)}
+                      data-testid={`badge-wanted-${category.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      {category}
+                    </Badge>
+                  ))}
                 </div>
               </div>
 
