@@ -538,6 +538,68 @@ export async function registerRoutes(
     res.json({ enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) });
   });
 
+  // Native Google Sign-In — called from the Capacitor app after the OS-level
+  // Google account picker resolves. Verifies the idToken from the native SDK,
+  // finds/creates the user, and returns a mobileToken (no session cookie needed).
+  app.post("/api/auth/google/native", async (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(503).json({ message: "Google Sign-In is not configured" });
+    }
+    try {
+      const { idToken } = req.body as { idToken?: string };
+      if (!idToken) return res.status(400).json({ message: "idToken required" });
+
+      const { OAuth2Client } = await import("google-auth-library");
+      const client = new OAuth2Client();
+      const audiences = [GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(Boolean) as string[];
+      const ticket = await client.verifyIdToken({ idToken, audience: audiences });
+      const payload = ticket.getPayload();
+      if (!payload?.email) return res.status(400).json({ message: "Invalid token" });
+
+      const email = payload.email.toLowerCase().trim();
+      const googleId = payload.sub;
+
+      let user = await storage.getUserByGoogleId(googleId);
+      if (!user) {
+        user = await storage.getUserByEmail(email);
+        if (user) {
+          await storage.updateUser(user.id, { googleId });
+        } else {
+          const fullName = payload.name || payload.given_name || email.split("@")[0];
+          const avatarUrl = payload.picture ?? null;
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email,
+            password: randomPw,
+            fullName,
+            avatarUrl: avatarUrl ?? undefined,
+            googleId,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+        }
+      }
+
+      if ((user as any).isBanned) return res.status(403).json({ message: "Account suspended" });
+
+      await new Promise<void>((resolve, reject) =>
+        req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+      );
+      req.session.userId = user!.id;
+      (req.session as any).uaFingerprint = uaFingerprint(req);
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err: any) => (err ? reject(err) : resolve()))
+      );
+
+      const mobileToken = await issueMobileToken(user!.id, req.headers["user-agent"] ?? null);
+      const { password: _pw, ...safeUser } = user as any;
+      return res.json({ ...safeUser, mobileToken });
+    } catch (err: any) {
+      console.error("[google/native]", err?.message ?? err);
+      return res.status(401).json({ message: "Google sign-in failed" });
+    }
+  });
+
   // ── Apple Sign In ────────────────────────────────────────────────────────────
   // Requires 4 env vars — see setup checklist below.
   // APPLE_CLIENT_ID     = your Services ID (e.g. com.bareter.webapp)

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -10,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, storeMobileToken, queryClient } from "@/lib/queryClient";
 import { loginSchema } from "@shared/schema";
 import { trackEvent } from "@/lib/posthog";
 import { Handshake, Loader2, Eye, EyeOff, ExternalLink, Copy, AlertCircle } from "lucide-react";
@@ -57,6 +59,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   // Always show the forgot-password link — if email is not configured the page will show an error
   const passwordResetEnabled = true;
   const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
@@ -128,6 +131,27 @@ export function LoginPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleNative = async () => {
+    setGoogleLoading(true);
+    try {
+      const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+      const result = await GoogleAuth.signIn();
+      const idToken = result.authentication.idToken;
+      const userData = await apiRequest("POST", "/api/auth/google/native", { idToken });
+      const { mobileToken, ...user } = userData as any;
+      if (mobileToken) await storeMobileToken(mobileToken);
+      queryClient.setQueryData(["/api/auth/me"], user);
+      trackEvent("login");
+      navigate(redirectTo.startsWith("/") ? redirectTo : "/browse");
+    } catch (err: any) {
+      const msg = (err?.message ?? "").toLowerCase();
+      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("12501") || msg.includes("sign_in_cancelled")) return;
+      toast({ title: "Google sign-in failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -208,14 +232,27 @@ export function LoginPage() {
 
                 <div className={`grid gap-3 ${googleEnabled && appleEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
                   {googleEnabled && (
-                    <a
-                      href={`/auth/google${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
-                      className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
-                      data-testid="button-google-login"
-                    >
-                      <GoogleIcon />
-                      Google
-                    </a>
+                    Capacitor.isNativePlatform() ? (
+                      <button
+                        type="button"
+                        onClick={handleGoogleNative}
+                        disabled={googleLoading}
+                        className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm disabled:opacity-50"
+                        data-testid="button-google-login"
+                      >
+                        {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+                        Google
+                      </button>
+                    ) : (
+                      <a
+                        href={`/auth/google${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+                        className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+                        data-testid="button-google-login"
+                      >
+                        <GoogleIcon />
+                        Google
+                      </a>
+                    )
                   )}
                   {appleEnabled && (
                     <a
