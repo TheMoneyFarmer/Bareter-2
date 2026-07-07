@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, handleAuthExpiry, API_BASE } from "@/lib/queryClient";
+import { apiRequest, handleAuthExpiry, API_BASE, uploadFile } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";
@@ -452,16 +452,7 @@ export function CreateListingPage() {
       const urls = await Promise.all(files.map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
         if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("type", "listing");
-        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
-        if (!res.ok) {
-          if (res.status === 401) handleAuthExpiry(401);
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || "Upload failed");
-        }
-        return (await res.json()).url as string;
+        return uploadFile(file, "listing");
       }));
       form.setValue("images", [...currentImages, ...urls], { shouldValidate: true });
     } catch (error: any) {

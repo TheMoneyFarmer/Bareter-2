@@ -309,9 +309,9 @@ export function RegisterPage() {
 
         <p className="text-center text-xs text-muted-foreground pt-1">
           By continuing you agree to our{" "}
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms</a>
+          <Link href="/terms" className="underline hover:text-foreground" onClick={(e) => e.stopPropagation()}>Terms</Link>
           {" & "}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>
+          <Link href="/privacy" className="underline hover:text-foreground" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>
         </p>
 
         <div className="text-center text-sm pt-1">
@@ -505,21 +505,21 @@ export function RegisterPage() {
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-normal">
                       I agree to the{" "}
-                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/terms" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Terms of Use
-                      </a>
+                      </Link>
                       ,{" "}
-                      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/privacy" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Privacy Policy
-                      </a>
+                      </Link>
                       , and{" "}
-                      <a href="/legal/cookies" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/legal/cookies" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Cookie Policy
-                      </a>
+                      </Link>
                       . See also our{" "}
-                      <a href="/legal/customer-agreement" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/legal/customer-agreement" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Customer Agreement
-                      </a>
+                      </Link>
                       .
                     </FormLabel>
                     <FormMessage />

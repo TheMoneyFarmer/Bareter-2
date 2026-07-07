@@ -986,6 +986,10 @@ export async function registerRoutes(
             }),
             sanitizeAdminFlag(stripped).catch(() => stripped),
           ]);
+          if ((req as any).headers["x-client"] === "capacitor-app") {
+            const mobileToken = await issueMobileToken(user.id, (req as any).headers["user-agent"] ?? null);
+            return res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE, mobileToken });
+          }
           res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
         } catch {
           res.status(500).json({ message: "Session error" });

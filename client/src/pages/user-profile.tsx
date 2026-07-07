@@ -812,9 +812,9 @@ export function UserProfilePage() {
                     ? portfolioItems.map((item) => (
                       <div key={item.id} className="relative aspect-square rounded-lg overflow-hidden bg-muted group" data-testid={`portfolio-item-${item.id}`}>
                         {item.mediaType === "video" ? (
-                          <video src={item.mediaUrl} className="w-full h-full object-cover" muted />
+                          <video src={assetUrl(item.mediaUrl)} className="w-full h-full object-cover" muted />
                         ) : (
-                          <img src={item.mediaUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                          <img src={assetUrl(item.mediaUrl)} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         )}
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <p className="text-white text-xs font-medium truncate">{item.title}</p>
@@ -826,7 +826,7 @@ export function UserProfilePage() {
                     ))
                     : (profileData.portfolioImages as string[] || []).map((img, i) => (
                       <div key={i} className="aspect-square rounded-lg overflow-hidden bg-muted group" data-testid={`portfolio-legacy-${i}`}>
-                        <img src={img} alt={`Portfolio ${i + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                        <img src={assetUrl(img)} alt={`Portfolio ${i + 1}`} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                       </div>
                     ))
                   }

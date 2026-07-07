@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
+import { apiRequest, API_BASE, assetUrl, uploadFile } from "@/lib/queryClient";
 import type { ListingWithUser, Listing, ListingCommentWithUser } from "@shared/schema";
 import {
   MapPin,
@@ -635,12 +635,7 @@ export function ListingDetailPage() {
       const urls = await Promise.all(Array.from(files).map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
         if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("type", "listing");
-        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
-        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Upload failed"); }
-        return (await res.json()).url as string;
+        return uploadFile(file, "listing");
       }));
       setCommentImages(prev => [...prev, ...urls]);
     } catch (error: any) {

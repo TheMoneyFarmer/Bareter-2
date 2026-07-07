@@ -66,6 +66,26 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Upload a file to /api/upload with bearer auth — use this instead of raw fetch.
+export async function uploadFile(file: File, type: string): Promise<string> {
+  const extra = await mobileHeaders();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("type", type);
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+    headers: extra,
+  });
+  if (!res.ok) {
+    handleAuthExpiry(res.status);
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || "Upload failed");
+  }
+  return ((await res.json()) as { url: string }).url;
+}
+
 export async function apiRequest(
   method: string,
   url: string,

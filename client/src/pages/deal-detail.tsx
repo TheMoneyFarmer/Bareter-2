@@ -25,7 +25,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, uploadFile, mobileHeaders } from "@/lib/queryClient";
 import { RatingModal } from "@/components/RatingModal";
 import { MatchScoreCard } from "@/components/MatchScoreCard";
 import type { DealWithUsers, MessageWithSender, DealMilestone } from "@shared/schema";
@@ -258,7 +258,7 @@ export function DealDetailPage() {
 
   const { data: contractData, refetch: refetchContract } = useQuery<ContractData>({
     queryKey: ["/api/deals", id, "contract"],
-    queryFn: () => fetch(`${API_BASE}/api/deals/${id}/contract`, { credentials: "include" }).then(r => r.json()),
+    queryFn: async () => { const r = await fetch(`${API_BASE}/api/deals/${id}/contract`, { credentials: "include", headers: await mobileHeaders() }); return r.json(); },
     enabled: !!id && !!deal && CONTRACT_STATES.includes(deal.state),
     staleTime: 30_000,
   });
@@ -323,15 +323,7 @@ export function DealDetailPage() {
     if (!file || !deal) return;
     setUploadingProof(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "proof");
-      const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData, credentials: "include" });
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => ({}));
-        throw new Error(err.message || "Upload failed");
-      }
-      const { url } = await uploadRes.json();
+      const url = await uploadFile(file, "proof");
       const proofField = isSeeker ? { seekerProofUrl: url } : { providerProofUrl: url };
       // Move to delivery_proof stage when uploading from in_progress
       const stateUpdate = deal.state === "in_progress" ? { state: "delivery_proof" as const } : {};

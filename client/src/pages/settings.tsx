@@ -20,7 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE, assetUrl } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, assetUrl, mobileHeaders } from "@/lib/queryClient";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   Settings,
@@ -172,7 +172,7 @@ export function SettingsPage() {
   const { data: creatorProfile, refetch: refetchCreatorProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/creators/me"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include", headers: await mobileHeaders() });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch creator profile");
       return res.json();
@@ -185,7 +185,7 @@ export function SettingsPage() {
   const { data: businessProfile, refetch: refetchBusinessProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/businesses/me"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include", headers: await mobileHeaders() });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch business profile");
       return res.json();
@@ -285,7 +285,7 @@ export function SettingsPage() {
     mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd });
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd, headers: await mobileHeaders() });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
@@ -297,7 +297,7 @@ export function SettingsPage() {
     mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd });
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd, headers: await mobileHeaders() });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
