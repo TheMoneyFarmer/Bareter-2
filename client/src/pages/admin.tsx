@@ -126,6 +126,7 @@ import {
   Wallet,
   ListChecks,
   Sun,
+  Smartphone,
 } from "lucide-react";
 import { VerifiedBadge, isUserVerified } from "@/components/verified-badge";
 import { AdminLegalSection } from "@/components/admin/legal-section";
@@ -150,7 +151,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses" | "verifications";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses" | "verifications" | "mobile";
 
 type WaitlistEntryRow = {
   id: number;
@@ -1306,6 +1307,7 @@ export function AdminPage() {
     { id: "feature-stats", label: "Feature Hub", icon: Zap },
     { id: "barter-credits", label: "Barter Credits", icon: Coins },
     { id: "success-stories", label: "Success Stories", icon: Trophy },
+    { id: "mobile", label: "Mobile App", icon: Smartphone },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -6545,6 +6547,8 @@ export function AdminPage() {
     );
   };
 
+  const renderMobileSection = () => <MobileStatsSection />;
+
   const renderContent = () => {
     switch (activeSection) {
       case "queue":
@@ -6591,6 +6595,8 @@ export function AdminPage() {
         return renderBarterCredits();
       case "success-stories":
         return renderSuccessStories();
+      case "mobile":
+        return renderMobileSection();
       case "settings":
         return renderSettings();
       default:
@@ -8802,7 +8808,7 @@ function AdminsManagementTab({
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={u.profileImage ?? undefined} />
+                            <AvatarImage src={u.avatarUrl ?? undefined} />
                             <AvatarFallback>{(u.fullName ?? u.email ?? "?")[0].toUpperCase()}</AvatarFallback>
                           </Avatar>
                           <div>
@@ -8869,7 +8875,7 @@ function AdminsManagementTab({
                 <div key={u.id} className="flex items-center justify-between px-4 py-2.5" data-testid={`row-add-admin-${u.id}`}>
                   <div className="flex items-center gap-2">
                     <Avatar className="h-7 w-7">
-                      <AvatarImage src={u.profileImage ?? undefined} />
+                      <AvatarImage src={u.avatarUrl ?? undefined} />
                       <AvatarFallback>{(u.fullName ?? u.email ?? "?")[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
@@ -9419,6 +9425,157 @@ function InternationalWaitlistSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Mobile App Stats ────────────────────────────────────────────────────────
+
+type MobileStats = {
+  signups: { total: number; today: number; thisWeek: number };
+  authMethods: { google: number; apple: number; email: number };
+  verification: { phoneVerified: number; kycApproved: number; kybApproved: number };
+  clientErrors: { buffered: number; recent: Array<{ ts: string; platform: string; context: string; error: string }> };
+};
+
+function MobileStatsSection() {
+  const { data, isLoading } = useQuery<MobileStats>({
+    queryKey: ["/api/admin/mobile/stats"],
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 p-6">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+      </div>
+    );
+  }
+
+  const s = data;
+  const totalAuth = (s?.authMethods.google ?? 0) + (s?.authMethods.apple ?? 0) + (s?.authMethods.email ?? 0);
+  const pct = (n: number) => totalAuth > 0 ? Math.round((n / totalAuth) * 100) : 0;
+
+  return (
+    <div className="p-6 space-y-6 max-w-5xl">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-bareter-teal/10 flex items-center justify-center">
+          <Smartphone className="h-5 w-5 text-bareter-teal" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">Mobile App</h2>
+          <p className="text-muted-foreground text-sm">iOS / Android analytics</p>
+        </div>
+      </div>
+
+      {/* Signups */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Total Users", value: s?.signups.total ?? 0, icon: Users },
+          { label: "New Today", value: s?.signups.today ?? 0, icon: UserPlus },
+          { label: "New This Week", value: s?.signups.thisWeek ?? 0, icon: TrendingUp },
+        ].map(({ label, value, icon: Icon }) => (
+          <Card key={label}>
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+              <p className="text-3xl font-bold">{value.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Auth method breakdown */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Sign-in Method Breakdown</CardTitle>
+          <CardDescription>{totalAuth.toLocaleString()} total accounts</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[
+            { label: "Google", value: s?.authMethods.google ?? 0, color: "bg-red-500" },
+            { label: "Apple", value: s?.authMethods.apple ?? 0, color: "bg-gray-900 dark:bg-gray-200" },
+            { label: "Email & Password", value: s?.authMethods.email ?? 0, color: "bg-bareter-teal" },
+          ].map(({ label, value, color }) => (
+            <div key={label}>
+              <div className="flex justify-between text-sm mb-1">
+                <span>{label}</span>
+                <span className="font-medium">{value.toLocaleString()} <span className="text-muted-foreground">({pct(value)}%)</span></span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className={`h-full ${color} rounded-full`} style={{ width: `${pct(value)}%` }} />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Verification */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Verification Status</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-3 gap-4 text-sm">
+          {[
+            { label: "Phone Verified", value: s?.verification.phoneVerified ?? 0 },
+            { label: "KYC Approved", value: s?.verification.kycApproved ?? 0 },
+            { label: "KYB Approved", value: s?.verification.kybApproved ?? 0 },
+          ].map(({ label, value }) => (
+            <div key={label} className="text-center p-4 rounded-lg bg-muted/40">
+              <p className="text-2xl font-bold">{value.toLocaleString()}</p>
+              <p className="text-muted-foreground text-xs mt-1">{label}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Client errors */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            Client Errors (in-memory, last {s?.clientErrors.buffered ?? 0})
+          </CardTitle>
+          <CardDescription>Clears on server restart. Last 50 shown.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!s?.clientErrors.recent.length ? (
+            <p className="text-muted-foreground text-sm text-center py-6">No client errors recorded since last restart.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="text-left py-1.5 pr-3 font-medium">Time</th>
+                    <th className="text-left py-1.5 pr-3 font-medium">Platform</th>
+                    <th className="text-left py-1.5 pr-3 font-medium">Context</th>
+                    <th className="text-left py-1.5 font-medium">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.clientErrors.recent.map((e, i) => (
+                    <tr key={i} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-1.5 pr-3 text-muted-foreground whitespace-nowrap">
+                        {new Date(e.ts).toLocaleTimeString()}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <Badge variant={e.platform.includes("ios") ? "default" : "secondary"} className="text-[10px] px-1.5">
+                          {e.platform}
+                        </Badge>
+                      </td>
+                      <td className="py-1.5 pr-3 font-mono">{e.context}</td>
+                      <td className="py-1.5 text-destructive/80 max-w-xs truncate font-mono">{e.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -68,8 +68,9 @@ export const SIGNUP_TYPES = ["personal", "business", "creator"] as const;
 export const COLLAB_CONTENT_TYPES = ["reel", "tiktok", "post", "story", "youtube", "review", "photoshoot", "multiple"] as const;
 export type CollabContentType = typeof COLLAB_CONTENT_TYPES[number];
 
-// Creator profile — stored as jsonb on users
-export type CreatorProfile = {
+// Shape of the `creator_profile` JSONB blob stored on the users row.
+// The separate `creatorProfiles` table type is exported below as `CreatorProfile`.
+export type CreatorProfileJson = {
   primaryPlatform: "instagram" | "tiktok" | "youtube" | "twitter" | "linkedin" | "other";
   followerCount: number;
   avgEngagementRate: number; // percentage e.g. 4.5 = 4.5%
@@ -520,7 +521,7 @@ export const users = pgTable("users", {
   // Signup & Social
   signupType: text("signup_type").default("personal"),
   socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
-  creatorProfile: jsonb("creator_profile").$type<CreatorProfile>(),
+  creatorProfile: jsonb("creator_profile").$type<CreatorProfileJson>(),
 
   // Trust & Credibility
   avgResponseTime: integer("avg_response_time").default(0),

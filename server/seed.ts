@@ -2,7 +2,7 @@ import { db } from "./db";
 import { users, listings, deals, ratings, posts, postLikes, postBookmarks, postComments, listingComments, wishlists, notifications, referrals, reviews, engagementEvents, listingLikes, quickInquiries, collabApplications, imageScans, messages, followers, dealMilestones, savedSearches, portfolioItems, failedLoginAttempts, supportTickets, endorsements, reports, moderationLogs, appSettings } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql, isNull, and, inArray, or, notInArray } from "drizzle-orm";
-import type { CreatorProfile } from "@shared/schema";
+import type { CreatorProfileJson as CreatorProfile } from "@shared/schema";
 
 // One-time backfill: ensure existing rows have country/city populated so the
 // strict location filters and worldwide-toggle behavior treat them correctly.

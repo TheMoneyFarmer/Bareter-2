@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import type { User } from "@shared/schema";
-import type { CreatorProfile } from "@shared/schema";
+import type { CreatorProfileJson as CreatorProfile } from "@shared/schema";
 
 type CreatorUser = Pick<User, "id" | "fullName" | "avatarUrl" | "location" | "city" | "country" | "isVerified" | "verificationStatus" | "founderBadge" | "signupType" | "credibilityScore" | "totalCompletedDeals"> & { creatorProfile: CreatorProfile };
 
