@@ -49,9 +49,24 @@ public class GoogleAuth: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func signIn(_ call: CAPPluginCall) {
-        // Nil-check BEFORE dispatching to main thread so errors surface immediately
+        // Auto-initialize from capacitor.config if initialize() was never called natively
+        if gsi == nil {
+            guard let clientId = getClientIdValue() else {
+                call.reject("No Google client ID. Set iosClientId in capacitor.config or call initialize() with clientId")
+                return
+            }
+            gsi = GIDSignIn.sharedInstance
+            gsiConfig = GIDConfiguration(clientID: clientId, serverClientID: getConfig().getString("serverClientId"))
+            additionalScopes = []
+            forceAuthCode = getConfig().getBoolean("forceCodeForRefreshToken", false)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleOpenUrl(_:)),
+                name: Notification.Name(Notification.Name.capacitorOpenURL.rawValue),
+                object: nil)
+        }
+
         guard let gsi = gsi else {
-            call.reject("GoogleAuth not initialized — call initialize() first")
+            call.reject("GoogleAuth initialization failed")
             return
         }
         guard let config = gsiConfig else {
