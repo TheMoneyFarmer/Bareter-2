@@ -17,9 +17,8 @@ const config: CapacitorConfig = {
   plugins: {
     GoogleAuth: {
       scopes: ['profile', 'email'],
-      // Set to your Web OAuth 2.0 Client ID from Google Cloud Console.
-      // Credentials → OAuth 2.0 Client IDs → "Web client (auto created by Google Service)"
       serverClientId: '990746727496-sbb7kjiht73pi1needi9e6vd1vjsku40.apps.googleusercontent.com',
+      iosClientId: '990746727496-blj1mvk3i39on7d1t88cbgpos11995dp.apps.googleusercontent.com',
       forceCodeForRefreshToken: true,
     },
     SplashScreen: {

@@ -261,6 +261,11 @@ export function RegisterPage() {
     setGoogleLoading(true);
     try {
       const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+      await GoogleAuth.initialize({
+        clientId: '990746727496-blj1mvk3i39on7d1t88cbgpos11995dp.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true,
+      });
       const result = await GoogleAuth.signIn();
       const idToken = result.authentication.idToken;
       const userData = await apiRequest("POST", "/api/auth/google/native", { idToken });
