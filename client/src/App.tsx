@@ -314,10 +314,17 @@ function PageSkeleton() {
   );
 }
 
+// On native the marketing landing page makes no sense — go straight to Browse.
+function NativeHomeRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => { navigate("/browse", { replace: true } as any); }, []);
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={isNative ? NativeHomeRedirect : LandingPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile" component={ProfilePage} />
@@ -431,15 +438,7 @@ function NativeBootstrap() {
         await StatusBar.setStyle({ style: Style.Light });
         await StatusBar.setBackgroundColor({ color: "#136c68" });
       } catch {}
-
-      // Hide the native OS splash after a short delay so the teal web overlay
-      // (NativeSplashGate) has time to render first — avoids any black flash.
-      // The web overlay stays up until auth resolves independently.
-      await new Promise((r) => setTimeout(r, 400));
-      try {
-        const { SplashScreen } = await import("@capacitor/splash-screen");
-        await SplashScreen.hide({ fadeOutDuration: 250 });
-      } catch {}
+      // SplashScreen.hide() is called in NativeSplashGate after auth resolves.
     })();
 
     // Android hardware back button: navigate back, exit when at root
@@ -480,6 +479,11 @@ function NativeSplashGate() {
   const dismiss = useRef(() => {
     if (hidden.current) return;
     hidden.current = true;
+    // Hide the native OS splash screen once auth has resolved, then fade out
+    // the teal web overlay so there's a seamless transition.
+    import("@capacitor/splash-screen")
+      .then(({ SplashScreen }) => SplashScreen.hide({ fadeOutDuration: 500 }))
+      .catch(() => {});
     setFading(true);
     setTimeout(() => setVisible(false), 350);
   });
