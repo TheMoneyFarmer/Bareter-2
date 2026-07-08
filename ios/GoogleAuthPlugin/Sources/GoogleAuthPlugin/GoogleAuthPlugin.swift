@@ -126,7 +126,7 @@ public class GoogleAuth: CAPPlugin, CAPBridgedPlugin {
                 "accessToken": user.authentication.accessToken,
                 "idToken": user.authentication.idToken ?? NSNull(),
                 "refreshToken": user.authentication.refreshToken
-            ],
+            ] as [String: Any],
             "serverAuthCode": user.serverAuthCode ?? NSNull(),
             "email": user.profile?.email ?? NSNull(),
             "familyName": user.profile?.familyName ?? NSNull(),
