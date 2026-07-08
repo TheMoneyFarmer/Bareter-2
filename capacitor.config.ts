@@ -13,6 +13,19 @@ const config: CapacitorConfig = {
       '*.didit.me',
     ],
   },
+  ios: {
+    // Enable the native iOS swipe-right-to-go-back gesture.
+    // Wouter uses the History API so history.back() is triggered by the gesture
+    // and the router responds correctly — no extra JS needed.
+    allowsBackForwardNavigationGestures: true,
+    // Scroll bounce gives a native feel; content inset is handled by safe-area CSS
+    scrollEnabled: true,
+    contentInset: 'automatic',
+  },
+  android: {
+    // Hardware back button already fires history.back() via Capacitor's default handler
+    allowMixedContent: false,
+  },
   plugins: {
     GoogleAuth: {
       scopes: ['profile', 'email'],

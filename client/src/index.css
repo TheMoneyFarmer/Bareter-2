@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Mobile touch responsiveness ────────────────────────────────────────────
+   Eliminates the 300ms tap delay on WKWebView / WebView and gives immediate
+   visual feedback. Must live outside @layer so it isn't purged. */
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+label,
+select,
+summary {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+/* Instant pressed-state feedback — no animation delay on mobile */
+button:active,
+a:active,
+[role="button"]:active {
+  opacity: 0.75;
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;
