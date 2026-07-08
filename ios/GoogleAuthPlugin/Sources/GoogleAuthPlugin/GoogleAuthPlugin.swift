@@ -52,22 +52,42 @@ public class GoogleAuth: CAPPlugin, CAPBridgedPlugin {
     @objc func signIn(_ call: CAPPluginCall) {
         signInCall = call
         DispatchQueue.main.async {
-            if self.googleSignIn.hasPreviousSignIn() && !self.forceAuthCode {
-                self.googleSignIn.restorePreviousSignIn { user, error in
+            guard let gsi = self.googleSignIn else {
+                self.signInCall?.reject("GoogleAuth not initialized — call initialize() first")
+                return
+            }
+            guard let config = self.googleSignInConfiguration else {
+                self.signInCall?.reject("GoogleAuth configuration missing")
+                return
+            }
+            guard let presentingVc = self.bridge?.viewController else {
+                self.signInCall?.reject("No presenting view controller")
+                return
+            }
+            if gsi.hasPreviousSignIn() && !self.forceAuthCode {
+                gsi.restorePreviousSignIn { user, error in
                     if let error = error {
                         self.signInCall?.reject(error.localizedDescription)
                         return
                     }
-                    self.resolveSignInCallWith(user: user!)
+                    guard let user = user else {
+                        self.signInCall?.reject("Restore sign-in returned no user")
+                        return
+                    }
+                    self.resolveSignInCallWith(user: user)
                 }
             } else {
-                let presentingVc = self.bridge!.viewController!
-                self.googleSignIn.signIn(with: self.googleSignInConfiguration, presenting: presentingVc, hint: nil, additionalScopes: self.additionalScopes) { user, error in
+                let scopes = self.additionalScopes ?? []
+                gsi.signIn(with: config, presenting: presentingVc, hint: nil, additionalScopes: scopes) { user, error in
                     if let error = error {
                         self.signInCall?.reject(error.localizedDescription, "\(error._code)")
                         return
                     }
-                    self.resolveSignInCallWith(user: user!)
+                    guard let user = user else {
+                        self.signInCall?.reject("Sign-in returned no user")
+                        return
+                    }
+                    self.resolveSignInCallWith(user: user)
                 }
             }
         }
