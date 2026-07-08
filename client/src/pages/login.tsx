@@ -149,7 +149,7 @@ export function LoginPage() {
     } catch (err: any) {
       const msg = (err?.message ?? "").toLowerCase();
       if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("12501") || msg.includes("sign_in_cancelled")) return;
-      toast({ title: "Google sign-in failed", description: "Please try again.", variant: "destructive" });
+      toast({ title: "Google sign-in failed", description: String(err?.message ?? err), variant: "destructive" });
     } finally {
       setGoogleLoading(false);
     }
