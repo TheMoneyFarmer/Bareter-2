@@ -42,7 +42,7 @@ public class GoogleAuth: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let customScopes = call.getArray("scopes", String.self) ?? getConfig().getArray("scopes", String.self) ?? []
+        let customScopes = call.getArray("scopes", String.self) ?? (getConfig().getArray("scopes") as? [String]) ?? []
         forceAuthCode = call.getBool("grantOfflineAccess") ?? getConfig().getBoolean("forceCodeForRefreshToken", false)
 
         loadSignInClient(customClientId: clientId, customScopes: customScopes)
