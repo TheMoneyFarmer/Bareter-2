@@ -5,7 +5,6 @@ const config: CapacitorConfig = {
   appName: 'Bareter',
   webDir: 'dist/public',
   server: {
-    url: 'https://bareter.com',
     cleartext: false,
     allowNavigation: [
       'bareter.com',

@@ -154,7 +154,13 @@ export function LoginPage() {
     } catch (err: any) {
       const msg = (err?.message ?? "").toLowerCase();
       if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("12501") || msg.includes("sign_in_cancelled")) return;
-      toast({ title: "Google sign-in failed", description: String(err?.message ?? err), variant: "destructive" });
+      // Log full error server-side for admin visibility; show generic message to user
+      apiRequest("POST", "/api/logs/client-error", {
+        context: "google-sign-in",
+        error: String(err?.message ?? err),
+        platform: "ios-native",
+      }).catch(() => {});
+      toast({ title: "Sign-in failed", description: "Please try again or use email.", variant: "destructive" });
     } finally {
       setGoogleLoading(false);
     }

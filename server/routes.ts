@@ -600,6 +600,17 @@ export async function registerRoutes(
     }
   });
 
+  // ── Client error logging (mobile app dev visibility) ─────────────────────────
+  app.post("/api/logs/client-error", async (req, res) => {
+    try {
+      const { context, error, platform } = req.body as { context?: string; error?: string; platform?: string };
+      console.error(`[client-error] platform=${platform ?? "unknown"} context=${context ?? "unknown"}: ${error ?? "(no message)"}`);
+      return res.status(204).end();
+    } catch {
+      return res.status(204).end();
+    }
+  });
+
   // ── Apple Sign In ────────────────────────────────────────────────────────────
   // Requires 4 env vars — see setup checklist below.
   // APPLE_CLIENT_ID     = your Services ID (e.g. com.bareter.webapp)
