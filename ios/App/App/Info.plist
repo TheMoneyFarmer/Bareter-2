@@ -20,10 +20,29 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.bareter.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.990746727496-blj1mvk3i39on7d1t88cbgpos11995dp</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Bareter needs camera access to take photos for your listings and profile.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Bareter needs permission to save photos to your library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Bareter needs photo library access to upload images for your listings and profile.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -47,11 +66,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Bareter needs camera access to take photos for your listings and profile.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Bareter needs photo library access to upload images for your listings and profile.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Bareter needs permission to save photos to your library.</string>
 </dict>
 </plist>
