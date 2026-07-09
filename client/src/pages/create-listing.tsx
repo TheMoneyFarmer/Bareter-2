@@ -28,7 +28,7 @@ import {
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
   Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake, Layers,
   Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
-  Wrench, TreePine, Luggage, Watch, Utensils, PawPrint,
+  Wrench, TreePine, Luggage, Watch, Utensils, PawPrint, Share2, Video,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -104,11 +104,15 @@ export function CreateListingPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const [showSharePrompt, setShowSharePrompt] = useState<{ id: string; title: string } | null>(null);
 
   const [itemType, setItemType] = useState<ItemType>("");
   const [newExchangeItem, setNewExchangeItem] = useState("");
   const [newItemPriority, setNewItemPriority] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [categoryDetails, setCategoryDetails] = useState<Record<string, string | number | boolean | string[]>>({});
   const [aiValuation, setAiValuation] = useState<{
     estimatedRange: { min: number; max: number };
@@ -241,6 +245,7 @@ export function CreateListingPage() {
           productValue: collabProductValue ? parseFloat(collabProductValue) : 0,
         } : undefined,
         ...modeFields,
+        videoUrl: videoUrl || undefined,
         valuation: aiValuation
           ? {
               minAed: Math.round(aiValuation.estimatedRange.min),
@@ -272,7 +277,7 @@ export function CreateListingPage() {
         listing_value: data.retailValue ? parseFloat(data.retailValue) : undefined,
       });
       toast({ title: t("create.successTitle"), description: t("create.successDesc") });
-      navigate(`/listings/${data.id}`);
+      setShowSharePrompt({ id: data.id, title: data.title });
     },
     onError: (error: any) => {
       // If server says phone not verified, open the WhatsApp modal
@@ -476,10 +481,12 @@ export function CreateListingPage() {
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Prompt, // lets user choose camera or gallery
-        quality: 85,
+        quality: 80,
+        allowEditing: false,
       });
-      if (!photo.dataUrl) return;
-      const blob = await fetch(photo.dataUrl).then((r) => r.blob());
+      if (!photo.dataUrl) throw new Error("No photo data");
+      const res = await fetch(photo.dataUrl);
+      const blob = await res.blob();
       const file = new File([blob], `photo-${Date.now()}.jpg`, {
         type: blob.type || "image/jpeg",
       });
@@ -487,13 +494,30 @@ export function CreateListingPage() {
     } catch (err: any) {
       // User cancelled the picker — not an error worth showing
       const msg = (err?.message ?? "").toLowerCase();
-      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("no image")) return;
+      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("no image") || msg === "user cancelled photos app") return;
+      console.error("Camera error:", err);
       toast({ title: t("create.uploadFailed"), description: t("create.uploadImageError"), variant: "destructive" });
     }
   };
 
   const removeImage = (index: number) => {
     form.setValue("images", (form.getValues("images") || []).filter((_, i) => i !== index), { shouldValidate: true });
+  };
+
+  const handleVideoUpload = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
+    if (file.size > 50 * 1024 * 1024) { toast({ title: "Video must be under 50MB", variant: "destructive" }); return; }
+    setUploadingVideo(true);
+    try {
+      const url = await uploadFile(file, "listing");
+      setVideoUrl(url);
+    } catch (err: any) {
+      toast({ title: "Video upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingVideo(false);
+      if (videoInputRef.current) videoInputRef.current.value = "";
+    }
   };
 
   // ── Watchers ─────────────────────────────────────────────────────────────
@@ -534,6 +558,49 @@ export function CreateListingPage() {
         <h2 className="text-xl font-bold">Add your WhatsApp first</h2>
         <p className="text-muted-foreground">Add and verify your WhatsApp number on your profile to start posting listings.</p>
         <a href="/profile?tab=verification" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">Add WhatsApp</a>
+      </div>
+    );
+  }
+
+  if (showSharePrompt) {
+    const listingUrl = `${window.location.origin}/listings/${showSharePrompt.id}`;
+    const handleNativeShare = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { Share } = await import("@capacitor/share");
+          await Share.share({ title: showSharePrompt.title, text: `Check out my listing on Bareter: ${showSharePrompt.title}`, url: listingUrl });
+        } catch {}
+      } else if (navigator.share) {
+        navigator.share({ title: showSharePrompt.title, url: listingUrl }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(listingUrl).catch(() => {});
+        toast({ title: "Link copied!", description: "Share the link with your network" });
+      }
+      navigate(`/listings/${showSharePrompt.id}`);
+    };
+
+    return (
+      <div className="container px-4 py-8 mx-auto max-w-md flex flex-col items-center text-center bareter-slide-up">
+        <div className="h-20 w-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6">
+          <Check className="h-10 w-10 text-green-600" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Your listing is live!</h2>
+        <p className="text-muted-foreground mb-8">Share it to get faster offers from the Bareter community.</p>
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          className="w-full flex items-center justify-center gap-2 bg-bareter-teal text-white font-semibold py-3 px-6 rounded-xl mb-3 hover:bg-bareter-teal-light transition-colors"
+        >
+          <Share2 className="h-5 w-5" />
+          Share now
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(`/listings/${showSharePrompt.id}`)}
+          className="w-full py-3 px-6 rounded-xl border text-muted-foreground hover:bg-muted transition-colors"
+        >
+          View my listing
+        </button>
       </div>
     );
   }
@@ -888,6 +955,27 @@ export function CreateListingPage() {
                   {images.length} {t("create.minImages")} — {3 - images.length}{" "}
                   {3 - images.length === 1 ? t("create.moreNeeded") : t("create.moreNeededPlural")}
                 </p>
+              )}
+
+              {/* Video clip — optional, max 30s / 50MB */}
+              {selectedType === "offer" && (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Short video clip (optional)</p>
+                  <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => handleVideoUpload(e.target.files?.[0] ?? null)} />
+                  {videoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
+                      <video src={videoUrl} controls className="w-full h-full object-contain" />
+                      <button type="button" onClick={() => setVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="outline" className="w-full h-14 border-dashed gap-2 text-sm" onClick={() => videoInputRef.current?.click()} disabled={uploadingVideo}>
+                      {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
+                    </Button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 50MB.</p>
+                </div>
               )}
             </CardContent>
           </Card>

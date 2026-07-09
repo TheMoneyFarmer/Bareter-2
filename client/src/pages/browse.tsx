@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useSeo } from "@/hooks/use-seo";
 import { Link, useSearch, useRoute, useLocation } from "wouter";
 import { categoryFromSlug, subcategoryFromSlug } from "@shared/category-slugs";
@@ -6,7 +8,7 @@ import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { ChainMatchSection } from "@/components/chain-match-section";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CATEGORIES, LOCATIONS, ITEM_CONDITIONS, type ListingWithUser } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -82,7 +84,7 @@ import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain" | "creators" | "businesses";
+type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain" | "creators" | "businesses" | "requests";
 
 function ForYouTab({
   wishlistedIds,
@@ -166,6 +168,17 @@ export function BrowsePage() {
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
+
+  const handlePullRefresh = useCallback(async () => {
+    // Reset infinite scroll back to page 1 and re-fetch all active queries
+    await queryClient.resetQueries({ queryKey: ["/api/listings"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/for-you"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/creators"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+  }, [queryClient]);
+
+  const { isRefreshing: isPullRefreshing } = usePullToRefresh(handlePullRefresh);
   const searchString = useSearch();
   const [matchCat, paramsCat] = useRoute("/c/:category");
   const [matchSub, paramsSub] = useRoute("/c/:category/:subcategory");
@@ -186,7 +199,7 @@ export function BrowsePage() {
   const [, navigate] = useLocation();
   const initialTab = initialParams.get("tab") as ExploreTab | null;
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialTab && ["discover","search","for-you","collabs","chain","creators","businesses"].includes(initialTab)
+    initialTab && ["discover","search","for-you","collabs","chain","creators","businesses","requests"].includes(initialTab)
       ? initialTab
       : showCategoriesParam ? "discover"
       : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
@@ -303,6 +316,7 @@ export function BrowsePage() {
   };
 
   const activeLocation = useActiveLocation();
+  const PAGE_SIZE = 20;
   // Browse filters by country only — city is an explicit user-chosen filter, not auto-applied from profile
   const browseParams = new URLSearchParams();
   if (activeLocation.worldwide) {
@@ -311,16 +325,46 @@ export function BrowsePage() {
     browseParams.set("country", activeLocation.country);
   }
   const listingsQs = browseParams.toString();
-  const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
+
+  const {
+    data: listingsPages,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<ListingWithUser[]>({
     queryKey: ["/api/listings", { country: activeLocation.country, worldwide: activeLocation.worldwide }],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
+    queryFn: async ({ pageParam = 0 }) => {
+      const qs = new URLSearchParams(listingsQs);
+      qs.set("limit", String(PAGE_SIZE));
+      qs.set("offset", String(pageParam as number));
+      const res = await fetch(`${API_BASE}/api/listings?${qs.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
-    staleTime: 0,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
+    staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
+
+  const listings = listingsPages?.pages.flat() ?? [];
+
+  // Sentinel div — when it enters viewport, load next page
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const { data: featuredListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/featured"],
@@ -362,6 +406,18 @@ export function BrowsePage() {
     },
     enabled: activeTab === "creators",
     staleTime: 60_000,
+  });
+
+  // ── ISO Board — "request" type listings only ──────────────────────────────
+  const { data: isoListings = [], isLoading: isoLoading } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings", { type: "request" }],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/listings?type=request&limit=40`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "requests",
+    staleTime: 30_000,
   });
 
   // ── Businesses tab — pulled from GET /api/businesses (active only, server-filtered) ───
@@ -799,6 +855,11 @@ export function BrowsePage() {
 
   return (
     <div className="bg-bareter-off-white dark:bg-background min-h-screen">
+    {Capacitor.isNativePlatform() && isPullRefreshing && (
+      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-background rounded-full shadow-md p-2.5">
+        <RefreshCw className="h-5 w-5 animate-spin text-bareter-teal" />
+      </div>
+    )}
     <div className="container px-2 sm:px-4 py-4 sm:py-8 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-3 hidden sm:flex items-center gap-1.5">
         <Link href="/" className="hover:text-bareter-teal">{t("nav.home")}</Link>
@@ -855,6 +916,15 @@ export function BrowsePage() {
             Chain Deals
           </Button>
         )}
+        <Button
+          variant={activeTab === "requests" ? "bareter" : "bareter-outline"}
+          onClick={() => setActiveTab("requests")}
+          className="gap-2 flex-shrink-0"
+          data-testid="tab-requests"
+        >
+          <ShoppingCart className="h-4 w-4" />
+          ISO Board
+        </Button>
         <Button
           variant={activeTab === "creators" ? "bareter" : "bareter-outline"}
           onClick={() => setActiveTab("creators")}
@@ -1223,6 +1293,59 @@ export function BrowsePage() {
         />
       ) : activeTab === "chain" ? (
         <ChainMatchSection />
+      ) : activeTab === "requests" ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-primary" />
+                ISO Board
+              </h2>
+              <p className="text-sm text-muted-foreground">People looking for something to barter — offer what you have</p>
+            </div>
+            <Badge variant="secondary">{isoListings.length} requests</Badge>
+          </div>
+          {isoLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-48 rounded-xl bg-muted animate-pulse" />)}
+            </div>
+          ) : isoListings.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>No requests yet. Be the first to post what you&apos;re looking for!</p>
+              <Link href="/create-listing"><Button variant="bareter" size="sm" className="mt-4">Post a Request</Button></Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {isoListings.map((listing) => (
+                <Link key={listing.id} href={`/listings/${listing.id}`}>
+                  <div className="border rounded-xl p-4 bg-card hover:shadow-bareter-hover transition-shadow cursor-pointer bareter-slide-in">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <Badge variant="outline" className="text-[10px] mb-2">ISO · {listing.categories?.[0] ?? "General"}</Badge>
+                        <h3 className="font-semibold text-sm line-clamp-2">{listing.title}</h3>
+                      </div>
+                      {(listing as any).user?.avatarUrl && (
+                        <img src={assetUrl((listing as any).user.avatarUrl)} alt="" className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
+                      )}
+                    </div>
+                    {listing.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{listing.description}</p>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />{listing.location || "UAE"}
+                      </span>
+                      {listing.retailValue && Number(listing.retailValue) > 0 && (
+                        <span className="text-xs font-semibold text-bareter-teal">Up to AED {Number(listing.retailValue).toLocaleString()}</span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       ) : activeTab === "discover" ? (
         <div className="space-y-8">
           {featuredListings && featuredListings.length > 0 && (
@@ -1506,11 +1629,17 @@ export function BrowsePage() {
                   </CardContent>
                 </Card>
               ) : (
-                <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-results">
-                  {sortedListings.map((listing) => (
-                    <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
-                  ))}
-                </StaggeredReveal>
+                <>
+                  <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-results">
+                    {sortedListings.map((listing) => (
+                      <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
+                    ))}
+                  </StaggeredReveal>
+                  {/* Infinite scroll sentinel — IntersectionObserver triggers next page */}
+                  <div ref={sentinelRef} className="h-8 mt-4 flex items-center justify-center">
+                    {isFetchingNextPage && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                  </div>
+                </>
               )}
             </div>
           </div>

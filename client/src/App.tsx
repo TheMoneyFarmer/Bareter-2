@@ -10,6 +10,8 @@ import { AuthProvider } from "@/lib/auth";
 import { WaitlistProvider } from "@/lib/waitlist";
 import { ActionGuardProvider } from "@/lib/action-guard";
 import { VerificationReminder } from "@/components/verification-reminder";
+import { NativeVerificationPrompt } from "@/components/native-verification-prompt";
+import { useNativePush } from "@/hooks/use-native-push";
 import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider, LanguageSync } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
@@ -72,7 +74,8 @@ const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ d
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
-initPostHog();
+// Tag every event with platform so PostHog can split ios vs web dashboards
+initPostHog({ platform: Capacitor.isNativePlatform() ? "ios" : "web" });
 
 const ADMIN_DOMAIN = "admin.bareter.com";
 const isAdminSubdomain =
@@ -422,12 +425,21 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Registers for native push notifications once the user is authenticated.
+// Must live inside <AuthProvider> so useAuth() resolves.
+function NativePushManager() {
+  useNativePush();
+  return null;
+}
+
 // True on iOS/Android Capacitor builds; false in every browser.
 const isNative = Capacitor.isNativePlatform();
 
 // Handles all native-only startup side-effects in one place.
 // Runs once on mount; no-ops completely when isNative is false.
 function NativeBootstrap() {
+  const qc = useQueryClient();
+
   useEffect(() => {
     if (!isNative) return;
 
@@ -441,20 +453,35 @@ function NativeBootstrap() {
       // SplashScreen.hide() is called in NativeSplashGate after auth resolves.
     })();
 
-    // Android hardware back button: navigate back, exit when at root
-    let removeListener: (() => void) | undefined;
-    import("@capacitor/app")
-      .then(({ App: CapApp }) =>
-        CapApp.addListener("backButton", ({ canGoBack }) => {
+    // Back button + app foreground resume refresh
+    let cleanupListeners: (() => void) | undefined;
+    (async () => {
+      try {
+        const { App: CapApp } = await import("@capacitor/app");
+
+        const backHandle = await CapApp.addListener("backButton", ({ canGoBack }) => {
           if (canGoBack) window.history.back();
           else CapApp.exitApp();
-        }),
-      )
-      .then((handle) => { removeListener = () => handle.remove(); })
-      .catch(() => {});
+        });
 
-    return () => { removeListener?.(); };
-  }, []);
+        let backgroundAt = 0;
+        const resumeHandle = await CapApp.addListener("appStateChange", ({ isActive }) => {
+          if (!isActive) {
+            backgroundAt = Date.now();
+          } else if (Date.now() - backgroundAt > 30_000) {
+            // App was backgrounded for >30s — refresh live data silently
+            qc.invalidateQueries({ queryKey: ["/api/inbox"] });
+            qc.invalidateQueries({ queryKey: ["/api/deals"] });
+            qc.invalidateQueries({ queryKey: ["/api/listings"] });
+          }
+        });
+
+        cleanupListeners = () => { backHandle.remove(); resumeHandle.remove(); };
+      } catch {}
+    })();
+
+    return () => { cleanupListeners?.(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
@@ -476,16 +503,18 @@ function NativeSplashGate() {
     retry: false,
   });
 
-  const dismiss = useRef(() => {
+  const dismiss = useRef(async () => {
     if (hidden.current) return;
     hidden.current = true;
-    // Hide the native OS splash screen once auth has resolved, then fade out
-    // the teal web overlay so there's a seamless transition.
-    import("@capacitor/splash-screen")
-      .then(({ SplashScreen }) => SplashScreen.hide({ fadeOutDuration: 500 }))
-      .catch(() => {});
+    // Fade the native OS splash first, then reveal content.
+    // Awaiting ensures the native animation completes before we remove the
+    // web overlay — no white flash between the two layers.
+    try {
+      const { SplashScreen } = await import("@capacitor/splash-screen");
+      await SplashScreen.hide({ fadeOutDuration: 300 });
+    } catch {}
     setFading(true);
-    setTimeout(() => setVisible(false), 350);
+    setTimeout(() => setVisible(false), 300);
   });
 
   // Dismiss once auth check finishes
@@ -494,10 +523,10 @@ function NativeSplashGate() {
     dismiss.current();
   }, [isLoading]);
 
-  // Safety cap: always dismiss after 8 s even if auth hangs
+  // Safety cap: always dismiss after 5 s even if auth hangs
   useEffect(() => {
     if (!isNative) return;
-    const t = setTimeout(() => dismiss.current(), 8000);
+    const t = setTimeout(() => dismiss.current(), 5000);
     return () => clearTimeout(t);
   }, []);
 
@@ -541,6 +570,7 @@ function App() {
         <I18nProvider>
           <AuthProvider>
             <LanguageSync />
+            {isNative && <NativePushManager />}
             <TooltipProvider>
               {/* Admin subdomain — stripped-down shell, no public UI chrome */}
               {isAdminSubdomain ? (
@@ -558,7 +588,7 @@ function App() {
                       <div className={`min-h-screen flex flex-col bg-background${isNative ? " safe-area-top" : ""}`}>
                         {!isNative && <AnnouncementBanner />}
                         <Header />
-                        <VerificationReminder />
+                        {!isNative && <VerificationReminder />}
                         <main className="flex-1 pb-28 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
@@ -576,6 +606,7 @@ function App() {
                       <BareterAiNotificationChat />
                       <LocationMismatchBanner />
                       {!isNative && <CookieConsent />}
+                      {isNative && <NativeVerificationPrompt />}
                     </MaintenanceGate>
                   </ErrorBoundary>
                   </ActionGuardProvider>

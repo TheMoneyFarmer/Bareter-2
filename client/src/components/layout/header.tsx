@@ -158,12 +158,14 @@ export function Header() {
   const inboxUnread = inboxData?.count || 0;
 
   // Search suggestions
-  const { data: suggestionListings } = useQuery<any[]>({
-    queryKey: ["/api/listings", { search: searchQuery }],
-    queryFn: () => fetch(`/api/listings?search=${encodeURIComponent(searchQuery)}&limit=4`).then(r => r.json()),
+  const { data: autocompleteData } = useQuery<{ listings: any[]; users: any[] }>({
+    queryKey: ["/api/search/autocomplete", searchQuery],
+    queryFn: () => fetch(`/api/search/autocomplete?q=${encodeURIComponent(searchQuery)}`).then(r => r.json()),
     enabled: searchQuery.trim().length >= 2,
     staleTime: 5000,
   });
+  const suggestionListings = autocompleteData?.listings ?? [];
+  const suggestionUsers = autocompleteData?.users ?? [];
 
   // Search history (shown when focused but no query yet)
   const { data: searchHistory } = useQuery<{ history: { id: string; query: string; createdAt: string }[] }>({
@@ -255,8 +257,9 @@ export function Header() {
     try { localStorage.setItem("bareter_push_dismissed", "1"); } catch {}
   };
 
+  const hasAutocompleteSuggestions = searchQuery.trim().length >= 2 && (suggestionListings.length > 0 || suggestionUsers.length > 0);
   const showSearchDropdown = searchFocused && (
-    (searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0) ||
+    hasAutocompleteSuggestions ||
     (searchQuery.trim().length < 2 && searchHistory?.history && searchHistory.history.length > 0)
   );
 
@@ -356,22 +359,44 @@ export function Header() {
                     ))}
                   </>
                 )}
-                {searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0 && (
+                {searchQuery.trim().length >= 2 && (suggestionListings.length > 0 || suggestionUsers.length > 0) && (
                   <>
-                    <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
-                    {suggestionListings.slice(0, 4).map((l: any) => (
-                      <button key={l.id} type="button"
-                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
-                        onClick={() => { setSearchFocused(false); navigate(`/listings/${l.id}`); }}>
-                        {(l.images as string[])?.[0] && (
-                          <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
-                          <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
-                        </div>
-                      </button>
-                    ))}
+                    {suggestionListings.length > 0 && (
+                      <>
+                        <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
+                        {suggestionListings.slice(0, 4).map((l: any) => (
+                          <button key={l.id} type="button"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                            onClick={() => { setSearchFocused(false); navigate(`/listings/${l.id}`); }}>
+                            {(l.images as string[])?.[0] && (
+                              <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
+                              <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {suggestionUsers.length > 0 && (
+                      <>
+                        <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-t border-gray-50">People</p>
+                        {suggestionUsers.slice(0, 3).map((u: any) => (
+                          <button key={u.id} type="button"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                            onClick={() => { setSearchFocused(false); navigate(`/profile/${u.id}`); }}>
+                            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="h-full w-full object-cover" /> : <span className="text-xs font-bold">{(u.fullName || "?")[0]}</span>}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-bareter-navy truncate">{u.businessName || u.fullName}</p>
+                              {u.businessName && <p className="text-xs text-muted-foreground truncate">{u.fullName}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
                     <div className="border-t border-gray-100 px-4 py-3">
                       <button type="button" className="w-full text-sm font-semibold text-bareter-teal hover:underline text-center"
                         onClick={() => { setSearchFocused(false); navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`); }}>

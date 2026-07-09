@@ -63,6 +63,7 @@ import {
   listingDrafts,
   reminderLog,
   pushSubscriptions,
+  devicePushTokens,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -77,6 +78,7 @@ import {
   creatorProfiles,
   creatorPortfolioItems,
   businessMembers,
+  savedFolders,
 } from "@shared/schema";
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
@@ -119,6 +121,7 @@ import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes, bustWaitlistEnabledCache } from "./waitlistRoutes";
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
+import { saveDeviceToken, removeDeviceToken, removeAllDeviceTokensForUser, sendNativePushToUser } from "./nativePushService";
 import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not, isNull, isNotNull } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
@@ -367,6 +370,29 @@ async function isAllowlistedAdmin(user: { isAdmin?: boolean | null; role?: strin
   return true;
 }
 
+// ── SSE real-time inbox ─────────────────────────────────────────────────────
+// In-memory map: userId → set of open SSE response objects.
+// Safe for single-instance Node.js (Neon serverless DB, traditional Express server).
+const sseClients = new Map<string, Set<Response>>();
+
+function notifyInboxSSE(userId: string, payload: Record<string, unknown>) {
+  const clients = sseClients.get(userId);
+  if (!clients?.size) return;
+  const data = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const res of clients) {
+    try { res.write(data); } catch { /* connection already closed */ }
+  }
+}
+
+function notifyTypingSSE(userId: string, fromUserId: string) {
+  const clients = sseClients.get(userId);
+  if (!clients?.size) return;
+  const data = `event: typing\ndata: ${JSON.stringify({ fromUserId })}\n\n`;
+  for (const res of clients) {
+    try { res.write(data); } catch {}
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -601,13 +627,95 @@ export async function registerRoutes(
   });
 
   // ── Client error logging (mobile app dev visibility) ─────────────────────────
+  // In-memory circular buffer for client errors — last 200 entries, survives deploys
+  // only via process lifetime. Admin endpoint reads from it.
+  const CLIENT_ERROR_BUFFER_SIZE = 200;
+  const clientErrorLog: Array<{ ts: string; platform: string; context: string; error: string }> = [];
+
   app.post("/api/logs/client-error", async (req, res) => {
     try {
       const { context, error, platform } = req.body as { context?: string; error?: string; platform?: string };
-      console.error(`[client-error] platform=${platform ?? "unknown"} context=${context ?? "unknown"}: ${error ?? "(no message)"}`);
+      const entry = {
+        ts: new Date().toISOString(),
+        platform: platform ?? "unknown",
+        context: context ?? "unknown",
+        error: error ?? "(no message)",
+      };
+      clientErrorLog.push(entry);
+      if (clientErrorLog.length > CLIENT_ERROR_BUFFER_SIZE) clientErrorLog.shift();
+      console.error(`[client-error] platform=${entry.platform} context=${entry.context}: ${entry.error}`);
       return res.status(204).end();
     } catch {
       return res.status(204).end();
+    }
+  });
+
+  // GET /api/admin/mobile/stats — mobile app metrics for admin panel
+  app.get("/api/admin/mobile/stats", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalRow,
+        todayRow,
+        weekRow,
+        googleRow,
+        appleRow,
+        phoneVerifRow,
+        kycRow,
+        kybRow,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, todayStart)),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, weekStart)),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE google_id IS NOT NULL`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE apple_id IS NOT NULL`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE phone_verified = true`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE kyc_status = 'APPROVED'`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM business_profiles WHERE kyb_status = 'verified'`),
+      ]);
+
+      const rawNum = (r: unknown) => {
+        const rows = (r as { rows?: unknown[] }).rows ?? (r as unknown[]);
+        const first = Array.isArray(rows) ? rows[0] : null;
+        if (!first || typeof first !== "object") return 0;
+        const val = (first as Record<string, unknown>).cnt ?? (first as Record<string, unknown>).count;
+        return Number(val ?? 0);
+      };
+
+      const total = Number(totalRow[0]?.cnt ?? 0);
+      const googleCount = rawNum(googleRow);
+      const appleCount = rawNum(appleRow);
+      const emailCount = total - googleCount - appleCount;
+
+      const recentErrors = [...clientErrorLog].reverse().slice(0, 50);
+
+      res.json({
+        signups: {
+          total,
+          today: Number(todayRow[0]?.cnt ?? 0),
+          thisWeek: Number(weekRow[0]?.cnt ?? 0),
+        },
+        authMethods: {
+          google: googleCount,
+          apple: appleCount,
+          email: Math.max(0, emailCount),
+        },
+        verification: {
+          phoneVerified: rawNum(phoneVerifRow),
+          kycApproved: rawNum(kycRow),
+          kybApproved: rawNum(kybRow),
+        },
+        clientErrors: {
+          buffered: clientErrorLog.length,
+          recent: recentErrors,
+        },
+      });
+    } catch (err) {
+      console.error("mobile stats error:", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -1481,6 +1589,7 @@ export async function registerRoutes(
     if (mobileAuth) {
       // Mobile bearer token logout — revoke the token row, leave session alone
       await db.delete(mobileTokens).where(eq(mobileTokens.id, mobileAuth.tokenId)).catch(() => {});
+      // The client sends DELETE /api/push/native-token to clean up its device token
       return res.json({ message: "Logged out successfully" });
     }
     req.session.destroy((err) => {
@@ -2145,6 +2254,33 @@ export async function registerRoutes(
     }
   });
 
+  // ── Native push token registration (APNs / FCM via Capacitor) ────────────
+  app.post("/api/push/native-token", requireAuth, async (req, res) => {
+    try {
+      const { token, platform } = req.body as { token?: string; platform?: string };
+      if (!token || !platform) return res.status(400).json({ message: "token and platform required" });
+      await saveDeviceToken(req.session.userId!, token, platform);
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      console.error("save device token error:", err);
+      res.status(500).json({ message: "Failed to save device token" });
+    }
+  });
+
+  app.delete("/api/push/native-token", requireAuth, async (req, res) => {
+    try {
+      const { token } = req.body as { token?: string };
+      if (token) {
+        await removeDeviceToken(token);
+      } else {
+        await removeAllDeviceTokensForUser(req.session.userId!);
+      }
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ message: "Failed to remove device token" });
+    }
+  });
+
   // Listings routes with search/filter
   app.get("/api/listings", publicListingsLimiter, async (req, res) => {
     try {
@@ -2203,6 +2339,13 @@ export async function registerRoutes(
         return res.json([...featured, ...rest].slice(0, limit));
       }
 
+      // Cache public (unauthenticated) browse for 30s — authenticated responses
+      // include per-user isLiked so they must stay private/uncached.
+      if (!userId) {
+        res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+      } else {
+        res.set("Cache-Control", "private, no-cache");
+      }
       res.json(enriched);
     } catch (error) {
       console.error("Get listings error:", error);
@@ -2456,6 +2599,40 @@ export async function registerRoutes(
         }, req.session.userId).catch(() => {});
       }).catch(() => {});
 
+      // Smart match alerts — notify users whose active listings want what this listing offers.
+      // Runs entirely in the background; never blocks the response.
+      (async () => {
+        try {
+          const newCats = (listing.categories as string[]) || [];
+          if (newCats.length === 0) return;
+          // Find distinct user IDs with active listings whose wantedCategories overlap
+          const candidates = await db.select({ userId: listings.userId, wantedCategories: listings.wantedCategories })
+            .from(listings)
+            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt)))
+            .limit(500);
+          const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+          const matchedUserIds = Array.from(new Set(
+            candidates
+              .filter(c =>
+                c.userId !== listing.userId &&
+                overlap(newCats, (c.wantedCategories as string[]) || [])
+              )
+              .map(c => c.userId)
+          )).slice(0, 50);
+          if (matchedUserIds.length === 0) return;
+          const posterName = listingUser.fullName || listingUser.businessName || "Someone";
+          await Promise.allSettled(
+            matchedUserIds.map(uid =>
+              sendPushToUser(uid, {
+                title: "New match for you",
+                body: `${posterName} just listed "${listing.title}" — it matches what you're looking for.`,
+                url: `/listings/${listing.id}`,
+              })
+            )
+          );
+        } catch {}
+      })();
+
       const imageUrls: string[] = data.images || [];
       if (imageUrls.length > 0) {
         import("./visionClient").then(({ scanListingImages }) => {
@@ -2641,6 +2818,16 @@ export async function registerRoutes(
 
       const isOwner = !!sessionUserId && listing.userId === sessionUserId;
 
+      // Auto-decline expired pending proposals (best-effort, non-blocking)
+      db.update(listingComments)
+        .set({ status: "rejected" })
+        .where(and(
+          eq(listingComments.listingId, listingId),
+          eq(listingComments.status, "pending"),
+          sqlOperator`${listingComments.expiresAt} IS NOT NULL AND ${listingComments.expiresAt} < NOW()`,
+        ))
+        .catch(() => {});
+
       let comments = await storage.getListingComments(listingId);
 
       // Privacy gate: owners see all proposals; proposers see only their own;
@@ -2737,9 +2924,17 @@ export async function registerRoutes(
         offerDescription: z.string().nullable().optional(),
         images: z.array(z.string().min(1)).min(2, "At least 2 images of your offer are required"),
         content: z.string().nullable().optional(),
+        bundledListingIds: z.array(z.string()).max(3).optional(),
       });
       const parsed = schema.parse(req.body);
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
       const comment = await storage.createListingComment(listingId, userId, parsed.content || null, parsed.offerItemName, parsed.offerItemValue, parsed.offerDescription || null, parsed.images);
+      // Patch expiresAt + bundledListingIds onto the newly created row
+      const [commentWithExtras] = await db.update(listingComments)
+        .set({ expiresAt, bundledListingIds: parsed.bundledListingIds || [] })
+        .where(eq(listingComments.id, comment.id))
+        .returning();
+      Object.assign(comment, commentWithExtras);
       res.json(comment);
 
       // In-app notification + email to listing owner — best-effort
@@ -3153,6 +3348,34 @@ export async function registerRoutes(
   });
 
   // ── Similar listings ──────────────────────────────────────────────────────
+  // Listing quality / completeness score — shown to listing owner only
+  app.get("/api/listings/:id/quality", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const [listing] = await db.select().from(listings).where(eq(listings.id, listingId));
+      if (!listing) return res.status(404).json({ message: "Not found" });
+      if (listing.userId !== req.session.userId!) return res.status(403).json({ message: "Not authorized" });
+
+      const images = (listing.images as string[]) || [];
+      const desc = listing.description || "";
+      const cats = (listing.categories as string[]) || [];
+      const exchangeItems = (listing.exchangeItems as any[]) || [];
+
+      const checks = [
+        { key: "photos", label: "Add at least 3 photos", done: images.length >= 3, weight: 30 },
+        { key: "description", label: "Write a detailed description (50+ chars)", done: desc.length >= 50, weight: 25 },
+        { key: "value", label: "Set a retail value", done: !!listing.retailValue && parseFloat(listing.retailValue) > 0, weight: 20 },
+        { key: "categories", label: "Pick at least one category", done: cats.length > 0, weight: 15 },
+        { key: "exchange", label: "List what you want in return", done: exchangeItems.length > 0 || !!(listing.wantedCategories as string[])?.length, weight: 10 },
+      ];
+
+      const score = checks.reduce((s, c) => s + (c.done ? c.weight : 0), 0);
+      res.json({ score, checks });
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/listings/:id/similar", async (req, res) => {
     try {
       const listingId = param(req.params.id);
@@ -3161,6 +3384,45 @@ export async function registerRoutes(
       res.json(similar);
     } catch {
       res.status(500).json({ message: "Failed to fetch similar listings" });
+    }
+  });
+
+  // ── Barter chain candidates for a specific listing ────────────────────────
+  // Returns listings where owner wants what this listing offers AND this listing
+  // owner may want what they have (2-way circular match potential).
+  app.get("/api/listings/:id/chain-candidates", publicListingsLimiter, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const [sourceListing] = await db.select().from(listings)
+        .where(and(eq(listings.id, listingId), eq(listings.isActive, true)));
+      if (!sourceListing) return res.json([]);
+
+      const srcCats = (sourceListing.categories as string[]) || [];
+      const srcWanted = (sourceListing.wantedCategories as string[]) || [];
+
+      // Find listings from OTHER users that want something this listing offers
+      const candidates = await db.select({
+        id: listings.id, title: listings.title, images: listings.images,
+        retailValue: listings.retailValue, location: listings.location,
+        categories: listings.categories, wantedCategories: listings.wantedCategories,
+        userId: listings.userId, ownerName: users.fullName, ownerAvatar: users.avatarUrl,
+      })
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(and(eq(listings.isActive, true), isNull(listings.deletedAt)))
+        .limit(150);
+
+      const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+      const matches = candidates.filter(c => {
+        if (c.id === listingId || c.userId === sourceListing.userId) return false;
+        const theyWantMine = overlap(srcCats, (c.wantedCategories as string[]) || []);
+        const iWantTheirs = srcWanted.length === 0 || overlap(srcWanted, (c.categories as string[]) || []);
+        return theyWantMine && iWantTheirs;
+      }).slice(0, 5);
+
+      res.json(matches);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -3472,6 +3734,34 @@ export async function registerRoutes(
       res.json(deal);
     } catch (error) {
       console.error("Get deal error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // First-deal context — tells the client if this is the first time these two users have dealt
+  app.get("/api/deals/:id/context", requireAuth, async (req, res) => {
+    try {
+      const myId = req.session.userId!;
+      const deal = await storage.getDeal(param(req.params.id));
+      if (!deal || (deal.seekerId !== myId && deal.providerId !== myId)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const otherId = deal.seekerId === myId ? deal.providerId : deal.seekerId;
+      // Count prior COMPLETED deals between these two users
+      const [row] = await db.select({ n: count() }).from(deals).where(
+        and(
+          eq(deals.state, "completed"),
+          or(
+            and(eq(deals.seekerId, myId), eq(deals.providerId, otherId)),
+            and(eq(deals.seekerId, otherId), eq(deals.providerId, myId)),
+          ),
+          sqlOperator`${deals.id} != ${deal.id}`,
+        )
+      );
+      const priorCompletedDeals = Number(row?.n || 0);
+      const [otherUser] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, otherId));
+      res.json({ isFirstDeal: priorCompletedDeals === 0, priorCompletedDeals, otherName: otherUser?.fullName || "the other person" });
+    } catch (err) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -3835,6 +4125,33 @@ export async function registerRoutes(
               }).catch(() => {});
             }
           }
+
+          // Native push for all key state changes
+          const dealUrl = `/deals/${deal.id}`;
+          if (data.state === "proposed" && providerUser) {
+            sendNativePushToUser(providerUser.id, {
+              title: "New barter proposal",
+              body: `${seekerUser?.fullName || "Someone"} wants to trade with you`,
+              url: dealUrl,
+            }).catch(() => {});
+          }
+          if (data.state === "accepted" && seekerUser) {
+            sendNativePushToUser(seekerUser.id, {
+              title: "Proposal accepted!",
+              body: `${providerUser?.fullName || "Your partner"} accepted your barter`,
+              url: dealUrl,
+            }).catch(() => {});
+          }
+          if (data.state === "cancelled") {
+            const otherParty = isSeeker ? providerUser : seekerUser;
+            if (otherParty) {
+              sendNativePushToUser(otherParty.id, {
+                title: "Trade cancelled",
+                body: `${isSeeker ? seekerUser?.fullName : providerUser?.fullName || "Your partner"} cancelled the trade`,
+                url: dealUrl,
+              }).catch(() => {});
+            }
+          }
         } catch {}
       }
 
@@ -3851,6 +4168,7 @@ export async function registerRoutes(
           const seekerName = seekerUser?.fullName || "your trade partner";
           const providerName = providerUser?.fullName || "your trade partner";
 
+          const dealUrl = `/deals/${deal.id}`;
           await Promise.all([
             storage.createNotification({
               userId: deal.seekerId,
@@ -3865,6 +4183,16 @@ export async function registerRoutes(
               title: "Trade complete",
               message: `Your trade with ${seekerName} is complete — leave a rating`,
               relatedDealId: deal.id,
+            }),
+            sendNativePushToUser(deal.seekerId, {
+              title: "Trade complete!",
+              body: `Your trade with ${providerName} is complete — leave a rating`,
+              url: dealUrl,
+            }),
+            sendNativePushToUser(deal.providerId, {
+              title: "Trade complete!",
+              body: `Your trade with ${seekerName} is complete — leave a rating`,
+              url: dealUrl,
             }),
           ]);
 
@@ -3963,22 +4291,33 @@ export async function registerRoutes(
       if (deal.state === "completed" || deal.state === "cancelled") {
         return res.status(400).json({ message: "Cannot dispute a completed or cancelled deal" });
       }
+      const INTERNAL_URL_RE = /^\/uploads\/|^https?:\/\/[^/]*\.r2\.cloudflarestorage\.com\//;
       const schema = z.object({
         subject: z.string().min(5).max(200),
         description: z.string().min(10).max(2000),
+        // Only accept internal upload URLs — reject arbitrary external links
+        evidenceUrl: z.string().url().regex(INTERNAL_URL_RE, "Invalid evidence URL").optional(),
       });
       const body = schema.parse(req.body);
+      const filer = await storage.getUser(userId);
       const partyBId = deal.seekerId === userId ? deal.providerId : deal.seekerId;
+      const evidenceEntry = body.evidenceUrl ? [{
+        submittedBy: userId,
+        submittedByName: filer?.fullName || "User",
+        description: "Attached by filer",
+        fileUrls: [body.evidenceUrl],
+        submittedAt: new Date().toISOString(),
+      }] : [];
       const dispute = await storage.createDispute({
         dealId,
         partyAId: userId,
         partyBId,
         subject: body.subject,
         description: body.description,
+        evidence: evidenceEntry,
         status: "open",
       });
       // Notify the other party
-      const filer = await storage.getUser(userId);
       await storage.createNotification({
         userId: partyBId,
         type: "dispute_filed" as any,
@@ -4086,7 +4425,7 @@ export async function registerRoutes(
         }
       }
 
-      // Notify the other party
+      // Notify the other party (in-app + native push + email)
       const recipientId = deal.seekerId === req.session.userId ? deal.providerId : deal.seekerId;
       await storage.createNotification({
         userId: recipientId,
@@ -4096,17 +4435,25 @@ export async function registerRoutes(
         relatedDealId: deal.id,
       });
 
-      // Fire-and-forget email to the recipient
+      // Fire-and-forget email + native push to the recipient
       Promise.all([
         storage.getUser(req.session.userId!),
         storage.getUser(recipientId),
       ]).then(async ([sender, recipient]) => {
+        const senderName = sender?.fullName || "Someone";
+        // Native push
+        sendNativePushToUser(recipientId, {
+          title: `${senderName} sent a message`,
+          body: data.content.length > 80 ? data.content.slice(0, 77) + "…" : data.content,
+          url: `/deals/${deal.id}`,
+        }).catch(() => {});
+
         if (!recipient?.email) return;
         const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
         const { sendNewMessageEmail } = await import("./emailService");
         sendNewMessageEmail(recipient.email, {
           recipientName: recipient.fullName,
-          senderName: sender?.fullName || "Someone",
+          senderName,
           listingTitle: deal.providerOffer || "your barter deal",
           dealId: deal.id,
           baseUrl,
@@ -8518,6 +8865,33 @@ export async function registerRoutes(
 
   // ========== End Posts API ==========
 
+  // Unified search autocomplete — listing titles + user names, max 8 results
+  app.get("/api/search/autocomplete", publicListingsLimiter, async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "").trim();
+      if (q.length < 2) return res.json({ listings: [], users: [] });
+
+      const [listingRows, userRows] = await Promise.all([
+        db.select({ id: listings.id, title: listings.title, images: listings.images, retailValue: listings.retailValue, location: listings.location })
+          .from(listings)
+          .where(and(ilike(listings.title, `%${q}%`), eq(listings.isActive, true)))
+          .orderBy(desc(listings.viewCount))
+          .limit(5),
+        db.select({ id: users.id, fullName: users.fullName, businessName: users.businessName, avatarUrl: users.avatarUrl })
+          .from(users)
+          .where(and(
+            or(ilike(users.fullName, `%${q}%`), ilike(users.businessName, `%${q}%`)),
+            eq(users.isBanned, false)
+          ))
+          .limit(3),
+      ]);
+
+      res.json({ listings: listingRows, users: userRows });
+    } catch {
+      res.status(500).json({ listings: [], users: [] });
+    }
+  });
+
   // User search (public — used for live suggestions)
   app.get("/api/users/search", async (req, res) => {
     try {
@@ -8820,6 +9194,144 @@ export async function registerRoutes(
       res.json(rows.map((r) => ({ ...r, isLiked: true })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch liked listings" });
+    }
+  });
+
+  // ========== Saved Folders ==========
+  app.get("/api/saved-folders", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folders = await db.select().from(savedFolders)
+        .where(eq(savedFolders.userId, userId))
+        .orderBy(savedFolders.createdAt);
+      // Attach count of listings per folder
+      const withCounts = await Promise.all(folders.map(async (f) => {
+        const [row] = await db.select({ n: count() }).from(listingLikes)
+          .where(and(eq(listingLikes.userId, userId), eq(listingLikes.folderId, f.id)));
+        return { ...f, listingCount: Number(row?.n || 0) };
+      }));
+      // Also include an "Unsorted" virtual folder count
+      const [unsortedRow] = await db.select({ n: count() }).from(listingLikes)
+        .where(and(eq(listingLikes.userId, userId), isNull(listingLikes.folderId)));
+      res.json({ folders: withCounts, unsortedCount: Number(unsortedRow?.n || 0) });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/saved-folders", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { name, emoji } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Folder name required" });
+      const [folder] = await db.insert(savedFolders).values({
+        userId, name: String(name).slice(0, 100), emoji: emoji || "📁",
+      }).returning();
+      res.json(folder);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/saved-folders/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folderId = param(req.params.id);
+      // Unassign listings before deleting folder (FK ON DELETE SET NULL handles it via migration)
+      await db.delete(savedFolders).where(
+        and(eq(savedFolders.id, folderId), eq(savedFolders.userId, userId))
+      );
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Assign a liked listing to a folder (or unassign with folderId=null)
+  app.patch("/api/likes/:listingId/folder", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const listingId = param(req.params.listingId);
+      const { folderId } = req.body; // null to unassign
+      // SECURITY: verify the target folder belongs to this user before assigning
+      if (folderId) {
+        const [folder] = await db.select({ id: savedFolders.id })
+          .from(savedFolders)
+          .where(and(eq(savedFolders.id, String(folderId)), eq(savedFolders.userId, userId)));
+        if (!folder) return res.status(403).json({ message: "Folder not found" });
+      }
+      await db.update(listingLikes).set({ folderId: folderId || null })
+        .where(and(eq(listingLikes.listingId, listingId), eq(listingLikes.userId, userId)));
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get saved listings in a specific folder (or unsorted if folderId=unsorted)
+  app.get("/api/saved-folders/:id/listings", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folderId = req.params.id;
+      // SECURITY: verify folder ownership (skip for the virtual "unsorted" bucket)
+      if (folderId !== "unsorted") {
+        const [folder] = await db.select({ id: savedFolders.id })
+          .from(savedFolders)
+          .where(and(eq(savedFolders.id, param(folderId)), eq(savedFolders.userId, userId)));
+        if (!folder) return res.status(403).json({ message: "Not authorized" });
+      }
+      const rows = await db.select({
+        id: listings.id, title: listings.title, images: listings.images,
+        retailValue: listings.retailValue, location: listings.location,
+        categories: listings.categories, type: listings.type,
+        folderId: listingLikes.folderId, likedAt: listingLikes.createdAt,
+      })
+        .from(listingLikes)
+        .innerJoin(listings, eq(listingLikes.listingId, listings.id))
+        .where(and(
+          eq(listingLikes.userId, userId),
+          eq(listings.isActive, true),
+          folderId === "unsorted" ? isNull(listingLikes.folderId) : eq(listingLikes.folderId, folderId),
+        ))
+        .orderBy(desc(listingLikes.createdAt));
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Listing Activity Stats (for own profile) ==========
+  app.get("/api/users/me/listing-activity", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userListings = await db.select({
+        id: listings.id, title: listings.title, viewCount: listings.viewCount,
+      }).from(listings).where(and(eq(listings.userId, userId), eq(listings.isActive, true)));
+
+      const totalViews = userListings.reduce((s, l) => s + (l.viewCount || 0), 0);
+
+      // Likes received on user's listings
+      const listingIds = userListings.map(l => l.id);
+      const [likeRow] = listingIds.length > 0
+        ? await db.select({ n: count() }).from(listingLikes).where(inArray(listingLikes.listingId, listingIds))
+        : [{ n: 0 }];
+      const totalLikes = Number(likeRow?.n || 0);
+
+      // Proposals received
+      const [propRow] = listingIds.length > 0
+        ? await db.select({ n: count() }).from(listingComments).where(inArray(listingComments.listingId, listingIds))
+        : [{ n: 0 }];
+      const totalProposals = Number(propRow?.n || 0);
+
+      res.json({
+        activeListings: userListings.length,
+        totalViews,
+        totalLikes,
+        totalProposals,
+        topListing: userListings.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0))[0] || null,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -9334,6 +9846,64 @@ export async function registerRoutes(
     }
   });
 
+  // SSE stream — client subscribes once; server pushes "message" events when
+  // new DMs arrive so the inbox updates without polling.
+  app.get("/api/inbox/stream", requireAuth, (req, res) => {
+    const userId = req.session.userId!;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    if (!sseClients.has(userId)) sseClients.set(userId, new Set());
+    sseClients.get(userId)!.add(res);
+
+    // Heartbeat keeps the connection alive through proxies / load balancers
+    const hb = setInterval(() => {
+      try { res.write("event: ping\ndata: {}\n\n"); } catch { clearInterval(hb); }
+    }, 25000);
+
+    req.on("close", () => {
+      clearInterval(hb);
+      sseClients.get(userId)?.delete(res);
+    });
+  });
+
+  // Typing indicator — client POSTs while composing; we fan-out via SSE.
+  // Only fires if an actual conversation exists between the two users to
+  // prevent unsolicited SSE spam to arbitrary accounts.
+  app.post("/api/inbox/:userId/typing", requireAuth, async (req, res) => {
+    const fromUserId = req.session.userId!;
+    const toUserId = param(req.params.userId);
+    if (fromUserId === toUserId) return res.status(204).end();
+    try {
+      const [existing] = await db.select({ id: quickInquiries.id }).from(quickInquiries)
+        .where(or(
+          and(eq(quickInquiries.fromUserId, fromUserId), eq(quickInquiries.toUserId, toUserId)),
+          and(eq(quickInquiries.fromUserId, toUserId), eq(quickInquiries.toUserId, fromUserId)),
+        )).limit(1);
+      if (existing) notifyTypingSSE(toUserId, fromUserId);
+    } catch {}
+    res.status(204).end();
+  });
+
+  // Archive an inbox conversation — only removes the requester's SENT messages.
+  // The other party's outgoing messages are untouched: they still own their data.
+  app.delete("/api/inbox/conversation/:userId", requireAuth, async (req, res) => {
+    try {
+      const myId = req.session.userId!;
+      const otherId = param(req.params.userId);
+      if (myId === otherId) return res.status(400).json({ message: "Invalid" });
+      await db.delete(quickInquiries).where(
+        and(eq(quickInquiries.fromUserId, myId), eq(quickInquiries.toUserId, otherId))
+      );
+      res.status(204).end();
+    } catch (err) {
+      console.error("Delete conversation error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/inbox-unread-count", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -9469,7 +10039,7 @@ export async function registerRoutes(
           .where(and(
             eq(messages.dealId, deal.id),
             eq(messages.isRead, false),
-            sql`${messages.senderId} != ${myId}`,
+            sqlOperator`${messages.senderId} != ${myId}`,
           ));
         for (const m of msgs) {
           dealMsgs.push({
@@ -9529,6 +10099,51 @@ export async function registerRoutes(
         isRead: false,
       }).returning();
 
+      // SSE push — instant delivery to any open inbox tab/app window
+      notifyInboxSSE(toUserId, { fromUserId, messageId: inq.id });
+      // Also notify the sender's other open tabs (multi-tab sync)
+      notifyInboxSSE(fromUserId, { fromUserId, messageId: inq.id });
+
+      // Native push to recipient (fire-and-forget)
+      storage.getUser(fromUserId).then((sender) => {
+        const senderName = sender?.fullName || "Someone";
+        sendNativePushToUser(toUserId, {
+          title: `New message from ${senderName}`,
+          body: data.message.length > 80 ? data.message.slice(0, 77) + "…" : data.message,
+          url: `/inbox?userId=${fromUserId}`,
+        }).catch(() => {});
+      }).catch(() => {});
+
+      // Update response rate: check if this is fromUser's FIRST reply in this thread.
+      // avgResponseTime is stored in minutes. Only updates for genuine replies (toUser
+      // previously messaged fromUser first).
+      (async () => {
+        try {
+          const [firstInbound] = await db.select({ createdAt: quickInquiries.createdAt })
+            .from(quickInquiries)
+            .where(and(eq(quickInquiries.fromUserId, toUserId), eq(quickInquiries.toUserId, fromUserId)))
+            .orderBy(asc(quickInquiries.createdAt))
+            .limit(1);
+          if (!firstInbound) return; // fromUser initiated — not a reply, skip
+          const [firstReply] = await db.select({ createdAt: quickInquiries.createdAt })
+            .from(quickInquiries)
+            .where(and(eq(quickInquiries.fromUserId, fromUserId), eq(quickInquiries.toUserId, toUserId)))
+            .orderBy(asc(quickInquiries.createdAt))
+            .limit(1);
+          // Only update on their very first reply in this thread
+          if (firstReply && firstReply.createdAt !== inq.createdAt) return;
+          const firstInboundMs = firstInbound.createdAt instanceof Date ? firstInbound.createdAt.getTime() : new Date(firstInbound.createdAt as string).getTime();
+          const replyMs = inq.createdAt instanceof Date ? inq.createdAt.getTime() : Date.now();
+          const deltaMinutes = Math.round((replyMs - firstInboundMs) / 60000);
+          if (deltaMinutes < 0 || deltaMinutes > 10080) return; // ignore >7d or negative
+          const currentUser = await storage.getUser(fromUserId);
+          const prevAvg = currentUser?.avgResponseTime || 0;
+          // Rolling average: weight previous by 4 to smooth over time
+          const newAvg = prevAvg === 0 ? deltaMinutes : Math.round((prevAvg * 4 + deltaMinutes) / 5);
+          await storage.updateUser(fromUserId, { avgResponseTime: newAvg });
+        } catch {}
+      })();
+
       res.json(inq);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -9575,6 +10190,11 @@ export async function registerRoutes(
         (endorsementCount * 3)
       );
 
+      const dealsPoints = Math.min(completedDeals * 10, 40);
+      const verifiedPoints = user.isVerified ? 20 : 0;
+      const ratingPoints = Math.round(ratingAvg * 8);
+      const endorsePoints = Math.min(endorsementCount * 3, 20);
+
       res.json({
         credibilityScore: Math.round(credibilityScore),
         completionRate: user.completionRate || "0",
@@ -9582,6 +10202,12 @@ export async function registerRoutes(
         totalCompletedDeals: completedDeals,
         endorsementCount,
         ratingAvg: Math.round(ratingAvg * 100) / 100,
+        breakdown: {
+          deals: { points: dealsPoints, max: 40, label: "Completed deals" },
+          verified: { points: verifiedPoints, max: 20, label: "Identity verified" },
+          rating: { points: ratingPoints, max: 40, label: "Avg rating" },
+          endorsements: { points: endorsePoints, max: 20, label: "Endorsements" },
+        },
       });
     } catch (error) {
       console.error("Get credibility error:", error);
@@ -11981,7 +12607,7 @@ export async function registerRoutes(
         .where(and(
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
-          sql`${listings.userId} != ${targetListing.userId}`,
+          sqlOperator`${listings.userId} != ${targetListing.userId}`,
         ))
         .limit(60);
 
@@ -12094,7 +12720,7 @@ export async function registerRoutes(
         .where(and(
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
-          sql`${listings.userId} != ${user.id}`,
+          sqlOperator`${listings.userId} != ${user.id}`,
         ))
         .limit(200);
 
@@ -12307,7 +12933,7 @@ export async function registerRoutes(
             type: listings.type, wantedCategories: listings.wantedCategories, isCollab: listings.isCollab,
           })
             .from(listings)
-            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt), sql`${listings.userId} != ${u.id}`))
+            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt), sqlOperator`${listings.userId} != ${u.id}`))
             .limit(50);
 
           const { findMatches } = await import("./agents/matchingAgent");

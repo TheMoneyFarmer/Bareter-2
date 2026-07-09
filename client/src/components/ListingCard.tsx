@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight, UserPlus, UserMinus, Building2, Camera, Package } from "lucide-react";
+import { MapPin, ShieldCheck, Crown, Lock, Heart, MoreVertical, Flag, Languages, Loader2, MessageCircle, ArrowLeftRight, UserPlus, UserMinus, Building2, Camera, Package, Eye } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -394,6 +394,14 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
               <MessageCircle className="h-3.5 w-3.5" />
               {listing.commentCount ?? 0}
             </span>
+            {(listing.viewCount ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 text-[12px] text-bareter-muted dark:text-muted-foreground">
+                <Eye className="h-3.5 w-3.5" />
+                {(listing.viewCount ?? 0) >= 1000
+                  ? `${((listing.viewCount ?? 0) / 1000).toFixed(1)}k`
+                  : listing.viewCount}
+              </span>
+            )}
             <span className="ms-auto inline-flex items-center gap-1 text-[11px] font-semibold text-bareter-teal bg-bareter-teal-muted px-2 py-0.5 rounded-full">
               <ArrowLeftRight className="h-3 w-3" />
               {t("listingCard.propose")}

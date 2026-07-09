@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { assetUrl, API_BASE } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { Building2, MapPin, CheckCircle, Star } from "lucide-react";
 
 interface BizEntry {
@@ -109,6 +110,8 @@ export function BusinessesDirectoryPage() {
   return (
     <div className="bg-bareter-off-white dark:bg-background min-h-screen pb-16">
       <div className="container px-4 py-8 mx-auto max-w-7xl">
+        <BackButton fallback="/browse" label="Browse" className="mb-4" />
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-bareter-navy dark:text-foreground flex items-center gap-3">

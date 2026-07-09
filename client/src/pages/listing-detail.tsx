@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { hapticSuccess } from "@/hooks/use-haptics";
 import { useSeo } from "@/hooks/use-seo";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +28,7 @@ import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, API_BASE, assetUrl, uploadFile } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import type { ListingWithUser, Listing, ListingCommentWithUser } from "@shared/schema";
 import {
   MapPin,
@@ -416,6 +418,7 @@ export function ListingDetailPage() {
       return res.json();
     },
     onSuccess: (data) => {
+      void hapticSuccess();
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       trackEvent("barter_proposed", { deal_id: data.id });
       toast({
@@ -440,12 +443,27 @@ export function ListingDetailPage() {
   const [commentImages, setCommentImages] = useState<string[]>([]);
   const [uploadingCommentImages, setUploadingCommentImages] = useState(false);
   const commentImageInputRef = useRef<HTMLInputElement>(null);
+  const [bundledListingIds, setBundledListingIds] = useState<string[]>([]);
 
   // Counter-offer state (for proposal counter-offer flow)
   const [counteringProposalId, setCounteringProposalId] = useState<string | null>(null);
   const [ctrName, setCtrName] = useState("");
   const [ctrValue, setCtrValue] = useState("");
   const [ctrDesc, setCtrDesc] = useState("");
+  const [ctrPickMode, setCtrPickMode] = useState<"manual" | "listing">("manual");
+
+  // Own listings picker — used for counter-offer AND bundle
+  const { data: ownListings = [] } = useQuery<any[]>({
+    queryKey: ["/api/listings", { mine: true }],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/listings?mine=true`, { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.listings ?? data).filter((l: any) => l.id !== id && l.isActive);
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
 
   // Review modal state
   const [reviewProposal, setReviewProposal] = useState<{ id: string; otherPartyName: string } | null>(null);
@@ -458,6 +476,28 @@ export function ListingDetailPage() {
       return res.json();
     },
     enabled: !!id,
+  });
+
+  const { data: chainCandidates = [] } = useQuery<any[]>({
+    queryKey: ["/api/listings", id, "chain-candidates"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/listings/${id}/chain-candidates`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+
+  type QualityCheck = { key: string; label: string; done: boolean; weight: number };
+  const { data: listingQuality } = useQuery<{ score: number; checks: QualityCheck[] }>({
+    queryKey: ["/api/listings", id, "quality"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/listings/${id}/quality`);
+      return res.json();
+    },
+    enabled: !!id && !!user && !!listing && user.id === listing.userId,
+    staleTime: 30_000,
   });
 
   const { data: userReviews } = useQuery<{ avgRating: number; reviewCount: number; reviews: any[] }>({
@@ -662,7 +702,8 @@ export function ListingDetailPage() {
       offerItemValue: commentOfferValue,
       offerDescription: commentDescription || null,
       images: commentImages,
-    });
+      bundledListingIds: bundledListingIds.length > 0 ? bundledListingIds : undefined,
+    } as any);
   };
 
   const quickInquiryMutation = useMutation({
@@ -765,7 +806,7 @@ export function ListingDetailPage() {
   const createdDate = listing.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "N/A";
 
   return (
-    <div className="bg-bareter-off-white dark:bg-background min-h-screen pb-24 lg:pb-8">
+    <div className="bg-bareter-off-white dark:bg-background min-h-screen pb-24 lg:pb-8 bareter-slide-in">
       <div className="container px-4 py-6 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-4 flex items-center gap-1.5 flex-wrap">
         <Link href="/" className="hover:text-bareter-teal">{t("listingDetail.home")}</Link>
@@ -785,10 +826,7 @@ export function ListingDetailPage() {
         )}
       </nav>
 
-      <Link href="/browse" className="inline-flex items-center gap-2 text-bareter-muted hover:text-bareter-teal mb-4 text-sm">
-        <ArrowLeft className={`h-4 w-4 ${isRTL ? "rotate-180" : ""}`} />
-        {t("listingDetail.backToListings")}
-      </Link>
+      <BackButton fallback="/browse" label={t("listingDetail.backToListings")} className="mb-4" />
 
       <div className="grid lg:grid-cols-[2fr_1fr] gap-6">
         <div className="space-y-6 min-w-0">
@@ -974,6 +1012,37 @@ export function ListingDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Listing quality score — own listing only */}
+            {isOwnListing && listingQuality && (
+              <div className="mb-4 rounded-xl border border-bareter-teal/30 bg-teal-50 dark:bg-teal-950/20 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-teal-800 dark:text-teal-300 uppercase tracking-wider">Listing completeness</span>
+                  <span className={`text-sm font-bold ${listingQuality.score >= 80 ? "text-green-600" : listingQuality.score >= 50 ? "text-amber-600" : "text-red-500"}`}>
+                    {listingQuality.score}%
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden mb-3">
+                  <div
+                    className={`h-2 rounded-full transition-all ${listingQuality.score >= 80 ? "bg-green-500" : listingQuality.score >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${listingQuality.score}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-1">
+                  {listingQuality.checks.map((c) => (
+                    <div key={c.key} className="flex items-center gap-2 text-xs">
+                      {c.done
+                        ? <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                        : <div className="h-3.5 w-3.5 rounded-full border border-amber-400 flex-shrink-0" />}
+                      <span className={c.done ? "text-teal-800 dark:text-teal-300" : "text-amber-700 dark:text-amber-400"}>
+                        {c.label}
+                      </span>
+                      {!c.done && <span className="text-muted-foreground ml-auto">+{c.weight}pts</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Feed-style offering + exchange chips */}
             {(() => {
@@ -1398,13 +1467,37 @@ export function ListingDetailPage() {
                         {comment.content && (
                           <p className="text-sm text-muted-foreground mt-0.5">{comment.content}</p>
                         )}
+                        {/* Bundled listings */}
+                        {(((comment as any).bundledListingIds as string[] | undefined) ?? []).length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            <span className="text-[10px] text-muted-foreground font-semibold">+ Bundle:</span>
+                            {((comment as any).bundledListingIds as string[]).map((bid: string) => {
+                              const bl = ownListings.find((l: any) => l.id === bid);
+                              return bl ? <span key={bid} className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-50 text-bareter-teal border border-teal-200 dark:bg-teal-950/20">{bl.title}</span> : null;
+                            })}
+                          </div>
+                        )}
                         <span className="text-[10px] text-muted-foreground">{timeAgo(comment.createdAt)}</span>
-                        {/* Status badge */}
+                        {/* Status badge + expiry countdown */}
                         <div className="flex items-center gap-1.5 flex-wrap mt-1">
                           {comment.status === "accepted" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">✓ Accepted</span>}
                           {comment.status === "rejected" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">✕ Declined</span>}
                           {comment.status === "countered" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">↔ Counter-offered</span>}
-                          {(!comment.status || comment.status === "pending") && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">Pending</span>}
+                          {(!comment.status || comment.status === "pending") && (
+                            <>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">Pending</span>
+                              {(comment as any).expiresAt && (() => {
+                                const ms = new Date((comment as any).expiresAt).getTime() - Date.now();
+                                if (ms <= 0) return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-500 dark:bg-red-950/30 dark:text-red-400">Expired</span>;
+                                const h = Math.floor(ms / 3600000);
+                                const m = Math.floor((ms % 3600000) / 60000);
+                                const urgent = h < 6;
+                                return <span className={`text-[10px] flex items-center gap-0.5 ${urgent ? "text-orange-500 font-semibold" : "text-muted-foreground"}`}>
+                                  <Clock className="h-2.5 w-2.5" />{h > 0 ? `${h}h ` : ""}{m}m left
+                                </span>;
+                              })()}
+                            </>
+                          )}
                         </div>
 
                         {/* Counter-offer shown to proposer for response */}
@@ -1432,17 +1525,48 @@ export function ListingDetailPage() {
                         {/* Counter-offer form (owner) */}
                         {isOwnListing && counteringProposalId === comment.id && (
                           <div className="mt-2 p-2.5 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 space-y-2">
-                            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Propose different terms:</p>
-                            <div className="flex gap-2">
-                              <Input value={ctrName} onChange={e => setCtrName(e.target.value)} placeholder="What you offer" className="text-xs h-8 flex-1" />
-                              <div className="relative w-28 flex-shrink-0">
-                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">AED</span>
-                                <Input type="number" value={ctrValue} onChange={e => setCtrValue(e.target.value)} placeholder="Value" className="text-xs h-8 pl-9" />
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Propose different terms:</p>
+                              <div className="flex rounded-md overflow-hidden border border-blue-200 text-[10px]">
+                                <button type="button" onClick={() => setCtrPickMode("manual")} className={`px-2 py-0.5 ${ctrPickMode === "manual" ? "bg-blue-200 text-blue-800 font-semibold" : "text-blue-600 hover:bg-blue-100"}`}>Manual</button>
+                                <button type="button" onClick={() => setCtrPickMode("listing")} className={`px-2 py-0.5 ${ctrPickMode === "listing" ? "bg-blue-200 text-blue-800 font-semibold" : "text-blue-600 hover:bg-blue-100"}`}>My Listings</button>
                               </div>
                             </div>
-                            <Textarea value={ctrDesc} onChange={e => setCtrDesc(e.target.value)} placeholder="Details (optional)" className="text-xs resize-none" rows={2} />
+
+                            {ctrPickMode === "listing" && ownListings.length > 0 ? (
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {ownListings.slice(0, 8).map((l: any) => (
+                                  <button key={l.id} type="button"
+                                    onClick={() => { setCtrName(l.title); setCtrValue(l.retailValue || ""); setCtrPickMode("manual"); }}
+                                    className={`w-full flex items-center gap-2 rounded-md border p-2 text-left hover:border-blue-400 transition-colors ${ctrName === l.title ? "border-blue-400 bg-white" : "border-transparent bg-white/70"}`}
+                                  >
+                                    {l.images?.[0] && <img src={assetUrl(l.images[0])} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium truncate">{l.title}</p>
+                                      {l.retailValue && <p className="text-[10px] text-muted-foreground">AED {Number(l.retailValue).toLocaleString()}</p>}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : ctrPickMode === "listing" ? (
+                              <p className="text-xs text-muted-foreground">No other active listings to offer.</p>
+                            ) : null}
+
+                            {ctrPickMode === "manual" && (
+                              <>
+                                <div className="flex gap-2">
+                                  <Input value={ctrName} onChange={e => setCtrName(e.target.value)} placeholder="What you offer" className="text-xs h-8 flex-1" />
+                                  <div className="relative w-28 flex-shrink-0">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">AED</span>
+                                    <Input type="number" value={ctrValue} onChange={e => setCtrValue(e.target.value)} placeholder="Value" className="text-xs h-8 pl-9" />
+                                  </div>
+                                </div>
+                                <Textarea value={ctrDesc} onChange={e => setCtrDesc(e.target.value)} placeholder="Details (optional)" className="text-xs resize-none" rows={2} />
+                              </>
+                            )}
+
                             <div className="flex gap-2 justify-end">
-                              <button type="button" onClick={() => setCounteringProposalId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                              <button type="button" onClick={() => { setCounteringProposalId(null); setCtrPickMode("manual"); }} className="text-xs text-muted-foreground hover:underline">Cancel</button>
                               <button type="button" disabled={!ctrName || !ctrValue || counterOfferMutation.isPending} onClick={() => counterOfferMutation.mutate({ proposalId: comment.id, name: ctrName, value: ctrValue, description: ctrDesc })} className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline disabled:opacity-50">Send counter-offer</button>
                             </div>
                           </div>
@@ -1635,6 +1759,33 @@ export function ListingDetailPage() {
                       <p className="text-[11px] text-destructive mt-1">Add {2 - commentImages.length} more photo{2 - commentImages.length > 1 ? "s" : ""} to continue</p>
                     )}
                   </div>
+
+                  {/* Bundle — add extra own listings to sweeten the deal */}
+                  {user && ownListings.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Bundle extra items (optional)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ownListings.slice(0, 6).map((l: any) => {
+                          const selected = bundledListingIds.includes(l.id);
+                          return (
+                            <button
+                              key={l.id}
+                              type="button"
+                              disabled={!selected && bundledListingIds.length >= 3}
+                              onClick={() => setBundledListingIds(prev =>
+                                selected ? prev.filter(x => x !== l.id) : [...prev, l.id]
+                              )}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] border transition-colors ${selected ? "bg-bareter-teal text-white border-bareter-teal" : "bg-background border-border text-muted-foreground hover:border-bareter-teal/50"} disabled:opacity-40`}
+                            >
+                              {selected && <CheckCircle className="h-3 w-3 flex-shrink-0" />}
+                              <span className="truncate max-w-[120px]">{l.title}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {bundledListingIds.length > 0 && <p className="text-[11px] text-bareter-teal mt-1">{bundledListingIds.length} extra item{bundledListingIds.length > 1 ? "s" : ""} bundled</p>}
+                    </div>
+                  )}
 
                   {/* Optional message */}
                   <div className="flex items-center gap-2">
@@ -2216,6 +2367,41 @@ export function ListingDetailPage() {
           </div>
         );
       })()}
+
+      {/* Barter chain candidates — listings from other users interested in a circular swap */}
+      {chainCandidates.length > 0 && (
+        <div className="mt-6 px-4 lg:px-0">
+          <div className="rounded-xl border border-bareter-teal/20 bg-gradient-to-br from-emerald-50/50 to-background dark:from-emerald-950/20 p-4">
+            <h2 className="text-sm font-bold flex items-center gap-2 mb-1">
+              <ArrowRightLeft className="h-4 w-4 text-bareter-teal" />
+              Direct Swap Matches
+            </h2>
+            <p className="text-xs text-muted-foreground mb-3">These listings want what you have — and you might want what they're offering</p>
+            <div className="space-y-2">
+              {chainCandidates.map((c: any) => (
+                <Link key={c.id} href={`/listings/${c.id}`}>
+                  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-background border hover:shadow-sm transition-shadow cursor-pointer">
+                    {c.images?.[0] ? (
+                      <img src={assetUrl(c.images[0])} alt={c.title} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                        <ArrowRightLeft className="h-5 w-5 text-muted-foreground/40" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate">{c.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">by {c.ownerName} · {c.location}</p>
+                    </div>
+                    {c.retailValue && (
+                      <span className="text-xs font-bold text-bareter-teal flex-shrink-0">AED {Number(c.retailValue).toLocaleString()}</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Similar listings */}
       {similarListings && similarListings.length > 0 && (

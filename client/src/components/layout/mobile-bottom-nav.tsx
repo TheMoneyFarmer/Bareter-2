@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Compass,
   Plus,
-  Bell,
+  MessageSquare,
   User,
   LogIn,
   Rss,
@@ -18,12 +18,13 @@ export function MobileBottomNav() {
   const { mode: waitlistMode, open: openWaitlist } = useWaitlist();
   const [location] = useLocation();
 
-  const { data: notifData } = useQuery<{ count: number }>({
-    queryKey: ["/api/notifications/unread-count"],
+  const { data: inboxData } = useQuery<{ count: number }>({
+    queryKey: ["/api/inbox-unread-count"],
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 15000,  // lightweight badge poll — SSE handles the chat itself
+    staleTime: 8000,
   });
-  const notifUnread = notifData?.count || 0;
+  const inboxUnread = inboxData?.count || 0;
 
   const isActive = (path: string) =>
     location === path || (path !== "/" && location.startsWith(path));
@@ -65,7 +66,7 @@ export function MobileBottomNav() {
             <span className="text-[10px] font-medium">Browse</span>
           </Link>
 
-          {/* Center: Create Listing — teal circle within the pill */}
+          {/* Center: Create Listing */}
           {user ? (
             <Link
               href="/create-listing"
@@ -102,28 +103,28 @@ export function MobileBottomNav() {
             </Link>
           )}
 
-          {/* Notifications */}
+          {/* Inbox / Messages — the core deal flow lives here */}
           {user ? (
             <Link
-              href="/notifications"
+              href="/inbox"
               className={`relative flex flex-col items-center justify-center gap-0.5 min-h-[44px] ${
-                isActive("/notifications") ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
+                isActive("/inbox") ? "text-bareter-teal" : "text-bareter-muted dark:text-muted-foreground"
               }`}
-              data-testid="mobile-tab-notifications"
+              data-testid="mobile-tab-inbox"
             >
               <div className="relative">
-                <Bell className="h-5 w-5" strokeWidth={isActive("/notifications") ? 2.5 : 2} />
-                {notifUnread > 0 && (
+                <MessageSquare className="h-5 w-5" strokeWidth={isActive("/inbox") ? 2.5 : 2} />
+                {inboxUnread > 0 && (
                   <span className="absolute -top-1.5 -end-1.5 bg-destructive text-destructive-foreground text-[9px] rounded-full min-w-[14px] h-[14px] flex items-center justify-center font-bold px-0.5">
-                    {notifUnread > 9 ? "9+" : notifUnread}
+                    {inboxUnread > 9 ? "9+" : inboxUnread}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium">Alerts</span>
+              <span className="text-[10px] font-medium">Inbox</span>
             </Link>
           ) : (
             <div className="flex items-center justify-center text-bareter-muted/30 dark:text-muted-foreground/30">
-              <Bell className="h-5 w-5" />
+              <MessageSquare className="h-5 w-5" />
             </div>
           )}
 

@@ -1,5 +1,9 @@
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { hapticSuccess } from "@/hooks/use-haptics";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +37,7 @@ import {
   Bell,
   MoreVertical,
   Send,
+  RefreshCw,
 } from "lucide-react";
 
 type ProposalWithListing = ListingComment & {
@@ -160,6 +165,14 @@ export function DealsPage() {
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
+  const handlePullRefresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/my-pending-proposals"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/my-outgoing-proposals"] });
+  }, [queryClient]);
+
+  const { isRefreshing: isPullRefreshing } = usePullToRefresh(handlePullRefresh);
+
   // Email links land here — redirect to login with returnTo so the user comes
   // back to this page after signing in instead of landing on a blank auth wall.
   useEffect(() => {
@@ -192,9 +205,11 @@ export function DealsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/listings/my-pending-proposals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       if (vars.status === "accepted" && data?.dealId) {
+        void hapticSuccess();
         toast({ title: "Proposal accepted! 🎉", description: "Both parties notified. Opening deal chat…" });
         setTimeout(() => navigate(`/deals/${data.dealId}`), 1000);
       } else if (vars.status === "accepted") {
+        void hapticSuccess();
         toast({ title: "Proposal accepted! 🎉" });
       } else {
         toast({ title: "Proposal declined" });
@@ -210,6 +225,12 @@ export function DealsPage() {
   if (!user) return null;
 
   return (
+    <>
+    {Capacitor.isNativePlatform() && isPullRefreshing && (
+      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-background rounded-full shadow-md p-2.5">
+        <RefreshCw className="h-5 w-5 animate-spin text-bareter-teal" />
+      </div>
+    )}
     <div className="container px-4 py-8 mx-auto max-w-4xl">
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -538,5 +559,6 @@ export function DealsPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </>
   );
 }

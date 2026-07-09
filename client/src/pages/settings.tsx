@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, API_BASE, assetUrl, mobileHeaders } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   Settings,
@@ -134,7 +135,13 @@ export function SettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mobileView, setMobileView] = useState<"menu" | "section">("menu");
-  const [activeTab, setActiveTab] = useState("account");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== "undefined") {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t) return t;
+    }
+    return "account";
+  });
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
@@ -604,7 +611,10 @@ export function SettingsPage() {
       {/* ── MOBILE: menu list ─────────────────────────────────────── */}
       {mobileView === "menu" && (
         <div className="md:hidden">
-          <div className="px-4 pt-6 pb-4 flex items-center gap-3 border-b border-border">
+          <div className="px-4 pt-4 pb-1">
+            <BackButton fallback="/profile" label="Profile" />
+          </div>
+          <div className="px-4 pt-2 pb-4 flex items-center gap-3 border-b border-border">
             <Settings className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">{t("settings.accountSettings")}</h1>
           </div>

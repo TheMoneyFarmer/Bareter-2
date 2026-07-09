@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import { API_BASE, assetUrl } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { useAuth } from "@/lib/auth";
 import { useSeo } from "@/hooks/use-seo";
 import { BusinessProductCard } from "@/components/BusinessProductCard";
@@ -246,14 +247,7 @@ export function BusinessStorefrontPage() {
         )}
         {/* Back nav sits top-left */}
         <div className="absolute top-4 start-4">
-          <button
-            type="button"
-            onClick={() => navigate("/browse")}
-            className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white transition-colors bg-black/20 hover:bg-black/30 rounded-full px-3 py-1 backdrop-blur-sm"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Browse
-          </button>
+          <BackButton fallback="/browse" label="Browse" variant="overlay" />
         </div>
         {/* Owner: edit button top-right */}
         {isOwner && (

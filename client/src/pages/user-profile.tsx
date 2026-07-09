@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   MapPin,
   Shield,
+  ShieldCheck,
   Star,
   Package,
   ShoppingCart,
@@ -67,6 +68,7 @@ interface PublicUserData extends Omit<User, "password"> {
   listings: Listing[];
 }
 
+interface CredibilityBreakdownItem { points: number; max: number; label: string; }
 interface CredibilityData {
   credibilityScore: number;
   completionRate: string;
@@ -74,6 +76,12 @@ interface CredibilityData {
   totalCompletedDeals: number;
   endorsementCount: number;
   ratingAvg: number;
+  breakdown?: {
+    deals: CredibilityBreakdownItem;
+    verified: CredibilityBreakdownItem;
+    rating: CredibilityBreakdownItem;
+    endorsements: CredibilityBreakdownItem;
+  };
 }
 
 interface EndorsementItem {
@@ -156,6 +164,16 @@ export function UserProfilePage() {
   const { data: reviewsData } = useQuery<{ reviews: NewReview[]; avgRating: number; reviewCount: number }>({
     queryKey: ["/api/users", id, "reviews"],
     enabled: !!id,
+  });
+
+  // Activity stats — only shown on own profile
+  const { data: activityStats } = useQuery<{
+    activeListings: number; totalViews: number; totalLikes: number;
+    totalProposals: number; topListing: { id: string; title: string; viewCount: number } | null;
+  }>({
+    queryKey: ["/api/users/me/listing-activity"],
+    enabled: !!currentUser && currentUser.id === id,
+    staleTime: 60_000,
   });
 
   const profileName = profileData?.businessName || profileData?.fullName || "Business";
@@ -287,6 +305,21 @@ export function UserProfilePage() {
     ? new Date(profileData.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "N/A";
 
+  const lastActiveLabel = (() => {
+    const ts = (profileData as any).lastActiveAt;
+    if (!ts) return null;
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 5) return "Active now";
+    if (mins < 60) return `Active ${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Active ${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return "Active yesterday";
+    if (days < 7) return `Active ${days}d ago`;
+    return null;
+  })();
+
   const socialLinks = (profileData.socialLinks as Record<string, string>) || {};
   const whatIOffer = (profileData.whatIOffer as Array<{ name: string; value: number; description?: string }>) || [];
   const whatINeed = (profileData.whatINeed as Array<{ name: string; value: number; description?: string }>) || [];
@@ -306,7 +339,7 @@ export function UserProfilePage() {
   const { label: credLabel, color: credColor } = credibilityLabel(credibility?.credibilityScore || 0);
 
   return (
-    <div className="container px-4 py-8 mx-auto max-w-5xl">
+    <div className="container px-4 py-8 mx-auto max-w-5xl bareter-slide-in">
       <Link href="/browse" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
         <ArrowLeft className="h-4 w-4" />
         Back to listings
@@ -348,7 +381,7 @@ export function UserProfilePage() {
                 </div>
               )}
 
-              {/* Credibility score badge */}
+              {/* Credibility score with breakdown */}
               {credibility && credibility.credibilityScore > 0 && (
                 <div className="mb-4" data-testid="credibility-badge">
                   <div className="flex items-center justify-between mb-1.5">
@@ -359,9 +392,25 @@ export function UserProfilePage() {
                       </span>
                       <span className={`text-xs font-medium ${credColor}`}>{credLabel}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">Credibility</span>
+                    <span className="text-xs text-muted-foreground">Trust Score</span>
                   </div>
-                  <Progress value={credibility.credibilityScore} className="h-1.5" />
+                  <Progress value={credibility.credibilityScore} className="h-1.5 mb-2" />
+                  {credibility.breakdown && (
+                    <div className="space-y-1">
+                      {Object.values(credibility.breakdown).map((item) => (
+                        <div key={item.label} className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground w-28 flex-shrink-0 truncate">{item.label}</span>
+                          <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-primary/60 transition-all"
+                              style={{ width: `${Math.round((item.points / item.max) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] font-medium text-muted-foreground w-8 text-right">{item.points}/{item.max}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -403,6 +452,62 @@ export function UserProfilePage() {
                 </div>
               )}
 
+              {/* Activity insights — own profile only */}
+              {isOwnProfile && activityStats && (
+                <div className="mb-4 rounded-xl border bg-gradient-to-br from-bareter-teal/5 to-background p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Your Listing Insights</p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="text-base font-bold text-bareter-teal">{activityStats.totalViews.toLocaleString()}</div>
+                      <div className="text-[10px] text-muted-foreground">Total Views</div>
+                    </div>
+                    <div>
+                      <div className="text-base font-bold text-bareter-teal">{activityStats.totalLikes}</div>
+                      <div className="text-[10px] text-muted-foreground">Likes</div>
+                    </div>
+                    <div>
+                      <div className="text-base font-bold text-bareter-teal">{activityStats.totalProposals}</div>
+                      <div className="text-[10px] text-muted-foreground">Proposals</div>
+                    </div>
+                  </div>
+                  {activityStats.topListing && (
+                    <div className="text-[11px] text-muted-foreground pt-1 border-t">
+                      Top listing: <span className="font-semibold text-foreground">{activityStats.topListing.title}</span> · {activityStats.topListing.viewCount} views
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Verification tier ladder */}
+              {(() => {
+                const isKYB = profileData.kybStatus === "APPROVED";
+                const isKYC = profileData.kycStatus === "APPROVED";
+                const isPhone = !!(profileData as any).phoneVerified;
+                const isEmail = !!(profileData as any).emailVerified;
+                const tiers = [
+                  { done: isEmail || isPhone, label: "Basic", desc: "Email or phone verified", color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800" },
+                  { done: isPhone, label: "Trusted", desc: "WhatsApp verified", color: "text-green-600 dark:text-green-400", bg: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800" },
+                  { done: isKYC, label: "Verified", desc: "Identity verified", color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800" },
+                  { done: isKYB, label: "Business", desc: "Business verified", color: "text-bareter-teal dark:text-bareter-teal", bg: "bg-teal-50 dark:bg-teal-950/30 border-teal-200 dark:border-teal-800" },
+                ];
+                const highest = [...tiers].reverse().find(t => t.done);
+                if (!highest) return null;
+                return (
+                  <div className={`mb-4 rounded-lg border px-3 py-2 flex items-center gap-2 ${highest.bg}`}>
+                    <ShieldCheck className={`h-4 w-4 flex-shrink-0 ${highest.color}`} />
+                    <div>
+                      <span className={`text-xs font-bold ${highest.color}`}>{highest.label}</span>
+                      <span className="text-[11px] text-muted-foreground ms-1.5">{highest.desc}</span>
+                    </div>
+                    <div className="ms-auto flex items-center gap-1">
+                      {tiers.map((t) => (
+                        <div key={t.label} className={`h-1.5 w-5 rounded-full ${t.done ? "bg-current" : "bg-muted"} ${t.color}`} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-3 text-sm">
                 {profileData.location && (
                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -414,6 +519,12 @@ export function UserProfilePage() {
                   <Calendar className="h-4 w-4 flex-shrink-0" />
                   <span>Member since {memberSince}</span>
                 </div>
+                {lastActiveLabel && !isOwnProfile && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="h-4 w-4 flex-shrink-0" />
+                    <span>{lastActiveLabel}</span>
+                  </div>
+                )}
                 {profileData.showEmail && profileData.email && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Mail className="h-4 w-4 flex-shrink-0" />

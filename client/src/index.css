@@ -24,11 +24,19 @@ summary {
   cursor: pointer;
 }
 
-/* Instant pressed-state feedback — no animation delay on mobile */
+/* Instant pressed-state feedback — scale mimics iOS native button feel */
 button:active,
 a:active,
 [role="button"]:active {
-  opacity: 0.75;
+  opacity: 0.85;
+  transform: scale(0.96);
+  transition: transform 60ms ease, opacity 60ms ease;
+}
+/* Restore instantly on release so it snaps back like a physical button */
+button,
+a,
+[role="button"] {
+  transition: transform 120ms ease, opacity 120ms ease;
 }
 
 @layer utilities {
@@ -457,10 +465,30 @@ a:active,
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  /* Page slide-in from right (forward navigation) */
+  .bareter-slide-in {
+    animation: bareter-slide-in 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  }
+  @keyframes bareter-slide-in {
+    from { opacity: 0; transform: translateX(28px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Slide up from bottom (modal-style sheets, detail pages) */
+  .bareter-slide-up {
+    animation: bareter-slide-up 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  }
+  @keyframes bareter-slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   /* Reduced motion respect */
   @media (prefers-reduced-motion: reduce) {
     .bareter-shimmer::after,
     .bareter-route-fade,
+    .bareter-slide-in,
+    .bareter-slide-up,
     .bareter-card-hover,
     .bareter-img-blur { animation: none !important; transition: none !important; }
   }

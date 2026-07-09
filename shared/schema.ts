@@ -1082,11 +1082,24 @@ export const quickInquiries = pgTable("quick_inquiries", {
   index("quick_inquiries_to_user_id_idx").on(table.toUserId),
 ]);
 
+// Saved listing folders — named collections (want-soon, gifting, etc.)
+export const savedFolders = pgTable("saved_folders", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  name: varchar("name", { length: 100 }).notNull(),
+  emoji: varchar("emoji", { length: 10 }).default("📁"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("saved_folders_user_id_idx").on(table.userId),
+]);
+export type SavedFolder = typeof savedFolders.$inferSelect;
+
 // Listing likes table
 export const listingLikes = pgTable("listing_likes", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  folderId: varchar("folder_id", { length: 36 }).references(() => savedFolders.id),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("listing_likes_unique").on(table.listingId, table.userId),
@@ -1114,6 +1127,10 @@ export const listingComments = pgTable("listing_comments", {
   counterOfferImages: jsonb("counter_offer_images").$type<string[]>().default([]),
   counterOfferStatus: text("counter_offer_status"), // "pending" | "accepted" | "rejected"
   counterOfferedAt: timestamp("counter_offered_at"),
+  // Proposal expiry — auto-declined after 48h if still pending
+  expiresAt: timestamp("expires_at"),
+  // Listing bundles — additional own-listing IDs offered alongside the main item
+  bundledListingIds: jsonb("bundled_listing_ids").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("listing_comments_listing_id_idx").on(table.listingId),
@@ -2719,6 +2736,18 @@ export const listingClaims = pgTable("listing_claims", {
 ]);
 export type ListingClaim = typeof listingClaims.$inferSelect;
 export type InsertListingClaim = typeof listingClaims.$inferInsert;
+
+// ── Native device push tokens (APNs / FCM) ───────────────────────────────────
+export const devicePushTokens = pgTable("device_push_tokens", {
+  id:        varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  token:     text("token").notNull().unique(),
+  platform:  text("platform").notNull(), // 'ios' | 'android'
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("dpt_user_id_idx").on(table.userId),
+]);
+export type DevicePushToken = typeof devicePushTokens.$inferSelect;
 
 // ── Message Flags (contact-circumvention log) ─────────────────────────────────
 export const messageFlags = pgTable("message_flags", {

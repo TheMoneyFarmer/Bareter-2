@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn, storeMobileToken, clearMobileToken } from "./queryClient";
 import type { User, SocialProfile } from "@shared/schema";
 import { identifyUser, resetIdentity } from "./posthog";
+import { Capacitor } from "@capacitor/core";
 
 interface RegisterData {
   email: string;
@@ -99,6 +100,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Remove device push token before logging out so no stale pushes hit this device
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        const token = await new Promise<string | null>((resolve) => {
+          PushNotifications.addListener("registration", (t) => resolve(t.value)).catch(() => resolve(null));
+          // Fallback — if registration doesn't fire, resolve null
+          setTimeout(() => resolve(null), 1000);
+        });
+        if (token) {
+          await apiRequest("DELETE", "/api/push/native-token", { token }).catch(() => {});
+        } else {
+          await apiRequest("DELETE", "/api/push/native-token", {}).catch(() => {});
+        }
+      } catch {}
+    }
     await logoutMutation.mutateAsync();
   };
 
