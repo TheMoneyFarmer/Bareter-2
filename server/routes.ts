@@ -192,6 +192,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     guestTicketIds: string[];
+    guestEmail?: string;
   }
 }
 
@@ -5543,7 +5544,7 @@ export async function registerRoutes(
         WHERE e.event_type IN ('saved', 'message_started') AND e.created_at <= ${cutoff}
         ORDER BY e.user_id, e.created_at DESC
       `);
-      const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+      const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
       res.json(list);
     } catch (error) {
       console.error("Admin abandoned-engagement error:", error);
@@ -5635,7 +5636,7 @@ export async function registerRoutes(
 
       const totalDeals = [...byState.values()].reduce((a, b) => a + b, 0);
       const completedDeals = byState.get("completed") ?? 0;
-      const portfolioRaw = (creatorsPortfolioRow as { rows?: unknown[] }).rows ?? (creatorsPortfolioRow as unknown[]);
+      const portfolioRaw = (creatorsPortfolioRow as { rows?: unknown[] }).rows ?? (creatorsPortfolioRow as unknown as unknown[]);
 
       res.json({
         users: {
@@ -5729,7 +5730,7 @@ export async function registerRoutes(
       ]);
 
       const n = (rows: unknown, field = "cnt") => {
-        const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+        const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
         return Number((raw[0] as Record<string, unknown>)?.[field] ?? 0);
       };
 
@@ -5786,7 +5787,7 @@ export async function registerRoutes(
       ]);
 
       const toMap = (rows: unknown) => {
-        const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) as { date: string; cnt: number }[];
+        const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[])) as { date: string; cnt: number }[];
         return new Map(raw.map(r => [r.date, Number(r.cnt)]));
       };
 
@@ -5928,7 +5929,7 @@ export async function registerRoutes(
         LIMIT 10
       `);
 
-      const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown[])) as {
+      const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[])) as {
         category: string; totalListings: number; totalProposals: number; completedExchanges: number;
       }[];
 
@@ -5968,7 +5969,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Subject and body are required" });
       }
       const adminUserId = req.session.userId;
-      const admin = await storage.getUser(adminUserId);
+      const admin = await storage.getUser(adminUserId!);
       if (!admin) {
         return res.status(404).json({ message: "Admin user not found" });
       }
@@ -6052,7 +6053,7 @@ export async function registerRoutes(
       );
       const sentCount = results.filter(Boolean).length;
       if (sentCount > 0) {
-        await logAdminAction(req, "email_broadcast_test", "system", adminUserId, { subject, recipients });
+        await logAdminAction(req, "email_broadcast_test", "system", adminUserId ?? null, { subject, recipients });
         res.json({ message: `Test email sent to ${recipients.join(", ")}` });
       } else {
         res.status(500).json({ message: "Failed to send test email — check email configuration" });
@@ -6071,7 +6072,7 @@ export async function registerRoutes(
       }
       const { draftBroadcastEmail } = await import("./companyOs/marketingAgent");
       const draft = await draftBroadcastEmail(prompt.trim());
-      await logAdminAction(req, "email_ai_draft", "system", req.session.userId, { prompt: prompt.slice(0, 200) });
+      await logAdminAction(req, "email_ai_draft", "system", req.session.userId ?? null, { prompt: prompt.slice(0, 200) });
       res.json(draft);
     } catch (error) {
       console.error("AI email draft error:", error);
@@ -6268,7 +6269,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/email/broadcast/:id", requireAdmin, async (req, res) => {
     try {
-      const job = await storage.getBroadcastJob(req.params.id);
+      const job = await storage.getBroadcastJob(param(req.params.id));
       if (!job) return res.status(404).json({ message: "Broadcast job not found" });
       res.json(job);
     } catch (error) {
@@ -6428,7 +6429,7 @@ export async function registerRoutes(
   // POST /api/admin/email/test/:templateKey — send a test email to the admin
   app.post("/api/admin/email/test/:templateKey", requireAdmin, async (req, res) => {
     try {
-      const { templateKey } = req.params;
+      const templateKey = param(req.params.templateKey);
       const { emailLogs: emailLogsTable } = await import("@shared/schema");
       const { db: dbInst } = await import("./db");
       const baseUrl = process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://bareter.com";
@@ -6465,14 +6466,14 @@ export async function registerRoutes(
         const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f4f4f5;"><div style="max-width:520px;margin:0 auto;background:white;border-radius:12px;padding:32px;"><h2 style="color:#136c68;">Test: ${templateKey}</h2><p>This is a test send for template <strong>${templateKey}</strong>. No custom HTML has been saved yet — the default template is used in code.</p><p>Sent to: ${toEmail}</p></div></body></html>`;
         const text = `Test email for template: ${templateKey}\n\nNo custom HTML saved yet. Default template used.\n\nSent to: ${toEmail}`;
         const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
-        await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+        await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId ?? null });
         return res.json({ ok, to: toEmail, templateKey });
       }
 
       const html = applyTemplateVars(customHtml, vars);
       const text = `Test email for template: ${templateKey}\n\nSent to: ${toEmail}`;
       const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
-      await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+      await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId ?? null });
       return res.json({ ok, to: toEmail, templateKey });
     } catch (err) {
       console.error("Email test error:", err);
@@ -6610,7 +6611,7 @@ export async function registerRoutes(
         "intelligence", "admin", "matching", "moderation", "support",
         "valuation", "engagement", "board", "memory",
       ]);
-      const agentName = req.params.name;
+      const agentName = param(req.params.name);
       if (!KNOWN_AGENTS_SET.has(agentName)) {
         return res.status(400).json({ message: `Unknown agent: ${agentName}` });
       }
@@ -6832,7 +6833,7 @@ export async function registerRoutes(
   // Super-admin-only: revoke an unused invite link before it's accepted.
   app.post("/api/admin/invites/:id/revoke", requireSuperAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(param(req.params.id), 10);
       if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invite id" });
       await storage.revokeAdminInvite(id);
       await logAdminAction(req, "admin_invite_revoke", "admin_invite", String(id), {});
@@ -6985,7 +6986,7 @@ export async function registerRoutes(
   app.get("/api/admin/listings/export.csv", requireAdmin, async (req, res) => {
     try {
       const { status, category, from, to } = req.query as Record<string, string>;
-      const allListings = await storage.getAllListings();
+      const allListings = await storage.getAllListingsAdmin();
       const escCsv = (v: string | null | undefined) => {
         if (v == null) return "";
         let s = String(v);
@@ -7038,7 +7039,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           createdAt: listings.createdAt,
           userId: listings.userId,
@@ -7168,7 +7169,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           moderationStatus: listings.moderationStatus,
           createdAt: listings.createdAt,
@@ -7189,7 +7190,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           moderationStatus: listings.moderationStatus,
           createdAt: listings.createdAt,
@@ -9272,7 +9273,7 @@ export async function registerRoutes(
   app.get("/api/saved-folders/:id/listings", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const folderId = req.params.id;
+      const folderId = param(req.params.id);
       // SECURITY: verify folder ownership (skip for the virtual "unsorted" bucket)
       if (folderId !== "unsorted") {
         const [folder] = await db.select({ id: savedFolders.id })
@@ -10132,7 +10133,7 @@ export async function registerRoutes(
             .limit(1);
           // Only update on their very first reply in this thread
           if (firstReply && firstReply.createdAt !== inq.createdAt) return;
-          const firstInboundMs = firstInbound.createdAt instanceof Date ? firstInbound.createdAt.getTime() : new Date(firstInbound.createdAt as string).getTime();
+          const firstInboundMs = firstInbound.createdAt instanceof Date ? firstInbound.createdAt.getTime() : new Date(firstInbound.createdAt ?? 0).getTime();
           const replyMs = inq.createdAt instanceof Date ? inq.createdAt.getTime() : Date.now();
           const deltaMinutes = Math.round((replyMs - firstInboundMs) / 60000);
           if (deltaMinutes < 0 || deltaMinutes > 10080) return; // ignore >7d or negative
@@ -10456,6 +10457,7 @@ export async function registerRoutes(
           city: l.city,
           type: l.type,
           wantedCategories: l.wantedCategories,
+          isCollab: l.isCollab ?? false,
         }));
       const { findMatches } = await import("./agents/matchingAgent");
       const matches = await findMatches(user, otherListings);
@@ -10750,8 +10752,8 @@ export async function registerRoutes(
 
   // Admin: get a single (slug, language) row for editing.
   app.get("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
-    const lang = req.params.language === "ar" ? "ar" : "en";
-    const doc = await storage.getLegalPage(req.params.slug, lang);
+    const lang = param(req.params.language) === "ar" ? "ar" : "en";
+    const doc = await storage.getLegalPage(param(req.params.slug), lang);
     if (!doc) return res.status(404).json({ message: "Not found" });
     res.json(doc);
   });
@@ -10760,7 +10762,7 @@ export async function registerRoutes(
   // live row is snapshotted into `legal_page_versions` for audit.
   app.put("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
     try {
-      const lang = req.params.language === "ar" ? "ar" : "en";
+      const lang = param(req.params.language) === "ar" ? "ar" : "en";
       const parsed = LEGAL_UPSERT_SCHEMA.safeParse(req.body);
       if (!parsed.success) {
         return res
@@ -10769,7 +10771,7 @@ export async function registerRoutes(
       }
       const row = await storage.upsertLegalPage(
         {
-          slug: req.params.slug,
+          slug: param(req.params.slug),
           language: lang,
           title: parsed.data.title,
           subtitle: parsed.data.subtitle,
@@ -10793,8 +10795,8 @@ export async function registerRoutes(
     "/api/admin/legal/:slug/:language/versions",
     requireAdmin,
     async (req, res) => {
-      const lang = req.params.language === "ar" ? "ar" : "en";
-      const versions = await storage.getLegalPageVersions(req.params.slug, lang);
+      const lang = param(req.params.language) === "ar" ? "ar" : "en";
+      const versions = await storage.getLegalPageVersions(param(req.params.slug), lang);
       res.json(versions);
     },
   );
@@ -10884,8 +10886,8 @@ export async function registerRoutes(
               storage.getDealsByUser(userId),
               storage.getListingsByUser(userId),
             ]);
-            aiContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
-            aiContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+            aiContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.state, createdAt: String(d.createdAt) }));
+            aiContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: (l.categories as string[] | null)?.[0] || "" }));
           }
         } catch { /* context errors are non-fatal */ }
 
@@ -11108,8 +11110,8 @@ export async function registerRoutes(
                 storage.getDealsByUser(senderId),
                 storage.getListingsByUser(senderId),
               ]);
-              userContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
-              userContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+              userContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.state, createdAt: String(d.createdAt) }));
+              userContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: (l.categories as string[] | null)?.[0] || "" }));
             }
           } catch { /* ignore context errors */ }
           const aiResult = await getSupportResponse(trimmedContent, history, senderId ?? undefined, userContext);
@@ -11404,7 +11406,7 @@ export async function registerRoutes(
   // Get a specific ticket (admin)
   app.get("/api/admin/support/tickets/:id", requireAdmin, async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
       res.json(ticket);
     } catch (error) {
@@ -11415,7 +11417,7 @@ export async function registerRoutes(
   // Get messages for a ticket (admin — includes internal)
   app.get("/api/admin/support/tickets/:id/messages", requireAdmin, async (req, res) => {
     try {
-      const messages = await storage.getSupportMessages(req.params.id, true);
+      const messages = await storage.getSupportMessages(param(req.params.id), true);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messages" });
@@ -11489,7 +11491,7 @@ export async function registerRoutes(
       const { content, isInternal } = req.body;
       if (!content) return res.status(400).json({ message: "Content is required" });
 
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
       const adminId = req.session.userId!;
@@ -12271,10 +12273,10 @@ export async function registerRoutes(
   // GET /api/listings/:id/collab/applications — brand sees all applications for their collab listing
   app.get("/api/listings/:id/collab/applications", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
-      const apps = await storage.getCollabApplicationsByListing(req.params.id);
+      const apps = await storage.getCollabApplicationsByListing(param(req.params.id));
       res.json(apps);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -12284,7 +12286,7 @@ export async function registerRoutes(
   // POST /api/listings/:id/collab/apply — creator applies to a brand collab listing
   app.post("/api/listings/:id/collab/apply", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (!listing.isCollab) return res.status(400).json({ message: "Not a collab listing" });
       if (listing.userId === req.session.userId) return res.status(400).json({ message: "Cannot apply to your own listing" });
@@ -12293,7 +12295,7 @@ export async function registerRoutes(
       if (!pitch || pitch.trim().length < 20) return res.status(400).json({ message: "Pitch must be at least 20 characters" });
 
       const app = await storage.applyToCollab({
-        listingId: req.params.id,
+        listingId: param(req.params.id),
         creatorId: req.session.userId!,
         brandId: listing.userId,
         pitch: pitch.trim(),
@@ -12309,8 +12311,7 @@ export async function registerRoutes(
         type: "collab_application",
         title: "New collab application",
         message: `Someone applied to your collab listing: ${listing.title}`,
-        linkUrl: `/listings/${listing.id}?tab=applications`,
-        relatedId: app.id,
+        relatedListingId: listing.id,
       }).catch(() => {});
 
       res.status(201).json(app);
@@ -12323,14 +12324,14 @@ export async function registerRoutes(
   // PATCH /api/listings/:id/collab/applications/:appId — brand accepts or rejects application
   app.patch("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
 
       const { status, brandNote } = req.body;
       if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
 
-      const existingApp = await storage.getCollabApplication(req.params.appId);
+      const existingApp = await storage.getCollabApplication(param(req.params.appId));
       if (!existingApp) return res.status(404).json({ message: "Application not found" });
 
       let dealId: string | undefined;
@@ -12355,7 +12356,7 @@ export async function registerRoutes(
           { title: "Brand Confirms Delivery", milestoneType: "approval" },
         ];
         for (let i = 0; i < milestones.length; i++) {
-          await storage.createDealMilestone({
+          await storage.createMilestone({
             dealId: deal.id,
             title: milestones[i].title,
             milestoneType: milestones[i].milestoneType,
@@ -12369,8 +12370,7 @@ export async function registerRoutes(
           type: "collab_accepted",
           title: "Collab application accepted! 🎉",
           message: `${listing.title} — your application was accepted. Check your deals to get started.`,
-          linkUrl: `/deals/${deal.id}`,
-          relatedId: deal.id,
+          relatedDealId: deal.id,
         }).catch(() => {});
       } else {
         await storage.createNotification({
@@ -12378,12 +12378,10 @@ export async function registerRoutes(
           type: "collab_rejected",
           title: "Collab application update",
           message: `Your application to "${listing.title}" was not selected this time.`,
-          linkUrl: `/creators`,
-          relatedId: existingApp.id,
         }).catch(() => {});
       }
 
-      const updated = await storage.updateCollabApplication(req.params.appId, { status, brandNote, dealId });
+      const updated = await storage.updateCollabApplication(param(req.params.appId), { status, brandNote, dealId });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -12393,7 +12391,7 @@ export async function registerRoutes(
   // DELETE /api/listings/:id/collab/applications/:appId — creator withdraws application
   app.delete("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
     try {
-      await storage.withdrawCollabApplication(req.params.appId, req.session.userId!);
+      await storage.withdrawCollabApplication(param(req.params.appId), req.session.userId!);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -12476,7 +12474,7 @@ export async function registerRoutes(
   app.patch("/api/admin/collab-applications/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { status, brandNote } = req.body;
-      const updated = await storage.updateCollabApplication(req.params.id, { status, brandNote });
+      const updated = await storage.updateCollabApplication(param(req.params.id), { status, brandNote });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -12910,9 +12908,7 @@ export async function registerRoutes(
       // Get target users (with at least one active listing)
       const targetUsers = userId
         ? await db.select().from(users).where(eq(users.id, userId)).limit(1)
-        : await db.select().from(users)
-            .where(and(eq(users.isActive, true), isNull(users.deletedAt as any)))
-            .limit(500);
+        : await db.select().from(users).limit(500);
 
       let sent = 0;
       const errors: string[] = [];
@@ -13158,7 +13154,7 @@ export async function registerRoutes(
 
       const updateData: Parameters<typeof storage.updateBusinessProfileSettings>[1] = { ...ownerFields };
       if (isFeatured !== undefined || isActive !== undefined) {
-        if (!isAdmin) return res.status(403).json({ message: "Only admins can set featured or active status" });
+        if (!(await isAllowlistedAdmin(requestingUser))) return res.status(403).json({ message: "Only admins can set featured or active status" });
         if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
         if (isActive !== undefined) updateData.isActive = isActive;
       }

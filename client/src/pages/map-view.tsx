@@ -115,7 +115,7 @@ export function MapViewPage() {
             ))}
           </div>
           <div className="w-px h-5 bg-border" />
-          <ScrollArea className="w-auto" orientation="horizontal">
+          <ScrollArea className="w-auto">
             <div className="flex gap-1.5 pb-0.5">
               {CATEGORIES.map((cat) => (
                 <button

@@ -664,6 +664,7 @@ export type PhoneVerificationLog = typeof phoneVerificationLogs.$inferSelect;
 export type ExchangeItem = {
   name: string;
   isPriority: boolean;
+  estimatedValue?: number;
 };
 
 // Service tier for Fiverr-style packages
@@ -2352,7 +2353,7 @@ export type PublicUser = Omit<User,
 >;
 
 // Extended types with relations
-export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number };
+export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number; offerItems?: ExchangeItem[]; wantItems?: ExchangeItem[] };
 export type DealWithUsers = Deal & { seeker: PublicUser; provider: PublicUser };
 export type MessageWithSender = Message & { sender: PublicUser };
 export type RatingWithUsers = Rating & { fromUser: PublicUser; toUser: PublicUser };

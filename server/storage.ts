@@ -23,6 +23,7 @@ import {
   listingLikes,
   listingComments,
   type User,
+  type PublicUser,
   type InsertUser,
   type Listing,
   type InsertListing,
@@ -215,8 +216,8 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: string): Promise<void>;
 
   // Followers
-  getFollowers(userId: string): Promise<(Follower & { follower: User })[]>;
-  getFollowing(userId: string): Promise<(Follower & { following: User })[]>;
+  getFollowers(userId: string): Promise<(Follower & { follower: PublicUser })[]>;
+  getFollowing(userId: string): Promise<(Follower & { following: PublicUser })[]>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   followUser(followerId: string, followingId: string): Promise<Follower>;
   unfollowUser(followerId: string, followingId: string): Promise<void>;
@@ -470,7 +471,7 @@ export interface IStorage {
 
   // Collab Applications
   applyToCollab(data: { listingId: string; creatorId: string; brandId: string; pitch: string; socialHandle?: string; followerCount?: number; engagementRate?: number; portfolioLink?: string }): Promise<CollabApplication>;
-  getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]>;
+  getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: PublicUser })[]>;
   getCollabApplicationsByCreator(creatorId: string): Promise<(CollabApplication & { listing: Listing })[]>;
   getCollabApplication(id: string): Promise<CollabApplication | undefined>;
   updateCollabApplication(id: string, data: { status: string; brandNote?: string; dealId?: string }): Promise<CollabApplication | undefined>;
@@ -884,7 +885,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Followers
-  async getFollowers(userId: string): Promise<(Follower & { follower: User })[]> {
+  async getFollowers(userId: string): Promise<(Follower & { follower: PublicUser })[]> {
     const result = await db
       .select()
       .from(followers)
@@ -898,7 +899,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getFollowing(userId: string): Promise<(Follower & { following: User })[]> {
+  async getFollowing(userId: string): Promise<(Follower & { following: PublicUser })[]> {
     const result = await db
       .select()
       .from(followers)
@@ -2429,7 +2430,7 @@ export class DatabaseStorage implements IStorage {
       GROUP BY 1
       ORDER BY 1
     `);
-    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
     return (list as { date: string; count: number | string }[]).map((r) => ({ date: r.date, count: Number(r.count) }));
   }
 
@@ -2452,7 +2453,7 @@ export class DatabaseStorage implements IStorage {
       ORDER BY COALESCE(l.view_count, 0) DESC, "proposalCount" DESC
       LIMIT ${limit}
     `);
-    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
     return (list as { id: string; title: string; viewCount: number | string; proposalCount: number | string }[]).map((r) => ({
       id: r.id,
       title: r.title,
@@ -3032,7 +3033,7 @@ export class DatabaseStorage implements IStorage {
     return app;
   }
 
-  async getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]> {
+  async getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: PublicUser })[]> {
     const rows = await db
       .select({ app: collabApplications, creator: users })
       .from(collabApplications)
