@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 npm install
-npm run db:push -- --force
+# NEVER run db:push --force in production — it can drop tables and wipe live data.
+# Schema migrations must be reviewed manually and run with explicit intent.
+# npm run db:push -- --force   <-- THIS LINE CAUSED DATA LOSS. DO NOT RESTORE IT.
 npm run build
 
 echo "==> Running security regression suite (npm run test:security)"
