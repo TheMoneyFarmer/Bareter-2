@@ -21,10 +21,9 @@ import { runDailySalesSync } from "./salesAgent";
 import { runDisputeRiskSummary } from "./legalAgent";
 import {
   sendDisputeRiskEmail,
-  // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
-  // sendVerificationApprovedEmail,
-  // sendVerificationDeclinedEmail,
-  // sendVerificationUnderReviewEmail,
+  sendVerificationApprovedEmail,
+  sendVerificationDeclinedEmail,
+  sendVerificationUnderReviewEmail,
   sendVerificationReminderEmail,
   sendDraftReminderEmail,
   sendEngagementReminderEmail,
@@ -32,10 +31,10 @@ import {
   sendSignupNoListingReminderEmail,
   sendListingNoProposalReminderEmail,
   sendWaitlistFinalCallEmail,
+  sendListingExpiringEmail,
   buildAppBaseUrl,
 } from "../emailService";
-// DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
-// import { getSessionStatus } from "../diditClient";
+import { getSessionStatus } from "../diditClient";
 import { captureDailySnapshot } from "./dashboardAgent";
 import { getSignedDownloadUrl } from "./objectStorageHelpers";
 import { runIntelligenceSweep } from "./intelligenceAgent";
@@ -48,13 +47,12 @@ import { withRetry } from "./retry";
 import { storage } from "../storage";
 import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
 import { db } from "../db";
-import { deals, users } from "@shared/schema";
-import { and, inArray, lt, eq } from "drizzle-orm";
+import { deals, users, listingComments, listings } from "@shared/schema";
+import { and, inArray, lt, eq, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
 
 const AGENT_JOB_MAP: Record<string, string> = {
-  // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
-  // diditStatusPoll: "scheduler",
+  diditStatusPoll: "scheduler",
   dailyBriefing: "manager",
   hourlyFinanceSnapshot: "finance",
   budgetWarning: "finance",
@@ -274,10 +272,90 @@ async function weeklyDisputeRiskJob(): Promise<void> {
   }
 }
 
-// DIDIT CODE ARCHIVED
-// See _archived/didit/scheduler-didit-poll-job.ts
-// Re-integrate when ENABLE_DIDIT needed
-// async function diditStatusPollJob() { ... }
+async function diditStatusPollJob(): Promise<void> {
+  try {
+    if (!process.env.DIDIT_API_KEY) {
+      console.log("[diditPoll] DIDIT_API_KEY not set — skipping");
+      return;
+    }
+    const pendingUsers = await storage.getUsersWithPendingVerification();
+    if (pendingUsers.length === 0) {
+      console.log("[diditPoll] No pending verification sessions");
+      return;
+    }
+    console.log(`[diditPoll] Checking ${pendingUsers.length} pending session(s)`);
+    let updated = 0;
+    for (const user of pendingUsers) {
+      if (!user.diditSessionId) continue;
+      try {
+        const latestStatus = await getSessionStatus(user.diditSessionId);
+        if (!latestStatus) continue;
+        const isBusinessAccount = user.accountType === "business";
+        const currentStatus = isBusinessAccount ? user.kybStatus : user.kycStatus;
+        if (latestStatus === currentStatus) continue;
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+        if (isBusinessAccount) {
+          updateData.kybStatus = latestStatus;
+        } else {
+          updateData.kycStatus = latestStatus;
+        }
+
+        if (
+          latestStatus === "APPROVED" ||
+          latestStatus === "DECLINED" ||
+          latestStatus === "REJECTED" ||
+          latestStatus === "EXPIRED" ||
+          latestStatus === "ABANDONED"
+        ) {
+          updateData.verificationSessionStartedAt = null;
+        }
+
+        if (latestStatus === "EXPIRED") {
+          updateData.diditSessionId = null;
+          updateData.verificationStatus = "pending";
+          await storage.createNotification({
+            userId: user.id, type: "system",
+            title: "Verification Session Expired",
+            message: "Your verification session expired before it could be reviewed. Please go to your profile and start a new verification.",
+          });
+          await storage.updateUser(user.id, updateData as Partial<typeof user>);
+          console.log(`[diditPoll] userId=${user.id} session expired — cleared`);
+          updated++;
+          continue;
+        }
+
+        if (latestStatus === "APPROVED") {
+          updateData.isVerified = true;
+          updateData.verificationStatus = "verified";
+          updateData.diditVerifiedAt = new Date();
+          await storage.createNotification({
+            userId: user.id, type: "system",
+            title: "Verification Approved!",
+            message: "Your identity has been verified. You can now create listings and start bartering!",
+          });
+          sendVerificationApprovedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+          updateData.isVerified = false;
+          updateData.verificationStatus = "rejected";
+          sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        } else if (latestStatus === "IN_REVIEW" || latestStatus === "PENDING_REVIEW") {
+          updateData.verificationStatus = "submitted";
+          sendVerificationUnderReviewEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined }).catch(() => {});
+        }
+
+        await storage.updateUser(user.id, updateData as Partial<typeof user>);
+        console.log(`[diditPoll] userId=${user.id} ${currentStatus} → ${latestStatus}`);
+        updated++;
+      } catch (err) {
+        console.error(`[diditPoll] Error checking session for userId=${user.id}:`, err);
+      }
+    }
+    console.log(`[diditPoll] Done: ${updated}/${pendingUsers.length} updated`);
+  } catch (err) {
+    console.error("[diditPoll] Job failed:", err);
+  }
+}
 
 async function dailyDashboardSnapshotJob(): Promise<void> {
   try {
@@ -740,6 +818,59 @@ async function dealInactivityReminderJob(): Promise<void> {
   }
 }
 
+// Runs once a day. Finds proposals expiring within the next 24 hours (still
+// pending) and emails the proposer so they know the listing owner still has
+// time to respond. Deduped via reminder_log (kind "proposal_expiry_24h").
+async function proposalExpiryWarningJob(): Promise<void> {
+  try {
+    const now = new Date();
+    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const expiring = await db
+      .select({
+        proposalId: listingComments.id,
+        proposerUserId: listingComments.userId,
+        listingId: listingComments.listingId,
+        offerItemName: listingComments.offerItemName,
+        expiresAt: listingComments.expiresAt,
+        listingTitle: listings.title,
+        userEmail: users.email,
+        userFullName: users.fullName,
+        userReminderPrefs: users.reminderPreferences,
+      })
+      .from(listingComments)
+      .innerJoin(listings, eq(listingComments.listingId, listings.id))
+      .innerJoin(users, eq(listingComments.userId, users.id))
+      .where(and(
+        eq(listingComments.status, "pending"),
+        gte(listingComments.expiresAt, now),
+        lte(listingComments.expiresAt, in24h),
+      ));
+
+    let sent = 0;
+    const FOREVER_HOURS = 365 * 24 * 10;
+    for (const row of expiring) {
+      if (!row.expiresAt) continue;
+      if (row.userReminderPrefs && (row.userReminderPrefs as Record<string, boolean>).proposals === false) continue;
+      if (await storage.hasRecentReminder(row.proposerUserId, "proposal_expiry_24h", row.proposalId, FOREVER_HOURS)) continue;
+      const ok = await sendListingExpiringEmail(row.userEmail, {
+        recipientName: row.userFullName ?? null,
+        offerItemName: row.offerItemName,
+        listingTitle: row.listingTitle,
+        listingId: row.listingId,
+        expiresAt: new Date(row.expiresAt),
+      }).catch((err) => { console.error("[proposalExpiry] email failed:", err); return false; });
+      if (ok) {
+        await storage.recordReminder(row.proposerUserId, "proposal_expiry_24h", row.proposalId);
+        sent++;
+      }
+    }
+    console.log(`[proposalExpiry] done: scanned=${expiring.length} sent=${sent}`);
+  } catch (err) {
+    console.error("[proposalExpiry] job failed:", err);
+  }
+}
+
 /**
  * Mount all scheduled jobs. Idempotent — safe to call once at boot
  * (subsequent calls become no-ops).
@@ -776,8 +907,7 @@ export function startScheduler(): void {
   // + META_AD_ACCOUNT_ID; the manual `campaign update` command stays as
   // a fallback for everything else. Skips silently if no Meta creds are
   // wired so dev environments don't see noisy errors.
-  // DIDIT CODE ARCHIVED — See _archived/didit/scheduler-didit-poll-job.ts — Re-integrate when ENABLE_DIDIT needed
-  // schedule("diditStatusPoll", "*/5 * * * *", diditStatusPollJob);
+  schedule("diditStatusPoll", "*/5 * * * *", diditStatusPollJob);
   schedule("dailyMetaCampaignSync", "30 3 * * *", dailyMetaCampaignSyncJob);
   // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
@@ -818,6 +948,11 @@ export function startScheduler(): void {
   // in any deal that has been stuck (no updatedAt change) for ≥36 hours
   // and is still in an actionable state (proposed/negotiating/accepted).
   schedule("dealInactivityReminders", "0 9 * * *", dealInactivityReminderJob);
+
+  // 10:30 Dubai daily — proposal expiry warnings. Emails proposers whose
+  // pending proposals expire within the next 24 hours so they know the
+  // listing owner still has time to respond before auto-decline fires.
+  schedule("proposalExpiryWarnings", "30 10 * * *", proposalExpiryWarningJob);
 
   // One-shot startup briefing — fires once a few seconds after boot when
   // COMPANY_OS_SEND_STARTUP_BRIEFING=true. Useful right after publishing

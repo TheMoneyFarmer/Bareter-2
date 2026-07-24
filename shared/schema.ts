@@ -2394,6 +2394,7 @@ export const REMINDER_KINDS = [
   "signup_unverified_24h",
   "signup_no_listing_24h",
   "listing_no_proposal_72h",
+  "proposal_expiry_24h",
 ] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 

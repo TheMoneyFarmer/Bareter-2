@@ -2528,9 +2528,24 @@ export async function registerRoutes(
         });
       }
 
-      // DIDIT CODE ARCHIVED
-      // See _archived/didit/routes-verification-gates.ts
-      // Re-integrate when ENABLE_DIDIT needed
+      {
+        const { isUserVerified } = await import("./diditClient");
+        const listingUser = await storage.getUser(req.session.userId!);
+        if (listingUser) {
+          const userVerified = isUserVerified(
+            listingUser.accountType || "individual",
+            listingUser.kycStatus || "NOT_STARTED",
+            listingUser.kybStatus || "NOT_STARTED",
+            listingUser.isVerified,
+          );
+          if (!userVerified) {
+            return res.status(403).json({
+              message: "You must be verified to create listings. Please complete identity verification first.",
+              requiresVerification: true
+            });
+          }
+        }
+      }
 
       const { isValueFlagged } = await import("./marketValues");
       const rawCategories = req.body.categories || [];
@@ -3960,9 +3975,21 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      // DIDIT CODE ARCHIVED
-      // See _archived/didit/routes-verification-gates.ts
-      // Re-integrate when ENABLE_DIDIT needed
+      {
+        const { isUserVerified } = await import("./diditClient");
+        const seekerVerified = isUserVerified(
+          seeker.accountType || "individual",
+          seeker.kycStatus || "NOT_STARTED",
+          seeker.kybStatus || "NOT_STARTED",
+          seeker.isVerified,
+        );
+        if (!seekerVerified) {
+          return res.status(403).json({
+            message: "You must be verified to start a trade. Please complete identity verification first.",
+            requiresVerification: true
+          });
+        }
+      }
 
       const listing = await storage.getListing(providerListingId);
       if (!listing) {
@@ -4159,6 +4186,23 @@ export async function registerRoutes(
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
         updated = await storage.updateDeal(param(req.params.id), { state: "completed", completedAt: new Date() });
+
+        // Deactivate traded listings and increment completed-deal counters (fire-and-forget)
+        (async () => {
+          try {
+            if (deal.providerListingId) {
+              await storage.updateListing(deal.providerListingId, { isActive: false });
+            }
+            if (deal.seekerListingId) {
+              await storage.updateListing(deal.seekerListingId, { isActive: false });
+            }
+            await db.update(users)
+              .set({ totalCompletedDeals: sqlOperator`COALESCE(${users.totalCompletedDeals}, 0) + 1` })
+              .where(inArray(users.id, [deal.seekerId, deal.providerId]));
+          } catch (err) {
+            console.error("[deal] Post-completion listing deactivation / counter update failed:", err);
+          }
+        })();
 
         // Notify both parties so they remember to leave a rating.
         try {
@@ -5204,6 +5248,8 @@ export async function registerRoutes(
       if (verified) {
         updateData.verificationStatus = "verified";
         updateData.kycStatus = "APPROVED";
+        updateData.verificationLevel = 2;
+        updateData.identityVerifiedAt = new Date();
       }
       const user = await storage.updateUser(param(req.params.id), updateData);
       if (!user) {
@@ -6368,7 +6414,7 @@ export async function registerRoutes(
   app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
     try {
       const templates: Record<string, string> = {};
-      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const key of keys) {
         const val = await storage.getAppSetting(key);
         templates[key] = val || "";
@@ -6386,7 +6432,7 @@ export async function registerRoutes(
       if (!templates || typeof templates !== "object") {
         return res.status(400).json({ message: "Templates object is required" });
       }
-      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const [key, value] of Object.entries(templates)) {
         if (validKeys.includes(key) && typeof value === "string") {
           await storage.setAppSetting(key, value, req.session.userId);
@@ -6452,6 +6498,7 @@ export async function registerRoutes(
         email_template_new_message: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, senderName: "Test Co", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
+        email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, offerItemName: "iPhone 15 Pro", listingTitle: "Test Listing", listingUrl: `${baseUrl}/listings/test-123`, hoursLeft: "6", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
         email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, verifyUrl: `${baseUrl}/api/auth/verify-email?token=test` },
         email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
         email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
