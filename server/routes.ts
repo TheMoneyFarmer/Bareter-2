@@ -12288,25 +12288,32 @@ export async function registerRoutes(
 
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        let mediaUrl: string;
+        let mediaUrl = "";
 
         if (r2Enabled()) {
           mediaUrl = await uploadToR2(generateR2Key("portfolio", detected.ext), req.file.buffer, detected.mime);
         } else {
           const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
           const isOnReplit = !!process.env.REPL_ID;
+          let savedToObjStorage = false;
           if (privateDir && isOnReplit) {
-            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-            const dirParts = privateDir.replace(/^\/+/, "").split("/");
-            const bucketName = dirParts[0];
-            const bucketSubDir = dirParts.slice(1).join("/");
-            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-              contentType: detected.mime,
-              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-            });
-            mediaUrl = `/objects/public-uploads/${filename}`;
-          } else {
+            try {
+              const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+              const dirParts = privateDir.replace(/^\/+/, "").split("/");
+              const bucketName = dirParts[0];
+              const bucketSubDir = dirParts.slice(1).join("/");
+              const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+              await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+                contentType: detected.mime,
+                metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+              });
+              mediaUrl = `/objects/public-uploads/${filename}`;
+              savedToObjStorage = true;
+            } catch (objStorageErr) {
+              console.error("[portfolio upload] Object storage failed, falling back to disk:", objStorageErr);
+            }
+          }
+          if (!savedToObjStorage) {
             fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
             mediaUrl = `/uploads/${filename}`;
           }
