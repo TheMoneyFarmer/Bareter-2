@@ -1916,13 +1916,17 @@ export async function registerRoutes(
               const objectName = bucketSubDir
                 ? `${bucketSubDir}/public-uploads/${filename}`
                 : `public-uploads/${filename}`;
-              await objectStorageClient
+              const savePromise = objectStorageClient
                 .bucket(bucketName)
                 .file(objectName)
                 .save(req.file.buffer, {
                   contentType: detected.mime,
                   metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
                 });
+              await Promise.race([
+                savePromise,
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+              ]);
               fileUrl = `/objects/public-uploads/${filename}`;
               savedToObjStorage = true;
             } catch (objStorageErr) {
@@ -12303,10 +12307,14 @@ export async function registerRoutes(
               const bucketName = dirParts[0];
               const bucketSubDir = dirParts.slice(1).join("/");
               const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-              await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
                 contentType: detected.mime,
                 metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
               });
+              await Promise.race([
+                savePromise,
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+              ]);
               mediaUrl = `/objects/public-uploads/${filename}`;
               savedToObjStorage = true;
             } catch (objStorageErr) {
@@ -13261,7 +13269,7 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      let fileUrl: string;
+      let fileUrl = "";
       if (r2Enabled()) {
         fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
@@ -13275,10 +13283,14 @@ export async function registerRoutes(
             const bucketName = dirParts[0];
             const bucketSubDir = dirParts.slice(1).join("/");
             const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
               contentType: detected.mime,
               metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
             });
+            await Promise.race([
+              savePromise,
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+            ]);
             fileUrl = `/objects/public-uploads/${filename}`;
             savedToObjectStorage = true;
           } catch (objStorageErr) {
@@ -13291,8 +13303,8 @@ export async function registerRoutes(
         }
       }
 
-      const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl! });
-      res.json({ url: fileUrl!, profile: updated });
+      const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
+      res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business cover upload error:", error);
       res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
@@ -13324,7 +13336,7 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      let fileUrl: string;
+      let fileUrl = "";
       if (r2Enabled()) {
         fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
@@ -13338,10 +13350,14 @@ export async function registerRoutes(
             const bucketName = dirParts[0];
             const bucketSubDir = dirParts.slice(1).join("/");
             const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+            const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
               contentType: detected.mime,
               metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
             });
+            await Promise.race([
+              savePromise,
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+            ]);
             fileUrl = `/objects/public-uploads/${filename}`;
             savedToObjectStorage = true;
           } catch (objStorageErr) {
@@ -13354,8 +13370,8 @@ export async function registerRoutes(
         }
       }
 
-      const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl! });
-      res.json({ url: fileUrl!, profile: updated });
+      const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
+      res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business logo upload error:", error);
       res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
