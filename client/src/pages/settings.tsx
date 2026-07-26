@@ -11,6 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -154,23 +157,30 @@ export function SettingsPage() {
   });
 
   // ── Profile Mode state (creator_profiles + business_profiles tables) ──────
-  const CREATOR_NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Finance", "Entertainment", "Gaming", "Education"];
-  const CREATOR_PLATFORMS = ["Instagram", "TikTok", "YouTube", "LinkedIn", "X (Twitter)", "Snapchat", "Podcast", "Blog"];
-  const AUDIENCE_SIZES = [
-    { value: "Under 1K",  label: "Under 1,000" },
-    { value: "1K–10K",    label: "1,000 – 10,000" },
-    { value: "10K–50K",   label: "10,000 – 50,000" },
-    { value: "50K–100K",  label: "50,000 – 100,000" },
-    { value: "100K–500K", label: "100,000 – 500,000" },
-    { value: "500K+",     label: "500,000+" },
+  const CREATOR_PLATFORMS = ["Instagram", "TikTok", "YouTube", "LinkedIn", "Twitter/X", "Snapchat", "Pinterest", "Other"];
+
+  const BUSINESS_CATEGORY_GROUPS: { group: string; items: string[] }[] = [
+    { group: "Food & Beverage", items: ["Restaurant", "Café", "Catering", "Food Truck", "Bakery", "Cloud Kitchen", "Bar & Lounge", "Food Retail", "Beverage Brand"] },
+    { group: "Retail", items: ["Fashion & Apparel", "Electronics", "Home & Furniture", "Luxury Goods", "Jewellery & Watches", "Sporting Goods", "Books & Stationery", "Toys & Games", "Health & Beauty", "Supermarket", "Convenience Store", "Online Retail"] },
+    { group: "Services", items: ["Marketing & Advertising", "Graphic Design", "Photography", "Videography", "Web Development", "IT Services", "Accounting & Finance", "Legal Services", "HR & Recruitment", "Consulting", "PR & Communications", "Event Management", "Translation"] },
+    { group: "Hospitality & Tourism", items: ["Hotel", "Serviced Apartment", "Resort", "Travel Agency", "Tour Operator", "Car Rental", "Yacht Charter"] },
+    { group: "Health & Wellness", items: ["Gym & Fitness", "Spa & Beauty Salon", "Medical Clinic", "Dental", "Pharmacy", "Mental Health", "Nutrition & Wellness"] },
+    { group: "Education", items: ["School", "University", "Training Centre", "Online Education", "Tutoring", "Language School"] },
+    { group: "Construction & Real Estate", items: ["Construction", "Fit-Out & Interior Design", "Real Estate Agency", "Property Developer", "Architecture", "Engineering", "Facilities Management"] },
+    { group: "Logistics & Transport", items: ["Freight & Shipping", "Last Mile Delivery", "Warehousing", "Moving Services", "Fleet Management"] },
+    { group: "Technology", items: ["Software Development", "App Development", "SaaS", "Cybersecurity", "Data & Analytics", "AI & Automation", "Hardware & Electronics"] },
+    { group: "Media & Entertainment", items: ["Production Company", "Music", "Publishing", "Gaming", "Streaming", "Podcast"] },
+    { group: "Manufacturing", items: ["Food Manufacturing", "Textile", "Packaging", "Industrial Equipment", "Consumer Goods"] },
+    { group: "Other", items: ["Agriculture", "Energy", "Non-Profit", "Government", "Other"] },
   ];
-  const BUSINESS_CATEGORIES = ["Retail", "Food & Beverage", "Technology", "Healthcare", "Real Estate", "Finance", "Education", "Beauty & Wellness", "Fashion", "Events", "Media", "Other"];
+  const ALL_BIZ_CATEGORIES = BUSINESS_CATEGORY_GROUPS.flatMap(g => g.items);
 
   const [cpDisplayName, setCpDisplayName] = useState("");
   const [cpBio, setCpBio] = useState("");
   const [cpNiche, setCpNiche] = useState("");
-  const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState("");
+  const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState<string | undefined>(undefined);
   const [cpAudienceSize, setCpAudienceSize] = useState("");
+  const [bizCategoryOpen, setBizCategoryOpen] = useState(false);
   const [bizCompanyName, setBizCompanyName] = useState("");
   const [bizTradeLicense, setBizTradeLicense] = useState("");
   const [bizCategory, setBizCategory] = useState("");
@@ -1755,31 +1765,36 @@ export function SettingsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="cp-niche">Niche</Label>
-                        <Select value={cpNiche} onValueChange={setCpNiche}>
-                          <SelectTrigger id="cp-niche"><SelectValue placeholder="Select niche" /></SelectTrigger>
-                          <SelectContent>
-                            {CREATOR_NICHES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          id="cp-niche"
+                          value={cpNiche}
+                          onChange={e => setCpNiche(e.target.value)}
+                          placeholder="Fashion, Food, Tech, Fitness, Travel…"
+                          maxLength={100}
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="cp-platform">Primary Platform</Label>
-                        <Select value={cpPrimaryPlatform} onValueChange={setCpPrimaryPlatform}>
-                          <SelectTrigger id="cp-platform"><SelectValue placeholder="Select platform" /></SelectTrigger>
-                          <SelectContent>
-                            {CREATOR_PLATFORMS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <select
+                          id="cp-platform"
+                          value={cpPrimaryPlatform ?? ""}
+                          onChange={e => setCpPrimaryPlatform(e.target.value || undefined)}
+                          className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">Select platform</option>
+                          {CREATOR_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cp-audience">Audience Size</Label>
-                      <Select value={cpAudienceSize} onValueChange={setCpAudienceSize}>
-                        <SelectTrigger id="cp-audience"><SelectValue placeholder="Select range" /></SelectTrigger>
-                        <SelectContent>
-                          {AUDIENCE_SIZES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        id="cp-audience"
+                        value={cpAudienceSize}
+                        onChange={e => setCpAudienceSize(e.target.value)}
+                        placeholder="10K, 500K, 1.2M…"
+                        maxLength={50}
+                      />
                     </div>
                     <Button
                       onClick={() => createCreatorMutation.mutate({
@@ -2028,13 +2043,33 @@ export function SettingsPage() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="biz-category">Category</Label>
-                        <Select value={bizCategory} onValueChange={setBizCategory}>
-                          <SelectTrigger id="biz-category"><SelectValue placeholder="Select category" /></SelectTrigger>
-                          <SelectContent>
-                            {BUSINESS_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <Label>Category</Label>
+                        <Popover open={bizCategoryOpen} onOpenChange={setBizCategoryOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" role="combobox" aria-expanded={bizCategoryOpen} className="w-full justify-between font-normal">
+                              {bizCategory || "Select category"}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search categories…" />
+                              <CommandList className="max-h-64">
+                                <CommandEmpty>No category found.</CommandEmpty>
+                                {BUSINESS_CATEGORY_GROUPS.map(grp => (
+                                  <CommandGroup key={grp.group} heading={grp.group}>
+                                    {grp.items.map(item => (
+                                      <CommandItem key={item} value={item} onSelect={val => { setBizCategory(val); setBizCategoryOpen(false); }}>
+                                        <Check className={`mr-2 h-4 w-4 ${bizCategory === item ? "opacity-100" : "opacity-0"}`} />
+                                        {item}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                ))}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
                     <Button

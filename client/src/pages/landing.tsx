@@ -1263,7 +1263,7 @@ export function LandingPage() {
                 title: "Brand × Creator Deals", accent: false,
                 desc: "Brands offer products. Creators deliver authentic TikToks, Reels, and Stories. No cash changes hands just real value for real content.",
                 items: ["Instagram, TikTok, YouTube", "Any follower count welcome", "Verified creators only", "Deals tracked in-app"],
-                href: "/browse", cta: "Coming Soon",
+                href: "/browse?tab=collabs", cta: "Browse Collabs",
               },
             ].map((card, i) => (
               <div key={i} className={`feat-card group rounded-2xl border shadow-sm hover:shadow-bareter-hover hover:-translate-y-2 transition-all duration-300 p-5 sm:p-6 lg:p-8 flex flex-col h-full ${card.accent ? "bg-bareter-navy text-white border-bareter-navy" : "bg-white dark:bg-card border-gray-100 dark:border-border"}`}>

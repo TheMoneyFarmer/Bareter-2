@@ -135,10 +135,14 @@ export function CreateListingPage() {
   const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
   const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 
-  // ── Listing mode (individual / creator / business product / wholesale) ─────
-  const [listingMode, setListingMode] = useState<"individual" | "creator" | "business_product" | "business_wholesale">("individual");
+  // ── Listing mode (individual / creator / business product / wholesale / service) ─
+  const [listingMode, setListingMode] = useState<"individual" | "creator" | "business_product" | "business_wholesale" | "business_service">("individual");
   const [totalQuantity, setTotalQuantity] = useState("");
   const [unitLabel, setUnitLabel] = useState("");
+  // ── Business Service extra fields ──────────────────────────────────────────
+  const [serviceDeliverables, setServiceDeliverables] = useState("");
+  const [serviceTimeline, setServiceTimeline] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
 
   const { data: creatorProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/creators/me"],
@@ -211,6 +215,7 @@ export function CreateListingPage() {
         creator: "creator_service",
         business_product: "business_product",
         business_wholesale: "business_wholesale",
+        business_service: "business_service",
       };
       const modeFields: Record<string, unknown> =
         listingMode === "creator" && creatorProfile
@@ -226,6 +231,17 @@ export function CreateListingPage() {
               remainingQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
               unitLabel: unitLabel || undefined,
               claimStatus: "available",
+            }
+          : listingMode === "business_service" && businessProfile
+          ? {
+              listingType: "business_service",
+              businessId: businessProfile.id,
+              actingAsBusinessId: businessProfile.id,
+              categoryDetails: {
+                ...(serviceDeliverables ? { serviceDeliverables } : {}),
+                ...(serviceTimeline ? { serviceTimeline } : {}),
+                ...(serviceArea ? { serviceArea } : {}),
+              },
             }
           : { listingType: "individual_item" };
 
@@ -705,6 +721,18 @@ export function CreateListingPage() {
                       <span className="text-[10px] text-muted-foreground leading-tight">Split-quantity bulk deal</span>
                     </button>
                   )}
+                  {/* Business Service — if business profile exists */}
+                  {businessProfile && (
+                    <button
+                      type="button"
+                      onClick={() => setListingMode("business_service")}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_service" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
+                    >
+                      <Briefcase className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-xs font-semibold">Service</span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">Business service offer</span>
+                    </button>
+                  )}
                 </div>
                 {listingMode === "creator" && creatorProfile && (
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
@@ -712,7 +740,7 @@ export function CreateListingPage() {
                     Listing as <strong>{creatorProfile.displayName}</strong>
                   </p>
                 )}
-                {(listingMode === "business_product" || listingMode === "business_wholesale") && businessProfile && (
+                {(listingMode === "business_product" || listingMode === "business_wholesale" || listingMode === "business_service") && businessProfile && (
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
                     <Check className="h-3.5 w-3.5 text-primary" />
                     Listing on behalf of <strong>{businessProfile.companyName}</strong>
@@ -748,6 +776,48 @@ export function CreateListingPage() {
                     onChange={(e) => setUnitLabel(e.target.value)}
                     maxLength={30}
                   />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Business Service extra fields ─────────────────────────────── */}
+          {listingMode === "business_service" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Service Details</CardTitle>
+                <CardDescription>Help barter partners understand exactly what you offer</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Deliverables</label>
+                  <Textarea
+                    placeholder="What exactly will you deliver? e.g. 2 social posts, 1 video ad, 3 revision rounds…"
+                    value={serviceDeliverables}
+                    onChange={(e) => setServiceDeliverables(e.target.value)}
+                    rows={3}
+                    maxLength={500}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Timeline</label>
+                    <Input
+                      placeholder="e.g. 5 business days"
+                      value={serviceTimeline}
+                      onChange={(e) => setServiceTimeline(e.target.value)}
+                      maxLength={80}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Service Area</label>
+                    <Input
+                      placeholder="e.g. Dubai, UAE / Remote"
+                      value={serviceArea}
+                      onChange={(e) => setServiceArea(e.target.value)}
+                      maxLength={80}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1261,28 +1331,31 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── Brand Collab Toggle — Coming Soon ───────────────────────── */}
-          <Card className="border-2 border-dashed border-muted-foreground/30 opacity-60 cursor-not-allowed">
+          {/* ── Brand Collab Toggle ──────────────────────────────────────── */}
+          <Card className={`border-2 transition-colors ${isCollab ? "border-bareter-teal" : "border-transparent"}`}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
-                    <Camera className="h-5 w-5" />
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${isCollab ? "bg-bareter-teal/10" : "bg-muted"}`}>
+                    <Camera className={`h-5 w-5 ${isCollab ? "text-bareter-teal" : ""}`} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm">Brand Collab Listing</p>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Coming Soon</span>
                     </div>
                     <p className="text-xs text-muted-foreground">Offer your product/service in exchange for creator content</p>
                   </div>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted-foreground/20 flex-shrink-0 pointer-events-none">
-                  <span className="inline-block h-4 w-4 transform rounded-full bg-white translate-x-1" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCollab(!isCollab)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${isCollab ? "bg-bareter-teal" : "bg-muted-foreground/20"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCollab ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
               </div>
 
-              {false && isCollab && (
+              {isCollab && (
                 <div className="mt-5 space-y-4 border-t pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">

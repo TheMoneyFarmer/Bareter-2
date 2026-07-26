@@ -172,7 +172,7 @@ export interface IStorage {
   getUserByPhone(phone: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
   getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
-  // getUsersWithPendingVerification(): Promise<User[]>;
+  getUsersWithPendingVerification(): Promise<User[]>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -547,10 +547,17 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // DIDIT CODE ARCHIVED
-  // See _archived/didit/storage-didit-methods.ts
-  // Re-integrate when ENABLE_DIDIT needed
-  // async getUsersWithPendingVerification(...)
+  async getUsersWithPendingVerification(): Promise<User[]> {
+    return db.select().from(users).where(
+      and(
+        isNotNull(users.diditSessionId),
+        or(
+          inArray(users.kycStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+          inArray(users.kybStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+        ),
+      ),
+    );
+  }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();

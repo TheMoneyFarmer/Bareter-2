@@ -603,10 +603,9 @@ export function Header() {
                         <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span>Search History</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5 opacity-70">
+                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5">
                         <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span className="flex-1">Creators</span>
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                       </DropdownMenuItem>
                     </div>
 
@@ -753,12 +752,10 @@ export function Header() {
                           </button>
                         </Link>
                       ))}
-                      {/* Creators — coming soon */}
                       <Link href="/creators" onClick={closeMobileMenu}>
-                        <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start opacity-70">
+                        <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
                           <span className="text-muted-foreground"><Sparkles className="h-4 w-4" /></span>
                           <span className="text-sm font-medium flex-1">Creators</span>
-                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                         </button>
                       </Link>
                       {user.role === "super_admin" && (

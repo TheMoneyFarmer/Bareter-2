@@ -761,7 +761,7 @@ export const listings = pgTable("listings", {
   // ── Business / Creator listing extension ──────────────────────────────
   // All nullable — existing rows default to 'individual_item' / NULL.
   listingType: text("listing_type").notNull().default("individual_item"),
-  // 'individual_item' | 'creator_service' | 'business_product' | 'business_wholesale'
+  // 'individual_item' | 'creator_service' | 'business_product' | 'business_wholesale' | 'business_service'
   businessId: varchar("business_id", { length: 36 }),  // FK set after business_profiles table defined
   creatorId: varchar("creator_id", { length: 36 }),    // FK set after creator_profiles table defined
   totalQuantity: integer("total_quantity"),

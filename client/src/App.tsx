@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { Capacitor } from "@capacitor/core";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
@@ -59,8 +59,7 @@ const SavedListingsPage = lazy(() => import("@/pages/saved-listings").then((m) =
 const MySearchesPage = lazy(() => import("@/pages/my-searches").then((m) => ({ default: m.MySearchesPage })));
 const ReferralsPage = lazy(() => import("@/pages/referrals").then((m) => ({ default: m.ReferralsPage })));
 const FeedPage = lazy(() => import("@/pages/feed").then((m) => ({ default: m.FeedPage })));
-const CreatorsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.CreatorsComingSoonPage })));
-const BrandCollabsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.BrandCollabsComingSoonPage })));
+const CreatorsPage = lazy(() => import("@/pages/creators").then((m) => ({ default: m.CreatorsPage })));
 const CreatorStorefrontPage = lazy(() => import("@/pages/creator-storefront").then((m) => ({ default: m.CreatorStorefrontPage })));
 const BusinessStorefrontPage = lazy(() => import("@/pages/business-storefront").then((m) => ({ default: m.BusinessStorefrontPage })));
 const BusinessesDirectoryPage = lazy(() => import("@/pages/businesses-directory").then((m) => ({ default: m.BusinessesDirectoryPage })));
@@ -369,10 +368,10 @@ function Router() {
       <Route path="/map" component={MapViewPage} />
       <Route path="/posts/:id" component={PostDetailPage} />
       <Route path="/creators/:userId" component={CreatorStorefrontPage} />
-      <Route path="/creators" component={CreatorsComingSoonPage} />
+      <Route path="/creators" component={CreatorsPage} />
       <Route path="/businesses" component={BusinessesDirectoryPage} />
       <Route path="/businesses/:id" component={BusinessStorefrontPage} />
-      <Route path="/brand-collabs" component={BrandCollabsComingSoonPage} />
+      <Route path="/brand-collabs">{() => <Redirect to="/browse?tab=collabs" />}</Route>
       <Route component={NotFound} />
     </Switch>
   );

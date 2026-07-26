@@ -1850,7 +1850,7 @@ export async function registerRoutes(
       const uploadType = req.body.type;
       const userId = req.session.userId!;
 
-      let fileUrl: string;
+      let fileUrl = "";
 
       const isOnReplit = !!process.env.REPL_ID;
       const isPrivateUpload = PRIVATE_UPLOAD_TYPES.has(uploadType);
@@ -1904,25 +1904,32 @@ export async function registerRoutes(
         } else {
           const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
           const isOnReplit = !!process.env.REPL_ID;
+          let savedToObjStorage = false;
           if (privateDir && isOnReplit) {
-            const { objectStorageClient } = await import(
-              "./replit_integrations/object_storage/objectStorage"
-            );
-            const dirParts = privateDir.replace(/^\/+/, "").split("/");
-            const bucketName = dirParts[0];
-            const bucketSubDir = dirParts.slice(1).join("/");
-            const objectName = bucketSubDir
-              ? `${bucketSubDir}/public-uploads/${filename}`
-              : `public-uploads/${filename}`;
-            await objectStorageClient
-              .bucket(bucketName)
-              .file(objectName)
-              .save(req.file.buffer, {
-                contentType: detected.mime,
-                metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-              });
-            fileUrl = `/objects/public-uploads/${filename}`;
-          } else {
+            try {
+              const { objectStorageClient } = await import(
+                "./replit_integrations/object_storage/objectStorage"
+              );
+              const dirParts = privateDir.replace(/^\/+/, "").split("/");
+              const bucketName = dirParts[0];
+              const bucketSubDir = dirParts.slice(1).join("/");
+              const objectName = bucketSubDir
+                ? `${bucketSubDir}/public-uploads/${filename}`
+                : `public-uploads/${filename}`;
+              await objectStorageClient
+                .bucket(bucketName)
+                .file(objectName)
+                .save(req.file.buffer, {
+                  contentType: detected.mime,
+                  metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+                });
+              fileUrl = `/objects/public-uploads/${filename}`;
+              savedToObjStorage = true;
+            } catch (objStorageErr) {
+              console.error("[upload] Object storage failed, falling back to disk:", objStorageErr);
+            }
+          }
+          if (!savedToObjStorage) {
             fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
             fileUrl = `/uploads/${filename}`;
           }
@@ -13132,12 +13139,18 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Business not found" });
       }
 
-      const [ownerUser, activeListings] = await Promise.all([
+      const [ownerUser, activeListings, ownerListings] = await Promise.all([
         storage.getUser(profile.ownerId),
         db.select().from(listings)
           .where(and(eq(listings.businessId, businessId), eq(listings.isActive, true), isNull(listings.deletedAt)))
           .orderBy(desc(listings.createdAt))
           .limit(20),
+        isOwner
+          ? db.select().from(listings)
+              .where(and(eq(listings.businessId, businessId), isNull(listings.deletedAt)))
+              .orderBy(desc(listings.createdAt))
+              .limit(50)
+          : Promise.resolve([] as any[]),
       ]);
 
       res.json({
@@ -13157,6 +13170,7 @@ export async function registerRoutes(
         isActive: profile.isActive,
         owner: ownerUser ? sanitizePublicUser(ownerUser) : null,
         activeListings,
+        ...(isOwner ? { ownerListings } : {}),
       });
     } catch (error) {
       console.error("Business storefront error:", error);
@@ -13246,28 +13260,35 @@ export async function registerRoutes(
       } else {
         const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
         const isOnReplit = !!process.env.REPL_ID;
+        let savedToObjectStorage = false;
         if (privateDir && isOnReplit) {
-          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-            contentType: detected.mime,
-            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-          });
-          fileUrl = `/objects/public-uploads/${filename}`;
-        } else {
+          try {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            fileUrl = `/objects/public-uploads/${filename}`;
+            savedToObjectStorage = true;
+          } catch (objStorageErr) {
+            console.error("[cover upload] Object storage failed, falling back to disk:", objStorageErr);
+          }
+        }
+        if (!savedToObjectStorage) {
           fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
           fileUrl = `/uploads/${filename}`;
         }
       }
 
-      const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
-      res.json({ url: fileUrl, profile: updated });
+      const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl! });
+      res.json({ url: fileUrl!, profile: updated });
     } catch (error) {
       console.error("Business cover upload error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
     }
   });
 
@@ -13302,28 +13323,35 @@ export async function registerRoutes(
       } else {
         const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
         const isOnReplit = !!process.env.REPL_ID;
+        let savedToObjectStorage = false;
         if (privateDir && isOnReplit) {
-          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-            contentType: detected.mime,
-            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-          });
-          fileUrl = `/objects/public-uploads/${filename}`;
-        } else {
+          try {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            fileUrl = `/objects/public-uploads/${filename}`;
+            savedToObjectStorage = true;
+          } catch (objStorageErr) {
+            console.error("[logo upload] Object storage failed, falling back to disk:", objStorageErr);
+          }
+        }
+        if (!savedToObjectStorage) {
           fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
           fileUrl = `/uploads/${filename}`;
         }
       }
 
-      const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
-      res.json({ url: fileUrl, profile: updated });
+      const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl! });
+      res.json({ url: fileUrl!, profile: updated });
     } catch (error) {
       console.error("Business logo upload error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
     }
   });
 
