@@ -9,7 +9,7 @@
     "build:native": "VITE_API_BASE_URL=https://bareter.com npx vite build && npx cap sync && node scripts/restore-google-auth-spm.mjs",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push",
+    "db:push": "bash scripts/safe-db-push.sh",
     "blogs:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seedBlogs.ts",
     "blogs:covers": "node --env-file-if-exists=.env.local --import tsx scripts/seedBlogCovers.ts",
     "backfill:valuations": "node --env-file-if-exists=.env.local --import tsx scripts/backfillValuations.ts",

@@ -67,6 +67,7 @@ const AGENT_JOB_MAP: Record<string, string> = {
   // "engagement" agent toggle so admins can pause it from the agent
   // dashboard without redeploying.
   dailyProgressReminders: "engagement",
+  dailyDbBackup: "scheduler",
 };
 
 const TZ_OPT = { timezone: "Asia/Dubai" } as const;
@@ -768,6 +769,123 @@ async function budgetWarningJob(): Promise<void> {
   }
 }
 
+async function dailyDbBackupJob(): Promise<void> {
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    const r2AccountId = process.env.R2_ACCOUNT_ID;
+    const r2AccessKey = process.env.R2_ACCESS_KEY_ID;
+    const r2SecretKey = process.env.R2_SECRET_ACCESS_KEY;
+    const r2Bucket = process.env.R2_BUCKET_NAME;
+
+    if (!dbUrl || !r2AccountId || !r2AccessKey || !r2SecretKey || !r2Bucket) {
+      console.log("[backup-db] Missing DATABASE_URL or R2 credentials — skipping");
+      return;
+    }
+
+    const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+    const { createGzip } = await import("zlib");
+    const { pipeline } = await import("stream/promises");
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+
+    const r2 = new S3Client({
+      region: "auto",
+      endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId: r2AccessKey, secretAccessKey: r2SecretKey },
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `bareter-db-backup-${dateStr}.sql.gz`;
+    const tmpSql = path.join(os.tmpdir(), filename.replace(".gz", ""));
+    const tmpGz = path.join(os.tmpdir(), filename);
+
+    console.log(`[backup-db] Starting backup for ${dateStr}`);
+
+    const { Pool: PgPool } = await import("pg");
+    const pgPool = new PgPool({ connectionString: dbUrl, connectionTimeoutMillis: 30000 });
+
+    const tablesRes = await pgPool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
+    );
+    const tables = tablesRes.rows.map((r: any) => r.table_name as string);
+
+    const lines: string[] = [
+      `-- Bareter DB backup — ${new Date().toISOString()}`,
+      `-- Tables: ${tables.join(", ")}`,
+      "",
+    ];
+
+    for (const table of tables) {
+      try {
+        const colRows = await pgPool.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public' ORDER BY ordinal_position",
+          [table]
+        );
+        const cols = colRows.rows.map((r: any) => r.column_name as string);
+        const dataRows = (await pgPool.query(`SELECT * FROM "${table}"`)).rows as Record<string, unknown>[];
+        if (!dataRows.length) continue;
+
+        lines.push(`-- TABLE: ${table} (${dataRows.length} rows)`);
+        for (const row of dataRows) {
+          const vals = cols.map(c => {
+            const v = row[c];
+            if (v === null || v === undefined) return "NULL";
+            if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+            if (typeof v === "number") return String(v);
+            if (v instanceof Date) return `'${v.toISOString()}'`;
+            if (typeof v === "object") return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+            return `'${String(v).replace(/'/g, "''")}'`;
+          });
+          lines.push(`INSERT INTO "${table}" ("${cols.join('","')}") VALUES (${vals.join(",")}) ON CONFLICT DO NOTHING;`);
+        }
+        lines.push("");
+      } catch (e: any) {
+        lines.push(`-- SKIPPED ${table}: ${e.message}`);
+      }
+    }
+
+    await pgPool.end();
+    fs.writeFileSync(tmpSql, lines.join("\n"), "utf8");
+
+    await pipeline(
+      fs.createReadStream(tmpSql),
+      createGzip(),
+      fs.createWriteStream(tmpGz)
+    );
+    fs.unlinkSync(tmpSql);
+
+    const fileContent = fs.readFileSync(tmpGz);
+    const key = `backups/db/${filename}`;
+    await r2.send(new PutObjectCommand({
+      Bucket: r2Bucket,
+      Key: key,
+      Body: fileContent,
+      ContentType: "application/gzip",
+      Metadata: { "backup-date": dateStr },
+    }));
+    fs.unlinkSync(tmpGz);
+
+    const sizekb = (fileContent.length / 1024).toFixed(1);
+    console.log(`[backup-db] Uploaded ${key} (${sizekb} KB)`);
+
+    // Prune — keep last 30 backups
+    const list = await r2.send(new ListObjectsV2Command({ Bucket: r2Bucket, Prefix: "backups/db/" }));
+    const objects = (list.Contents ?? [])
+      .filter((o: any) => o.Key?.endsWith(".sql.gz"))
+      .sort((a: any, b: any) => (a.Key < b.Key ? -1 : 1));
+    const toDelete = objects.slice(0, Math.max(0, objects.length - 30));
+    for (const obj of toDelete as any[]) {
+      await r2.send(new DeleteObjectCommand({ Bucket: r2Bucket, Key: obj.Key }));
+      console.log(`[backup-db] Pruned ${obj.Key}`);
+    }
+
+    console.log(`[backup-db] Done — ${objects.length - toDelete.length} backups in R2`);
+  } catch (err) {
+    console.error("[backup-db] Job failed:", err);
+  }
+}
+
 async function dealInactivityReminderJob(): Promise<void> {
   try {
     const THRESHOLD_MS = 36 * 60 * 60 * 1000; // 36 hours
@@ -943,6 +1061,10 @@ export function startScheduler(): void {
   // than per-user signup age, so it gets its own job for failure isolation
   // and clearer logs.
   schedule("waitlistFinalCall", "0 11 * * *", waitlistFinalCallJob);
+
+  // Every 4 hours — full database backup to Cloudflare R2.
+  // Keeps the last 30 backups (~5 days at 6x/day). Zero egress cost on R2.
+  schedule("dailyDbBackup", "0 */4 * * *", dailyDbBackupJob);
 
   // 09:00 Dubai daily — deal inactivity reminders. Emails both parties
   // in any deal that has been stuck (no updatedAt change) for ≥36 hours

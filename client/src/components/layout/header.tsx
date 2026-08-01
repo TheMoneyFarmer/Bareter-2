@@ -48,7 +48,8 @@ function NavLinks({ user }: { user: boolean }) {
     <nav className={navClass}>
       <Link href="/feed"><button type="button" className={base}>Discover</button></Link>
       <Link href="/browse"><button type="button" className={base}>Browse Listings</button></Link>
-      <Link href="/businesses"><button type="button" className={base}>Businesses</button></Link>
+      <Link href="/businesses"><button type="button" className={base}>Business</button></Link>
+      <Link href="/creators"><button type="button" className={base}>Creators</button></Link>
       <Link href={listHref}><button type="button" className={base}>List a Barter</button></Link>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -735,7 +736,7 @@ export function Header() {
                       {[
                         { href: "/feed", icon: <Compass className="h-4 w-4" />, label: "Discover" },
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
-                        { href: "/businesses", icon: <Building2 className="h-4 w-4" />, label: "Businesses" },
+                        { href: "/businesses", icon: <Building2 className="h-4 w-4" />, label: "Business" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "Dashboard" },
                         { href: "/profile?tab=drafts", icon: <BookOpen className="h-4 w-4" />, label: "My Drafts" },

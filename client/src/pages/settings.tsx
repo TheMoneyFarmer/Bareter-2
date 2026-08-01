@@ -54,6 +54,7 @@ import {
   Users,
   ArrowLeft,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { z } from "zod";
 import { useMemo } from "react";
@@ -180,6 +181,14 @@ export function SettingsPage() {
   const [cpNiche, setCpNiche] = useState("");
   const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState<string | undefined>(undefined);
   const [cpAudienceSize, setCpAudienceSize] = useState("");
+  const [cpEditingStats, setCpEditingStats] = useState(false);
+  const [cpFollowerCount, setCpFollowerCount] = useState("");
+  const [cpEngagementRate, setCpEngagementRate] = useState("");
+  const [cpContentNiches, setCpContentNiches] = useState<string[]>([]);
+  const [cpInstagramHandle, setCpInstagramHandle] = useState("");
+  const [cpTiktokHandle, setCpTiktokHandle] = useState("");
+  const [cpYoutubeHandle, setCpYoutubeHandle] = useState("");
+  const CONTENT_NICHE_OPTIONS = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Business", "Finance", "Entertainment", "Gaming", "Education", "Health", "Parenting", "Sports", "Art", "Music", "Comedy", "News", "Other"];
   const [bizCategoryOpen, setBizCategoryOpen] = useState(false);
   const [bizCompanyName, setBizCompanyName] = useState("");
   const [bizTradeLicense, setBizTradeLicense] = useState("");
@@ -222,6 +231,19 @@ export function SettingsPage() {
       toast({ title: "Creator profile created!", description: "You're now discoverable in the Creators directory." });
     },
     onError: (err: any) => toast({ title: err?.message || "Failed to create creator profile", variant: "destructive" }),
+  });
+
+  const updateCreatorStatsMutation = useMutation({
+    mutationFn: async (data: { followerCount: number; avgEngagementRate: number; contentNiches: string[]; primaryPlatform?: string; instagramHandle?: string; tiktokHandle?: string; youtubeHandle?: string; openToCollabs: boolean }) => {
+      const res = await apiRequest("PATCH", "/api/me/creator-profile", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creators/me"] });
+      setCpEditingStats(false);
+      toast({ title: "Creator stats updated!", description: "Your profile is now visible in the Creators directory." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to update creator stats", variant: "destructive" }),
   });
 
   const createBusinessMutation = useMutation({
@@ -1730,6 +1752,105 @@ export function SettingsPage() {
                         <p className="text-sm leading-relaxed">{creatorProfile.bio}</p>
                       </div>
                     )}
+                    {/* Stats section — follower count, engagement, niches */}
+                    <div className="pt-3 border-t border-border space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">Audience Stats</p>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => {
+                          const jsonb = (user as any)?.creatorProfile;
+                          setCpFollowerCount(String(jsonb?.followerCount ?? ""));
+                          setCpEngagementRate(String(jsonb?.avgEngagementRate ?? ""));
+                          setCpContentNiches(jsonb?.contentNiches ?? []);
+                          setCpInstagramHandle(jsonb?.instagramHandle ?? "");
+                          setCpTiktokHandle(jsonb?.tiktokHandle ?? "");
+                          setCpYoutubeHandle(jsonb?.youtubeHandle ?? "");
+                          setCpPrimaryPlatform(jsonb?.primaryPlatform ?? creatorProfile.primaryPlatform ?? "");
+                          setCpEditingStats(true);
+                        }}>
+                          <Pencil className="h-3 w-3" /> Edit stats
+                        </Button>
+                      </div>
+                      {cpEditingStats ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="cp-followers" className="text-xs">Followers <span className="text-destructive">*</span></Label>
+                              <Input id="cp-followers" type="number" min="2000" placeholder="e.g. 10000" value={cpFollowerCount} onChange={e => setCpFollowerCount(e.target.value)} className="h-8 text-sm" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="cp-eng" className="text-xs">Engagement Rate %</Label>
+                              <Input id="cp-eng" type="number" step="0.1" min="0" max="100" placeholder="e.g. 4.5" value={cpEngagementRate} onChange={e => setCpEngagementRate(e.target.value)} className="h-8 text-sm" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Primary Platform</Label>
+                            <select value={cpPrimaryPlatform ?? ""} onChange={e => setCpPrimaryPlatform(e.target.value || undefined)} className="w-full h-8 rounded-md border border-input bg-transparent px-3 text-sm">
+                              <option value="">Select platform</option>
+                              {CREATOR_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Content Niches</Label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {CONTENT_NICHE_OPTIONS.map(n => (
+                                <button key={n} type="button" onClick={() => setCpContentNiches(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
+                                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${cpContentNiches.includes(n) ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/50"}`}>
+                                  {n}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Instagram handle</Label>
+                              <Input placeholder="@handle" value={cpInstagramHandle} onChange={e => setCpInstagramHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">TikTok handle</Label>
+                              <Input placeholder="@handle" value={cpTiktokHandle} onChange={e => setCpTiktokHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">YouTube handle</Label>
+                              <Input placeholder="@channel" value={cpYoutubeHandle} onChange={e => setCpYoutubeHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="text-xs h-8" disabled={!cpFollowerCount || parseInt(cpFollowerCount) < 2000 || updateCreatorStatsMutation.isPending}
+                              onClick={() => updateCreatorStatsMutation.mutate({
+                                followerCount: parseInt(cpFollowerCount),
+                                avgEngagementRate: parseFloat(cpEngagementRate) || 0,
+                                contentNiches: cpContentNiches,
+                                primaryPlatform: cpPrimaryPlatform,
+                                instagramHandle: cpInstagramHandle || undefined,
+                                tiktokHandle: cpTiktokHandle || undefined,
+                                youtubeHandle: cpYoutubeHandle || undefined,
+                                openToCollabs: true,
+                              })}>
+                              {updateCreatorStatsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                              Save stats
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => setCpEditingStats(false)}>Cancel</Button>
+                          </div>
+                          {parseInt(cpFollowerCount) > 0 && parseInt(cpFollowerCount) < 2000 && (
+                            <p className="text-xs text-destructive">Minimum 2,000 followers required.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          {[
+                            { label: "Followers", value: (user as any)?.creatorProfile?.followerCount ? Number((user as any).creatorProfile.followerCount).toLocaleString() : "—" },
+                            { label: "Engagement", value: (user as any)?.creatorProfile?.avgEngagementRate ? `${(user as any).creatorProfile.avgEngagementRate}%` : "—" },
+                            { label: "Niches", value: ((user as any)?.creatorProfile?.contentNiches as string[] | undefined)?.length ? `${((user as any).creatorProfile.contentNiches as string[]).length} set` : "—" },
+                          ].map(s => (
+                            <div key={s.label} className="bg-muted/40 rounded-lg p-2">
+                              <p className="text-sm font-bold">{s.value}</p>
+                              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="pt-2 border-t border-border">
                       <Link href={`/creators/${user?.id}`}>
                         <Button variant="outline" size="sm" className="gap-2 text-xs">
