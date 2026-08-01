@@ -66,6 +66,63 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Compress an image to max 1200px on the longest side before upload.
+// Non-image files (video, pdf, etc.) are returned as-is.
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  const MAX = 1200;
+  const QUALITY = 0.82;
+  return new Promise<File>((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { width: w, height: h } = img;
+      const scale = Math.min(1, MAX / Math.max(w, h));
+      const cw = Math.round(w * scale);
+      const ch = Math.round(h * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(file);
+      ctx.drawImage(img, 0, 0, cw, ch);
+      const outType = file.type === "image/png" ? "image/png" : "image/jpeg";
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size >= file.size) return resolve(file); // keep original if bigger
+          resolve(new File([blob], file.name, { type: outType, lastModified: Date.now() }));
+        },
+        outType,
+        outType === "image/jpeg" ? QUALITY : undefined,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+// Upload a file to /api/upload with bearer auth — use this instead of raw fetch.
+export async function uploadFile(file: File, type: string): Promise<string> {
+  file = await compressImage(file);
+  const extra = await mobileHeaders();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("type", type);
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+    headers: extra,
+  });
+  if (!res.ok) {
+    handleAuthExpiry(res.status);
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || "Upload failed");
+  }
+  return ((await res.json()) as { url: string }).url;
+}
+
 export async function apiRequest(
   method: string,
   url: string,

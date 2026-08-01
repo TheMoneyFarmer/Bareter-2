@@ -68,8 +68,9 @@ export const SIGNUP_TYPES = ["personal", "business", "creator"] as const;
 export const COLLAB_CONTENT_TYPES = ["reel", "tiktok", "post", "story", "youtube", "review", "photoshoot", "multiple"] as const;
 export type CollabContentType = typeof COLLAB_CONTENT_TYPES[number];
 
-// Creator profile — stored as jsonb on users
-export type CreatorProfile = {
+// Shape of the `creator_profile` JSONB blob stored on the users row.
+// The separate `creatorProfiles` table type is exported below as `CreatorProfile`.
+export type CreatorProfileJson = {
   primaryPlatform: "instagram" | "tiktok" | "youtube" | "twitter" | "linkedin" | "other";
   followerCount: number;
   avgEngagementRate: number; // percentage e.g. 4.5 = 4.5%
@@ -520,7 +521,7 @@ export const users = pgTable("users", {
   // Signup & Social
   signupType: text("signup_type").default("personal"),
   socialProfiles: jsonb("social_profiles").$type<SocialProfile[]>().default([]),
-  creatorProfile: jsonb("creator_profile").$type<CreatorProfile>(),
+  creatorProfile: jsonb("creator_profile").$type<CreatorProfileJson>(),
 
   // Trust & Credibility
   avgResponseTime: integer("avg_response_time").default(0),
@@ -663,6 +664,7 @@ export type PhoneVerificationLog = typeof phoneVerificationLogs.$inferSelect;
 export type ExchangeItem = {
   name: string;
   isPriority: boolean;
+  estimatedValue?: number;
 };
 
 // Service tier for Fiverr-style packages
@@ -759,7 +761,7 @@ export const listings = pgTable("listings", {
   // ── Business / Creator listing extension ──────────────────────────────
   // All nullable — existing rows default to 'individual_item' / NULL.
   listingType: text("listing_type").notNull().default("individual_item"),
-  // 'individual_item' | 'creator_service' | 'business_product' | 'business_wholesale'
+  // 'individual_item' | 'creator_service' | 'business_product' | 'business_wholesale' | 'business_service'
   businessId: varchar("business_id", { length: 36 }),  // FK set after business_profiles table defined
   creatorId: varchar("creator_id", { length: 36 }),    // FK set after creator_profiles table defined
   totalQuantity: integer("total_quantity"),
@@ -1081,11 +1083,24 @@ export const quickInquiries = pgTable("quick_inquiries", {
   index("quick_inquiries_to_user_id_idx").on(table.toUserId),
 ]);
 
+// Saved listing folders — named collections (want-soon, gifting, etc.)
+export const savedFolders = pgTable("saved_folders", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  name: varchar("name", { length: 100 }).notNull(),
+  emoji: varchar("emoji", { length: 10 }).default("📁"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("saved_folders_user_id_idx").on(table.userId),
+]);
+export type SavedFolder = typeof savedFolders.$inferSelect;
+
 // Listing likes table
 export const listingLikes = pgTable("listing_likes", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id", { length: 36 }).notNull().references(() => listings.id),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  folderId: varchar("folder_id", { length: 36 }).references(() => savedFolders.id),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("listing_likes_unique").on(table.listingId, table.userId),
@@ -1113,6 +1128,10 @@ export const listingComments = pgTable("listing_comments", {
   counterOfferImages: jsonb("counter_offer_images").$type<string[]>().default([]),
   counterOfferStatus: text("counter_offer_status"), // "pending" | "accepted" | "rejected"
   counterOfferedAt: timestamp("counter_offered_at"),
+  // Proposal expiry — auto-declined after 48h if still pending
+  expiresAt: timestamp("expires_at"),
+  // Listing bundles — additional own-listing IDs offered alongside the main item
+  bundledListingIds: jsonb("bundled_listing_ids").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("listing_comments_listing_id_idx").on(table.listingId),
@@ -2325,6 +2344,7 @@ export type PublicUser = Omit<User,
   | "bannedAt"
   | "bannedReason"
   | "isAdmin"
+  | "role"
   | "reminderPreferences"
   | "emailNotifications"
   | "dealNotifications"
@@ -2333,7 +2353,7 @@ export type PublicUser = Omit<User,
 >;
 
 // Extended types with relations
-export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number };
+export type ListingWithUser = Listing & { user: PublicUser; isLiked?: boolean; commentCount?: number; offerItems?: ExchangeItem[]; wantItems?: ExchangeItem[] };
 export type DealWithUsers = Deal & { seeker: PublicUser; provider: PublicUser };
 export type MessageWithSender = Message & { sender: PublicUser };
 export type RatingWithUsers = Rating & { fromUser: PublicUser; toUser: PublicUser };
@@ -2374,6 +2394,7 @@ export const REMINDER_KINDS = [
   "signup_unverified_24h",
   "signup_no_listing_24h",
   "listing_no_proposal_72h",
+  "proposal_expiry_24h",
 ] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
@@ -2718,6 +2739,18 @@ export const listingClaims = pgTable("listing_claims", {
 export type ListingClaim = typeof listingClaims.$inferSelect;
 export type InsertListingClaim = typeof listingClaims.$inferInsert;
 
+// ── Native device push tokens (APNs / FCM) ───────────────────────────────────
+export const devicePushTokens = pgTable("device_push_tokens", {
+  id:        varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  token:     text("token").notNull().unique(),
+  platform:  text("platform").notNull(), // 'ios' | 'android'
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("dpt_user_id_idx").on(table.userId),
+]);
+export type DevicePushToken = typeof devicePushTokens.$inferSelect;
+
 // ── Message Flags (contact-circumvention log) ─────────────────────────────────
 export const messageFlags = pgTable("message_flags", {
   id:             varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -2726,6 +2759,8 @@ export const messageFlags = pgTable("message_flags", {
   flagType:       text("flag_type").notNull(),
   // 'phone' | 'email' | 'social_handle' | 'platform_url'
   createdAt:      timestamp("created_at").defaultNow(),
+  dismissedAt:    timestamp("dismissed_at"),
+  reviewedBy:     varchar("reviewed_by", { length: 36 }).references(() => users.id),
 }, (table) => [
   index("mf_message_id_idx").on(table.messageId),
   index("mf_conversation_id_idx").on(table.conversationId),

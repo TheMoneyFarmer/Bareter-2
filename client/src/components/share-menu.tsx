@@ -9,6 +9,7 @@ import { Share2, Link2 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { Capacitor } from "@capacitor/core";
+import { API_BASE } from "@/lib/queryClient";
 
 interface ShareMenuProps {
   url: string;
@@ -33,6 +34,11 @@ export function ShareMenu({
 
   // ── Native share sheet (iOS / Android) ──────────────────────────────────
   if (Capacitor.isNativePlatform()) {
+    // On native, window.location.href is capacitor://localhost/... — convert to web URL
+    const shareUrl = url.startsWith("capacitor://localhost")
+      ? `${API_BASE}${url.slice("capacitor://localhost".length)}`
+      : url;
+
     const handleNativeShare = async (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -41,7 +47,7 @@ export function ShareMenu({
         await Share.share({
           title: title || "Bareter Listing",
           text: title ? `${title} on Bareter` : "Check out this listing on Bareter",
-          url,
+          url: shareUrl,
           dialogTitle: "Share listing",
         });
       } catch {

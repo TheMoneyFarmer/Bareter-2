@@ -120,3 +120,38 @@ export function VerifiedBadge({
     </TooltipProvider>
   );
 }
+
+// ── Verification Level Badge ─────────────────────────────────────────────────
+
+interface VerificationLevelBadgeProps {
+  level?: number | null;
+  className?: string;
+}
+
+export function VerificationLevelBadge({ level, className }: VerificationLevelBadgeProps) {
+  if (!level || level < 1) return null;
+  const isHigher = level >= 2;
+  const label = isHigher ? "Identity verified — Level 2" : "Account verified — Level 1";
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold",
+              isHigher
+                ? "bg-violet-50 dark:bg-violet-900/30 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-400"
+                : "bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400",
+              className,
+            )}
+            aria-label={label}
+          >
+            <ShieldCheck className="h-3 w-3" />
+            Lvl {level}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { Capacitor } from "@capacitor/core";
 import { initPostHog, capturePageview } from "@/lib/posthog";
 import { queryClient } from "./lib/queryClient";
@@ -10,6 +10,8 @@ import { AuthProvider } from "@/lib/auth";
 import { WaitlistProvider } from "@/lib/waitlist";
 import { ActionGuardProvider } from "@/lib/action-guard";
 import { VerificationReminder } from "@/components/verification-reminder";
+import { NativeVerificationPrompt } from "@/components/native-verification-prompt";
+import { useNativePush } from "@/hooks/use-native-push";
 import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider, LanguageSync } from "@/lib/i18n";
 import { Header } from "@/components/layout/header";
@@ -23,6 +25,8 @@ import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HandshakeLoader, FullPageLoader } from "@/components/handshake-loader";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 // Route-level code splitting — each page loads only when navigated to
 const LandingPage = lazy(() => import("@/pages/landing").then((m) => ({ default: m.LandingPage })));
@@ -57,8 +61,7 @@ const SavedListingsPage = lazy(() => import("@/pages/saved-listings").then((m) =
 const MySearchesPage = lazy(() => import("@/pages/my-searches").then((m) => ({ default: m.MySearchesPage })));
 const ReferralsPage = lazy(() => import("@/pages/referrals").then((m) => ({ default: m.ReferralsPage })));
 const FeedPage = lazy(() => import("@/pages/feed").then((m) => ({ default: m.FeedPage })));
-const CreatorsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.CreatorsComingSoonPage })));
-const BrandCollabsComingSoonPage = lazy(() => import("@/pages/coming-soon").then((m) => ({ default: m.BrandCollabsComingSoonPage })));
+const CreatorsPage = lazy(() => import("@/pages/creators").then((m) => ({ default: m.CreatorsPage })));
 const CreatorStorefrontPage = lazy(() => import("@/pages/creator-storefront").then((m) => ({ default: m.CreatorStorefrontPage })));
 const BusinessStorefrontPage = lazy(() => import("@/pages/business-storefront").then((m) => ({ default: m.BusinessStorefrontPage })));
 const BusinessesDirectoryPage = lazy(() => import("@/pages/businesses-directory").then((m) => ({ default: m.BusinessesDirectoryPage })));
@@ -69,10 +72,12 @@ const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m)
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
 const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default: m.MapViewPage })));
 const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ default: m.PostDetailPage })));
+const BulkDealsPage = lazy(() => import("@/pages/bulk-deals").then((m) => ({ default: m.BulkDealsPage })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
-initPostHog();
+// Tag every event with platform so PostHog can split ios vs web dashboards
+initPostHog({ platform: Capacitor.isNativePlatform() ? "ios" : "web" });
 
 const ADMIN_DOMAIN = "admin.bareter.com";
 const isAdminSubdomain =
@@ -314,10 +319,17 @@ function PageSkeleton() {
   );
 }
 
+// On native the marketing landing page makes no sense — go straight to Browse.
+function NativeHomeRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => { navigate("/browse", { replace: true } as any); }, []);
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={isNative ? NativeHomeRedirect : LandingPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile" component={ProfilePage} />
@@ -359,10 +371,11 @@ function Router() {
       <Route path="/map" component={MapViewPage} />
       <Route path="/posts/:id" component={PostDetailPage} />
       <Route path="/creators/:userId" component={CreatorStorefrontPage} />
-      <Route path="/creators" component={CreatorsComingSoonPage} />
+      <Route path="/creators" component={CreatorsPage} />
       <Route path="/businesses" component={BusinessesDirectoryPage} />
       <Route path="/businesses/:id" component={BusinessStorefrontPage} />
-      <Route path="/brand-collabs" component={BrandCollabsComingSoonPage} />
+      <Route path="/bulk-deals" component={BulkDealsPage} />
+      <Route path="/brand-collabs">{() => <Redirect to="/browse?tab=collabs" />}</Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -415,12 +428,66 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Detects ?kyb_complete=<businessId> added by Didit callback URL, syncs status, invalidates queries.
+// Must live inside <AuthProvider> and <QueryClientProvider>.
+function KybReturnHandler() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bizId = params.get("kyb_complete");
+    if (!bizId) return;
+
+    // Strip the param from the URL without re-navigating
+    params.delete("kyb_complete");
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
+    window.history.replaceState(null, "", newUrl);
+
+    toast({ title: "Checking verification status…", description: "Syncing your business verification result." });
+
+    apiRequest("POST", `/api/businesses/${bizId}/kyb/sync`)
+      .then((r) => r.json())
+      .then((data: { kybStatus?: string; synced?: boolean }) => {
+        qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        qc.invalidateQueries({ queryKey: ["/api/businesses/me"] });
+        qc.invalidateQueries({ queryKey: [`/api/businesses/${bizId}`] });
+        qc.invalidateQueries({ queryKey: [`/api/businesses/${bizId}/storefront`] });
+
+        if (data.kybStatus === "APPROVED") {
+          toast({ title: "Business verified!", description: "Your business is now fully verified. All access granted." });
+        } else if (data.kybStatus === "IN_REVIEW" || data.kybStatus === "PENDING_REVIEW") {
+          toast({ title: "Under review", description: "Your documents are being reviewed. You'll be notified when complete." });
+        } else if (data.kybStatus === "DECLINED" || data.kybStatus === "REJECTED") {
+          toast({ title: "Verification not approved", description: "Please try again or contact support.", variant: "destructive" });
+        }
+      })
+      .catch(() => {
+        qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        qc.invalidateQueries({ queryKey: ["/api/businesses/me"] });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
+
+// Registers for native push notifications once the user is authenticated.
+// Must live inside <AuthProvider> so useAuth() resolves.
+function NativePushManager() {
+  useNativePush();
+  return null;
+}
+
 // True on iOS/Android Capacitor builds; false in every browser.
 const isNative = Capacitor.isNativePlatform();
 
 // Handles all native-only startup side-effects in one place.
 // Runs once on mount; no-ops completely when isNative is false.
 function NativeBootstrap() {
+  const qc = useQueryClient();
+
   useEffect(() => {
     if (!isNative) return;
 
@@ -431,31 +498,38 @@ function NativeBootstrap() {
         await StatusBar.setStyle({ style: Style.Light });
         await StatusBar.setBackgroundColor({ color: "#136c68" });
       } catch {}
+      // SplashScreen.hide() is called in NativeSplashGate after auth resolves.
+    })();
 
-      // Hide the native OS splash after a short delay so the teal web overlay
-      // (NativeSplashGate) has time to render first — avoids any black flash.
-      // The web overlay stays up until auth resolves independently.
-      await new Promise((r) => setTimeout(r, 400));
+    // Back button + app foreground resume refresh
+    let cleanupListeners: (() => void) | undefined;
+    (async () => {
       try {
-        const { SplashScreen } = await import("@capacitor/splash-screen");
-        await SplashScreen.hide({ fadeOutDuration: 250 });
+        const { App: CapApp } = await import("@capacitor/app");
+
+        const backHandle = await CapApp.addListener("backButton", ({ canGoBack }) => {
+          if (canGoBack) window.history.back();
+          else CapApp.exitApp();
+        });
+
+        let backgroundAt = 0;
+        const resumeHandle = await CapApp.addListener("appStateChange", ({ isActive }) => {
+          if (!isActive) {
+            backgroundAt = Date.now();
+          } else if (Date.now() - backgroundAt > 30_000) {
+            // App was backgrounded for >30s — refresh live data silently
+            qc.invalidateQueries({ queryKey: ["/api/inbox"] });
+            qc.invalidateQueries({ queryKey: ["/api/deals"] });
+            qc.invalidateQueries({ queryKey: ["/api/listings"] });
+          }
+        });
+
+        cleanupListeners = () => { backHandle.remove(); resumeHandle.remove(); };
       } catch {}
     })();
 
-    // Android hardware back button: navigate back, exit when at root
-    let removeListener: (() => void) | undefined;
-    import("@capacitor/app")
-      .then(({ App: CapApp }) =>
-        CapApp.addListener("backButton", ({ canGoBack }) => {
-          if (canGoBack) window.history.back();
-          else CapApp.exitApp();
-        }),
-      )
-      .then((handle) => { removeListener = () => handle.remove(); })
-      .catch(() => {});
-
-    return () => { removeListener?.(); };
-  }, []);
+    return () => { cleanupListeners?.(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
@@ -477,11 +551,18 @@ function NativeSplashGate() {
     retry: false,
   });
 
-  const dismiss = useRef(() => {
+  const dismiss = useRef(async () => {
     if (hidden.current) return;
     hidden.current = true;
+    // Fade the native OS splash first, then reveal content.
+    // Awaiting ensures the native animation completes before we remove the
+    // web overlay — no white flash between the two layers.
+    try {
+      const { SplashScreen } = await import("@capacitor/splash-screen");
+      await SplashScreen.hide({ fadeOutDuration: 300 });
+    } catch {}
     setFading(true);
-    setTimeout(() => setVisible(false), 350);
+    setTimeout(() => setVisible(false), 300);
   });
 
   // Dismiss once auth check finishes
@@ -490,10 +571,10 @@ function NativeSplashGate() {
     dismiss.current();
   }, [isLoading]);
 
-  // Safety cap: always dismiss after 8 s even if auth hangs
+  // Safety cap: always dismiss after 5 s even if auth hangs
   useEffect(() => {
     if (!isNative) return;
-    const t = setTimeout(() => dismiss.current(), 8000);
+    const t = setTimeout(() => dismiss.current(), 5000);
     return () => clearTimeout(t);
   }, []);
 
@@ -537,6 +618,8 @@ function App() {
         <I18nProvider>
           <AuthProvider>
             <LanguageSync />
+            <KybReturnHandler />
+            {isNative && <NativePushManager />}
             <TooltipProvider>
               {/* Admin subdomain — stripped-down shell, no public UI chrome */}
               {isAdminSubdomain ? (
@@ -554,7 +637,7 @@ function App() {
                       <div className={`min-h-screen flex flex-col bg-background${isNative ? " safe-area-top" : ""}`}>
                         {!isNative && <AnnouncementBanner />}
                         <Header />
-                        <VerificationReminder />
+                        {!isNative && <VerificationReminder />}
                         <main className="flex-1 pb-28 md:pb-0">
                           <RouteTransition>
                             <GeoGate>
@@ -572,6 +655,7 @@ function App() {
                       <BareterAiNotificationChat />
                       <LocationMismatchBanner />
                       {!isNative && <CookieConsent />}
+                      {isNative && <NativeVerificationPrompt />}
                     </MaintenanceGate>
                   </ErrorBoundary>
                   </ActionGuardProvider>

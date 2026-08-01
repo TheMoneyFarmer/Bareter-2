@@ -11,6 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +23,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, assetUrl, mobileHeaders } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { CATEGORIES, LOCATIONS, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import {
   Settings,
@@ -50,6 +54,7 @@ import {
   Users,
   ArrowLeft,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { z } from "zod";
 import { useMemo } from "react";
@@ -134,7 +139,13 @@ export function SettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mobileView, setMobileView] = useState<"menu" | "section">("menu");
-  const [activeTab, setActiveTab] = useState("account");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== "undefined") {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t) return t;
+    }
+    return "account";
+  });
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
@@ -147,23 +158,38 @@ export function SettingsPage() {
   });
 
   // ── Profile Mode state (creator_profiles + business_profiles tables) ──────
-  const CREATOR_NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Finance", "Entertainment", "Gaming", "Education"];
-  const CREATOR_PLATFORMS = ["Instagram", "TikTok", "YouTube", "LinkedIn", "X (Twitter)", "Snapchat", "Podcast", "Blog"];
-  const AUDIENCE_SIZES = [
-    { value: "Under 1K",  label: "Under 1,000" },
-    { value: "1K–10K",    label: "1,000 – 10,000" },
-    { value: "10K–50K",   label: "10,000 – 50,000" },
-    { value: "50K–100K",  label: "50,000 – 100,000" },
-    { value: "100K–500K", label: "100,000 – 500,000" },
-    { value: "500K+",     label: "500,000+" },
+  const CREATOR_PLATFORMS = ["Instagram", "TikTok", "YouTube", "LinkedIn", "Twitter/X", "Snapchat", "Pinterest", "Other"];
+
+  const BUSINESS_CATEGORY_GROUPS: { group: string; items: string[] }[] = [
+    { group: "Food & Beverage", items: ["Restaurant", "Café", "Catering", "Food Truck", "Bakery", "Cloud Kitchen", "Bar & Lounge", "Food Retail", "Beverage Brand"] },
+    { group: "Retail", items: ["Fashion & Apparel", "Electronics", "Home & Furniture", "Luxury Goods", "Jewellery & Watches", "Sporting Goods", "Books & Stationery", "Toys & Games", "Health & Beauty", "Supermarket", "Convenience Store", "Online Retail"] },
+    { group: "Services", items: ["Marketing & Advertising", "Graphic Design", "Photography", "Videography", "Web Development", "IT Services", "Accounting & Finance", "Legal Services", "HR & Recruitment", "Consulting", "PR & Communications", "Event Management", "Translation"] },
+    { group: "Hospitality & Tourism", items: ["Hotel", "Serviced Apartment", "Resort", "Travel Agency", "Tour Operator", "Car Rental", "Yacht Charter"] },
+    { group: "Health & Wellness", items: ["Gym & Fitness", "Spa & Beauty Salon", "Medical Clinic", "Dental", "Pharmacy", "Mental Health", "Nutrition & Wellness"] },
+    { group: "Education", items: ["School", "University", "Training Centre", "Online Education", "Tutoring", "Language School"] },
+    { group: "Construction & Real Estate", items: ["Construction", "Fit-Out & Interior Design", "Real Estate Agency", "Property Developer", "Architecture", "Engineering", "Facilities Management"] },
+    { group: "Logistics & Transport", items: ["Freight & Shipping", "Last Mile Delivery", "Warehousing", "Moving Services", "Fleet Management"] },
+    { group: "Technology", items: ["Software Development", "App Development", "SaaS", "Cybersecurity", "Data & Analytics", "AI & Automation", "Hardware & Electronics"] },
+    { group: "Media & Entertainment", items: ["Production Company", "Music", "Publishing", "Gaming", "Streaming", "Podcast"] },
+    { group: "Manufacturing", items: ["Food Manufacturing", "Textile", "Packaging", "Industrial Equipment", "Consumer Goods"] },
+    { group: "Other", items: ["Agriculture", "Energy", "Non-Profit", "Government", "Other"] },
   ];
-  const BUSINESS_CATEGORIES = ["Retail", "Food & Beverage", "Technology", "Healthcare", "Real Estate", "Finance", "Education", "Beauty & Wellness", "Fashion", "Events", "Media", "Other"];
+  const ALL_BIZ_CATEGORIES = BUSINESS_CATEGORY_GROUPS.flatMap(g => g.items);
 
   const [cpDisplayName, setCpDisplayName] = useState("");
   const [cpBio, setCpBio] = useState("");
   const [cpNiche, setCpNiche] = useState("");
-  const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState("");
+  const [cpPrimaryPlatform, setCpPrimaryPlatform] = useState<string | undefined>(undefined);
   const [cpAudienceSize, setCpAudienceSize] = useState("");
+  const [cpEditingStats, setCpEditingStats] = useState(false);
+  const [cpFollowerCount, setCpFollowerCount] = useState("");
+  const [cpEngagementRate, setCpEngagementRate] = useState("");
+  const [cpContentNiches, setCpContentNiches] = useState<string[]>([]);
+  const [cpInstagramHandle, setCpInstagramHandle] = useState("");
+  const [cpTiktokHandle, setCpTiktokHandle] = useState("");
+  const [cpYoutubeHandle, setCpYoutubeHandle] = useState("");
+  const CONTENT_NICHE_OPTIONS = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Business", "Finance", "Entertainment", "Gaming", "Education", "Health", "Parenting", "Sports", "Art", "Music", "Comedy", "News", "Other"];
+  const [bizCategoryOpen, setBizCategoryOpen] = useState(false);
   const [bizCompanyName, setBizCompanyName] = useState("");
   const [bizTradeLicense, setBizTradeLicense] = useState("");
   const [bizCategory, setBizCategory] = useState("");
@@ -172,7 +198,7 @@ export function SettingsPage() {
   const { data: creatorProfile, refetch: refetchCreatorProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/creators/me"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include", headers: await mobileHeaders() });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch creator profile");
       return res.json();
@@ -185,7 +211,7 @@ export function SettingsPage() {
   const { data: businessProfile, refetch: refetchBusinessProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/businesses/me"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/businesses/me`, { credentials: "include", headers: await mobileHeaders() });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error("Failed to fetch business profile");
       return res.json();
@@ -203,8 +229,23 @@ export function SettingsPage() {
     onSuccess: () => {
       refetchCreatorProfile();
       toast({ title: "Creator profile created!", description: "You're now discoverable in the Creators directory." });
+      const from = new URLSearchParams(window.location.search).get("from");
+      if (from === "create-listing") setTimeout(() => window.location.assign("/create-listing"), 1200);
     },
     onError: (err: any) => toast({ title: err?.message || "Failed to create creator profile", variant: "destructive" }),
+  });
+
+  const updateCreatorStatsMutation = useMutation({
+    mutationFn: async (data: { followerCount: number; avgEngagementRate: number; contentNiches: string[]; primaryPlatform?: string; instagramHandle?: string; tiktokHandle?: string; youtubeHandle?: string; openToCollabs: boolean }) => {
+      const res = await apiRequest("PATCH", "/api/me/creator-profile", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creators/me"] });
+      setCpEditingStats(false);
+      toast({ title: "Creator stats updated!", description: "Your profile is now visible in the Creators directory." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to update creator stats", variant: "destructive" }),
   });
 
   const createBusinessMutation = useMutation({
@@ -215,6 +256,8 @@ export function SettingsPage() {
     onSuccess: () => {
       refetchBusinessProfile();
       toast({ title: "Business profile created!", description: "Complete KYB verification to publish business listings." });
+      const from = new URLSearchParams(window.location.search).get("from");
+      if (from === "create-listing") setTimeout(() => window.location.assign("/create-listing"), 1200);
     },
     onError: (err: any) => {
       if (err?.message?.includes("409")) {
@@ -227,7 +270,8 @@ export function SettingsPage() {
 
   const startKybMutation = useMutation({
     mutationFn: async (businessId: string) => {
-      const res = await apiRequest("POST", `/api/businesses/${businessId}/kyb/start`);
+      const returnTo = window.location.pathname + window.location.search;
+      const res = await apiRequest("POST", `/api/businesses/${businessId}/kyb/start`, { returnTo });
       return res.json();
     },
     onSuccess: (data) => {
@@ -285,7 +329,7 @@ export function SettingsPage() {
     mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd });
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/cover`, { method: "POST", credentials: "include", body: fd, headers: await mobileHeaders() });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
@@ -297,7 +341,7 @@ export function SettingsPage() {
     mutationFn: async ({ businessId, file }: { businessId: string; file: File }) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd });
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/logo`, { method: "POST", credentials: "include", body: fd, headers: await mobileHeaders() });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message ?? "Upload failed"); }
       return res.json();
     },
@@ -604,7 +648,10 @@ export function SettingsPage() {
       {/* ── MOBILE: menu list ─────────────────────────────────────── */}
       {mobileView === "menu" && (
         <div className="md:hidden">
-          <div className="px-4 pt-6 pb-4 flex items-center gap-3 border-b border-border">
+          <div className="px-4 pt-4 pb-1">
+            <BackButton fallback="/profile" label="Profile" />
+          </div>
+          <div className="px-4 pt-2 pb-4 flex items-center gap-3 border-b border-border">
             <Settings className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">{t("settings.accountSettings")}</h1>
           </div>
@@ -1710,6 +1757,105 @@ export function SettingsPage() {
                         <p className="text-sm leading-relaxed">{creatorProfile.bio}</p>
                       </div>
                     )}
+                    {/* Stats section — follower count, engagement, niches */}
+                    <div className="pt-3 border-t border-border space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">Audience Stats</p>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => {
+                          const jsonb = (user as any)?.creatorProfile;
+                          setCpFollowerCount(String(jsonb?.followerCount ?? ""));
+                          setCpEngagementRate(String(jsonb?.avgEngagementRate ?? ""));
+                          setCpContentNiches(jsonb?.contentNiches ?? []);
+                          setCpInstagramHandle(jsonb?.instagramHandle ?? "");
+                          setCpTiktokHandle(jsonb?.tiktokHandle ?? "");
+                          setCpYoutubeHandle(jsonb?.youtubeHandle ?? "");
+                          setCpPrimaryPlatform(jsonb?.primaryPlatform ?? creatorProfile.primaryPlatform ?? "");
+                          setCpEditingStats(true);
+                        }}>
+                          <Pencil className="h-3 w-3" /> Edit stats
+                        </Button>
+                      </div>
+                      {cpEditingStats ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="cp-followers" className="text-xs">Followers <span className="text-destructive">*</span></Label>
+                              <Input id="cp-followers" type="number" min="2000" placeholder="e.g. 10000" value={cpFollowerCount} onChange={e => setCpFollowerCount(e.target.value)} className="h-8 text-sm" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="cp-eng" className="text-xs">Engagement Rate %</Label>
+                              <Input id="cp-eng" type="number" step="0.1" min="0" max="100" placeholder="e.g. 4.5" value={cpEngagementRate} onChange={e => setCpEngagementRate(e.target.value)} className="h-8 text-sm" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Primary Platform</Label>
+                            <select value={cpPrimaryPlatform ?? ""} onChange={e => setCpPrimaryPlatform(e.target.value || undefined)} className="w-full h-8 rounded-md border border-input bg-transparent px-3 text-sm">
+                              <option value="">Select platform</option>
+                              {CREATOR_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Content Niches</Label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {CONTENT_NICHE_OPTIONS.map(n => (
+                                <button key={n} type="button" onClick={() => setCpContentNiches(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])}
+                                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${cpContentNiches.includes(n) ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/50"}`}>
+                                  {n}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Instagram handle</Label>
+                              <Input placeholder="@handle" value={cpInstagramHandle} onChange={e => setCpInstagramHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">TikTok handle</Label>
+                              <Input placeholder="@handle" value={cpTiktokHandle} onChange={e => setCpTiktokHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">YouTube handle</Label>
+                              <Input placeholder="@channel" value={cpYoutubeHandle} onChange={e => setCpYoutubeHandle(e.target.value)} className="h-7 text-xs" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="text-xs h-8" disabled={!cpFollowerCount || parseInt(cpFollowerCount) < 2000 || updateCreatorStatsMutation.isPending}
+                              onClick={() => updateCreatorStatsMutation.mutate({
+                                followerCount: parseInt(cpFollowerCount),
+                                avgEngagementRate: parseFloat(cpEngagementRate) || 0,
+                                contentNiches: cpContentNiches,
+                                primaryPlatform: cpPrimaryPlatform,
+                                instagramHandle: cpInstagramHandle || undefined,
+                                tiktokHandle: cpTiktokHandle || undefined,
+                                youtubeHandle: cpYoutubeHandle || undefined,
+                                openToCollabs: true,
+                              })}>
+                              {updateCreatorStatsMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                              Save stats
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => setCpEditingStats(false)}>Cancel</Button>
+                          </div>
+                          {parseInt(cpFollowerCount) > 0 && parseInt(cpFollowerCount) < 2000 && (
+                            <p className="text-xs text-destructive">Minimum 2,000 followers required.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          {[
+                            { label: "Followers", value: (user as any)?.creatorProfile?.followerCount ? Number((user as any).creatorProfile.followerCount).toLocaleString() : "—" },
+                            { label: "Engagement", value: (user as any)?.creatorProfile?.avgEngagementRate ? `${(user as any).creatorProfile.avgEngagementRate}%` : "—" },
+                            { label: "Niches", value: ((user as any)?.creatorProfile?.contentNiches as string[] | undefined)?.length ? `${((user as any).creatorProfile.contentNiches as string[]).length} set` : "—" },
+                          ].map(s => (
+                            <div key={s.label} className="bg-muted/40 rounded-lg p-2">
+                              <p className="text-sm font-bold">{s.value}</p>
+                              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="pt-2 border-t border-border">
                       <Link href={`/creators/${user?.id}`}>
                         <Button variant="outline" size="sm" className="gap-2 text-xs">
@@ -1745,31 +1891,36 @@ export function SettingsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="cp-niche">Niche</Label>
-                        <Select value={cpNiche} onValueChange={setCpNiche}>
-                          <SelectTrigger id="cp-niche"><SelectValue placeholder="Select niche" /></SelectTrigger>
-                          <SelectContent>
-                            {CREATOR_NICHES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          id="cp-niche"
+                          value={cpNiche}
+                          onChange={e => setCpNiche(e.target.value)}
+                          placeholder="Fashion, Food, Tech, Fitness, Travel…"
+                          maxLength={100}
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="cp-platform">Primary Platform</Label>
-                        <Select value={cpPrimaryPlatform} onValueChange={setCpPrimaryPlatform}>
-                          <SelectTrigger id="cp-platform"><SelectValue placeholder="Select platform" /></SelectTrigger>
-                          <SelectContent>
-                            {CREATOR_PLATFORMS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <select
+                          id="cp-platform"
+                          value={cpPrimaryPlatform ?? ""}
+                          onChange={e => setCpPrimaryPlatform(e.target.value || undefined)}
+                          className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">Select platform</option>
+                          {CREATOR_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="cp-audience">Audience Size</Label>
-                      <Select value={cpAudienceSize} onValueChange={setCpAudienceSize}>
-                        <SelectTrigger id="cp-audience"><SelectValue placeholder="Select range" /></SelectTrigger>
-                        <SelectContent>
-                          {AUDIENCE_SIZES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        id="cp-audience"
+                        value={cpAudienceSize}
+                        onChange={e => setCpAudienceSize(e.target.value)}
+                        placeholder="10K, 500K, 1.2M…"
+                        maxLength={50}
+                      />
                     </div>
                     <Button
                       onClick={() => createCreatorMutation.mutate({
@@ -1842,7 +1993,7 @@ export function SettingsPage() {
                           <p className="text-xs text-muted-foreground">Cover banner</p>
                           {businessProfile.coverImageUrl ? (
                             <div className="relative w-40 h-20 rounded-md overflow-hidden border border-border">
-                              <img src={`${API_BASE}${businessProfile.coverImageUrl}`} alt="Cover" className="w-full h-full object-cover" />
+                              <img src={assetUrl(businessProfile.coverImageUrl)} alt="Cover" className="w-full h-full object-cover" />
                             </div>
                           ) : (
                             <div className="w-40 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">
@@ -1863,7 +2014,7 @@ export function SettingsPage() {
                           <p className="text-xs text-muted-foreground">Logo</p>
                           {businessProfile.logoUrl ? (
                             <div className="relative w-20 h-20 rounded-full overflow-hidden border border-border">
-                              <img src={`${API_BASE}${businessProfile.logoUrl}`} alt="Logo" className="w-full h-full object-cover" />
+                              <img src={assetUrl(businessProfile.logoUrl)} alt="Logo" className="w-full h-full object-cover" />
                             </div>
                           ) : (
                             <div className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center text-muted-foreground/50">
@@ -2018,13 +2169,33 @@ export function SettingsPage() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="biz-category">Category</Label>
-                        <Select value={bizCategory} onValueChange={setBizCategory}>
-                          <SelectTrigger id="biz-category"><SelectValue placeholder="Select category" /></SelectTrigger>
-                          <SelectContent>
-                            {BUSINESS_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <Label>Category</Label>
+                        <Popover open={bizCategoryOpen} onOpenChange={setBizCategoryOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" role="combobox" aria-expanded={bizCategoryOpen} className="w-full justify-between font-normal">
+                              {bizCategory || "Select category"}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search categories…" />
+                              <CommandList className="max-h-64">
+                                <CommandEmpty>No category found.</CommandEmpty>
+                                {BUSINESS_CATEGORY_GROUPS.map(grp => (
+                                  <CommandGroup key={grp.group} heading={grp.group}>
+                                    {grp.items.map(item => (
+                                      <CommandItem key={item} value={item} onSelect={val => { setBizCategory(val); setBizCategoryOpen(false); }}>
+                                        <Check className={`mr-2 h-4 w-4 ${bizCategory === item ? "opacity-100" : "opacity-0"}`} />
+                                        {item}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                ))}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
                     <Button

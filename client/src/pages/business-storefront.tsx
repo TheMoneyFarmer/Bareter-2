@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Building2,
@@ -13,10 +14,19 @@ import {
   Globe,
   Clock,
   Settings,
+  Plus,
+  Search,
+  Eye,
+  Pencil,
+  ToggleLeft,
+  ToggleRight,
+  ChevronDown,
 } from "lucide-react";
-import { API_BASE, assetUrl } from "@/lib/queryClient";
+import { API_BASE, assetUrl, apiRequest } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { useAuth } from "@/lib/auth";
 import { useSeo } from "@/hooks/use-seo";
+import { useToast } from "@/hooks/use-toast";
 import { BusinessProductCard } from "@/components/BusinessProductCard";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 
@@ -56,6 +66,7 @@ interface BusinessStorefrontData {
     isVerified?: boolean;
   } | null;
   activeListings: any[];
+  ownerListings?: any[];
 }
 
 type CatalogTab = "all" | "products" | "wholesale" | "services";
@@ -175,6 +186,25 @@ export function BusinessStorefrontPage() {
   const { user: loggedInUser } = useAuth();
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<CatalogTab>("all");
+  // Catalog search / sort / filter
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogSort, setCatalogSort] = useState<"newest" | "value_desc">("newest");
+  const [minAed, setMinAed] = useState("");
+  const [maxAed, setMaxAed] = useState("");
+  // Owner management tab
+  const [mgmtTab, setMgmtTab] = useState<"active" | "pending" | "inactive">("active");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ listingId, isActive }: { listingId: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/listings/${listingId}`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses", id, "storefront"] });
+    },
+    onError: () => toast({ title: "Failed to update listing", variant: "destructive" }),
+  });
 
   const { data, isLoading, isError } = useQuery<BusinessStorefrontData | null>({
     queryKey: ["/api/businesses", id, "storefront"],
@@ -221,15 +251,50 @@ export function BusinessStorefrontPage() {
   // Catalog filtering
   const products   = profile.activeListings.filter(l => l.listingType === "business_product");
   const wholesale  = profile.activeListings.filter(l => l.listingType === "business_wholesale");
-  const services   = profile.activeListings.filter(l => l.listingType !== "business_product" && l.listingType !== "business_wholesale");
+  const services   = profile.activeListings.filter(l => l.listingType === "business_service");
   const tabListings: Record<CatalogTab, any[]> = {
     all: profile.activeListings,
     products,
     wholesale,
     services,
   };
-  const visibleListings = tabListings[activeTab];
-  const isBizListing = (l: any) => l.listingType === "business_product" || l.listingType === "business_wholesale";
+  const isBizListing = (l: any) =>
+    l.listingType === "business_product" ||
+    l.listingType === "business_wholesale" ||
+    l.listingType === "business_service";
+
+  // Apply search / value filter / sort
+  const applyFilters = (list: any[]) => {
+    let result = list;
+    if (catalogSearch.trim()) {
+      const q = catalogSearch.toLowerCase();
+      result = result.filter(l =>
+        (l.title ?? "").toLowerCase().includes(q) ||
+        (l.description ?? "").toLowerCase().includes(q),
+      );
+    }
+    if (minAed !== "") {
+      const min = parseFloat(minAed);
+      if (!isNaN(min)) result = result.filter(l => parseFloat(l.retailValue ?? "0") >= min);
+    }
+    if (maxAed !== "") {
+      const max = parseFloat(maxAed);
+      if (!isNaN(max)) result = result.filter(l => parseFloat(l.retailValue ?? "0") <= max);
+    }
+    if (catalogSort === "value_desc") {
+      result = [...result].sort((a, b) => parseFloat(b.retailValue ?? "0") - parseFloat(a.retailValue ?? "0"));
+    }
+    return result;
+  };
+  const visibleListings = applyFilters(tabListings[activeTab]);
+
+  // Owner management listings
+  const ownerAll = profile.ownerListings ?? [];
+  const mgmtListings = {
+    active:   ownerAll.filter(l => l.isActive),
+    pending:  ownerAll.filter(l => !l.isActive && l.moderationStatus === "pending"),
+    inactive: ownerAll.filter(l => !l.isActive && l.moderationStatus !== "pending"),
+  };
 
   return (
     <div className="bg-bareter-off-white dark:bg-background min-h-screen">
@@ -237,7 +302,7 @@ export function BusinessStorefrontPage() {
       <div className="relative w-full h-44 sm:h-56 bg-bareter-navy overflow-hidden">
         {profile.coverImageUrl ? (
           <img
-            src={`${API_BASE}${profile.coverImageUrl}`}
+            src={assetUrl(profile.coverImageUrl)}
             alt={`${profile.companyName} cover`}
             className="w-full h-full object-cover"
           />
@@ -246,14 +311,7 @@ export function BusinessStorefrontPage() {
         )}
         {/* Back nav sits top-left */}
         <div className="absolute top-4 start-4">
-          <button
-            type="button"
-            onClick={() => navigate("/browse")}
-            className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white transition-colors bg-black/20 hover:bg-black/30 rounded-full px-3 py-1 backdrop-blur-sm"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Browse
-          </button>
+          <BackButton fallback="/browse" label="Browse" variant="overlay" />
         </div>
         {/* Owner: edit button top-right */}
         {isOwner && (
@@ -277,7 +335,7 @@ export function BusinessStorefrontPage() {
           <div className="relative flex-shrink-0">
             {profile.logoUrl ? (
               <img
-                src={`${API_BASE}${profile.logoUrl}`}
+                src={assetUrl(profile.logoUrl)}
                 alt={`${profile.companyName} logo`}
                 className="h-20 w-20 rounded-xl object-cover ring-4 ring-background shadow-md"
               />
@@ -353,38 +411,90 @@ export function BusinessStorefrontPage() {
           )}
         </div>
 
-        {/* ── Catalog tabs ── */}
-        <div className="flex items-center gap-1 pt-4 pb-2 overflow-x-auto scrollbar-hide">
-          {(["all", "products", "wholesale", "services"] as CatalogTab[]).map(tab => {
-            const count = tabListings[tab].length;
-            const labels: Record<CatalogTab, string> = { all: "All", products: "Products", wholesale: "Wholesale", services: "Services" };
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? "bg-bareter-teal text-white"
-                    : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-                }`}
-                data-testid={`tab-catalog-${tab}`}
-              >
-                {labels[tab]}
-                {count > 0 && (
-                  <span className={`text-[10px] font-semibold px-1.5 py-0 rounded-full ${
-                    activeTab === tab ? "bg-white/20 text-white" : "bg-background text-muted-foreground"
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* ── Catalog header row (tabs + Add Listing) ── */}
+        <div className="flex items-center justify-between gap-2 pt-4 pb-2">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide flex-1">
+            {(["all", "products", "wholesale", "services"] as CatalogTab[]).map(tab => {
+              const count = tabListings[tab].length;
+              const labels: Record<CatalogTab, string> = { all: "All", products: "Products", wholesale: "Wholesale", services: "Services" };
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    activeTab === tab
+                      ? "bg-bareter-teal text-white"
+                      : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  }`}
+                  data-testid={`tab-catalog-${tab}`}
+                >
+                  {labels[tab]}
+                  {count > 0 && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0 rounded-full ${
+                      activeTab === tab ? "bg-white/20 text-white" : "bg-background text-muted-foreground"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {isOwner && (
+            <Button
+              size="sm"
+              className="flex-shrink-0 gap-1.5 text-xs"
+              onClick={() => navigate(`/create-listing?mode=business&businessId=${profile.id}`)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add listing
+            </Button>
+          )}
+        </div>
+
+        {/* ── Catalog search / sort / value filter ── */}
+        <div className="flex flex-wrap items-center gap-2 pb-3">
+          <div className="relative flex-1 min-w-[160px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search listings…"
+              value={catalogSearch}
+              onChange={e => setCatalogSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+          <div className="relative">
+            <select
+              value={catalogSort}
+              onChange={e => setCatalogSort(e.target.value as "newest" | "value_desc")}
+              className="h-8 rounded-md border border-input bg-background px-3 pr-8 text-sm text-foreground appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="newest">Newest</option>
+              <option value="value_desc">Highest value</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+          <Input
+            placeholder="Min AED"
+            type="number"
+            min="0"
+            value={minAed}
+            onChange={e => setMinAed(e.target.value)}
+            className="h-8 w-24 text-sm"
+          />
+          <Input
+            placeholder="Max AED"
+            type="number"
+            min="0"
+            value={maxAed}
+            onChange={e => setMaxAed(e.target.value)}
+            className="h-8 w-24 text-sm"
+          />
         </div>
 
         {/* ── Listing grid ── */}
-        <div className="pb-12 pt-2">
+        <div className="pb-8 pt-1">
           {visibleListings.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <Building2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
@@ -400,6 +510,92 @@ export function BusinessStorefrontPage() {
             </div>
           )}
         </div>
+
+        {/* ── Owner: Manage catalog ── */}
+        {isOwner && ownerAll.length > 0 && (
+          <div className="pb-12 border-t border-border pt-6">
+            <h2 className="text-base font-semibold mb-3">Manage catalog</h2>
+            {/* Sub-tabs */}
+            <div className="flex items-center gap-1 mb-4">
+              {(["active", "pending", "inactive"] as const).map(t => {
+                const count = mgmtListings[t].length;
+                const label = { active: "Active", pending: "Pending review", inactive: "Inactive" }[t];
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setMgmtTab(t)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      mgmtTab === t
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                    {count > 0 && (
+                      <span className={`text-[10px] font-bold px-1 rounded-full ${
+                        mgmtTab === t ? "bg-background/20" : "bg-background text-muted-foreground"
+                      }`}>{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {mgmtListings[mgmtTab].length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No listings here.</p>
+            ) : (
+              <div className="space-y-2">
+                {mgmtListings[mgmtTab].map((l: any) => (
+                  <div
+                    key={l.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{l.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {l.listingType?.replace(/_/g, " ")} · AED {parseFloat(l.retailValue ?? "0").toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => navigate(`/listings/${l.id}`)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        View
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => navigate(`/create-listing?draft=${l.id}`)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
+                      {mgmtTab !== "pending" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs gap-1"
+                          disabled={toggleActiveMutation.isPending}
+                          onClick={() => toggleActiveMutation.mutate({ listingId: l.id, isActive: !l.isActive })}
+                        >
+                          {l.isActive
+                            ? <><ToggleRight className="h-3.5 w-3.5 text-green-600" /> Deactivate</>
+                            : <><ToggleLeft className="h-3.5 w-3.5" /> Activate</>
+                          }
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

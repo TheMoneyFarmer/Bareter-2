@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn, storeMobileToken, clearMobileToken } from "./queryClient";
 import type { User, SocialProfile } from "@shared/schema";
 import { identifyUser, resetIdentity } from "./posthog";
+import { Capacitor } from "@capacitor/core";
 
 interface RegisterData {
   email: string;
@@ -61,8 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiRequest("POST", "/api/auth/register", data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: async (userData: any) => {
+      const { mobileToken, ...user } = userData;
+      if (mobileToken) await storeMobileToken(mobileToken);
+      queryClient.setQueryData(["/api/auth/me"], user);
     },
   });
 
@@ -97,6 +100,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Remove device push token before logging out so no stale pushes hit this device
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        const token = await new Promise<string | null>((resolve) => {
+          PushNotifications.addListener("registration", (t) => resolve(t.value)).catch(() => resolve(null));
+          // Fallback — if registration doesn't fire, resolve null
+          setTimeout(() => resolve(null), 1000);
+        });
+        if (token) {
+          await apiRequest("DELETE", "/api/push/native-token", { token }).catch(() => {});
+        } else {
+          await apiRequest("DELETE", "/api/push/native-token", {}).catch(() => {});
+        }
+      } catch {}
+    }
     await logoutMutation.mutateAsync();
   };
 

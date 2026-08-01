@@ -32,6 +32,8 @@ export default defineConfig({
     emptyOutDir: true,
     chunkSizeWarningLimit: 600,
     rollupOptions: {
+      // Native-only Capacitor plugins: bundled by Capacitor native runtime, not the web bundle
+      external: ["@capacitor/haptics"],
       output: {
         manualChunks(id) {
           // React core — changes almost never, max cache hits

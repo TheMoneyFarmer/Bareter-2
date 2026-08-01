@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { assetUrl } from "@/lib/queryClient";
 import type { ListingWithUser, PostWithUser, User } from "@shared/schema";
 
-type TileUser = Pick<User, "id" | "fullName"> & Partial<Pick<User, "username" | "avatarUrl">>;
+type TileUser = Pick<User, "id" | "fullName"> & Partial<Pick<User, "avatarUrl">>;
 
 interface TrendingTilesProps {
   title?: string;

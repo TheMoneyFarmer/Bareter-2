@@ -25,7 +25,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, uploadFile, mobileHeaders } from "@/lib/queryClient";
+import { BackButton } from "@/components/BackButton";
 import { RatingModal } from "@/components/RatingModal";
 import { MatchScoreCard } from "@/components/MatchScoreCard";
 import type { DealWithUsers, MessageWithSender, DealMilestone } from "@shared/schema";
@@ -52,6 +53,8 @@ import {
   RefreshCw,
   ScrollText,
   Trophy,
+  Paperclip,
+  Share2,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
@@ -68,13 +71,33 @@ const STATE_COLORS: Record<string, { color: string; step: number }> = {
   cancelled: { color: "bg-red-500", step: -1 },
 };
 
-function ShareStoryButton({ dealId }: { dealId: string }) {
+function ShareStoryButton({ dealId, deal }: { dealId: string; deal: DealWithUsers }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+
+  const shareCard = async () => {
+    const seekerOffer = deal.seekerOffer || "an item";
+    const providerOffer = deal.providerOffer || "an item";
+    const card = `🤝 Just completed a barter on Bareter!\n\nTraded: ${seekerOffer}\nFor: ${providerOffer}\n\nNo cash. Pure swap. ✅\nbareter.com`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "I just bartered on Bareter!", text: card });
+      } else {
+        await navigator.clipboard.writeText(card);
+        toast({ title: "Copied!", description: "Paste it on WhatsApp, Instagram or anywhere." });
+      }
+    } catch {}
+  };
+
   return (
     <>
+      <Button variant="outline" className="w-full gap-2" onClick={shareCard}>
+        <Share2 className="h-4 w-4" />
+        Share this barter
+      </Button>
       <Button className="w-full gap-2 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setOpen(true)}>
         <Trophy className="h-4 w-4" />
-        Share Your Trade Story
+        Write a trade story
       </Button>
       <SuccessStoryModal dealId={dealId} open={open} onClose={() => setOpen(false)} />
     </>
@@ -94,6 +117,9 @@ export function DealDetailPage() {
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   const [disputeSubject, setDisputeSubject] = useState("");
   const [disputeDesc, setDisputeDesc] = useState("");
+  const [disputeEvidenceUrl, setDisputeEvidenceUrl] = useState<string | null>(null);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -180,6 +206,13 @@ export function DealDetailPage() {
     enabled: !!id,
   });
 
+  const { data: dealContext } = useQuery<{ isFirstDeal: boolean; priorCompletedDeals: number; otherName: string }>({
+    queryKey: ["/api/deals", id, "context"],
+    queryFn: async () => { const r = await apiRequest("GET", `/api/deals/${id}/context`); return r.json(); },
+    enabled: !!id && !!user,
+    staleTime: 60_000,
+  });
+
   const createMilestoneMutation = useMutation({
     mutationFn: async (title: string) => {
       const res = await apiRequest("POST", `/api/deals/${id}/milestones`, {
@@ -258,7 +291,7 @@ export function DealDetailPage() {
 
   const { data: contractData, refetch: refetchContract } = useQuery<ContractData>({
     queryKey: ["/api/deals", id, "contract"],
-    queryFn: () => fetch(`${API_BASE}/api/deals/${id}/contract`, { credentials: "include" }).then(r => r.json()),
+    queryFn: async () => { const r = await fetch(`${API_BASE}/api/deals/${id}/contract`, { credentials: "include", headers: await mobileHeaders() }); return r.json(); },
     enabled: !!id && !!deal && CONTRACT_STATES.includes(deal.state),
     staleTime: 30_000,
   });
@@ -306,13 +339,18 @@ export function DealDetailPage() {
 
   const disputeMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/deals/${id}/dispute`, { subject: disputeSubject, description: disputeDesc });
+      const res = await apiRequest("POST", `/api/deals/${id}/dispute`, {
+        subject: disputeSubject,
+        description: disputeDesc,
+        ...(disputeEvidenceUrl ? { evidenceUrl: disputeEvidenceUrl } : {}),
+      });
       return res.json();
     },
     onSuccess: () => {
       setShowDisputeModal(false);
       setDisputeSubject("");
       setDisputeDesc("");
+      setDisputeEvidenceUrl(null);
       toast({ title: "Dispute filed", description: "An admin will review your dispute shortly." });
     },
     onError: (err: any) => toast({ title: "Failed to file dispute", description: err?.message, variant: "destructive" }),
@@ -323,15 +361,7 @@ export function DealDetailPage() {
     if (!file || !deal) return;
     setUploadingProof(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "proof");
-      const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData, credentials: "include" });
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => ({}));
-        throw new Error(err.message || "Upload failed");
-      }
-      const { url } = await uploadRes.json();
+      const url = await uploadFile(file, "proof");
       const proofField = isSeeker ? { seekerProofUrl: url } : { providerProofUrl: url };
       // Move to delivery_proof stage when uploading from in_progress
       const stateUpdate = deal.state === "in_progress" ? { state: "delivery_proof" as const } : {};
@@ -343,6 +373,21 @@ export function DealDetailPage() {
     } finally {
       setUploadingProof(false);
       if (proofInputRef.current) proofInputRef.current.value = "";
+    }
+  }
+
+  async function handleEvidenceUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingEvidence(true);
+    try {
+      const url = await uploadFile(file, "proof");
+      setDisputeEvidenceUrl(url);
+    } catch {
+      toast({ title: "Upload failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setUploadingEvidence(false);
+      if (evidenceInputRef.current) evidenceInputRef.current.value = "";
     }
   }
 
@@ -423,11 +468,8 @@ export function DealDetailPage() {
   const canMarkComplete = deal.state === "delivery_proof" && !myCompleted;
 
   return (
-    <div className="container px-4 py-8 mx-auto max-w-6xl">
-      <Link href="/deals" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className={`h-4 w-4 ${isRTL ? "rotate-180" : ""}`} />
-        {t("dealDetail.backToDeals")}
-      </Link>
+    <div className="container px-4 py-8 mx-auto max-w-6xl bareter-slide-in">
+      <BackButton fallback="/deals" label={t("dealDetail.backToDeals")} className="mb-6" />
 
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8">
         <div>
@@ -546,6 +588,16 @@ export function DealDetailPage() {
           </div>
         );
       })()}
+
+      {dealContext?.isFirstDeal && !["completed", "cancelled"].includes(deal.state) && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 p-3 flex gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            <span className="font-semibold">First time bartering with {dealContext.otherName}.</span>{" "}
+            Consider meeting in a public place and reviewing their profile before exchanging items.
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -1039,7 +1091,7 @@ export function DealDetailPage() {
                     <Star className="h-4 w-4" />
                     {t("dealDetail.rateExperience")}
                   </Button>
-                  <ShareStoryButton dealId={deal.id} />
+                  <ShareStoryButton dealId={deal.id} deal={deal} />
                 </>
               )}
 
@@ -1180,6 +1232,29 @@ export function DealDetailPage() {
                 rows={4}
                 maxLength={2000}
               />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Evidence (optional)</label>
+              <input ref={evidenceInputRef} type="file" accept="image/*,video/*,.pdf" className="hidden" onChange={handleEvidenceUpload} />
+              {disputeEvidenceUrl ? (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 px-3 py-2 text-xs text-green-800 dark:text-green-300">
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="truncate flex-1">Evidence attached</span>
+                  <button type="button" className="text-green-600 hover:text-red-500" onClick={() => setDisputeEvidenceUrl(null)}>Remove</button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5"
+                  disabled={uploadingEvidence}
+                  onClick={() => evidenceInputRef.current?.click()}
+                >
+                  {uploadingEvidence ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                  {uploadingEvidence ? "Uploading…" : "Attach photo, video, or PDF"}
+                </Button>
+              )}
             </div>
           </div>
           <DialogFooter>

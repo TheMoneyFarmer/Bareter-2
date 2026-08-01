@@ -1971,3 +1971,41 @@ export async function sendMatchDigestEmail(
   const text = `${greeting},\n\nYou have ${opts.matches.length} new trade match${opts.matches.length !== 1 ? "es" : ""} on Bareter this week:\n\n${opts.matches.map(m => `• ${m.title} (AED ${m.value}) — ${m.reason}`).join("\n")}\n\nView all: ${baseUrl}/browse\n\n— ${APP_NAME}`;
   return sendMail({ to: toEmail, subject: `Your ${APP_NAME} weekly trade matches`, html, text });
 }
+
+// ─── Proposal Expiring Soon ────────────────────────────────────────────────────
+
+export async function sendListingExpiringEmail(
+  toEmail: string,
+  opts: {
+    recipientName?: string | null;
+    offerItemName: string;
+    listingTitle: string;
+    listingId: string;
+    expiresAt: Date;
+  },
+): Promise<boolean> {
+  const baseUrl = getBaseUrl();
+  const greeting = opts.recipientName ? `Hi ${opts.recipientName},` : "Hi there,";
+  const listingUrl = `${baseUrl}/listings/${opts.listingId}`;
+  const safeItem = opts.offerItemName.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const safeTitle = opts.listingTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const hoursLeft = Math.max(1, Math.round((opts.expiresAt.getTime() - Date.now()) / 3_600_000));
+  const customTemplate = await getCustomTemplate("email_template_listing_expiring");
+  const html = customTemplate
+    ? applyTemplateVars(customTemplate, { greeting, offerItemName: safeItem, listingTitle: safeTitle, listingUrl, hoursLeft: String(hoursLeft), appName: APP_NAME, baseUrl })
+    : emailShell(`
+      <h2 style="font-size:19px;font-weight:700;color:#92400e;margin:0 0 10px;">Your proposal expires soon</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 14px;">${greeting}</p>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;margin:0 0 16px;">
+        Your proposal offering <strong>"${safeItem}"</strong> for <strong>"${safeTitle}"</strong> will expire in approximately <strong>${hoursLeft} hour${hoursLeft !== 1 ? "s" : ""}</strong>.
+      </p>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin:0 0 24px;">
+        <p style="margin:0;color:#92400e;font-size:13px;line-height:1.5;">If the listing owner hasn't responded yet, your proposal will be automatically declined when it expires. You can view or withdraw it at any time.</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${listingUrl}" style="display:inline-block;background:#0f5f5a;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:700;">View Listing</a>
+      </div>
+    `);
+  const text = `${greeting}\n\nYour proposal offering "${opts.offerItemName}" for "${opts.listingTitle}" expires in ~${hoursLeft} hour${hoursLeft !== 1 ? "s" : ""}.\n\nView the listing: ${listingUrl}\n\n— ${APP_NAME}`;
+  return sendMail({ to: toEmail, subject: `Your proposal on "${opts.listingTitle}" expires in ${hoursLeft}h`, html, text, templateKey: "email_template_listing_expiring" });
+}

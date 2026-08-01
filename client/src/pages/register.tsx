@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -8,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
-import { API_BASE } from "@/lib/queryClient";
+import { API_BASE, apiRequest, storeMobileToken, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useWaitlist } from "@/lib/waitlist";
 import { useI18n } from "@/lib/i18n";
@@ -104,6 +105,7 @@ export function RegisterPage() {
   const appleEnabled = appleStatus?.enabled ?? false;
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [step, setStep] = useState(() => {
     try {
       return new URL(window.location.href).searchParams.get("step") === "verify" ? 0 : 1;
@@ -255,6 +257,36 @@ export function RegisterPage() {
     </div>
   );
 
+  const handleGoogleNative = async () => {
+    setGoogleLoading(true);
+    try {
+      const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+      await GoogleAuth.initialize({
+        clientId: '990746727496-blj1mvk3i39on7d1t88cbgpos11995dp.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true,
+      });
+      const result = await GoogleAuth.signIn();
+      const idToken = result.authentication.idToken;
+      const userData = await apiRequest("POST", "/api/auth/google/native", { idToken });
+      const { mobileToken, ...user } = userData as any;
+      if (mobileToken) await storeMobileToken(mobileToken);
+      queryClient.setQueryData(["/api/auth/me"], user);
+      navigate("/browse");
+    } catch (err: any) {
+      const msg = (err?.message ?? "").toLowerCase();
+      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("12501") || msg.includes("sign_in_cancelled")) return;
+      apiRequest("POST", "/api/logs/client-error", {
+        context: "google-sign-in-register",
+        error: String(err?.message ?? err),
+        platform: "ios-native",
+      }).catch(() => {});
+      toast({ title: "Sign-in failed", description: "Please try again or use email.", variant: "destructive" });
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   const renderStep1 = () => (
     <>
       <CardHeader className="space-y-1 text-center pb-2">
@@ -265,14 +297,27 @@ export function RegisterPage() {
       </CardHeader>
       <CardContent className="space-y-3 pt-4">
         {googleEnabled && (
-          <a
-            href="/auth/google"
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
-            data-testid="button-google-register"
-          >
-            <GoogleSignInIcon />
-            Continue with Google
-          </a>
+          Capacitor.isNativePlatform() ? (
+            <button
+              type="button"
+              onClick={handleGoogleNative}
+              disabled={googleLoading}
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm disabled:opacity-50"
+              data-testid="button-google-register"
+            >
+              {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleSignInIcon />}
+              Continue with Google
+            </button>
+          ) : (
+            <a
+              href="/auth/google"
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-white dark:bg-muted hover:bg-gray-50 dark:hover:bg-muted/80 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-foreground transition-colors shadow-sm"
+              data-testid="button-google-register"
+            >
+              <GoogleSignInIcon />
+              Continue with Google
+            </a>
+          )
         )}
 
         {appleEnabled && (
@@ -309,9 +354,9 @@ export function RegisterPage() {
 
         <p className="text-center text-xs text-muted-foreground pt-1">
           By continuing you agree to our{" "}
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms</a>
+          <Link href="/terms" className="underline hover:text-foreground" onClick={(e) => e.stopPropagation()}>Terms</Link>
           {" & "}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>
+          <Link href="/privacy" className="underline hover:text-foreground" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>
         </p>
 
         <div className="text-center text-sm pt-1">
@@ -505,21 +550,21 @@ export function RegisterPage() {
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm font-normal">
                       I agree to the{" "}
-                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/terms" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Terms of Use
-                      </a>
+                      </Link>
                       ,{" "}
-                      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/privacy" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Privacy Policy
-                      </a>
+                      </Link>
                       , and{" "}
-                      <a href="/legal/cookies" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/legal/cookies" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Cookie Policy
-                      </a>
+                      </Link>
                       . See also our{" "}
-                      <a href="/legal/customer-agreement" target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                      <Link href="/legal/customer-agreement" className="underline text-primary hover:text-primary/80" onClick={(e) => e.stopPropagation()}>
                         Customer Agreement
-                      </a>
+                      </Link>
                       .
                     </FormLabel>
                     <FormMessage />

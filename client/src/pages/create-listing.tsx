@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, handleAuthExpiry, API_BASE } from "@/lib/queryClient";
+import { apiRequest, handleAuthExpiry, API_BASE, uploadFile } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";
@@ -28,7 +28,7 @@ import {
   Upload, Settings2, Home, Car, Smartphone, Shirt, Sofa, MoreHorizontal,
   Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake, Layers,
   Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
-  Wrench, TreePine, Luggage, Watch, Utensils, PawPrint,
+  Wrench, TreePine, Luggage, Watch, Utensils, PawPrint, Share2, Video,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -104,11 +104,15 @@ export function CreateListingPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const [showSharePrompt, setShowSharePrompt] = useState<{ id: string; title: string } | null>(null);
 
   const [itemType, setItemType] = useState<ItemType>("");
   const [newExchangeItem, setNewExchangeItem] = useState("");
   const [newItemPriority, setNewItemPriority] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [categoryDetails, setCategoryDetails] = useState<Record<string, string | number | boolean | string[]>>({});
   const [aiValuation, setAiValuation] = useState<{
     estimatedRange: { min: number; max: number };
@@ -131,10 +135,39 @@ export function CreateListingPage() {
   const [collabUsageRights, setCollabUsageRights] = useState("brand_social");
   const COLLAB_PLATFORMS = ["instagram", "tiktok", "youtube", "twitter", "linkedin"];
 
-  // ── Listing mode (individual / creator / business product / wholesale) ─────
-  const [listingMode, setListingMode] = useState<"individual" | "creator" | "business_product" | "business_wholesale">("individual");
+  // ── Listing mode ──────────────────────────────────────────────────────────
+  const [listingMode, setListingMode] = useState<"individual" | "service" | "creator" | "business_product" | "business_wholesale" | "business_service">("individual");
   const [totalQuantity, setTotalQuantity] = useState("");
   const [unitLabel, setUnitLabel] = useState("");
+  const [moq, setMoq] = useState("");
+  // ── Individual service fields ──────────────────────────────────────────────
+  const [indServiceDeliverables, setIndServiceDeliverables] = useState("");
+  const [indServiceTimeline, setIndServiceTimeline] = useState("");
+  const [indServiceArea, setIndServiceArea] = useState("");
+  // ── Business service/product extra fields ─────────────────────────────────
+  const [serviceDeliverables, setServiceDeliverables] = useState("");
+  const [serviceTimeline, setServiceTimeline] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
+  // ── Business catalog ──────────────────────────────────────────────────────
+  const [catalogItems, setCatalogItems] = useState<{name: string; sku: string; qty: string}[]>([]);
+  const [newCatalogItem, setNewCatalogItem] = useState({name: "", sku: "", qty: ""});
+  const [bulkTiers, setBulkTiers] = useState<{min: string; max: string; label: string}[]>([
+    {min: "1", max: "10", label: ""}, {min: "11", max: "50", label: ""}, {min: "51", max: "", label: ""},
+  ]);
+  const [tradeTerms, setTradeTerms] = useState("");
+  // ── Exchange detail fields ─────────────────────────────────────────────────
+  const [exchangeDescription, setExchangeDescription] = useState("");
+  const [exchangeCondition, setExchangeCondition] = useState("");
+  const [exchangeQuantity, setExchangeQuantity] = useState("");
+  const [exchangeSpecs, setExchangeSpecs] = useState("");
+  const [exchangeMinValue, setExchangeMinValue] = useState("");
+  const [exchangeMaxValue, setExchangeMaxValue] = useState("");
+  // ── Creator extra fields ───────────────────────────────────────────────────
+  const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
+  const [uploadingDemoVideo, setUploadingDemoVideo] = useState(false);
+  const demoVideoRef = useRef<HTMLInputElement>(null);
+  const [portfolioLinks, setPortfolioLinks] = useState<string[]>([""]);
+  const [creatorRateCard, setCreatorRateCard] = useState("");
 
   const { data: creatorProfile } = useQuery<Record<string, any> | null>({
     queryKey: ["/api/creators/me"],
@@ -202,34 +235,84 @@ export function CreateListingPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateListingForm) => {
-      const listingTypeMap: Record<string, string> = {
-        individual: "individual_item",
-        creator: "creator_service",
-        business_product: "business_product",
-        business_wholesale: "business_wholesale",
-      };
       const modeFields: Record<string, unknown> =
-        listingMode === "creator" && creatorProfile
-          ? { listingType: "creator_service", creatorId: creatorProfile.id }
+        listingMode === "service"
+          ? {
+              listingType: "individual_item",
+              categoryDetails: {
+                ...(indServiceDeliverables ? { serviceDeliverables: indServiceDeliverables } : {}),
+                ...(indServiceTimeline ? { serviceTimeline: indServiceTimeline } : {}),
+                ...(indServiceArea ? { serviceArea: indServiceArea } : {}),
+                isService: true,
+              },
+            }
+          : listingMode === "creator" && creatorProfile
+          ? {
+              listingType: "creator_service",
+              creatorId: creatorProfile.id,
+              videoUrl: demoVideoUrl || undefined,
+              categoryDetails: {
+                ...(creatorRateCard ? { rateCard: creatorRateCard } : {}),
+                portfolioLinks: portfolioLinks.filter(Boolean),
+              },
+            }
           : listingMode === "business_product" && businessProfile
-          ? { listingType: "business_product", businessId: businessProfile.id, actingAsBusinessId: businessProfile.id }
+          ? {
+              listingType: "business_product",
+              businessId: businessProfile.id,
+              actingAsBusinessId: businessProfile.id,
+              categoryDetails: {
+                ...(catalogItems.length > 0 ? { catalogItems } : {}),
+                ...(moq ? { moq: parseInt(moq) } : {}),
+                ...(tradeTerms ? { tradeTerms } : {}),
+              },
+            }
           : listingMode === "business_wholesale" && businessProfile
           ? {
               listingType: "business_wholesale",
+              isBulkDeal: true,
               businessId: businessProfile.id,
               actingAsBusinessId: businessProfile.id,
               totalQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
               remainingQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
               unitLabel: unitLabel || undefined,
               claimStatus: "available",
+              categoryDetails: {
+                ...(moq ? { moq: parseInt(moq) } : {}),
+                ...(tradeTerms ? { tradeTerms } : {}),
+                bulkTiers: bulkTiers.filter(t => t.label).map(t => ({
+                  min: parseInt(t.min), max: t.max ? parseInt(t.max) : null, label: t.label,
+                })),
+              },
+            }
+          : listingMode === "business_service" && businessProfile
+          ? {
+              listingType: "business_service",
+              businessId: businessProfile.id,
+              actingAsBusinessId: businessProfile.id,
+              categoryDetails: {
+                ...(serviceDeliverables ? { serviceDeliverables } : {}),
+                ...(serviceTimeline ? { serviceTimeline } : {}),
+                ...(serviceArea ? { serviceArea } : {}),
+              },
             }
           : { listingType: "individual_item" };
 
+      const exchangeExtra = {
+        ...(exchangeDescription ? { exchangeDescription } : {}),
+        ...(exchangeCondition ? { exchangeCondition } : {}),
+        ...(exchangeQuantity ? { exchangeQuantity: parseInt(exchangeQuantity) } : {}),
+        ...(exchangeSpecs ? { exchangeSpecs } : {}),
+        ...(exchangeMinValue ? { exchangeMinValue: parseFloat(exchangeMinValue) } : {}),
+        ...(exchangeMaxValue ? { exchangeMaxValue: parseFloat(exchangeMaxValue) } : {}),
+      };
+      const baseCategoryDetails = Object.keys(categoryDetails).length > 0 ? categoryDetails : {};
+      const modeCategoryDetails = (modeFields as any).categoryDetails ?? {};
+      const finalCategoryDetails = { ...baseCategoryDetails, ...modeCategoryDetails, ...exchangeExtra };
       const res = await apiRequest("POST", "/api/listings", {
         ...data,
         retailValue: data.retailValue,
-        categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
-        isCollab: listingMode === "creator" ? true : isCollab,
+        isCollab: listingMode === "creator" || isCollab,
         collabDetails: isCollab ? {
           contentType: collabContentType,
           requiredFollowers: collabRequiredFollowers ? parseInt(collabRequiredFollowers) : 0,
@@ -241,6 +324,8 @@ export function CreateListingPage() {
           productValue: collabProductValue ? parseFloat(collabProductValue) : 0,
         } : undefined,
         ...modeFields,
+        categoryDetails: Object.keys(finalCategoryDetails).length > 0 ? finalCategoryDetails : undefined,
+        videoUrl: videoUrl || undefined,
         valuation: aiValuation
           ? {
               minAed: Math.round(aiValuation.estimatedRange.min),
@@ -272,7 +357,7 @@ export function CreateListingPage() {
         listing_value: data.retailValue ? parseFloat(data.retailValue) : undefined,
       });
       toast({ title: t("create.successTitle"), description: t("create.successDesc") });
-      navigate(`/listings/${data.id}`);
+      setShowSharePrompt({ id: data.id, title: data.title });
     },
     onError: (error: any) => {
       // If server says phone not verified, open the WhatsApp modal
@@ -452,16 +537,7 @@ export function CreateListingPage() {
       const urls = await Promise.all(files.map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
         if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("type", "listing");
-        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
-        if (!res.ok) {
-          if (res.status === 401) handleAuthExpiry(401);
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || "Upload failed");
-        }
-        return (await res.json()).url as string;
+        return uploadFile(file, "listing");
       }));
       form.setValue("images", [...currentImages, ...urls], { shouldValidate: true });
     } catch (error: any) {
@@ -485,10 +561,12 @@ export function CreateListingPage() {
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Prompt, // lets user choose camera or gallery
-        quality: 85,
+        quality: 80,
+        allowEditing: false,
       });
-      if (!photo.dataUrl) return;
-      const blob = await fetch(photo.dataUrl).then((r) => r.blob());
+      if (!photo.dataUrl) throw new Error("No photo data");
+      const res = await fetch(photo.dataUrl);
+      const blob = await res.blob();
       const file = new File([blob], `photo-${Date.now()}.jpg`, {
         type: blob.type || "image/jpeg",
       });
@@ -496,13 +574,46 @@ export function CreateListingPage() {
     } catch (err: any) {
       // User cancelled the picker — not an error worth showing
       const msg = (err?.message ?? "").toLowerCase();
-      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("no image")) return;
+      if (msg.includes("cancel") || msg.includes("dismiss") || msg.includes("no image") || msg === "user cancelled photos app") return;
+      console.error("Camera error:", err);
       toast({ title: t("create.uploadFailed"), description: t("create.uploadImageError"), variant: "destructive" });
     }
   };
 
   const removeImage = (index: number) => {
     form.setValue("images", (form.getValues("images") || []).filter((_, i) => i !== index), { shouldValidate: true });
+  };
+
+  const handleVideoUpload = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
+    if (file.size > 50 * 1024 * 1024) { toast({ title: "Video must be under 50MB", variant: "destructive" }); return; }
+    setUploadingVideo(true);
+    try {
+      const url = await uploadFile(file, "listing");
+      setVideoUrl(url);
+    } catch (err: any) {
+      toast({ title: "Video upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingVideo(false);
+      if (videoInputRef.current) videoInputRef.current.value = "";
+    }
+  };
+
+  const handleDemoVideoUpload = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
+    if (file.size > 100 * 1024 * 1024) { toast({ title: "Demo reel must be under 100MB", variant: "destructive" }); return; }
+    setUploadingDemoVideo(true);
+    try {
+      const url = await uploadFile(file, "listing");
+      setDemoVideoUrl(url);
+    } catch (err: any) {
+      toast({ title: "Demo upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingDemoVideo(false);
+      if (demoVideoRef.current) demoVideoRef.current.value = "";
+    }
   };
 
   // ── Watchers ─────────────────────────────────────────────────────────────
@@ -543,6 +654,49 @@ export function CreateListingPage() {
         <h2 className="text-xl font-bold">Add your WhatsApp first</h2>
         <p className="text-muted-foreground">Add and verify your WhatsApp number on your profile to start posting listings.</p>
         <a href="/profile?tab=verification" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4 py-2 hover:bg-primary/90 transition-colors">Add WhatsApp</a>
+      </div>
+    );
+  }
+
+  if (showSharePrompt) {
+    const listingUrl = `${window.location.origin}/listings/${showSharePrompt.id}`;
+    const handleNativeShare = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { Share } = await import("@capacitor/share");
+          await Share.share({ title: showSharePrompt.title, text: `Check out my listing on Bareter: ${showSharePrompt.title}`, url: listingUrl });
+        } catch {}
+      } else if (navigator.share) {
+        navigator.share({ title: showSharePrompt.title, url: listingUrl }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(listingUrl).catch(() => {});
+        toast({ title: "Link copied!", description: "Share the link with your network" });
+      }
+      navigate(`/listings/${showSharePrompt.id}`);
+    };
+
+    return (
+      <div className="container px-4 py-8 mx-auto max-w-md flex flex-col items-center text-center bareter-slide-up">
+        <div className="h-20 w-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-6">
+          <Check className="h-10 w-10 text-green-600" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Your listing is live!</h2>
+        <p className="text-muted-foreground mb-8">Share it to get faster offers from the Bareter community.</p>
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          className="w-full flex items-center justify-center gap-2 bg-bareter-teal text-white font-semibold py-3 px-6 rounded-xl mb-3 hover:bg-bareter-teal-light transition-colors"
+        >
+          <Share2 className="h-5 w-5" />
+          Share now
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(`/listings/${showSharePrompt.id}`)}
+          className="w-full py-3 px-6 rounded-xl border text-muted-foreground hover:bg-muted transition-colors"
+        >
+          View my listing
+        </button>
       </div>
     );
   }
@@ -589,106 +743,309 @@ export function CreateListingPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
-          {/* ── 0. Listing mode (only shown when user has creator or business profile) ── */}
-          {(creatorProfile || businessProfile) && (
+          {/* ── 0. Listing Mode — shown to ALL users ─────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="h-4 w-4 text-primary" />
+                Listing Mode
+              </CardTitle>
+              <CardDescription>Choose how this listing is published</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {/* Individual — always available */}
+                <button type="button" onClick={() => setListingMode("individual")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "individual" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Individual</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Standard P2P barter</span>
+                </button>
+
+                {/* Service — available to everyone, no profile needed */}
+                <button type="button" onClick={() => setListingMode("service")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "service" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Briefcase className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Service</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Offer your skills/time</span>
+                </button>
+
+                {/* Creator — requires creator profile */}
+                <button type="button"
+                  onClick={() => creatorProfile ? setListingMode("creator") : window.location.assign("/settings?tab=creator&from=create-listing")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors relative ${listingMode === "creator" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Camera className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Creator</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Brand collab offer</span>
+                  {!creatorProfile && <span className="text-[9px] text-primary mt-0.5 font-medium">Set up profile →</span>}
+                </button>
+
+                {/* Business Product */}
+                <button type="button"
+                  onClick={() => businessProfile ? setListingMode("business_product") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_product" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Building2 className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Business</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Company product</span>
+                  {!businessProfile && <span className="text-[9px] text-primary mt-0.5 font-medium">Set up profile →</span>}
+                </button>
+
+                {/* Business Service */}
+                <button type="button"
+                  onClick={() => businessProfile ? setListingMode("business_service") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_service" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Handshake className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Biz Service</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Company service offer</span>
+                  {!businessProfile && <span className="text-[9px] text-primary mt-0.5 font-medium">Set up profile →</span>}
+                </button>
+
+                {/* Wholesale — business + KYB verified */}
+                <button type="button"
+                  onClick={() => businessProfile ? setListingMode("business_wholesale") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_wholesale" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
+                  <Package className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs font-semibold">Wholesale</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">Bulk / split-qty deal</span>
+                  {!businessProfile && <span className="text-[9px] text-primary mt-0.5 font-medium">Set up profile →</span>}
+                </button>
+              </div>
+
+              {/* Context label */}
+              {listingMode === "creator" && creatorProfile && (
+                <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-primary" />Listing as <strong>{creatorProfile.displayName}</strong>
+                </p>
+              )}
+              {(listingMode === "business_product" || listingMode === "business_wholesale" || listingMode === "business_service") && businessProfile && (
+                <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-primary" />Listing on behalf of <strong>{businessProfile.companyName}</strong>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── Individual Service fields ─────────────────────────────────── */}
+          {listingMode === "service" && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Listing Mode
-                </CardTitle>
-                <CardDescription>Choose how this listing is published</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><Briefcase className="h-4 w-4 text-primary" />Service Details</CardTitle>
+                <CardDescription>Tell partners exactly what you offer, how long it takes, and where</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className={`grid gap-2 ${[creatorProfile, businessProfile?.kybStatus === "verified"].filter(Boolean).length >= 2 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
-                  {/* Individual — always available */}
-                  <button
-                    type="button"
-                    onClick={() => setListingMode("individual")}
-                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "individual" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
-                  >
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-xs font-semibold">Individual</span>
-                    <span className="text-[10px] text-muted-foreground leading-tight">Standard P2P barter</span>
-                  </button>
-                  {/* Creator — only if creator profile exists */}
-                  {creatorProfile && (
-                    <button
-                      type="button"
-                      onClick={() => setListingMode("creator")}
-                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "creator" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
-                    >
-                      <Camera className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-xs font-semibold">Creator</span>
-                      <span className="text-[10px] text-muted-foreground leading-tight">Brand collab offer</span>
-                    </button>
-                  )}
-                  {/* Business Product — if business profile exists */}
-                  {businessProfile && (
-                    <button
-                      type="button"
-                      onClick={() => setListingMode("business_product")}
-                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_product" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
-                    >
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-xs font-semibold">Business</span>
-                      <span className="text-[10px] text-muted-foreground leading-tight">Company product/service</span>
-                    </button>
-                  )}
-                  {/* Business Wholesale — only if KYB verified */}
-                  {businessProfile?.kybStatus === "verified" && (
-                    <button
-                      type="button"
-                      onClick={() => setListingMode("business_wholesale")}
-                      className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_wholesale" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}
-                    >
-                      <Package className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-xs font-semibold">Wholesale</span>
-                      <span className="text-[10px] text-muted-foreground leading-tight">Split-quantity bulk deal</span>
-                    </button>
-                  )}
+              <CardContent className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">What you'll deliver</label>
+                  <Textarea placeholder="e.g. Full brand identity package — logo, colour palette, typography guide, 3 revision rounds…" value={indServiceDeliverables} onChange={e => setIndServiceDeliverables(e.target.value)} rows={3} maxLength={500} />
                 </div>
-                {listingMode === "creator" && creatorProfile && (
-                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
-                    <Check className="h-3.5 w-3.5 text-primary" />
-                    Listing as <strong>{creatorProfile.displayName}</strong>
-                  </p>
-                )}
-                {(listingMode === "business_product" || listingMode === "business_wholesale") && businessProfile && (
-                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
-                    <Check className="h-3.5 w-3.5 text-primary" />
-                    Listing on behalf of <strong>{businessProfile.companyName}</strong>
-                  </p>
-                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Turnaround time</label>
+                    <Input placeholder="e.g. 3 business days" value={indServiceTimeline} onChange={e => setIndServiceTimeline(e.target.value)} maxLength={80} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Location / remote?</label>
+                    <Input placeholder="e.g. Dubai / Remote / Worldwide" value={indServiceArea} onChange={e => setIndServiceArea(e.target.value)} maxLength={80} />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* ── Wholesale quantity fields (only for business_wholesale mode) ── */}
+          {/* ── Business Product catalog + MOQ ───────────────────────────── */}
+          {listingMode === "business_product" && businessProfile && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2"><Package className="h-4 w-4 text-primary" />Product Catalog</CardTitle>
+                <CardDescription>List individual SKUs/products under this listing and set minimum order</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {catalogItems.length > 0 && (
+                  <div className="space-y-2">
+                    {catalogItems.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-muted text-sm">
+                        <span className="flex-1 font-medium">{item.name}</span>
+                        {item.sku && <span className="text-muted-foreground text-xs">SKU: {item.sku}</span>}
+                        {item.qty && <span className="text-muted-foreground text-xs">Qty: {item.qty}</span>}
+                        <button type="button" onClick={() => setCatalogItems(p => p.filter((_, j) => j !== i))} className="text-destructive"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                  <Input placeholder="Product name" value={newCatalogItem.name} onChange={e => setNewCatalogItem(p => ({...p, name: e.target.value}))} className="col-span-1" />
+                  <Input placeholder="SKU (optional)" value={newCatalogItem.sku} onChange={e => setNewCatalogItem(p => ({...p, sku: e.target.value}))} />
+                  <div className="flex gap-1">
+                    <Input placeholder="Qty" type="number" value={newCatalogItem.qty} onChange={e => setNewCatalogItem(p => ({...p, qty: e.target.value}))} />
+                    <Button type="button" size="icon" variant="outline" onClick={() => { if (newCatalogItem.name) { setCatalogItems(p => [...p, newCatalogItem]); setNewCatalogItem({name:"",sku:"",qty:""}); } }}><Plus className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Min. Order Qty (MOQ)</label>
+                    <Input type="number" placeholder="e.g. 10" value={moq} onChange={e => setMoq(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Trade Terms</label>
+                    <select value={tradeTerms} onChange={e => setTradeTerms(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                      <option value="">Select (optional)</option>
+                      <option value="ex_works">Ex Works</option>
+                      <option value="fob">FOB</option>
+                      <option value="cif">CIF</option>
+                      <option value="delivered">Delivered to buyer</option>
+                      <option value="pickup">Buyer pickup</option>
+                    </select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Wholesale quantity + bulk pricing ────────────────────────── */}
           {listingMode === "business_wholesale" && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Split-Quantity Details</CardTitle>
-                <CardDescription>Multiple buyers can each claim a portion of this listing</CardDescription>
+                <CardTitle className="text-base">Wholesale Details</CardTitle>
+                <CardDescription>Multiple partners can each claim a portion of this stock</CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Total Quantity <span className="text-destructive">*</span></label>
+                    <Input type="number" min="2" placeholder="e.g. 500" value={totalQuantity} onChange={e => setTotalQuantity(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Unit Label</label>
+                    <Input placeholder="e.g. kg, boxes, units" value={unitLabel} onChange={e => setUnitLabel(e.target.value)} maxLength={30} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Min. Order Qty (MOQ)</label>
+                    <Input type="number" placeholder="e.g. 10" value={moq} onChange={e => setMoq(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Trade Terms</label>
+                    <select value={tradeTerms} onChange={e => setTradeTerms(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                      <option value="">Select (optional)</option>
+                      <option value="ex_works">Ex Works</option>
+                      <option value="fob">FOB</option>
+                      <option value="cif">CIF</option>
+                      <option value="delivered">Delivered to buyer</option>
+                      <option value="pickup">Buyer pickup</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Bulk Pricing Tiers <span className="text-muted-foreground font-normal text-xs">(optional — describe barter value per tier)</span></label>
+                  {bulkTiers.map((tier, i) => (
+                    <div key={i} className="grid grid-cols-3 gap-2 items-center">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground col-span-1">
+                        <span>{tier.min}</span>
+                        <span>–</span>
+                        <span>{tier.max || "∞"} {unitLabel || "units"}</span>
+                      </div>
+                      <Input className="col-span-2 h-8 text-sm" placeholder={`Value/offer for this tier`} value={tier.label} onChange={e => setBulkTiers(p => p.map((t, j) => j === i ? {...t, label: e.target.value} : t))} />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Business Service extra fields ─────────────────────────────── */}
+          {listingMode === "business_service" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Service Details</CardTitle>
+                <CardDescription>Help barter partners understand exactly what you offer</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Total Quantity <span className="text-destructive">*</span></label>
-                  <Input
-                    type="number"
-                    min="2"
-                    placeholder="e.g. 100"
-                    value={totalQuantity}
-                    onChange={(e) => setTotalQuantity(e.target.value)}
+                  <label className="text-sm font-medium">Deliverables</label>
+                  <Textarea
+                    placeholder="What exactly will you deliver? e.g. 2 social posts, 1 video ad, 3 revision rounds…"
+                    value={serviceDeliverables}
+                    onChange={(e) => setServiceDeliverables(e.target.value)}
+                    rows={3}
+                    maxLength={500}
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Timeline</label>
+                    <Input
+                      placeholder="e.g. 5 business days"
+                      value={serviceTimeline}
+                      onChange={(e) => setServiceTimeline(e.target.value)}
+                      maxLength={80}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Service Area</label>
+                    <Input
+                      placeholder="e.g. Dubai, UAE / Remote"
+                      value={serviceArea}
+                      onChange={(e) => setServiceArea(e.target.value)}
+                      maxLength={80}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Creator: demo reel + portfolio ───────────────────────────── */}
+          {listingMode === "creator" && creatorProfile && (
+            <Card className="border-bareter-teal/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2"><Video className="h-4 w-4 text-bareter-teal" />Creator Showcase</CardTitle>
+                <CardDescription>Upload a demo reel, add portfolio links, and describe your rates so brands know exactly what they're getting</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Demo reel */}
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">Demo Reel / Short-form Sample <span className="text-muted-foreground font-normal text-xs">(optional, max 100MB)</span></label>
+                  <input ref={demoVideoRef} type="file" accept="video/*" className="hidden" onChange={e => handleDemoVideoUpload(e.target.files?.[0] ?? null)} />
+                  {demoVideoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
+                      <video src={demoVideoUrl} controls className="w-full h-full object-contain" />
+                      <button type="button" onClick={() => setDemoVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="outline" className="w-full h-16 border-dashed gap-2 text-sm border-bareter-teal/40 text-bareter-teal hover:bg-bareter-teal/5" onClick={() => demoVideoRef.current?.click()} disabled={uploadingDemoVideo}>
+                      {uploadingDemoVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading reel…</> : <><Video className="h-4 w-4" />Upload demo reel or short-form sample</>}
+                    </Button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">TikTok clips, Reels, YouTube Shorts, UGC demos — any format. Shows directly in your listing.</p>
+                </div>
+
+                {/* Portfolio links */}
+                <div>
+                  <label className="text-sm font-medium block mb-1.5">Portfolio / Sample Work Links</label>
+                  <div className="space-y-2">
+                    {portfolioLinks.map((link, i) => (
+                      <div key={i} className="flex gap-2">
+                        <Input placeholder="https://instagram.com/p/… or portfolio URL" value={link} onChange={e => setPortfolioLinks(p => p.map((l, j) => j === i ? e.target.value : l))} className="text-sm" />
+                        {portfolioLinks.length > 1 && (
+                          <button type="button" onClick={() => setPortfolioLinks(p => p.filter((_, j) => j !== i))} className="text-destructive"><X className="h-4 w-4" /></button>
+                        )}
+                      </div>
+                    ))}
+                    {portfolioLinks.length < 5 && (
+                      <Button type="button" variant="ghost" size="sm" className="text-xs h-7 px-2 text-muted-foreground" onClick={() => setPortfolioLinks(p => [...p, ""])}>
+                        <Plus className="h-3.5 w-3.5 mr-1" />Add another link
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rate card / what brands get */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Unit Label</label>
-                  <Input
-                    placeholder="e.g. kg, boxes, units"
-                    value={unitLabel}
-                    onChange={(e) => setUnitLabel(e.target.value)}
-                    maxLength={30}
+                  <label className="text-sm font-medium">What brands get <span className="text-muted-foreground font-normal text-xs">(your rate card / deliverables)</span></label>
+                  <Textarea
+                    placeholder="e.g. 1× TikTok video (60s), 3× Instagram Stories, 1× Reel — raw footage included. Turnaround 5 days. 1 revision round."
+                    value={creatorRateCard}
+                    onChange={e => setCreatorRateCard(e.target.value)}
+                    rows={3}
+                    maxLength={600}
                   />
                 </div>
               </CardContent>
@@ -898,6 +1255,27 @@ export function CreateListingPage() {
                   {3 - images.length === 1 ? t("create.moreNeeded") : t("create.moreNeededPlural")}
                 </p>
               )}
+
+              {/* Video clip — optional, max 30s / 50MB */}
+              {selectedType === "offer" && (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Short video clip (optional)</p>
+                  <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => handleVideoUpload(e.target.files?.[0] ?? null)} />
+                  {videoUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
+                      <video src={videoUrl} controls className="w-full h-full object-contain" />
+                      <button type="button" onClick={() => setVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Button type="button" variant="outline" className="w-full h-14 border-dashed gap-2 text-sm" onClick={() => videoInputRef.current?.click()} disabled={uploadingVideo}>
+                      {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
+                    </Button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 50MB.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -998,24 +1376,90 @@ export function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+
+              {/* Exchange Description */}
               <div>
-                <FormLabel className="text-base mb-2 block">{t("create.preferredCategories")}</FormLabel>
-                <p className="text-sm text-muted-foreground mb-3">{t("create.selectCategoriesAccept")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((category) => (
-                    <Badge
-                      key={`wanted-${category}`}
-                      variant={wantedCategories.includes(category) ? "default" : "outline"}
-                      className="cursor-pointer text-sm py-1.5 px-3"
-                      onClick={() => toggleWantedCategory(category)}
-                      data-testid={`badge-wanted-${category.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      {category}
-                    </Badge>
-                  ))}
+                <FormLabel className="text-base mb-1 block">Describe What You Want</FormLabel>
+                <p className="text-sm text-muted-foreground mb-2">Be as specific as possible — type, brand, colour, grade, finish, quantity, anything that matters to you.</p>
+                <Textarea
+                  placeholder={selectedType === "request"
+                    ? "e.g. I can offer 3 hours of professional photography. Looking for interior design consultation for my office, min 2 hours, experienced with commercial spaces…"
+                    : "e.g. Exterior paint — warm white, eggshell finish, minimum 20 litres. Prefer Jotun or Dulux. Must be suitable for masonry. Happy to accept equivalent value in 2–3 smaller cans…"}
+                  value={exchangeDescription}
+                  onChange={(e) => setExchangeDescription(e.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  className="resize-none"
+                />
+                {exchangeDescription.length > 800 && (
+                  <p className="text-xs text-muted-foreground mt-1 text-right">{exchangeDescription.length}/1000</p>
+                )}
+              </div>
+
+              {/* Condition + Quantity row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FormLabel className="text-sm mb-1.5 block">Condition Required</FormLabel>
+                  <select
+                    value={exchangeCondition}
+                    onChange={(e) => setExchangeCondition(e.target.value)}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">Any condition</option>
+                    <option value="new">New / Unused</option>
+                    <option value="like_new">Like New</option>
+                    <option value="good">Good condition</option>
+                    <option value="used">Used / Functional</option>
+                  </select>
+                </div>
+                <div>
+                  <FormLabel className="text-sm mb-1.5 block">Quantity Needed</FormLabel>
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 3"
+                    value={exchangeQuantity}
+                    onChange={(e) => setExchangeQuantity(e.target.value)}
+                  />
                 </div>
               </div>
 
+              {/* Specifications */}
+              <div>
+                <FormLabel className="text-sm mb-1.5 block">Specifications</FormLabel>
+                <Input
+                  placeholder="e.g. Size L, matte black, 5000K lighting, Grade A timber, organic…"
+                  value={exchangeSpecs}
+                  onChange={(e) => setExchangeSpecs(e.target.value)}
+                  maxLength={300}
+                />
+              </div>
+
+              {/* Value range */}
+              <div>
+                <FormLabel className="text-sm mb-1.5 block">Acceptable Value Range (AED)</FormLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Min AED"
+                    value={exchangeMinValue}
+                    onChange={(e) => setExchangeMinValue(e.target.value)}
+                    className="flex-1"
+                  />
+                  <span className="text-muted-foreground text-sm">–</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Max AED"
+                    value={exchangeMaxValue}
+                    onChange={(e) => setExchangeMaxValue(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Specific items list */}
               <div>
                 <FormLabel className="text-base mb-1 block">{t("create.specificExchangeItems")}</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">{t("create.addSpecificItems")}</p>
@@ -1182,28 +1626,31 @@ export function CreateListingPage() {
             </CardContent>
           </Card>
 
-          {/* ── Brand Collab Toggle — Coming Soon ───────────────────────── */}
-          <Card className="border-2 border-dashed border-muted-foreground/30 opacity-60 cursor-not-allowed">
+          {/* ── Brand Collab Toggle ──────────────────────────────────────── */}
+          <Card className={`border-2 transition-colors ${isCollab ? "border-bareter-teal" : "border-transparent"}`}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
-                    <Camera className="h-5 w-5" />
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${isCollab ? "bg-bareter-teal/10" : "bg-muted"}`}>
+                    <Camera className={`h-5 w-5 ${isCollab ? "text-bareter-teal" : ""}`} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm">Brand Collab Listing</p>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Coming Soon</span>
                     </div>
                     <p className="text-xs text-muted-foreground">Offer your product/service in exchange for creator content</p>
                   </div>
                 </div>
-                <div className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted-foreground/20 flex-shrink-0 pointer-events-none">
-                  <span className="inline-block h-4 w-4 transform rounded-full bg-white translate-x-1" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCollab(!isCollab)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${isCollab ? "bg-bareter-teal" : "bg-muted-foreground/20"}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCollab ? "translate-x-6" : "translate-x-1"}`} />
+                </button>
               </div>
 
-              {false && isCollab && (
+              {isCollab && (
                 <div className="mt-5 space-y-4 border-t pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">

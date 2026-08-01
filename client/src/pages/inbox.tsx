@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { hapticImpact } from "@/hooks/use-haptics";
+import { Capacitor } from "@capacitor/core";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ShieldCheck, Send, MessageSquare, ArrowLeft, Handshake, ExternalLink } from "lucide-react";
+import { ShieldCheck, Send, MessageSquare, ArrowLeft, Handshake, ExternalLink, Trash2 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, API_BASE } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { formatDistanceToNow } from "date-fns";
 
@@ -80,30 +82,143 @@ const DEAL_STATE_LABEL: Record<string, string> = {
 export function InboxPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const queryClient = useQueryClient();
-  const initialUserId = new URLSearchParams(window.location.search).get("userId");
+  const initialUserId = new URLSearchParams(searchString).get("userId");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialUserId);
   const [newMessage, setNewMessage] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "thread">(initialUserId ? "thread" : "list");
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const isInitialMessagesLoad = useRef(true);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [partnerIsTyping, setPartnerIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingThrottleRef = useRef(0);
+  // swipe-to-archive state per conversation row
+  const [swipedUserId, setSwipedUserId] = useState<string | null>(null);
+  const swipeStartX = useRef(0);
+
+  // iOS native: track visual viewport shrink when keyboard appears so the
+  // message input stays visible above the keyboard instead of being covered.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const gap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(gap);
+      // Keep newest message visible when keyboard slides up
+      const viewport = chatScrollAreaRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement | null;
+      if (viewport) viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Sync selected conversation when URL search changes (e.g. iOS bfcache restore,
+  // or navigating from /inbox?userId=A back then forward to /inbox?userId=B)
+  useEffect(() => {
+    const urlUserId = new URLSearchParams(searchString).get("userId");
+    if (urlUserId && urlUserId !== selectedUserId) {
+      isInitialMessagesLoad.current = true;
+      setSelectedUserId(urlUserId);
+      setMobileView("thread");
+    }
+  }, [searchString]);
 
   const { data: conversations = [], isLoading } = useQuery<ConversationEntry[]>({
     queryKey: ["/api/inbox"],
-    refetchInterval: 30000,
+    refetchInterval: 30000,        // SSE handles live updates; this is a safety fallback
+    refetchOnWindowFocus: true,
+    staleTime: 10000,
   });
 
   const { data: thread } = useQuery<ThreadData>({
     queryKey: ["/api/inbox", selectedUserId],
     enabled: !!selectedUserId,
-    refetchInterval: 15000,
+    refetchInterval: 30000,        // SSE delivers messages instantly; polling is just safety net
+    refetchOnWindowFocus: true,
+    staleTime: 10000,
   });
+
+  // SSE subscription — server pushes an event the moment a message arrives.
+  // Falls back to 30s polling above if EventSource fails (e.g. proxy issue).
+  const selectedUserIdRef = useRef(selectedUserId);
+  useEffect(() => { selectedUserIdRef.current = selectedUserId; }, [selectedUserId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const es = new EventSource(`${API_BASE}/api/inbox/stream`, {
+      withCredentials: true,
+    });
+    es.addEventListener("message", () => {
+      setPartnerIsTyping(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      if (selectedUserIdRef.current) {
+        queryClient.invalidateQueries({ queryKey: ["/api/inbox", selectedUserIdRef.current] });
+      }
+    });
+    es.addEventListener("typing", (e) => {
+      try {
+        const { fromUserId } = JSON.parse(e.data);
+        if (fromUserId === selectedUserIdRef.current) {
+          setPartnerIsTyping(true);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setPartnerIsTyping(false), 4000);
+        }
+      } catch {}
+    });
+    es.onerror = () => {};
+    return () => { es.close(); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset typing indicator when switching conversations
+  useEffect(() => { setPartnerIsTyping(false); }, [selectedUserId]);
+
+  const sendTypingSignal = useCallback(() => {
+    if (!selectedUserId) return;
+    const now = Date.now();
+    if (now - typingThrottleRef.current < 2000) return; // throttle to 1 POST per 2s
+    typingThrottleRef.current = now;
+    apiRequest("POST", `/api/inbox/${selectedUserId}/typing`).catch(() => {});
+  }, [selectedUserId]);
 
   const sendMutation = useMutation({
     mutationFn: (msg: string) =>
-      apiRequest("POST", `/api/inbox/${selectedUserId}`, { message: msg }),
+      apiRequest("POST", `/api/inbox/${selectedUserId}`, { message: msg }).then(r => r.json()),
+    onMutate: async (msg: string) => {
+      // Cancel in-flight refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["/api/inbox", selectedUserId] });
+      const prevThread = queryClient.getQueryData<ThreadData>(["/api/inbox", selectedUserId]);
+      // Optimistically append the message — it appears instantly on tap
+      queryClient.setQueryData<ThreadData>(["/api/inbox", selectedUserId], (old) => {
+        if (!old) return old;
+        const optimistic: ThreadMessage = {
+          id: `opt-${Date.now()}`,
+          fromUserId: user!.id,
+          toUserId: selectedUserId!,
+          message: msg,
+          isRead: true,
+          createdAt: new Date().toISOString(),
+          source: "dm",
+          dealId: null,
+        };
+        return { ...old, messages: [...old.messages, optimistic] };
+      });
+      setNewMessage(""); // clear input immediately — same as iMessage/WhatsApp
+      return { prevThread, msg };
+    },
+    onError: (_err, _msg, ctx) => {
+      // Roll back and restore the typed message so the user can retry
+      if (ctx?.prevThread) queryClient.setQueryData(["/api/inbox", selectedUserId], ctx.prevThread);
+      if (ctx?.msg) setNewMessage(ctx.msg);
+    },
     onSuccess: () => {
-      setNewMessage("");
+      // Replace optimistic msg with real server data
       queryClient.invalidateQueries({ queryKey: ["/api/inbox", selectedUserId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
     },
@@ -120,6 +235,15 @@ export function InboxPage() {
     isInitialMessagesLoad.current = false;
   }, [thread?.messages]);
 
+  const archiveMutation = useMutation({
+    mutationFn: (userId: string) => apiRequest("DELETE", `/api/inbox/conversation/${userId}`),
+    onSuccess: (_data, userId) => {
+      setSwipedUserId(null);
+      if (selectedUserId === userId) { setSelectedUserId(null); setMobileView("list"); }
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+    },
+  });
+
   const handleSelectConversation = (userId: string) => {
     isInitialMessagesLoad.current = true;
     setSelectedUserId(userId);
@@ -129,6 +253,7 @@ export function InboxPage() {
 
   const handleSend = () => {
     if (!newMessage.trim() || !selectedUserId) return;
+    void hapticImpact("light");
     sendMutation.mutate(newMessage.trim());
   };
 
@@ -204,50 +329,77 @@ export function InboxPage() {
                 <p className="text-sm">No conversations yet</p>
               </div>
             ) : (
-              conversations.map((conv) => (
-                <button
-                  key={conv.otherUserId}
-                  data-testid={`conversation-${conv.otherUserId}`}
-                  onClick={() => handleSelectConversation(conv.otherUserId)}
-                  className={`w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b ${
-                    selectedUserId === conv.otherUserId ? "bg-muted" : ""
-                  }`}
-                >
-                  <div className="relative">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={conv.otherUser?.avatarUrl || undefined} />
-                      <AvatarFallback>
-                        {conv.otherUser?.fullName?.[0]?.toUpperCase() || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-                    {conv.unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                        {conv.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <span className={`text-sm truncate ${conv.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
-                        {conv.otherUser?.fullName || "Unknown User"}
-                      </span>
-                      <VerifiedBadge isVerified={conv.otherUser?.isVerified} kycStatus={conv.otherUser?.kycStatus} kybStatus={conv.otherUser?.kybStatus} accountType={conv.otherUser?.accountType} size="xs" testId="badge-verified" />
+              conversations.map((conv) => {
+                const isSwiped = swipedUserId === conv.otherUserId;
+                return (
+                  <div
+                    key={conv.otherUserId}
+                    className="relative overflow-hidden border-b"
+                    onTouchStart={(e) => { swipeStartX.current = e.touches[0].clientX; }}
+                    onTouchEnd={(e) => {
+                      const delta = swipeStartX.current - e.changedTouches[0].clientX;
+                      if (delta > 60) setSwipedUserId(conv.otherUserId);
+                      else if (delta < -20) setSwipedUserId(null);
+                    }}
+                  >
+                    {/* Archive reveal — slides in from right on swipe-left */}
+                    <div
+                      className={`absolute inset-y-0 right-0 flex items-center transition-all duration-200 ${isSwiped ? "w-20 opacity-100" : "w-0 opacity-0"}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => archiveMutation.mutate(conv.otherUserId)}
+                        className="w-full h-full bg-destructive flex flex-col items-center justify-center text-white gap-0.5"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="text-[10px] font-medium">Delete</span>
+                      </button>
                     </div>
-                    {conv.dealNumber && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-primary font-medium mb-0.5">
-                        <Handshake className="h-2.5 w-2.5" />
-                        Deal {conv.dealNumber}
-                      </span>
-                    )}
-                    <p className={`text-xs truncate ${conv.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {conv.fromUserId === user.id ? "You: " : ""}{conv.message}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}
-                    </p>
+
+                    <button
+                      data-testid={`conversation-${conv.otherUserId}`}
+                      onClick={() => { setSwipedUserId(null); handleSelectConversation(conv.otherUserId); }}
+                      className={`w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-all text-left ${
+                        selectedUserId === conv.otherUserId ? "bg-muted" : ""
+                      } ${isSwiped ? "-translate-x-20" : "translate-x-0"} transition-transform duration-200`}
+                    >
+                      <div className="relative">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={conv.otherUser?.avatarUrl || undefined} />
+                          <AvatarFallback>
+                            {conv.otherUser?.fullName?.[0]?.toUpperCase() || "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        {conv.unreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                            {conv.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={`text-sm truncate ${conv.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
+                            {conv.otherUser?.fullName || "Unknown User"}
+                          </span>
+                          <VerifiedBadge isVerified={conv.otherUser?.isVerified} kycStatus={conv.otherUser?.kycStatus} kybStatus={conv.otherUser?.kybStatus} accountType={conv.otherUser?.accountType} size="xs" testId="badge-verified" />
+                        </div>
+                        {conv.dealNumber && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-primary font-medium mb-0.5">
+                            <Handshake className="h-2.5 w-2.5" />
+                            Deal {conv.dealNumber}
+                          </span>
+                        )}
+                        <p className={`text-xs truncate ${conv.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          {conv.fromUserId === user.id ? "You: " : ""}{conv.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </button>
                   </div>
-                </button>
-              ))
+                );
+              })
             )}
           </ScrollArea>
         </div>
@@ -320,44 +472,71 @@ export function InboxPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {thread.messages.map((msg) => {
-                      const isMe = msg.fromUserId === user.id;
-                      return (
-                        <div key={msg.id} data-testid={`message-${msg.id}`}>
-                          {msg.source === "deal" && msg.dealNumber && (
-                            <div className="flex justify-center mb-1">
-                              <Link href={`/deals/${msg.dealId}`}>
-                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer">
-                                  <Handshake className="h-2.5 w-2.5" />
-                                  Deal chat · {msg.dealNumber}
-                                  <ExternalLink className="h-2 w-2" />
-                                </span>
-                              </Link>
+                    {(() => {
+                      // Index of the last outgoing message that was read — only show "Seen" there
+                      const msgs = thread.messages;
+                      const lastReadSentIdx = msgs.reduce<number>((last, m, i) =>
+                        m.fromUserId === user.id && m.isRead && !m.id.startsWith("opt-") ? i : last, -1);
+                      return msgs.map((msg, idx) => {
+                        const isMe = msg.fromUserId === user.id;
+                        const isOptimistic = msg.id.startsWith("opt-");
+                        return (
+                          <div key={msg.id} data-testid={`message-${msg.id}`}>
+                            {msg.source === "deal" && msg.dealNumber && (
+                              <div className="flex justify-center mb-1">
+                                <Link href={`/deals/${msg.dealId}`}>
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+                                    <Handshake className="h-2.5 w-2.5" />
+                                    Deal chat · {msg.dealNumber}
+                                    <ExternalLink className="h-2 w-2" />
+                                  </span>
+                                </Link>
+                              </div>
+                            )}
+                            <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                              <div
+                                className={`max-w-xs md:max-w-md rounded-2xl px-4 py-2 text-sm ${
+                                  isMe
+                                    ? `bg-primary text-primary-foreground rounded-br-sm${isOptimistic ? " opacity-70" : ""}`
+                                    : "bg-muted rounded-bl-sm"
+                                } ${msg.source === "deal" ? "ring-1 ring-primary/20" : ""}`}
+                              >
+                                <p>{msg.message}</p>
+                                <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                                  {isOptimistic ? "Sending…" : formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                                </p>
+                              </div>
                             </div>
-                          )}
-                          <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                            <div
-                              className={`max-w-xs md:max-w-md rounded-2xl px-4 py-2 text-sm ${
-                                isMe
-                                  ? "bg-primary text-primary-foreground rounded-br-sm"
-                                  : "bg-muted rounded-bl-sm"
-                              } ${msg.source === "deal" ? "ring-1 ring-primary/20" : ""}`}
-                            >
-                              <p>{msg.message}</p>
-                              <p className={`text-xs mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                                {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                              </p>
-                            </div>
+                            {/* Read receipt — shown only under the last read outgoing message */}
+                            {isMe && idx === lastReadSentIdx && (
+                              <div className="flex justify-end mt-0.5 me-1">
+                                <span className="text-[10px] text-muted-foreground">Seen</span>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </ScrollArea>
 
-              {/* Reply Input */}
-              <div className="p-4 border-t space-y-2">
+              {/* Typing indicator bubble */}
+              {partnerIsTyping && (
+                <div className="flex justify-start px-4 pb-1">
+                  <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2 flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce" />
+                  </div>
+                </div>
+              )}
+
+              {/* Reply Input — paddingBottom shifts above keyboard on iOS native */}
+              <div
+                className="p-4 border-t space-y-2"
+                style={keyboardOffset > 0 ? { paddingBottom: keyboardOffset + 16 } : undefined}
+              >
                 {/* Suggestion chips — based on last message from the other person */}
                 {(() => {
                   const lastOther = [...(thread?.messages ?? [])].reverse().find(m => m.fromUserId !== user.id);
@@ -398,14 +577,14 @@ export function InboxPage() {
                   <Input
                     placeholder="Type a message..."
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => { setNewMessage(e.target.value); if (e.target.value) sendTypingSignal(); }}
                     onKeyDown={handleKeyDown}
                     data-testid="input-message"
                     className="flex-1"
                   />
                   <Button
                     onClick={handleSend}
-                    disabled={!newMessage.trim() || sendMutation.isPending}
+                    disabled={!newMessage.trim()}
                     data-testid="button-send-message"
                     size="icon"
                   >

@@ -28,7 +28,7 @@ import {
   Menu, Bell, User, LogOut, Settings,
   Handshake, Search, Plus, Shield, Languages, MessageSquare, MapPin,
   X, Heart, Bookmark, FileText, ChevronDown, ShieldCheck, Sparkles,
-  Clock, ArrowRight, BookOpen, HelpCircle, Compass, Building2,
+  Clock, ArrowRight, BookOpen, HelpCircle, Compass, Building2, Camera, Package,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -48,7 +48,9 @@ function NavLinks({ user }: { user: boolean }) {
     <nav className={navClass}>
       <Link href="/feed"><button type="button" className={base}>Discover</button></Link>
       <Link href="/browse"><button type="button" className={base}>Browse Listings</button></Link>
-      <Link href="/businesses"><button type="button" className={base}>Businesses</button></Link>
+      <Link href="/businesses"><button type="button" className={base}>Business</button></Link>
+      <Link href="/creators"><button type="button" className={base}>Creators</button></Link>
+      <Link href="/bulk-deals"><button type="button" className={base}>Bulk Deals</button></Link>
       <Link href={listHref}><button type="button" className={base}>List a Barter</button></Link>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -158,12 +160,14 @@ export function Header() {
   const inboxUnread = inboxData?.count || 0;
 
   // Search suggestions
-  const { data: suggestionListings } = useQuery<any[]>({
-    queryKey: ["/api/listings", { search: searchQuery }],
-    queryFn: () => fetch(`/api/listings?search=${encodeURIComponent(searchQuery)}&limit=4`).then(r => r.json()),
+  const { data: autocompleteData } = useQuery<{ listings: any[]; users: any[] }>({
+    queryKey: ["/api/search/autocomplete", searchQuery],
+    queryFn: () => fetch(`/api/search/autocomplete?q=${encodeURIComponent(searchQuery)}`).then(r => r.json()),
     enabled: searchQuery.trim().length >= 2,
     staleTime: 5000,
   });
+  const suggestionListings = autocompleteData?.listings ?? [];
+  const suggestionUsers = autocompleteData?.users ?? [];
 
   // Search history (shown when focused but no query yet)
   const { data: searchHistory } = useQuery<{ history: { id: string; query: string; createdAt: string }[] }>({
@@ -171,6 +175,58 @@ export function Header() {
     enabled: !!user && searchFocused,
     staleTime: 30_000,
   });
+
+  // ── Active profile mode ───────────────────────────────────────────────────
+  const { data: headerCreatorProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/creators/me"],
+    queryFn: async () => {
+      const res = await fetch("/api/creators/me", { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const { data: headerBusinessProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/businesses/me"],
+    queryFn: async () => {
+      const res = await fetch("/api/businesses/me", { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const [activeProfileType, setActiveProfileType] = useState<"individual" | "creator" | "business">(() => {
+    try {
+      const stored = localStorage.getItem("bareter_active_profile_type");
+      if (stored === "creator" || stored === "business" || stored === "individual") return stored;
+    } catch {}
+    return "individual";
+  });
+
+  const handleSetProfileType = (type: "individual" | "creator" | "business") => {
+    setActiveProfileType(type);
+    try { localStorage.setItem("bareter_active_profile_type", type); } catch {}
+  };
+
+  const availableModes = [
+    { type: "individual" as const, label: "Individual", icon: User },
+    ...(headerCreatorProfile ? [{ type: "creator" as const, label: "Creator", icon: Camera }] : []),
+    ...(headerBusinessProfile ? [{ type: "business" as const, label: "Business", icon: Building2 }] : []),
+  ];
+
+  useEffect(() => {
+    if (activeProfileType === "creator" && !headerCreatorProfile) handleSetProfileType("individual");
+    if (activeProfileType === "business" && !headerBusinessProfile) handleSetProfileType("individual");
+  }, [headerCreatorProfile, headerBusinessProfile]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,8 +259,9 @@ export function Header() {
     try { localStorage.setItem("bareter_push_dismissed", "1"); } catch {}
   };
 
+  const hasAutocompleteSuggestions = searchQuery.trim().length >= 2 && (suggestionListings.length > 0 || suggestionUsers.length > 0);
   const showSearchDropdown = searchFocused && (
-    (searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0) ||
+    hasAutocompleteSuggestions ||
     (searchQuery.trim().length < 2 && searchHistory?.history && searchHistory.history.length > 0)
   );
 
@@ -304,22 +361,44 @@ export function Header() {
                     ))}
                   </>
                 )}
-                {searchQuery.trim().length >= 2 && suggestionListings && suggestionListings.length > 0 && (
+                {searchQuery.trim().length >= 2 && (suggestionListings.length > 0 || suggestionUsers.length > 0) && (
                   <>
-                    <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
-                    {suggestionListings.slice(0, 4).map((l: any) => (
-                      <button key={l.id} type="button"
-                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
-                        onClick={() => { setSearchFocused(false); navigate(`/listings/${l.id}`); }}>
-                        {(l.images as string[])?.[0] && (
-                          <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
-                          <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
-                        </div>
-                      </button>
-                    ))}
+                    {suggestionListings.length > 0 && (
+                      <>
+                        <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Listings</p>
+                        {suggestionListings.slice(0, 4).map((l: any) => (
+                          <button key={l.id} type="button"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                            onClick={() => { setSearchFocused(false); navigate(`/listings/${l.id}`); }}>
+                            {(l.images as string[])?.[0] && (
+                              <img src={(l.images as string[])[0]} alt="" className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-bareter-navy truncate">{l.title}</p>
+                              <p className="text-xs text-muted-foreground">AED {Number(l.retailValue).toLocaleString()} · {l.location}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {suggestionUsers.length > 0 && (
+                      <>
+                        <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-t border-gray-50">People</p>
+                        {suggestionUsers.slice(0, 3).map((u: any) => (
+                          <button key={u.id} type="button"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-start transition-colors"
+                            onClick={() => { setSearchFocused(false); navigate(`/profile/${u.id}`); }}>
+                            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="h-full w-full object-cover" /> : <span className="text-xs font-bold">{(u.fullName || "?")[0]}</span>}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-bareter-navy truncate">{u.businessName || u.fullName}</p>
+                              {u.businessName && <p className="text-xs text-muted-foreground truncate">{u.fullName}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
                     <div className="border-t border-gray-100 px-4 py-3">
                       <button type="button" className="w-full text-sm font-semibold text-bareter-teal hover:underline text-center"
                         onClick={() => { setSearchFocused(false); navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`); }}>
@@ -407,6 +486,45 @@ export function Header() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
+                {/* ── Profile mode pill ── */}
+                {availableModes.length > 1 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold transition-colors ${
+                          activeProfileType === "creator"
+                            ? "border-violet-400 bg-violet-500/20 text-violet-200 hover:bg-violet-500/30"
+                            : activeProfileType === "business"
+                            ? "border-teal-400 bg-teal-500/20 text-teal-200 hover:bg-teal-500/30"
+                            : "border-white/20 bg-white/10 text-white/80 hover:bg-white/15"
+                        }`}
+                        data-testid="button-profile-mode"
+                      >
+                        {activeProfileType === "creator" && <Camera className="h-3 w-3" />}
+                        {activeProfileType === "business" && <Building2 className="h-3 w-3" />}
+                        {activeProfileType === "individual" && <User className="h-3 w-3" />}
+                        <span className="hidden sm:inline capitalize">{activeProfileType}</span>
+                        <ChevronDown className="h-3 w-3 opacity-60" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44 p-1">
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Active mode</div>
+                      {availableModes.map(({ type, label, icon: Icon }) => (
+                        <DropdownMenuItem
+                          key={type}
+                          onSelect={() => handleSetProfileType(type)}
+                          className={`cursor-pointer gap-2.5 px-3 py-2 rounded-md ${activeProfileType === type ? "bg-primary/10 text-primary font-semibold" : ""}`}
+                        >
+                          <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="text-sm">{label}</span>
+                          {activeProfileType === type && <span className="ml-auto text-[10px] text-primary">Active</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+
                 {/* ── User dropdown ── */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -487,10 +605,9 @@ export function Header() {
                         <Bookmark className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span>Search History</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5 opacity-70">
+                      <DropdownMenuItem onSelect={() => navigate("/creators")} className="cursor-pointer gap-2.5 px-4 py-2.5">
                         <Sparkles className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                         <span className="flex-1">Creators</span>
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                       </DropdownMenuItem>
                     </div>
 
@@ -620,7 +737,8 @@ export function Header() {
                       {[
                         { href: "/feed", icon: <Compass className="h-4 w-4" />, label: "Discover" },
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
-                        { href: "/businesses", icon: <Building2 className="h-4 w-4" />, label: "Businesses" },
+                        { href: "/businesses", icon: <Building2 className="h-4 w-4" />, label: "Business" },
+                        { href: "/bulk-deals", icon: <Package className="h-4 w-4" />, label: "Bulk Deals" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "Dashboard" },
                         { href: "/profile?tab=drafts", icon: <BookOpen className="h-4 w-4" />, label: "My Drafts" },
@@ -637,12 +755,10 @@ export function Header() {
                           </button>
                         </Link>
                       ))}
-                      {/* Creators — coming soon */}
                       <Link href="/creators" onClick={closeMobileMenu}>
-                        <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start opacity-70">
+                        <button type="button" className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-start">
                           <span className="text-muted-foreground"><Sparkles className="h-4 w-4" /></span>
                           <span className="text-sm font-medium flex-1">Creators</span>
-                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-semibold">Soon</Badge>
                         </button>
                       </Link>
                       {user.role === "super_admin" && (

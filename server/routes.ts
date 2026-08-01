@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
@@ -62,6 +63,7 @@ import {
   listingDrafts,
   reminderLog,
   pushSubscriptions,
+  devicePushTokens,
   type Dispute,
   type DisputeEvidence,
   insertDisputeSchema,
@@ -76,6 +78,7 @@ import {
   creatorProfiles,
   creatorPortfolioItems,
   businessMembers,
+  savedFolders,
 } from "@shared/schema";
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
@@ -84,6 +87,7 @@ import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
   sanitizePublicUser,
+  stripAuthTokens,
 } from "./security";
 import {
   makeRegisterValidator,
@@ -93,6 +97,7 @@ import {
 import {
   hashPassword,
   hashResetToken,
+  hashOtp,
   detectAllowedFileType,
   makeLoginRateLimiter,
   makeRegisterRateLimiter,
@@ -103,6 +108,8 @@ import {
   makeSupportTicketRateLimiter,
   makePublicListingsRateLimiter,
   makeUserProfileRateLimiter,
+  makePhoneOtpSendLimiter,
+  makePhoneOtpVerifyLimiter,
 } from "./handlers/authHardening";
 import {
   makeAiPerMinuteLimiter,
@@ -114,6 +121,7 @@ import connectPgSimple from "connect-pg-simple";
 import { isEmailConfigured } from "./emailService";
 import { registerWaitlistRoutes, bustWaitlistEnabledCache } from "./waitlistRoutes";
 import { getVapidPublicKey, saveSubscription, removeSubscription, sendPushToUser } from "./pushService";
+import { saveDeviceToken, removeDeviceToken, removeAllDeviceTokensForUser, sendNativePushToUser } from "./nativePushService";
 import { eq, and, desc, asc, gte, count, lt, sql as sqlOperator, or, ilike, inArray, not, isNull, isNotNull } from "drizzle-orm";
 
 // AI rate limiters. Factories live in `handlers/aiRateLimit.ts` so the
@@ -134,6 +142,8 @@ const resetPasswordLimiter = makeResetPasswordRateLimiter();
 const supportTicketLimiter = makeSupportTicketRateLimiter();
 const publicListingsLimiter = makePublicListingsRateLimiter();
 const userProfileLimiter = makeUserProfileRateLimiter();
+const phoneOtpSendLimiter = makePhoneOtpSendLimiter();
+const phoneOtpVerifyLimiter = makePhoneOtpVerifyLimiter();
 
 // Configure multer for file uploads.
 // We keep uploads in-memory so we can magic-byte verify the buffer before
@@ -182,6 +192,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     guestTicketIds: string[];
+    guestEmail?: string;
   }
 }
 
@@ -310,6 +321,10 @@ async function sanitizeAdminFlag<T extends { email?: string | null; isAdmin?: bo
 }
 
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  // Reject requests where a bearer token was presented but was invalid/expired
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -328,6 +343,9 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
 // Only the founder/super_admins can invite new admins — a regular department-lead
 // admin must never be able to mint invite links for someone else.
 const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if ((req as any).__mobileAuth === false) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -341,6 +359,40 @@ const requireSuperAdmin = async (req: Request, res: Response, next: NextFunction
   }
   next();
 };
+
+// Shared helper: checks if a user has admin role AND is on the email allowlist.
+// Use this wherever inline admin checks appear outside of requireAdmin middleware.
+async function isAllowlistedAdmin(user: { isAdmin?: boolean | null; role?: string | null; email?: string | null } | null | undefined): Promise<boolean> {
+  if (!user) return false;
+  const hasRole = !!(user.isAdmin || user.role === "admin" || user.role === "super_admin");
+  if (!hasRole) return false;
+  const allow = await getAdminEmailAllowlist();
+  if (allow && !allow.has((user.email ?? "").trim().toLowerCase())) return false;
+  return true;
+}
+
+// ── SSE real-time inbox ─────────────────────────────────────────────────────
+// In-memory map: userId → set of open SSE response objects.
+// Safe for single-instance Node.js (Neon serverless DB, traditional Express server).
+const sseClients = new Map<string, Set<Response>>();
+
+function notifyInboxSSE(userId: string, payload: Record<string, unknown>) {
+  const clients = sseClients.get(userId);
+  if (!clients?.size) return;
+  const data = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const res of clients) {
+    try { res.write(data); } catch { /* connection already closed */ }
+  }
+}
+
+function notifyTypingSSE(userId: string, fromUserId: string) {
+  const clients = sseClients.get(userId);
+  if (!clients?.size) return;
+  const data = `event: typing\ndata: ${JSON.stringify({ fromUserId })}\n\n`;
+  for (const res of clients) {
+    try { res.write(data); } catch {}
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -446,7 +498,14 @@ export async function registerRoutes(
     app.get("/auth/google", (req, res, next) => {
       const redirect = (req.query.redirect as string) || "/browse";
       // stash redirect destination in session before we leave the app
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      // Only allow same-origin relative paths. Reject protocol-relative
+      // (`//evil.com`) and backslash (`/\evil.com`) forms that browsers treat
+      // as absolute URLs — otherwise this is an open redirect.
+      const safeRedirect =
+        redirect.startsWith("/") &&
+        !redirect.startsWith("//") &&
+        !redirect.startsWith("/\\");
+      (req.session as any).oauthRedirect = safeRedirect ? redirect : "/browse";
       // session must NOT be false here — passport needs to store the OAuth state
       // parameter in the session. Without it, Google rejects the request as
       // non-compliant with its OAuth 2.0 security policy.
@@ -462,7 +521,17 @@ export async function registerRoutes(
           const user = req.user;
           if (!user) return res.redirect("/login?google_error=1");
 
-          // Create our own session (consistent with email/password login)
+          if (user.isBanned) return res.redirect("/login?error=suspended");
+
+          // Capture the post-login destination from the pre-auth session before
+          // regenerating — regeneration clears the old session data.
+          const dest = (req.session as any).oauthRedirect || "/browse";
+
+          // SECURITY: regenerate the session ID to prevent session fixation,
+          // then create our own session (consistent with email/password login).
+          await new Promise<void>((resolve, reject) =>
+            req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+          );
           req.session.userId = user.id;
           (req.session as any).uaFingerprint = uaFingerprint(req);
           await new Promise<void>((resolve, reject) =>
@@ -475,8 +544,6 @@ export async function registerRoutes(
             return res.json({ id: user.id, mobileToken });
           }
 
-          const dest = (req.session as any).oauthRedirect || "/browse";
-          delete (req.session as any).oauthRedirect;
           res.redirect(dest);
         } catch {
           res.redirect("/login?google_error=1");
@@ -496,6 +563,161 @@ export async function registerRoutes(
   // Expose whether Google OAuth is available to the frontend
   app.get("/api/auth/google/status", (_req, res) => {
     res.json({ enabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) });
+  });
+
+  // Native Google Sign-In — called from the Capacitor app after the OS-level
+  // Google account picker resolves. Verifies the idToken from the native SDK,
+  // finds/creates the user, and returns a mobileToken (no session cookie needed).
+  app.post("/api/auth/google/native", async (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(503).json({ message: "Google Sign-In is not configured" });
+    }
+    try {
+      const { idToken } = req.body as { idToken?: string };
+      if (!idToken) return res.status(400).json({ message: "idToken required" });
+
+      const { OAuth2Client } = await import("google-auth-library");
+      const client = new OAuth2Client();
+      const audiences = [GOOGLE_CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(Boolean) as string[];
+      const ticket = await client.verifyIdToken({ idToken, audience: audiences });
+      const payload = ticket.getPayload();
+      if (!payload?.email) return res.status(400).json({ message: "Invalid token" });
+
+      const email = payload.email.toLowerCase().trim();
+      const googleId = payload.sub;
+
+      let user = await storage.getUserByGoogleId(googleId);
+      if (!user) {
+        user = await storage.getUserByEmail(email);
+        if (user) {
+          await storage.updateUser(user.id, { googleId });
+        } else {
+          const fullName = payload.name || payload.given_name || email.split("@")[0];
+          const avatarUrl = payload.picture ?? null;
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email,
+            password: randomPw,
+            fullName,
+            avatarUrl: avatarUrl ?? undefined,
+            googleId,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+        }
+      }
+
+      if ((user as any).isBanned) return res.status(403).json({ message: "Account suspended" });
+
+      await new Promise<void>((resolve, reject) =>
+        req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+      );
+      req.session.userId = user!.id;
+      (req.session as any).uaFingerprint = uaFingerprint(req);
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err: any) => (err ? reject(err) : resolve()))
+      );
+
+      const mobileToken = await issueMobileToken(user!.id, req.headers["user-agent"] ?? null);
+      const { password: _pw, ...safeUser } = user as any;
+      return res.json({ ...safeUser, mobileToken });
+    } catch (err: any) {
+      console.error("[google/native]", err?.message ?? err);
+      return res.status(401).json({ message: "Google sign-in failed" });
+    }
+  });
+
+  // ── Client error logging (mobile app dev visibility) ─────────────────────────
+  // In-memory circular buffer for client errors — last 200 entries, survives deploys
+  // only via process lifetime. Admin endpoint reads from it.
+  const CLIENT_ERROR_BUFFER_SIZE = 200;
+  const clientErrorLog: Array<{ ts: string; platform: string; context: string; error: string }> = [];
+
+  app.post("/api/logs/client-error", async (req, res) => {
+    try {
+      const { context, error, platform } = req.body as { context?: string; error?: string; platform?: string };
+      const entry = {
+        ts: new Date().toISOString(),
+        platform: platform ?? "unknown",
+        context: context ?? "unknown",
+        error: error ?? "(no message)",
+      };
+      clientErrorLog.push(entry);
+      if (clientErrorLog.length > CLIENT_ERROR_BUFFER_SIZE) clientErrorLog.shift();
+      console.error(`[client-error] platform=${entry.platform} context=${entry.context}: ${entry.error}`);
+      return res.status(204).end();
+    } catch {
+      return res.status(204).end();
+    }
+  });
+
+  // GET /api/admin/mobile/stats — mobile app metrics for admin panel
+  app.get("/api/admin/mobile/stats", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalRow,
+        todayRow,
+        weekRow,
+        googleRow,
+        appleRow,
+        phoneVerifRow,
+        kycRow,
+        kybRow,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, todayStart)),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, weekStart)),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE google_id IS NOT NULL`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE apple_id IS NOT NULL`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE phone_verified = true`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM users WHERE kyc_status = 'APPROVED'`),
+        db.execute(sqlOperator`SELECT COUNT(*)::int AS cnt FROM business_profiles WHERE kyb_status = 'verified'`),
+      ]);
+
+      const rawNum = (r: unknown) => {
+        const rows = (r as { rows?: unknown[] }).rows ?? (r as unknown[]);
+        const first = Array.isArray(rows) ? rows[0] : null;
+        if (!first || typeof first !== "object") return 0;
+        const val = (first as Record<string, unknown>).cnt ?? (first as Record<string, unknown>).count;
+        return Number(val ?? 0);
+      };
+
+      const total = Number(totalRow[0]?.cnt ?? 0);
+      const googleCount = rawNum(googleRow);
+      const appleCount = rawNum(appleRow);
+      const emailCount = total - googleCount - appleCount;
+
+      const recentErrors = [...clientErrorLog].reverse().slice(0, 50);
+
+      res.json({
+        signups: {
+          total,
+          today: Number(todayRow[0]?.cnt ?? 0),
+          thisWeek: Number(weekRow[0]?.cnt ?? 0),
+        },
+        authMethods: {
+          google: googleCount,
+          apple: appleCount,
+          email: Math.max(0, emailCount),
+        },
+        verification: {
+          phoneVerified: rawNum(phoneVerifRow),
+          kycApproved: rawNum(kycRow),
+          kybApproved: rawNum(kybRow),
+        },
+        clientErrors: {
+          buffered: clientErrorLog.length,
+          recent: recentErrors,
+        },
+      });
+    } catch (err) {
+      console.error("mobile stats error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   // ── Apple Sign In ────────────────────────────────────────────────────────────
@@ -533,7 +755,14 @@ export async function registerRoutes(
     // Step 1 — redirect user to Apple's auth page
     app.get("/auth/apple", (req, res) => {
       const redirect = (req.query.redirect as string) || "/browse";
-      (req.session as any).oauthRedirect = redirect.startsWith("/") ? redirect : "/browse";
+      // Only allow same-origin relative paths. Reject protocol-relative
+      // (`//evil.com`) and backslash (`/\evil.com`) forms that browsers treat
+      // as absolute URLs — otherwise this is an open redirect.
+      const safeRedirect =
+        redirect.startsWith("/") &&
+        !redirect.startsWith("//") &&
+        !redirect.startsWith("/\\");
+      (req.session as any).oauthRedirect = safeRedirect ? redirect : "/browse";
       const params = new URLSearchParams({
         client_id:     APPLE_CLIENT_ID as string,
         redirect_uri:  `${baseUrl}/auth/apple/callback`,
@@ -591,6 +820,15 @@ export async function registerRoutes(
           } as any);
         }
 
+        if (user.isBanned) return res.redirect("/login?error=suspended");
+
+        // Capture redirect from the pre-auth session before regenerating.
+        const dest = (req.session as any).oauthRedirect || "/browse";
+
+        // SECURITY: regenerate the session ID to prevent session fixation.
+        await new Promise<void>((resolve, reject) =>
+          req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+        );
         req.session.userId = user.id;
         (req.session as any).uaFingerprint = uaFingerprint(req);
         await new Promise<void>((resolve, reject) =>
@@ -603,8 +841,6 @@ export async function registerRoutes(
           return res.json({ id: user.id, mobileToken });
         }
 
-        const dest = (req.session as any).oauthRedirect || "/browse";
-        delete (req.session as any).oauthRedirect;
         res.redirect(dest);
       } catch (err) {
         console.error("[Apple OAuth] callback error:", err);
@@ -640,7 +876,7 @@ export async function registerRoutes(
       if (await isMaintenanceMode()) {
         if (req.session?.userId) {
           const sessionUser = await storage.getUser(req.session.userId).catch(() => null);
-          if (sessionUser?.isAdmin || sessionUser?.role === "admin" || sessionUser?.role === "super_admin") {
+          if (await isAllowlistedAdmin(sessionUser)) {
             return next();
           }
         }
@@ -765,6 +1001,18 @@ export async function registerRoutes(
       res.json(articles);
     } catch {
       res.status(500).json({ message: "Failed to load help articles" });
+    }
+  });
+
+  // GET /api/stats/exchanges/count — public, no auth, powers homepage live counter
+  app.get("/api/stats/exchanges/count", async (_req, res) => {
+    try {
+      const [row] = await db.select({ cnt: count() }).from(deals).where(eq(deals.state, "completed"));
+      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      res.json({ count: Number(row?.cnt ?? 0) });
+    } catch (error) {
+      console.error("Exchange count error:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -900,20 +1148,35 @@ export async function registerRoutes(
         }
       })();
 
-      req.session.userId = user.id;
-      (req.session as any).uaFingerprint = uaFingerprint(req);
-      const { password, ...userWithoutPassword } = user;
-      // Parallelize session save + admin-flag sanitization so neither blocks the other
-      const [, safeUser] = await Promise.all([
-        new Promise<void>((resolve, reject) => {
-          req.session.save((err) => {
-            if (err) { console.error("Session save error:", err); reject(err); }
-            else resolve();
-          });
-        }),
-        sanitizeAdminFlag(userWithoutPassword).catch(() => userWithoutPassword),
-      ]);
-      res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
+      // SECURITY: regenerate the session ID to prevent session fixation.
+      req.session.regenerate(async (regenErr) => {
+        if (regenErr) {
+          console.error("Session regenerate error:", regenErr);
+          return res.status(500).json({ message: "Session error" });
+        }
+        req.session.userId = user.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        const stripped = stripAuthTokens(user);
+        // Parallelize session save + admin-flag sanitization so neither blocks the other
+        try {
+          const [, safeUser] = await Promise.all([
+            new Promise<void>((resolve, reject) => {
+              req.session.save((err) => {
+                if (err) { console.error("Session save error:", err); reject(err); }
+                else resolve();
+              });
+            }),
+            sanitizeAdminFlag(stripped).catch(() => stripped),
+          ]);
+          if ((req as any).headers["x-client"] === "capacitor-app") {
+            const mobileToken = await issueMobileToken(user.id, (req as any).headers["user-agent"] ?? null);
+            return res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE, mobileToken });
+          }
+          res.json({ ...safeUser, onInternationalWaitlist: !!isNonUAE });
+        } catch {
+          res.status(500).json({ message: "Session error" });
+        }
+      });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -984,7 +1247,7 @@ export async function registerRoutes(
   });
 
   // ── Phone OTP (WhatsApp) ─────────────────────────────────────────────────
-  app.post("/api/auth/phone/send-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/send-otp", requireAuth, phoneOtpSendLimiter, async (req, res) => {
     const userId = req.session.userId!;
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
 
@@ -1017,12 +1280,12 @@ export async function registerRoutes(
         return res.status(409).json({ message: "This phone number is already linked to another account" });
       }
 
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const code = crypto.randomInt(100000, 1000000).toString();
       const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
       await db.update(users).set({
         phone,
-        phoneVerificationCode: code,
+        phoneVerificationCode: hashOtp(code),
         phoneVerificationExpires: expires,
         phoneVerified: false,
       }).where(eq(users.id, userId));
@@ -1077,7 +1340,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/phone/verify-otp", requireAuth, async (req, res) => {
+  app.post("/api/auth/phone/verify-otp", requireAuth, phoneOtpVerifyLimiter, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const code: string | undefined = typeof req.body.code === "string" ? req.body.code.trim() : undefined;
@@ -1087,7 +1350,7 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.phoneVerified) return res.json({ message: "Phone already verified", phoneVerified: true });
 
-      if (!user.phoneVerificationCode || user.phoneVerificationCode !== code) {
+      if (!user.phoneVerificationCode || user.phoneVerificationCode !== hashOtp(code)) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (!user.phoneVerificationExpires || user.phoneVerificationExpires < new Date()) {
@@ -1145,23 +1408,36 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      req.session.userId = user.id;
-      (req.session as any).uaFingerprint = uaFingerprint(req);
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
+      if (user.isBanned) {
+        return res.status(403).json({ message: "Your account has been suspended. Contact support." });
+      }
+
+      // SECURITY: regenerate the session ID on login to prevent session
+      // fixation — any pre-auth session identifier is discarded here.
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("Session regenerate error:", regenErr);
           return res.status(500).json({ message: "Session error" });
         }
-        const { password, ...userWithoutPassword } = user;
-        sanitizeAdminFlag(userWithoutPassword)
-          .then(async (safe) => {
-            if (req.headers["x-client"] === "capacitor-app") {
-              const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
-              return res.json({ ...safe, mobileToken });
-            }
-            res.json(safe);
-          })
-          .catch(() => res.json(userWithoutPassword));
+        req.session.userId = user.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            return res.status(500).json({ message: "Session error" });
+          }
+          const stripped = stripAuthTokens(user);
+          sanitizeAdminFlag(stripped)
+            .then(async (safe) => {
+              // Native app login: also return a bearer token.
+              if (req.headers["x-client"] === "capacitor-app") {
+                const mobileToken = await issueMobileToken(user.id, req.headers["user-agent"] ?? null);
+                return res.json({ ...safe, mobileToken });
+              }
+              res.json(safe);
+            })
+            .catch(() => res.json(stripped));
+        });
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1226,8 +1502,14 @@ export async function registerRoutes(
   });
 
   // Dev-only: auth diagnostics — shows account state without exposing passwords.
+  // SECURITY: fail-closed. Gating on NODE_ENV alone is unsafe — if NODE_ENV is
+  // unset/misconfigured on a live host these endpoints would be exposed. Require
+  // an explicit opt-in env that is never set in production.
+  const devAuthEndpointsEnabled = () =>
+    process.env.NODE_ENV !== "production" &&
+    process.env.ENABLE_DEV_AUTH_ENDPOINTS === "true";
   app.get("/api/auth/dev-diag", async (req, res) => {
-    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    if (!devAuthEndpointsEnabled()) return res.status(404).end();
     try {
       const email = (req.query.email as string || "").toLowerCase().trim();
       if (!email) return res.json({ error: "pass ?email=... in the query string" });
@@ -1252,7 +1534,7 @@ export async function registerRoutes(
   // Dev-only: directly set a user's password without email verification.
   // Disabled in production — returns 404 so it's not discoverable.
   app.post("/api/auth/dev-set-password", async (req, res) => {
-    if (process.env.NODE_ENV === "production") return res.status(404).end();
+    if (!devAuthEndpointsEnabled()) return res.status(404).end();
     try {
       const { email, password } = req.body;
       if (!email || !password || password.length < 8) {
@@ -1308,6 +1590,7 @@ export async function registerRoutes(
     if (mobileAuth) {
       // Mobile bearer token logout — revoke the token row, leave session alone
       await db.delete(mobileTokens).where(eq(mobileTokens.id, mobileAuth.tokenId)).catch(() => {});
+      // The client sends DELETE /api/push/native-token to clean up its device token
       return res.json({ message: "Logged out successfully" });
     }
     req.session.destroy((err) => {
@@ -1532,8 +1815,8 @@ export async function registerRoutes(
       return res.status(401).json({ message: "User not found" });
     }
 
-    const { password, ...userWithoutPassword } = user;
-    res.json(await sanitizeAdminFlag(userWithoutPassword));
+    const stripped = stripAuthTokens(user);
+    res.json(await sanitizeAdminFlag(stripped));
   });
 
   // Serve uploaded files
@@ -1567,10 +1850,23 @@ export async function registerRoutes(
       const uploadType = req.body.type;
       const userId = req.session.userId!;
 
-      let fileUrl: string;
+      let fileUrl = "";
 
       const isOnReplit = !!process.env.REPL_ID;
-      if (PRIVATE_UPLOAD_TYPES.has(uploadType) && isOnReplit) {
+      const isPrivateUpload = PRIVATE_UPLOAD_TYPES.has(uploadType);
+
+      // SECURITY: private documents (KYC, business licences) must only ever be
+      // written to the gated private bucket. If that backend is unavailable
+      // (e.g. running off-Replit), fail loudly — never fall through to the
+      // public /uploads disk path or public object-storage bucket below.
+      if (isPrivateUpload && !isOnReplit) {
+        return res.status(503).json({
+          message:
+            "Secure document storage is unavailable in this environment. Please try again later.",
+        });
+      }
+
+      if (isPrivateUpload && isOnReplit) {
         // Push to the private object-storage bucket. The object path is
         // `<PRIVATE_OBJECT_DIR>/private-docs/<userId>/<random>.<ext>`.
         const { objectStorageClient, ObjectStorageService } = await import(
@@ -1603,37 +1899,44 @@ export async function registerRoutes(
       } else {
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        // Only use Replit object storage when actually running on Replit (REPL_ID is set).
-        // Locally, always write to disk even if PRIVATE_OBJECT_DIR is set in .env.local.
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          // Persistent object storage — survives redeploys.
-          const { objectStorageClient } = await import(
-            "./replit_integrations/object_storage/objectStorage"
-          );
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir
-            ? `${bucketSubDir}/public-uploads/${filename}`
-            : `public-uploads/${filename}`;
-          await objectStorageClient
-            .bucket(bucketName)
-            .file(objectName)
-            .save(req.file.buffer, {
-              contentType: detected.mime,
-              metadata: {
-                metadata: {
-                  "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }),
-                },
-              },
-            });
-          fileUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          fileUrl = await uploadToR2(generateR2Key("public-uploads", detected.ext), req.file.buffer, detected.mime);
         } else {
-          // Local dev (or Replit without object storage) — write to disk.
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          fileUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          let savedToObjStorage = false;
+          if (privateDir && isOnReplit) {
+            try {
+              const { objectStorageClient } = await import(
+                "./replit_integrations/object_storage/objectStorage"
+              );
+              const dirParts = privateDir.replace(/^\/+/, "").split("/");
+              const bucketName = dirParts[0];
+              const bucketSubDir = dirParts.slice(1).join("/");
+              const objectName = bucketSubDir
+                ? `${bucketSubDir}/public-uploads/${filename}`
+                : `public-uploads/${filename}`;
+              const savePromise = objectStorageClient
+                .bucket(bucketName)
+                .file(objectName)
+                .save(req.file.buffer, {
+                  contentType: detected.mime,
+                  metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+                });
+              await Promise.race([
+                savePromise,
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+              ]);
+              fileUrl = `/objects/public-uploads/${filename}`;
+              savedToObjStorage = true;
+            } catch (objStorageErr) {
+              console.error("[upload] Object storage failed, falling back to disk:", objStorageErr);
+            }
+          }
+          if (!savedToObjStorage) {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            fileUrl = `/uploads/${filename}`;
+          }
         }
       }
 
@@ -1764,8 +2067,7 @@ export async function registerRoutes(
       if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
       }
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
 
       // Send profile updated confirmation email
       if (updatedUser.email) {
@@ -1786,13 +2088,15 @@ export async function registerRoutes(
   app.patch("/api/users/settings", requireAuth, async (req, res) => {
     try {
       const allowedFields = [
-        "fullName", "email", "phone", "website", "businessName", "location",
+        "fullName", "website", "businessName", "location",
         "country", "city", "locationPrompted",
         "timezone", "currency", "language",
         "emailNotifications", "dealNotifications", "messageNotifications", "marketingEmails",
         "profileVisibility", "showEmail", "showPhone", "allowDirectMessages",
         "preferredCategories", "tradingRadius", "minTradeValue", "maxTradeValue", "autoMatchEnabled",
         "socialLinks",
+        // "email" and "phone" intentionally excluded — changes must go through the OTP
+        // verification flow to prevent bypassing emailVerified / phoneVerified flags
       ];
       
       const data: Record<string, any> = {};
@@ -1822,8 +2126,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = updatedUser;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(updatedUser)));
     } catch (error) {
       console.error("Update settings error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1852,11 +2155,11 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otp = String(crypto.randomInt(100000, 1000000));
       const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       await storage.updateUser(user.id, {
-        passwordChangeOtp: otp,
+        passwordChangeOtp: hashOtp(otp),
         passwordChangeOtpExpires: expires,
       });
 
@@ -1904,7 +2207,7 @@ export async function registerRoutes(
       if (!user.passwordChangeOtp || !user.passwordChangeOtpExpires) {
         return res.status(400).json({ message: "No pending verification code. Please request a new one." });
       }
-      if (user.passwordChangeOtp !== otp.trim()) {
+      if (user.passwordChangeOtp !== hashOtp(otp.trim())) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
       if (new Date() > new Date(user.passwordChangeOtpExpires)) {
@@ -1960,6 +2263,33 @@ export async function registerRoutes(
       res.json({ ok: true });
     } catch {
       res.status(500).json({ message: "Failed to remove subscription" });
+    }
+  });
+
+  // ── Native push token registration (APNs / FCM via Capacitor) ────────────
+  app.post("/api/push/native-token", requireAuth, async (req, res) => {
+    try {
+      const { token, platform } = req.body as { token?: string; platform?: string };
+      if (!token || !platform) return res.status(400).json({ message: "token and platform required" });
+      await saveDeviceToken(req.session.userId!, token, platform);
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      console.error("save device token error:", err);
+      res.status(500).json({ message: "Failed to save device token" });
+    }
+  });
+
+  app.delete("/api/push/native-token", requireAuth, async (req, res) => {
+    try {
+      const { token } = req.body as { token?: string };
+      if (token) {
+        await removeDeviceToken(token);
+      } else {
+        await removeAllDeviceTokensForUser(req.session.userId!);
+      }
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ message: "Failed to remove device token" });
     }
   });
 
@@ -2021,6 +2351,13 @@ export async function registerRoutes(
         return res.json([...featured, ...rest].slice(0, limit));
       }
 
+      // Cache public (unauthenticated) browse for 30s — authenticated responses
+      // include per-user isLiked so they must stay private/uncached.
+      if (!userId) {
+        res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+      } else {
+        res.set("Cache-Control", "private, no-cache");
+      }
       res.json(enriched);
     } catch (error) {
       console.error("Get listings error:", error);
@@ -2202,9 +2539,24 @@ export async function registerRoutes(
         });
       }
 
-      // DIDIT CODE ARCHIVED
-      // See _archived/didit/routes-verification-gates.ts
-      // Re-integrate when ENABLE_DIDIT needed
+      {
+        const { isUserVerified } = await import("./diditClient");
+        const listingUser = await storage.getUser(req.session.userId!);
+        if (listingUser) {
+          const userVerified = isUserVerified(
+            listingUser.accountType || "individual",
+            listingUser.kycStatus || "NOT_STARTED",
+            listingUser.kybStatus || "NOT_STARTED",
+            listingUser.isVerified,
+          );
+          if (!userVerified) {
+            return res.status(403).json({
+              message: "You must be verified to create listings. Please complete identity verification first.",
+              requiresVerification: true
+            });
+          }
+        }
+      }
 
       const { isValueFlagged } = await import("./marketValues");
       const rawCategories = req.body.categories || [];
@@ -2273,6 +2625,40 @@ export async function registerRoutes(
           categories: listing.categories as string[],
         }, req.session.userId).catch(() => {});
       }).catch(() => {});
+
+      // Smart match alerts — notify users whose active listings want what this listing offers.
+      // Runs entirely in the background; never blocks the response.
+      (async () => {
+        try {
+          const newCats = (listing.categories as string[]) || [];
+          if (newCats.length === 0) return;
+          // Find distinct user IDs with active listings whose wantedCategories overlap
+          const candidates = await db.select({ userId: listings.userId, wantedCategories: listings.wantedCategories })
+            .from(listings)
+            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt)))
+            .limit(500);
+          const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+          const matchedUserIds = Array.from(new Set(
+            candidates
+              .filter(c =>
+                c.userId !== listing.userId &&
+                overlap(newCats, (c.wantedCategories as string[]) || [])
+              )
+              .map(c => c.userId)
+          )).slice(0, 50);
+          if (matchedUserIds.length === 0) return;
+          const posterName = listingUser.fullName || listingUser.businessName || "Someone";
+          await Promise.allSettled(
+            matchedUserIds.map(uid =>
+              sendPushToUser(uid, {
+                title: "New match for you",
+                body: `${posterName} just listed "${listing.title}" — it matches what you're looking for.`,
+                url: `/listings/${listing.id}`,
+              })
+            )
+          );
+        } catch {}
+      })();
 
       const imageUrls: string[] = data.images || [];
       if (imageUrls.length > 0) {
@@ -2459,6 +2845,16 @@ export async function registerRoutes(
 
       const isOwner = !!sessionUserId && listing.userId === sessionUserId;
 
+      // Auto-decline expired pending proposals (best-effort, non-blocking)
+      db.update(listingComments)
+        .set({ status: "rejected" })
+        .where(and(
+          eq(listingComments.listingId, listingId),
+          eq(listingComments.status, "pending"),
+          sqlOperator`${listingComments.expiresAt} IS NOT NULL AND ${listingComments.expiresAt} < NOW()`,
+        ))
+        .catch(() => {});
+
       let comments = await storage.getListingComments(listingId);
 
       // Privacy gate: owners see all proposals; proposers see only their own;
@@ -2555,9 +2951,17 @@ export async function registerRoutes(
         offerDescription: z.string().nullable().optional(),
         images: z.array(z.string().min(1)).min(2, "At least 2 images of your offer are required"),
         content: z.string().nullable().optional(),
+        bundledListingIds: z.array(z.string()).max(3).optional(),
       });
       const parsed = schema.parse(req.body);
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
       const comment = await storage.createListingComment(listingId, userId, parsed.content || null, parsed.offerItemName, parsed.offerItemValue, parsed.offerDescription || null, parsed.images);
+      // Patch expiresAt + bundledListingIds onto the newly created row
+      const [commentWithExtras] = await db.update(listingComments)
+        .set({ expiresAt, bundledListingIds: parsed.bundledListingIds || [] })
+        .where(eq(listingComments.id, comment.id))
+        .returning();
+      Object.assign(comment, commentWithExtras);
       res.json(comment);
 
       // In-app notification + email to listing owner — best-effort
@@ -2971,6 +3375,34 @@ export async function registerRoutes(
   });
 
   // ── Similar listings ──────────────────────────────────────────────────────
+  // Listing quality / completeness score — shown to listing owner only
+  app.get("/api/listings/:id/quality", requireAuth, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const [listing] = await db.select().from(listings).where(eq(listings.id, listingId));
+      if (!listing) return res.status(404).json({ message: "Not found" });
+      if (listing.userId !== req.session.userId!) return res.status(403).json({ message: "Not authorized" });
+
+      const images = (listing.images as string[]) || [];
+      const desc = listing.description || "";
+      const cats = (listing.categories as string[]) || [];
+      const exchangeItems = (listing.exchangeItems as any[]) || [];
+
+      const checks = [
+        { key: "photos", label: "Add at least 3 photos", done: images.length >= 3, weight: 30 },
+        { key: "description", label: "Write a detailed description (50+ chars)", done: desc.length >= 50, weight: 25 },
+        { key: "value", label: "Set a retail value", done: !!listing.retailValue && parseFloat(listing.retailValue) > 0, weight: 20 },
+        { key: "categories", label: "Pick at least one category", done: cats.length > 0, weight: 15 },
+        { key: "exchange", label: "List what you want in return", done: exchangeItems.length > 0 || !!(listing.wantedCategories as string[])?.length, weight: 10 },
+      ];
+
+      const score = checks.reduce((s, c) => s + (c.done ? c.weight : 0), 0);
+      res.json({ score, checks });
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/listings/:id/similar", async (req, res) => {
     try {
       const listingId = param(req.params.id);
@@ -2979,6 +3411,45 @@ export async function registerRoutes(
       res.json(similar);
     } catch {
       res.status(500).json({ message: "Failed to fetch similar listings" });
+    }
+  });
+
+  // ── Barter chain candidates for a specific listing ────────────────────────
+  // Returns listings where owner wants what this listing offers AND this listing
+  // owner may want what they have (2-way circular match potential).
+  app.get("/api/listings/:id/chain-candidates", publicListingsLimiter, async (req, res) => {
+    try {
+      const listingId = param(req.params.id);
+      const [sourceListing] = await db.select().from(listings)
+        .where(and(eq(listings.id, listingId), eq(listings.isActive, true)));
+      if (!sourceListing) return res.json([]);
+
+      const srcCats = (sourceListing.categories as string[]) || [];
+      const srcWanted = (sourceListing.wantedCategories as string[]) || [];
+
+      // Find listings from OTHER users that want something this listing offers
+      const candidates = await db.select({
+        id: listings.id, title: listings.title, images: listings.images,
+        retailValue: listings.retailValue, location: listings.location,
+        categories: listings.categories, wantedCategories: listings.wantedCategories,
+        userId: listings.userId, ownerName: users.fullName, ownerAvatar: users.avatarUrl,
+      })
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(and(eq(listings.isActive, true), isNull(listings.deletedAt)))
+        .limit(150);
+
+      const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+      const matches = candidates.filter(c => {
+        if (c.id === listingId || c.userId === sourceListing.userId) return false;
+        const theyWantMine = overlap(srcCats, (c.wantedCategories as string[]) || []);
+        const iWantTheirs = srcWanted.length === 0 || overlap(srcWanted, (c.categories as string[]) || []);
+        return theyWantMine && iWantTheirs;
+      }).slice(0, 5);
+
+      res.json(matches);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -3294,6 +3765,34 @@ export async function registerRoutes(
     }
   });
 
+  // First-deal context — tells the client if this is the first time these two users have dealt
+  app.get("/api/deals/:id/context", requireAuth, async (req, res) => {
+    try {
+      const myId = req.session.userId!;
+      const deal = await storage.getDeal(param(req.params.id));
+      if (!deal || (deal.seekerId !== myId && deal.providerId !== myId)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const otherId = deal.seekerId === myId ? deal.providerId : deal.seekerId;
+      // Count prior COMPLETED deals between these two users
+      const [row] = await db.select({ n: count() }).from(deals).where(
+        and(
+          eq(deals.state, "completed"),
+          or(
+            and(eq(deals.seekerId, myId), eq(deals.providerId, otherId)),
+            and(eq(deals.seekerId, otherId), eq(deals.providerId, myId)),
+          ),
+          sqlOperator`${deals.id} != ${deal.id}`,
+        )
+      );
+      const priorCompletedDeals = Number(row?.n || 0);
+      const [otherUser] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, otherId));
+      res.json({ isFirstDeal: priorCompletedDeals === 0, priorCompletedDeals, otherName: otherUser?.fullName || "the other person" });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Contract: get stored data ────────────────────────────────────────────────
   app.get("/api/deals/:id/contract", requireAuth, async (req, res) => {
     try {
@@ -3487,9 +3986,21 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      // DIDIT CODE ARCHIVED
-      // See _archived/didit/routes-verification-gates.ts
-      // Re-integrate when ENABLE_DIDIT needed
+      {
+        const { isUserVerified } = await import("./diditClient");
+        const seekerVerified = isUserVerified(
+          seeker.accountType || "individual",
+          seeker.kycStatus || "NOT_STARTED",
+          seeker.kybStatus || "NOT_STARTED",
+          seeker.isVerified,
+        );
+        if (!seekerVerified) {
+          return res.status(403).json({
+            message: "You must be verified to start a trade. Please complete identity verification first.",
+            requiresVerification: true
+          });
+        }
+      }
 
       const listing = await storage.getListing(providerListingId);
       if (!listing) {
@@ -3653,12 +4164,56 @@ export async function registerRoutes(
               }).catch(() => {});
             }
           }
+
+          // Native push for all key state changes
+          const dealUrl = `/deals/${deal.id}`;
+          if (data.state === "proposed" && providerUser) {
+            sendNativePushToUser(providerUser.id, {
+              title: "New barter proposal",
+              body: `${seekerUser?.fullName || "Someone"} wants to trade with you`,
+              url: dealUrl,
+            }).catch(() => {});
+          }
+          if (data.state === "accepted" && seekerUser) {
+            sendNativePushToUser(seekerUser.id, {
+              title: "Proposal accepted!",
+              body: `${providerUser?.fullName || "Your partner"} accepted your barter`,
+              url: dealUrl,
+            }).catch(() => {});
+          }
+          if (data.state === "cancelled") {
+            const otherParty = isSeeker ? providerUser : seekerUser;
+            if (otherParty) {
+              sendNativePushToUser(otherParty.id, {
+                title: "Trade cancelled",
+                body: `${isSeeker ? seekerUser?.fullName : providerUser?.fullName || "Your partner"} cancelled the trade`,
+                url: dealUrl,
+              }).catch(() => {});
+            }
+          }
         } catch {}
       }
 
       // Check if both parties completed - auto-complete the deal
       if (updated && updated.seekerCompleted && updated.providerCompleted && updated.state === "delivery_proof") {
         updated = await storage.updateDeal(param(req.params.id), { state: "completed", completedAt: new Date() });
+
+        // Deactivate traded listings and increment completed-deal counters (fire-and-forget)
+        (async () => {
+          try {
+            if (deal.providerListingId) {
+              await storage.updateListing(deal.providerListingId, { isActive: false });
+            }
+            if (deal.seekerListingId) {
+              await storage.updateListing(deal.seekerListingId, { isActive: false });
+            }
+            await db.update(users)
+              .set({ totalCompletedDeals: sqlOperator`COALESCE(${users.totalCompletedDeals}, 0) + 1` })
+              .where(inArray(users.id, [deal.seekerId, deal.providerId]));
+          } catch (err) {
+            console.error("[deal] Post-completion listing deactivation / counter update failed:", err);
+          }
+        })();
 
         // Notify both parties so they remember to leave a rating.
         try {
@@ -3669,6 +4224,7 @@ export async function registerRoutes(
           const seekerName = seekerUser?.fullName || "your trade partner";
           const providerName = providerUser?.fullName || "your trade partner";
 
+          const dealUrl = `/deals/${deal.id}`;
           await Promise.all([
             storage.createNotification({
               userId: deal.seekerId,
@@ -3683,6 +4239,16 @@ export async function registerRoutes(
               title: "Trade complete",
               message: `Your trade with ${seekerName} is complete — leave a rating`,
               relatedDealId: deal.id,
+            }),
+            sendNativePushToUser(deal.seekerId, {
+              title: "Trade complete!",
+              body: `Your trade with ${providerName} is complete — leave a rating`,
+              url: dealUrl,
+            }),
+            sendNativePushToUser(deal.providerId, {
+              title: "Trade complete!",
+              body: `Your trade with ${seekerName} is complete — leave a rating`,
+              url: dealUrl,
             }),
           ]);
 
@@ -3781,22 +4347,33 @@ export async function registerRoutes(
       if (deal.state === "completed" || deal.state === "cancelled") {
         return res.status(400).json({ message: "Cannot dispute a completed or cancelled deal" });
       }
+      const INTERNAL_URL_RE = /^\/uploads\/|^https?:\/\/[^/]*\.r2\.cloudflarestorage\.com\//;
       const schema = z.object({
         subject: z.string().min(5).max(200),
         description: z.string().min(10).max(2000),
+        // Only accept internal upload URLs — reject arbitrary external links
+        evidenceUrl: z.string().url().regex(INTERNAL_URL_RE, "Invalid evidence URL").optional(),
       });
       const body = schema.parse(req.body);
+      const filer = await storage.getUser(userId);
       const partyBId = deal.seekerId === userId ? deal.providerId : deal.seekerId;
+      const evidenceEntry = body.evidenceUrl ? [{
+        submittedBy: userId,
+        submittedByName: filer?.fullName || "User",
+        description: "Attached by filer",
+        fileUrls: [body.evidenceUrl],
+        submittedAt: new Date().toISOString(),
+      }] : [];
       const dispute = await storage.createDispute({
         dealId,
         partyAId: userId,
         partyBId,
         subject: body.subject,
         description: body.description,
+        evidence: evidenceEntry,
         status: "open",
       });
       // Notify the other party
-      const filer = await storage.getUser(userId);
       await storage.createNotification({
         userId: partyBId,
         type: "dispute_filed" as any,
@@ -3904,7 +4481,7 @@ export async function registerRoutes(
         }
       }
 
-      // Notify the other party
+      // Notify the other party (in-app + native push + email)
       const recipientId = deal.seekerId === req.session.userId ? deal.providerId : deal.seekerId;
       await storage.createNotification({
         userId: recipientId,
@@ -3914,17 +4491,25 @@ export async function registerRoutes(
         relatedDealId: deal.id,
       });
 
-      // Fire-and-forget email to the recipient
+      // Fire-and-forget email + native push to the recipient
       Promise.all([
         storage.getUser(req.session.userId!),
         storage.getUser(recipientId),
       ]).then(async ([sender, recipient]) => {
+        const senderName = sender?.fullName || "Someone";
+        // Native push
+        sendNativePushToUser(recipientId, {
+          title: `${senderName} sent a message`,
+          body: data.content.length > 80 ? data.content.slice(0, 77) + "…" : data.content,
+          url: `/deals/${deal.id}`,
+        }).catch(() => {});
+
         if (!recipient?.email) return;
         const baseUrl = process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3001}`;
         const { sendNewMessageEmail } = await import("./emailService");
         sendNewMessageEmail(recipient.email, {
           recipientName: recipient.fullName,
-          senderName: sender?.fullName || "Someone",
+          senderName,
           listingTitle: deal.providerOffer || "your barter deal",
           dealId: deal.id,
           baseUrl,
@@ -4008,7 +4593,7 @@ export async function registerRoutes(
 
   app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     try {
-      await storage.markNotificationAsRead(param(req.params.id));
+      await storage.markNotificationAsRead(param(req.params.id), req.session.userId!);
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
@@ -4298,8 +4883,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(await sanitizeAdminFlag(userWithoutPassword));
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       console.error("Update account type error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4313,7 +4897,8 @@ export async function registerRoutes(
       if (!user) return res.status(404).json({ message: "User not found" });
       
       if (!user.referralCode) {
-        const code = "BG-" + user.id.substring(0, 4).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+        // Unguessable code — CSPRNG, not Math.random()/user-id (both predictable).
+        const code = "BG-" + crypto.randomBytes(6).toString("hex").toUpperCase();
         const updated = await storage.updateUser(user.id, { referralCode: code });
         return res.json({ referralCode: updated?.referralCode });
       }
@@ -4478,8 +5063,62 @@ export async function registerRoutes(
 
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      res.json(users.map(({ password, ...u }) => u));
+      const search = (req.query.search as string | undefined)?.trim();
+      const verLevel = req.query.verificationLevel as string | undefined;
+      const sortBy = (req.query.sortBy as string | undefined) || "newest";
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 200));
+
+      const whereClause = and(
+        search ? or(ilike(users.fullName, `%${search}%`), ilike(users.email, `%${search}%`)) : undefined,
+        verLevel && verLevel !== "all" && !isNaN(parseInt(verLevel))
+          ? eq(users.verificationLevel, parseInt(verLevel)) : undefined,
+      );
+
+      const orderCol = sortBy === "mostActive" ? desc(users.lastActiveAt) : desc(users.createdAt);
+
+      const rows = await db
+        .select({
+          id: users.id, fullName: users.fullName, email: users.email, phone: users.phone,
+          role: users.role, accountType: users.accountType, isAdmin: users.isAdmin,
+          signupType: users.signupType, country: users.country, city: users.city, location: users.location,
+          avatarUrl: users.avatarUrl, isVerified: users.isVerified, isBanned: users.isBanned,
+          verificationLevel: users.verificationLevel, kycStatus: users.kycStatus, kybStatus: users.kybStatus,
+          emailVerified: users.emailVerified, phoneVerified: users.phoneVerified,
+          createdAt: users.createdAt, updatedAt: users.updatedAt, lastActiveAt: users.lastActiveAt,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(orderCol)
+        .limit(limit)
+        .offset((page - 1) * limit);
+
+      if (rows.length === 0) return res.json([]);
+
+      const ids = rows.map(u => u.id);
+      const [listingCounts, dealResult] = await Promise.all([
+        db.select({ userId: listings.userId, cnt: count() })
+          .from(listings)
+          .where(and(inArray(listings.userId, ids), isNull(listings.deletedAt)))
+          .groupBy(listings.userId),
+        pool.query<{ user_id: string; cnt: number }>(
+          `SELECT user_id, COUNT(*)::int AS cnt FROM (
+             SELECT seeker_id AS user_id FROM deals WHERE state = 'completed' AND seeker_id = ANY($1)
+             UNION ALL
+             SELECT provider_id AS user_id FROM deals WHERE state = 'completed' AND provider_id = ANY($1)
+           ) t GROUP BY user_id`,
+          [ids],
+        ),
+      ]);
+
+      const lcMap = new Map(listingCounts.map(r => [r.userId!, Number(r.cnt)]));
+      const dcMap = new Map(dealResult.rows.map(r => [r.user_id, Number(r.cnt)]));
+
+      res.json(rows.map(u => ({
+        ...u,
+        listingCount: lcMap.get(u.id) ?? 0,
+        completedExchangeCount: dcMap.get(u.id) ?? 0,
+      })));
     } catch (error) {
       console.error("Admin get users error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4620,6 +5259,8 @@ export async function registerRoutes(
       if (verified) {
         updateData.verificationStatus = "verified";
         updateData.kycStatus = "APPROVED";
+        updateData.verificationLevel = 2;
+        updateData.identityVerifiedAt = new Date();
       }
       const user = await storage.updateUser(param(req.params.id), updateData);
       if (!user) {
@@ -4635,8 +5276,7 @@ export async function registerRoutes(
           sendVerificationDeclinedEmail(user.email, { fullName: user.fullName ?? undefined, accountType: user.accountType ?? undefined, reason: "Your verification status was updated by the Bareter team." }).catch(() => {});
         }
       }
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verify user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -4961,7 +5601,7 @@ export async function registerRoutes(
         WHERE e.event_type IN ('saved', 'message_started') AND e.created_at <= ${cutoff}
         ORDER BY e.user_id, e.created_at DESC
       `);
-      const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+      const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
       res.json(list);
     } catch (error) {
       console.error("Admin abandoned-engagement error:", error);
@@ -5000,6 +5640,385 @@ export async function registerRoutes(
     }
   });
 
+  // ── Admin Stats / Operational Dashboard ─────────────────────────────────────
+
+  // GET /api/admin/stats/overview — single-call platform snapshot
+  app.get("/api/admin/stats/overview", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalUsersRow, newTodayRow, newThisWeekRow,
+        usersByLevel,
+        kybVerifiedRow,
+        listingsByStatus, listingsByType,
+        dealsByState, abandonedRow,
+        bizByKyb, featuredBizRow, activeBizRow,
+        creatorsRow, creatorsPortfolioRow, creatorActiveListingsRow,
+        flagsTotal, flagsToday, flagsByType,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, todayStart)),
+        db.select({ cnt: count() }).from(users).where(gte(users.createdAt, weekStart)),
+        db.select({ level: users.verificationLevel, cnt: count() }).from(users).groupBy(users.verificationLevel),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.kybStatus, "verified")),
+        db.select({ status: listings.moderationStatus, cnt: count() }).from(listings)
+          .where(isNull(listings.deletedAt)).groupBy(listings.moderationStatus),
+        db.select({ type: listings.listingType, cnt: count() }).from(listings)
+          .where(isNull(listings.deletedAt)).groupBy(listings.listingType),
+        db.select({ state: deals.state, cnt: count() }).from(deals).groupBy(deals.state),
+        db.select({ cnt: count() }).from(deals)
+          .where(and(eq(deals.state, "proposed"), lt(deals.createdAt, sevenDaysAgo))),
+        db.select({ status: businessProfiles.kybStatus, cnt: count() }).from(businessProfiles).groupBy(businessProfiles.kybStatus),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.isFeatured, true)),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.isActive, true)),
+        db.select({ cnt: count() }).from(creatorProfiles),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT creator_id)::int AS cnt FROM creator_portfolio_items`),
+        db.select({ cnt: count() }).from(listings)
+          .where(and(eq(listings.listingType, "creator_service"), eq(listings.isActive, true), isNull(listings.deletedAt))),
+        db.select({ cnt: count() }).from(messageFlags),
+        db.select({ cnt: count() }).from(messageFlags).where(gte(messageFlags.createdAt, todayStart)),
+        db.select({ type: messageFlags.flagType, cnt: count() }).from(messageFlags).groupBy(messageFlags.flagType),
+      ]);
+
+      const byLevel = new Map(usersByLevel.map(r => [r.level, Number(r.cnt)]));
+      const byStatus = new Map(listingsByStatus.map(r => [r.status, Number(r.cnt)]));
+      const byType = new Map(listingsByType.map(r => [r.type, Number(r.cnt)]));
+      const byState = new Map(dealsByState.map(r => [r.state, Number(r.cnt)]));
+      const bizByStatus = new Map(bizByKyb.map(r => [r.status, Number(r.cnt)]));
+      const byFlagType = new Map(flagsByType.map(r => [r.type, Number(r.cnt)]));
+
+      const totalDeals = [...byState.values()].reduce((a, b) => a + b, 0);
+      const completedDeals = byState.get("completed") ?? 0;
+      const portfolioRaw = (creatorsPortfolioRow as { rows?: unknown[] }).rows ?? (creatorsPortfolioRow as unknown as unknown[]);
+
+      res.json({
+        users: {
+          total: Number(totalUsersRow[0]?.cnt ?? 0),
+          today: Number(newTodayRow[0]?.cnt ?? 0),
+          thisWeek: Number(newThisWeekRow[0]?.cnt ?? 0),
+          level1: byLevel.get(1) ?? 0,
+          level2: byLevel.get(2) ?? 0,
+          kybVerified: Number(kybVerifiedRow[0]?.cnt ?? 0),
+        },
+        listings: {
+          total: [...byType.values()].reduce((a, b) => a + b, 0),
+          pendingReview: byStatus.get("pending") ?? 0,
+          active: byStatus.get("approved") ?? 0,
+          rejected: byStatus.get("rejected") ?? 0,
+          byType: {
+            individual_item: byType.get("individual_item") ?? 0,
+            creator_service: byType.get("creator_service") ?? 0,
+            business_product: byType.get("business_product") ?? 0,
+            business_wholesale: byType.get("business_wholesale") ?? 0,
+          },
+        },
+        deals: {
+          total: totalDeals,
+          proposed: byState.get("proposed") ?? 0,
+          accepted: byState.get("accepted") ?? 0,
+          completed: completedDeals,
+          abandoned: Number(abandonedRow[0]?.cnt ?? 0),
+          completionRate: totalDeals > 0 ? Math.round((completedDeals / totalDeals) * 100) : 0,
+        },
+        businesses: {
+          total: [...bizByStatus.values()].reduce((a, b) => a + b, 0),
+          pendingKyb: bizByStatus.get("pending") ?? 0,
+          verified: bizByStatus.get("verified") ?? 0,
+          rejected: bizByStatus.get("rejected") ?? 0,
+          featured: Number(featuredBizRow[0]?.cnt ?? 0),
+          active: Number(activeBizRow[0]?.cnt ?? 0),
+        },
+        creators: {
+          total: Number(creatorsRow[0]?.cnt ?? 0),
+          withPortfolio: Number((portfolioRaw[0] as { cnt?: number })?.cnt ?? 0),
+          activeListings: Number(creatorActiveListingsRow[0]?.cnt ?? 0),
+        },
+        claims: { total: 0, pending: 0, completed: 0 },
+        messageFlags: {
+          total: Number(flagsTotal[0]?.cnt ?? 0),
+          today: Number(flagsToday[0]?.cnt ?? 0),
+          byType: {
+            phone: byFlagType.get("phone") ?? 0,
+            email: byFlagType.get("email") ?? 0,
+            social_handle: byFlagType.get("social_handle") ?? 0,
+            platform_url: byFlagType.get("platform_url") ?? 0,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin stats overview error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/funnel — conversion funnel at every stage
+  app.get("/api/admin/stats/funnel", requireAdmin, async (_req, res) => {
+    try {
+      const [
+        totalUsersRow, emailVerifiedRow,
+        listedRow, receivedProposalRow, completedExchangeRow,
+        totalListingsRow, approvedListingsRow, listingWithProposalRow, listingCompletedRow,
+        level1Row, level2Row, kybRow,
+      ] = await Promise.all([
+        db.select({ cnt: count() }).from(users),
+        db.select({ cnt: count() }).from(users).where(eq(users.emailVerified, true)),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT user_id)::int AS cnt FROM listings WHERE deleted_at IS NULL`),
+        db.execute(sqlOperator`
+          SELECT COUNT(DISTINCT l.user_id)::int AS cnt FROM deals d
+          JOIN listings l ON l.id = d.seeker_listing_id OR l.id = d.provider_listing_id
+        `),
+        db.execute(sqlOperator`
+          SELECT COUNT(DISTINCT user_id)::int AS cnt FROM (
+            SELECT seeker_id AS user_id FROM deals WHERE state = 'completed'
+            UNION SELECT provider_id AS user_id FROM deals WHERE state = 'completed'
+          ) t
+        `),
+        db.select({ cnt: count() }).from(listings).where(isNull(listings.deletedAt)),
+        db.select({ cnt: count() }).from(listings).where(and(eq(listings.moderationStatus, "approved"), isNull(listings.deletedAt))),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT COALESCE(seeker_listing_id, provider_listing_id))::int AS cnt FROM deals`),
+        db.execute(sqlOperator`SELECT COUNT(DISTINCT COALESCE(seeker_listing_id, provider_listing_id))::int AS cnt FROM deals WHERE state = 'completed'`),
+        db.select({ cnt: count() }).from(users).where(gte(users.verificationLevel, 1)),
+        db.select({ cnt: count() }).from(users).where(gte(users.verificationLevel, 2)),
+        db.select({ cnt: count() }).from(businessProfiles).where(eq(businessProfiles.kybStatus, "verified")),
+      ]);
+
+      const n = (rows: unknown, field = "cnt") => {
+        const raw = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
+        return Number((raw[0] as Record<string, unknown>)?.[field] ?? 0);
+      };
+
+      res.json({
+        userFunnel: [
+          { stage: "Registered", count: Number(totalUsersRow[0]?.cnt ?? 0) },
+          { stage: "Email Verified", count: Number(emailVerifiedRow[0]?.cnt ?? 0) },
+          { stage: "Listed Something", count: n(listedRow) },
+          { stage: "Received Proposal", count: n(receivedProposalRow) },
+          { stage: "Completed Exchange", count: n(completedExchangeRow) },
+        ],
+        listingFunnel: [
+          { stage: "Created", count: Number(totalListingsRow[0]?.cnt ?? 0) },
+          { stage: "Approved", count: Number(approvedListingsRow[0]?.cnt ?? 0) },
+          { stage: "Received Proposal", count: n(listingWithProposalRow) },
+          { stage: "Exchange Completed", count: n(listingCompletedRow) },
+        ],
+        verificationFunnel: [
+          { stage: "Level 1 (Email+Phone)", count: Number(level1Row[0]?.cnt ?? 0) },
+          { stage: "Level 2 (Identity)", count: Number(level2Row[0]?.cnt ?? 0) },
+          { stage: "Level 3 (KYB Business)", count: Number(kybRow[0]?.cnt ?? 0) },
+        ],
+      });
+    } catch (error) {
+      console.error("Admin stats funnel error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/growth?period=7d|30d|90d — daily growth data
+  app.get("/api/admin/stats/growth", requireAdmin, async (req, res) => {
+    try {
+      const periodParam = (req.query.period as string) || "7d";
+      const days = periodParam === "90d" ? 90 : periodParam === "30d" ? 30 : 7;
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const [userRows, listingRows, proposedRows, completedRows] = await Promise.all([
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM users
+          WHERE created_at >= ${startDate} GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM listings
+          WHERE created_at >= ${startDate} AND deleted_at IS NULL GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(created_at)::text AS date, COUNT(*)::int AS cnt FROM deals
+          WHERE created_at >= ${startDate} GROUP BY DATE(created_at) ORDER BY date
+        `),
+        db.execute(sqlOperator`
+          SELECT DATE(completed_at)::text AS date, COUNT(*)::int AS cnt FROM deals
+          WHERE completed_at >= ${startDate} AND state = 'completed' GROUP BY DATE(completed_at) ORDER BY date
+        `),
+      ]);
+
+      const toMap = (rows: unknown) => {
+        const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[])) as { date: string; cnt: number }[];
+        return new Map(raw.map(r => [r.date, Number(r.cnt)]));
+      };
+
+      const uMap = toMap(userRows), lMap = toMap(listingRows), eMap = toMap(proposedRows), cMap = toMap(completedRows);
+
+      const data: { date: string; newUsers: number; newListings: number; newExchanges: number; completedExchanges: number }[] = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+        const dateStr = d.toISOString().split("T")[0];
+        data.push({
+          date: dateStr,
+          newUsers: uMap.get(dateStr) ?? 0,
+          newListings: lMap.get(dateStr) ?? 0,
+          newExchanges: eMap.get(dateStr) ?? 0,
+          completedExchanges: cMap.get(dateStr) ?? 0,
+        });
+      }
+
+      res.json(data);
+    } catch (error) {
+      console.error("Admin stats growth error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/queues/pending — operational action queue
+  app.get("/api/admin/queues/pending", requireAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+
+      const [pendingListings, kycPending, kybPending, flaggedMessages] = await Promise.all([
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          listingType: listings.listingType,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userFullName: users.fullName,
+          userVerificationLevel: users.verificationLevel,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(and(eq(listings.moderationStatus, "pending"), isNull(listings.deletedAt), eq(listings.isActive, true)))
+          .orderBy(asc(listings.createdAt))
+          .limit(20),
+
+        db.select({
+          userId: users.id,
+          fullName: users.fullName,
+          email: users.email,
+          verificationLevel: users.verificationLevel,
+          diditSessionId: users.diditSessionId,
+          startedAt: users.createdAt,
+        })
+          .from(users)
+          .where(and(
+            eq(users.verificationLevel, 1),
+            or(eq(users.kycStatus, "IN_PROGRESS"), eq(users.kycStatus, "IN_REVIEW")),
+          ))
+          .orderBy(asc(users.createdAt))
+          .limit(20),
+
+        db.select({
+          businessId: businessProfiles.id,
+          companyName: businessProfiles.companyName,
+          diditSessionId: businessProfiles.diditSessionId,
+          createdAt: businessProfiles.createdAt,
+          ownerName: users.fullName,
+          ownerEmail: users.email,
+        })
+          .from(businessProfiles)
+          .leftJoin(users, eq(businessProfiles.ownerId, users.id))
+          .where(eq(businessProfiles.kybStatus, "pending"))
+          .orderBy(asc(businessProfiles.createdAt))
+          .limit(20),
+
+        db.select({
+          id: messageFlags.id,
+          flagType: messageFlags.flagType,
+          createdAt: messageFlags.createdAt,
+          conversationId: messageFlags.conversationId,
+          messageId: messageFlags.messageId,
+          senderFullName: users.fullName,
+          senderId: users.id,
+          messageContent: messages.content,
+        })
+          .from(messageFlags)
+          .leftJoin(messages, eq(messageFlags.messageId, messages.id))
+          .leftJoin(users, eq(messages.senderId, users.id))
+          .where(isNull(messageFlags.dismissedAt))
+          .orderBy(desc(messageFlags.createdAt))
+          .limit(20),
+      ]);
+
+      const msPerDay = 86_400_000;
+      res.json({
+        pendingListings: pendingListings.map(l => ({
+          ...l,
+          daysWaiting: l.createdAt ? Math.floor((now.getTime() - new Date(l.createdAt).getTime()) / msPerDay) : 0,
+          user: { id: l.userId, fullName: l.userFullName, verificationLevel: l.userVerificationLevel },
+        })),
+        kycPending,
+        kybPending: kybPending.map(b => ({
+          ...b,
+          daysWaiting: b.createdAt ? Math.floor((now.getTime() - new Date(b.createdAt).getTime()) / msPerDay) : 0,
+        })),
+        flaggedMessages: flaggedMessages.map(f => ({
+          id: f.id,
+          flagType: f.flagType,
+          createdAt: f.createdAt,
+          conversationId: f.conversationId,
+          sender: { id: f.senderId, fullName: f.senderFullName },
+          preview: f.messageContent ? f.messageContent.slice(0, 100) : "",
+        })),
+      });
+    } catch (error) {
+      console.error("Admin queues pending error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/stats/categories — top 10 categories by exchange completion
+  app.get("/api/admin/stats/categories", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await db.execute(sqlOperator`
+        SELECT
+          cat AS category,
+          COUNT(DISTINCT l.id)::int AS "totalListings",
+          COUNT(DISTINCT d.id)::int AS "totalProposals",
+          COUNT(DISTINCT CASE WHEN d.state = 'completed' THEN d.id END)::int AS "completedExchanges"
+        FROM listings l,
+             jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(l.categories::jsonb) = 'array' THEN l.categories::jsonb ELSE '[]'::jsonb END
+             ) AS cat
+        LEFT JOIN deals d ON d.seeker_listing_id = l.id OR d.provider_listing_id = l.id
+        WHERE l.deleted_at IS NULL AND l.categories IS NOT NULL
+        GROUP BY cat
+        ORDER BY "completedExchanges" DESC, "totalProposals" DESC
+        LIMIT 10
+      `);
+
+      const raw = ((rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[])) as {
+        category: string; totalListings: number; totalProposals: number; completedExchanges: number;
+      }[];
+
+      res.json(raw.map(r => ({
+        ...r,
+        conversionRate: r.totalProposals > 0
+          ? Math.round((r.completedExchanges / r.totalProposals) * 100)
+          : 0,
+      })));
+    } catch (error) {
+      console.error("Admin stats categories error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/admin/message-flags/:id/dismiss — mark a flag as reviewed
+  app.patch("/api/admin/message-flags/:id/dismiss", requireAdmin, async (req, res) => {
+    try {
+      const flagId = param(req.params.id);
+      const adminId = req.session.userId!;
+      const [updated] = await db.update(messageFlags)
+        .set({ dismissedAt: new Date(), reviewedBy: adminId })
+        .where(eq(messageFlags.id, flagId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Flag not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Dismiss flag error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/admin/email/broadcast/test", requireAdmin, async (req, res) => {
     try {
       const { subject, body, to, bodyMode } = req.body;
@@ -5007,7 +6026,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Subject and body are required" });
       }
       const adminUserId = req.session.userId;
-      const admin = await storage.getUser(adminUserId);
+      const admin = await storage.getUser(adminUserId!);
       if (!admin) {
         return res.status(404).json({ message: "Admin user not found" });
       }
@@ -5091,7 +6110,7 @@ export async function registerRoutes(
       );
       const sentCount = results.filter(Boolean).length;
       if (sentCount > 0) {
-        await logAdminAction(req, "email_broadcast_test", "system", adminUserId, { subject, recipients });
+        await logAdminAction(req, "email_broadcast_test", "system", adminUserId ?? null, { subject, recipients });
         res.json({ message: `Test email sent to ${recipients.join(", ")}` });
       } else {
         res.status(500).json({ message: "Failed to send test email — check email configuration" });
@@ -5110,7 +6129,7 @@ export async function registerRoutes(
       }
       const { draftBroadcastEmail } = await import("./companyOs/marketingAgent");
       const draft = await draftBroadcastEmail(prompt.trim());
-      await logAdminAction(req, "email_ai_draft", "system", req.session.userId, { prompt: prompt.slice(0, 200) });
+      await logAdminAction(req, "email_ai_draft", "system", req.session.userId ?? null, { prompt: prompt.slice(0, 200) });
       res.json(draft);
     } catch (error) {
       console.error("AI email draft error:", error);
@@ -5307,7 +6326,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/email/broadcast/:id", requireAdmin, async (req, res) => {
     try {
-      const job = await storage.getBroadcastJob(req.params.id);
+      const job = await storage.getBroadcastJob(param(req.params.id));
       if (!job) return res.status(404).json({ message: "Broadcast job not found" });
       res.json(job);
     } catch (error) {
@@ -5406,7 +6425,7 @@ export async function registerRoutes(
   app.get("/api/admin/email/templates", requireAdmin, async (_req, res) => {
     try {
       const templates: Record<string, string> = {};
-      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const keys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const key of keys) {
         const val = await storage.getAppSetting(key);
         templates[key] = val || "";
@@ -5424,7 +6443,7 @@ export async function registerRoutes(
       if (!templates || typeof templates !== "object") {
         return res.status(400).json({ message: "Templates object is required" });
       }
-      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
+      const validKeys = ["email_template_welcome", "email_template_password_reset", "email_template_deal_completed", "email_template_listing_rejected", "email_template_listing_approved", "email_template_new_proposal", "email_template_proposal_accepted", "email_template_verification_approved", "email_template_re_engagement", "email_template_match_found", "email_template_new_message", "email_template_proposal_received", "email_template_contract_ready", "email_template_proposal_declined", "email_template_listing_expiring", "email_template_signup_unverified", "email_template_signup_no_listing", "email_template_listing_no_proposal", "email_template_waitlist_final_call"];
       for (const [key, value] of Object.entries(templates)) {
         if (validKeys.includes(key) && typeof value === "string") {
           await storage.setAppSetting(key, value, req.session.userId);
@@ -5467,7 +6486,7 @@ export async function registerRoutes(
   // POST /api/admin/email/test/:templateKey — send a test email to the admin
   app.post("/api/admin/email/test/:templateKey", requireAdmin, async (req, res) => {
     try {
-      const { templateKey } = req.params;
+      const templateKey = param(req.params.templateKey);
       const { emailLogs: emailLogsTable } = await import("@shared/schema");
       const { db: dbInst } = await import("./db");
       const baseUrl = process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://bareter.com";
@@ -5490,6 +6509,7 @@ export async function registerRoutes(
         email_template_new_message: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, senderName: "Test Co", listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_contract_ready: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/deals/test-123` },
         email_template_proposal_declined: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, listingTitle: "Test Listing", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/feed` },
+        email_template_listing_expiring: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, offerItemName: "iPhone 15 Pro", listingTitle: "Test Listing", listingUrl: `${baseUrl}/listings/test-123`, hoursLeft: "6", appName: "Bareter", baseUrl, actionUrl: `${baseUrl}/listings/test-123` },
         email_template_signup_unverified: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl, verifyUrl: `${baseUrl}/api/auth/verify-email?token=test` },
         email_template_signup_no_listing: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
         email_template_listing_no_proposal: { greeting: `Hi ${adminUser?.fullName || "Founder"},`, fullName: adminUser?.fullName || "Founder", appName: "Bareter", baseUrl },
@@ -5504,14 +6524,14 @@ export async function registerRoutes(
         const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f4f4f5;"><div style="max-width:520px;margin:0 auto;background:white;border-radius:12px;padding:32px;"><h2 style="color:#136c68;">Test: ${templateKey}</h2><p>This is a test send for template <strong>${templateKey}</strong>. No custom HTML has been saved yet — the default template is used in code.</p><p>Sent to: ${toEmail}</p></div></body></html>`;
         const text = `Test email for template: ${templateKey}\n\nNo custom HTML saved yet. Default template used.\n\nSent to: ${toEmail}`;
         const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
-        await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+        await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId ?? null });
         return res.json({ ok, to: toEmail, templateKey });
       }
 
       const html = applyTemplateVars(customHtml, vars);
       const text = `Test email for template: ${templateKey}\n\nSent to: ${toEmail}`;
       const ok = await sendRawEmail({ to: toEmail, subject: `[TEST] ${templateKey}`, html, text, templateKey });
-      await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId });
+      await dbInst.insert(emailLogsTable).values({ recipientEmail: toEmail, subject: `[TEST] ${templateKey}`, status: ok ? "sent" : "failed", source: "test", templateKey, sentBy: req.session.userId ?? null });
       return res.json({ ok, to: toEmail, templateKey });
     } catch (err) {
       console.error("Email test error:", err);
@@ -5649,7 +6669,7 @@ export async function registerRoutes(
         "intelligence", "admin", "matching", "moderation", "support",
         "valuation", "engagement", "board", "memory",
       ]);
-      const agentName = req.params.name;
+      const agentName = param(req.params.name);
       if (!KNOWN_AGENTS_SET.has(agentName)) {
         return res.status(400).json({ message: `Unknown agent: ${agentName}` });
       }
@@ -5765,8 +6785,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, isAdmin ? "add" : "remove", req.session.userId);
       }
       await logAdminAction(req, "user_role_changed", "user", user.id, { role, email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin change role error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -5785,8 +6804,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "add", req.session.userId);
       }
       await logAdminAction(req, "admin_promote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin promote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -5805,8 +6823,7 @@ export async function registerRoutes(
         await updateAdminAllowlist(user.email, "remove", req.session.userId);
       }
       await logAdminAction(req, "admin_demote", "user", user.id, { email: user.email });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin demote error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -5874,7 +6891,7 @@ export async function registerRoutes(
   // Super-admin-only: revoke an unused invite link before it's accepted.
   app.post("/api/admin/invites/:id/revoke", requireSuperAdmin, async (req, res) => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(param(req.params.id), 10);
       if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invite id" });
       await storage.revokeAdminInvite(id);
       await logAdminAction(req, "admin_invite_revoke", "admin_invite", String(id), {});
@@ -5984,12 +7001,12 @@ export async function registerRoutes(
       }
       if (banned && user.email) {
         await storage.addBannedEmail(user.email, req.session.userId!, reason || undefined);
+        await destroyUserSessions(user.id);
       } else if (!banned && user.email) {
         await storage.removeBannedEmail(user.email);
       }
       await logAdminAction(req, banned ? "user_banned" : "user_unbanned", "user", user.id, { email: user.email, reason });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin ban user error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6027,7 +7044,7 @@ export async function registerRoutes(
   app.get("/api/admin/listings/export.csv", requireAdmin, async (req, res) => {
     try {
       const { status, category, from, to } = req.query as Record<string, string>;
-      const allListings = await storage.getAllListings();
+      const allListings = await storage.getAllListingsAdmin();
       const escCsv = (v: string | null | undefined) => {
         if (v == null) return "";
         let s = String(v);
@@ -6080,7 +7097,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           createdAt: listings.createdAt,
           userId: listings.userId,
@@ -6210,7 +7227,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           moderationStatus: listings.moderationStatus,
           createdAt: listings.createdAt,
@@ -6231,7 +7248,7 @@ export async function registerRoutes(
         db.select({
           id: listings.id,
           title: listings.title,
-          category: listings.category,
+          categories: listings.categories,
           retailValue: listings.retailValue,
           moderationStatus: listings.moderationStatus,
           createdAt: listings.createdAt,
@@ -6521,8 +7538,7 @@ export async function registerRoutes(
         });
       }
 
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin verification tier error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -6564,9 +7580,8 @@ export async function registerRoutes(
       }
       const userListings = await storage.getListingsByUser(user.id);
       const userDeals = await storage.getDealsByUser(user.id);
-      const { password, ...userWithoutPassword } = user;
       res.json({
-        ...userWithoutPassword,
+        ...stripAuthTokens(user),
         listings: userListings,
         deals: userDeals,
       });
@@ -7571,8 +8586,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       await logAdminAction(req, "marketing_consent_updated", "user", user.id, { marketingEmails: !!marketingEmails });
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(stripAuthTokens(user));
     } catch (error) {
       console.error("Admin marketing consent error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -7625,8 +8639,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { password, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json(await sanitizeAdminFlag(stripAuthTokens(user)));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
@@ -7911,6 +8924,33 @@ export async function registerRoutes(
 
   // ========== End Posts API ==========
 
+  // Unified search autocomplete — listing titles + user names, max 8 results
+  app.get("/api/search/autocomplete", publicListingsLimiter, async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "").trim();
+      if (q.length < 2) return res.json({ listings: [], users: [] });
+
+      const [listingRows, userRows] = await Promise.all([
+        db.select({ id: listings.id, title: listings.title, images: listings.images, retailValue: listings.retailValue, location: listings.location })
+          .from(listings)
+          .where(and(ilike(listings.title, `%${q}%`), eq(listings.isActive, true)))
+          .orderBy(desc(listings.viewCount))
+          .limit(5),
+        db.select({ id: users.id, fullName: users.fullName, businessName: users.businessName, avatarUrl: users.avatarUrl })
+          .from(users)
+          .where(and(
+            or(ilike(users.fullName, `%${q}%`), ilike(users.businessName, `%${q}%`)),
+            eq(users.isBanned, false)
+          ))
+          .limit(3),
+      ]);
+
+      res.json({ listings: listingRows, users: userRows });
+    } catch {
+      res.status(500).json({ listings: [], users: [] });
+    }
+  });
+
   // User search (public — used for live suggestions)
   app.get("/api/users/search", async (req, res) => {
     try {
@@ -7923,9 +8963,8 @@ export async function registerRoutes(
           id: users.id,
           fullName: users.fullName,
           businessName: users.businessName,
-          profileImageUrl: users.profileImageUrl,
+          avatarUrl: users.avatarUrl,
           location: users.location,
-          role: users.role,
         })
         .from(users)
         .where(
@@ -7965,7 +9004,14 @@ export async function registerRoutes(
 
       const isOwnProfile = req.session?.userId === targetId;
       const isAdminCaller = req.session?.userId
-        ? await storage.getUser(req.session.userId).then(u => u?.isAdmin || u?.role === "admin" || u?.role === "super_admin").catch(() => false)
+        ? await storage.getUser(req.session.userId).then(async (u) => {
+            if (!u) return false;
+            const hasAdminRole = u.isAdmin || u.role === "admin" || u.role === "super_admin";
+            if (!hasAdminRole) return false;
+            const allowlist = await getAdminEmailAllowlist();
+            if (allowlist && !allowlist.has((u.email ?? "").trim().toLowerCase())) return false;
+            return true;
+          }).catch(() => false)
         : false;
 
       let profileData: Record<string, unknown>;
@@ -8207,6 +9253,144 @@ export async function registerRoutes(
       res.json(rows.map((r) => ({ ...r, isLiked: true })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch liked listings" });
+    }
+  });
+
+  // ========== Saved Folders ==========
+  app.get("/api/saved-folders", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folders = await db.select().from(savedFolders)
+        .where(eq(savedFolders.userId, userId))
+        .orderBy(savedFolders.createdAt);
+      // Attach count of listings per folder
+      const withCounts = await Promise.all(folders.map(async (f) => {
+        const [row] = await db.select({ n: count() }).from(listingLikes)
+          .where(and(eq(listingLikes.userId, userId), eq(listingLikes.folderId, f.id)));
+        return { ...f, listingCount: Number(row?.n || 0) };
+      }));
+      // Also include an "Unsorted" virtual folder count
+      const [unsortedRow] = await db.select({ n: count() }).from(listingLikes)
+        .where(and(eq(listingLikes.userId, userId), isNull(listingLikes.folderId)));
+      res.json({ folders: withCounts, unsortedCount: Number(unsortedRow?.n || 0) });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/saved-folders", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { name, emoji } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Folder name required" });
+      const [folder] = await db.insert(savedFolders).values({
+        userId, name: String(name).slice(0, 100), emoji: emoji || "📁",
+      }).returning();
+      res.json(folder);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/saved-folders/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folderId = param(req.params.id);
+      // Unassign listings before deleting folder (FK ON DELETE SET NULL handles it via migration)
+      await db.delete(savedFolders).where(
+        and(eq(savedFolders.id, folderId), eq(savedFolders.userId, userId))
+      );
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Assign a liked listing to a folder (or unassign with folderId=null)
+  app.patch("/api/likes/:listingId/folder", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const listingId = param(req.params.listingId);
+      const { folderId } = req.body; // null to unassign
+      // SECURITY: verify the target folder belongs to this user before assigning
+      if (folderId) {
+        const [folder] = await db.select({ id: savedFolders.id })
+          .from(savedFolders)
+          .where(and(eq(savedFolders.id, String(folderId)), eq(savedFolders.userId, userId)));
+        if (!folder) return res.status(403).json({ message: "Folder not found" });
+      }
+      await db.update(listingLikes).set({ folderId: folderId || null })
+        .where(and(eq(listingLikes.listingId, listingId), eq(listingLikes.userId, userId)));
+      res.status(204).end();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get saved listings in a specific folder (or unsorted if folderId=unsorted)
+  app.get("/api/saved-folders/:id/listings", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const folderId = param(req.params.id);
+      // SECURITY: verify folder ownership (skip for the virtual "unsorted" bucket)
+      if (folderId !== "unsorted") {
+        const [folder] = await db.select({ id: savedFolders.id })
+          .from(savedFolders)
+          .where(and(eq(savedFolders.id, param(folderId)), eq(savedFolders.userId, userId)));
+        if (!folder) return res.status(403).json({ message: "Not authorized" });
+      }
+      const rows = await db.select({
+        id: listings.id, title: listings.title, images: listings.images,
+        retailValue: listings.retailValue, location: listings.location,
+        categories: listings.categories, type: listings.type,
+        folderId: listingLikes.folderId, likedAt: listingLikes.createdAt,
+      })
+        .from(listingLikes)
+        .innerJoin(listings, eq(listingLikes.listingId, listings.id))
+        .where(and(
+          eq(listingLikes.userId, userId),
+          eq(listings.isActive, true),
+          folderId === "unsorted" ? isNull(listingLikes.folderId) : eq(listingLikes.folderId, folderId),
+        ))
+        .orderBy(desc(listingLikes.createdAt));
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ========== Listing Activity Stats (for own profile) ==========
+  app.get("/api/users/me/listing-activity", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userListings = await db.select({
+        id: listings.id, title: listings.title, viewCount: listings.viewCount,
+      }).from(listings).where(and(eq(listings.userId, userId), eq(listings.isActive, true)));
+
+      const totalViews = userListings.reduce((s, l) => s + (l.viewCount || 0), 0);
+
+      // Likes received on user's listings
+      const listingIds = userListings.map(l => l.id);
+      const [likeRow] = listingIds.length > 0
+        ? await db.select({ n: count() }).from(listingLikes).where(inArray(listingLikes.listingId, listingIds))
+        : [{ n: 0 }];
+      const totalLikes = Number(likeRow?.n || 0);
+
+      // Proposals received
+      const [propRow] = listingIds.length > 0
+        ? await db.select({ n: count() }).from(listingComments).where(inArray(listingComments.listingId, listingIds))
+        : [{ n: 0 }];
+      const totalProposals = Number(propRow?.n || 0);
+
+      res.json({
+        activeListings: userListings.length,
+        totalViews,
+        totalLikes,
+        totalProposals,
+        topListing: userListings.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0))[0] || null,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -8721,6 +9905,64 @@ export async function registerRoutes(
     }
   });
 
+  // SSE stream — client subscribes once; server pushes "message" events when
+  // new DMs arrive so the inbox updates without polling.
+  app.get("/api/inbox/stream", requireAuth, (req, res) => {
+    const userId = req.session.userId!;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    if (!sseClients.has(userId)) sseClients.set(userId, new Set());
+    sseClients.get(userId)!.add(res);
+
+    // Heartbeat keeps the connection alive through proxies / load balancers
+    const hb = setInterval(() => {
+      try { res.write("event: ping\ndata: {}\n\n"); } catch { clearInterval(hb); }
+    }, 25000);
+
+    req.on("close", () => {
+      clearInterval(hb);
+      sseClients.get(userId)?.delete(res);
+    });
+  });
+
+  // Typing indicator — client POSTs while composing; we fan-out via SSE.
+  // Only fires if an actual conversation exists between the two users to
+  // prevent unsolicited SSE spam to arbitrary accounts.
+  app.post("/api/inbox/:userId/typing", requireAuth, async (req, res) => {
+    const fromUserId = req.session.userId!;
+    const toUserId = param(req.params.userId);
+    if (fromUserId === toUserId) return res.status(204).end();
+    try {
+      const [existing] = await db.select({ id: quickInquiries.id }).from(quickInquiries)
+        .where(or(
+          and(eq(quickInquiries.fromUserId, fromUserId), eq(quickInquiries.toUserId, toUserId)),
+          and(eq(quickInquiries.fromUserId, toUserId), eq(quickInquiries.toUserId, fromUserId)),
+        )).limit(1);
+      if (existing) notifyTypingSSE(toUserId, fromUserId);
+    } catch {}
+    res.status(204).end();
+  });
+
+  // Archive an inbox conversation — only removes the requester's SENT messages.
+  // The other party's outgoing messages are untouched: they still own their data.
+  app.delete("/api/inbox/conversation/:userId", requireAuth, async (req, res) => {
+    try {
+      const myId = req.session.userId!;
+      const otherId = param(req.params.userId);
+      if (myId === otherId) return res.status(400).json({ message: "Invalid" });
+      await db.delete(quickInquiries).where(
+        and(eq(quickInquiries.fromUserId, myId), eq(quickInquiries.toUserId, otherId))
+      );
+      res.status(204).end();
+    } catch (err) {
+      console.error("Delete conversation error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/inbox-unread-count", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -8851,9 +10093,13 @@ export async function registerRoutes(
         const msgs = await db.select().from(messages)
           .where(eq(messages.dealId, deal.id))
           .orderBy(asc(messages.createdAt));
-        // Mark as read
+        // Mark only messages sent BY the other party as read (not the current user's own messages)
         await db.update(messages).set({ isRead: true })
-          .where(and(eq(messages.dealId, deal.id), eq(messages.isRead, false)));
+          .where(and(
+            eq(messages.dealId, deal.id),
+            eq(messages.isRead, false),
+            sqlOperator`${messages.senderId} != ${myId}`,
+          ));
         for (const m of msgs) {
           dealMsgs.push({
             id: m.id,
@@ -8912,6 +10158,51 @@ export async function registerRoutes(
         isRead: false,
       }).returning();
 
+      // SSE push — instant delivery to any open inbox tab/app window
+      notifyInboxSSE(toUserId, { fromUserId, messageId: inq.id });
+      // Also notify the sender's other open tabs (multi-tab sync)
+      notifyInboxSSE(fromUserId, { fromUserId, messageId: inq.id });
+
+      // Native push to recipient (fire-and-forget)
+      storage.getUser(fromUserId).then((sender) => {
+        const senderName = sender?.fullName || "Someone";
+        sendNativePushToUser(toUserId, {
+          title: `New message from ${senderName}`,
+          body: data.message.length > 80 ? data.message.slice(0, 77) + "…" : data.message,
+          url: `/inbox?userId=${fromUserId}`,
+        }).catch(() => {});
+      }).catch(() => {});
+
+      // Update response rate: check if this is fromUser's FIRST reply in this thread.
+      // avgResponseTime is stored in minutes. Only updates for genuine replies (toUser
+      // previously messaged fromUser first).
+      (async () => {
+        try {
+          const [firstInbound] = await db.select({ createdAt: quickInquiries.createdAt })
+            .from(quickInquiries)
+            .where(and(eq(quickInquiries.fromUserId, toUserId), eq(quickInquiries.toUserId, fromUserId)))
+            .orderBy(asc(quickInquiries.createdAt))
+            .limit(1);
+          if (!firstInbound) return; // fromUser initiated — not a reply, skip
+          const [firstReply] = await db.select({ createdAt: quickInquiries.createdAt })
+            .from(quickInquiries)
+            .where(and(eq(quickInquiries.fromUserId, fromUserId), eq(quickInquiries.toUserId, toUserId)))
+            .orderBy(asc(quickInquiries.createdAt))
+            .limit(1);
+          // Only update on their very first reply in this thread
+          if (firstReply && firstReply.createdAt !== inq.createdAt) return;
+          const firstInboundMs = firstInbound.createdAt instanceof Date ? firstInbound.createdAt.getTime() : new Date(firstInbound.createdAt ?? 0).getTime();
+          const replyMs = inq.createdAt instanceof Date ? inq.createdAt.getTime() : Date.now();
+          const deltaMinutes = Math.round((replyMs - firstInboundMs) / 60000);
+          if (deltaMinutes < 0 || deltaMinutes > 10080) return; // ignore >7d or negative
+          const currentUser = await storage.getUser(fromUserId);
+          const prevAvg = currentUser?.avgResponseTime || 0;
+          // Rolling average: weight previous by 4 to smooth over time
+          const newAvg = prevAvg === 0 ? deltaMinutes : Math.round((prevAvg * 4 + deltaMinutes) / 5);
+          await storage.updateUser(fromUserId, { avgResponseTime: newAvg });
+        } catch {}
+      })();
+
       res.json(inq);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -8958,6 +10249,11 @@ export async function registerRoutes(
         (endorsementCount * 3)
       );
 
+      const dealsPoints = Math.min(completedDeals * 10, 40);
+      const verifiedPoints = user.isVerified ? 20 : 0;
+      const ratingPoints = Math.round(ratingAvg * 8);
+      const endorsePoints = Math.min(endorsementCount * 3, 20);
+
       res.json({
         credibilityScore: Math.round(credibilityScore),
         completionRate: user.completionRate || "0",
@@ -8965,6 +10261,12 @@ export async function registerRoutes(
         totalCompletedDeals: completedDeals,
         endorsementCount,
         ratingAvg: Math.round(ratingAvg * 100) / 100,
+        breakdown: {
+          deals: { points: dealsPoints, max: 40, label: "Completed deals" },
+          verified: { points: verifiedPoints, max: 20, label: "Identity verified" },
+          rating: { points: ratingPoints, max: 40, label: "Avg rating" },
+          endorsements: { points: endorsePoints, max: 20, label: "Endorsements" },
+        },
       });
     } catch (error) {
       console.error("Get credibility error:", error);
@@ -9213,6 +10515,7 @@ export async function registerRoutes(
           city: l.city,
           type: l.type,
           wantedCategories: l.wantedCategories,
+          isCollab: l.isCollab ?? false,
         }));
       const { findMatches } = await import("./agents/matchingAgent");
       const matches = await findMatches(user, otherListings);
@@ -9507,8 +10810,8 @@ export async function registerRoutes(
 
   // Admin: get a single (slug, language) row for editing.
   app.get("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
-    const lang = req.params.language === "ar" ? "ar" : "en";
-    const doc = await storage.getLegalPage(req.params.slug, lang);
+    const lang = param(req.params.language) === "ar" ? "ar" : "en";
+    const doc = await storage.getLegalPage(param(req.params.slug), lang);
     if (!doc) return res.status(404).json({ message: "Not found" });
     res.json(doc);
   });
@@ -9517,7 +10820,7 @@ export async function registerRoutes(
   // live row is snapshotted into `legal_page_versions` for audit.
   app.put("/api/admin/legal/:slug/:language", requireAdmin, async (req, res) => {
     try {
-      const lang = req.params.language === "ar" ? "ar" : "en";
+      const lang = param(req.params.language) === "ar" ? "ar" : "en";
       const parsed = LEGAL_UPSERT_SCHEMA.safeParse(req.body);
       if (!parsed.success) {
         return res
@@ -9526,7 +10829,7 @@ export async function registerRoutes(
       }
       const row = await storage.upsertLegalPage(
         {
-          slug: req.params.slug,
+          slug: param(req.params.slug),
           language: lang,
           title: parsed.data.title,
           subtitle: parsed.data.subtitle,
@@ -9550,8 +10853,8 @@ export async function registerRoutes(
     "/api/admin/legal/:slug/:language/versions",
     requireAdmin,
     async (req, res) => {
-      const lang = req.params.language === "ar" ? "ar" : "en";
-      const versions = await storage.getLegalPageVersions(req.params.slug, lang);
+      const lang = param(req.params.language) === "ar" ? "ar" : "en";
+      const versions = await storage.getLegalPageVersions(param(req.params.slug), lang);
       res.json(versions);
     },
   );
@@ -9641,8 +10944,8 @@ export async function registerRoutes(
               storage.getDealsByUser(userId),
               storage.getListingsByUser(userId),
             ]);
-            aiContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
-            aiContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+            aiContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.state, createdAt: String(d.createdAt) }));
+            aiContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: (l.categories as string[] | null)?.[0] || "" }));
           }
         } catch { /* context errors are non-fatal */ }
 
@@ -9865,8 +11168,8 @@ export async function registerRoutes(
                 storage.getDealsByUser(senderId),
                 storage.getListingsByUser(senderId),
               ]);
-              userContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.status, createdAt: String(d.createdAt) }));
-              userContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: l.category }));
+              userContext.recentDeals = deals.slice(0, 5).map(d => ({ id: d.id, status: d.state, createdAt: String(d.createdAt) }));
+              userContext.activeListings = listings.slice(0, 5).map(l => ({ id: l.id, title: l.title, category: (l.categories as string[] | null)?.[0] || "" }));
             }
           } catch { /* ignore context errors */ }
           const aiResult = await getSupportResponse(trimmedContent, history, senderId ?? undefined, userContext);
@@ -10161,7 +11464,7 @@ export async function registerRoutes(
   // Get a specific ticket (admin)
   app.get("/api/admin/support/tickets/:id", requireAdmin, async (req, res) => {
     try {
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
       res.json(ticket);
     } catch (error) {
@@ -10172,7 +11475,7 @@ export async function registerRoutes(
   // Get messages for a ticket (admin — includes internal)
   app.get("/api/admin/support/tickets/:id/messages", requireAdmin, async (req, res) => {
     try {
-      const messages = await storage.getSupportMessages(req.params.id, true);
+      const messages = await storage.getSupportMessages(param(req.params.id), true);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messages" });
@@ -10246,7 +11549,7 @@ export async function registerRoutes(
       const { content, isInternal } = req.body;
       if (!content) return res.status(400).json({ message: "Content is required" });
 
-      const ticket = await storage.getSupportTicket(req.params.id);
+      const ticket = await storage.getSupportTicket(param(req.params.id));
       if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
       const adminId = req.session.userId!;
@@ -10780,8 +12083,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/beta-invite-code/regenerate", requireAdmin, async (req, res) => {
     try {
-      const newCode = Math.random().toString(36).substring(2, 8).toUpperCase() +
-                      Math.random().toString(36).substring(2, 8).toUpperCase();
+      // CSPRNG — beta invite codes gate registration, so they must be unguessable.
+      const newCode = crypto.randomBytes(9).toString("hex").toUpperCase();
       await storage.setAppSetting("beta_invite_code", newCode, req.session.userId);
       const baseUrl = process.env.PUBLIC_APP_URL?.trim() || `${req.protocol}://${req.get("host")}`;
       res.json({ code: newCode, inviteUrl: `${baseUrl}/register?invite=${newCode}` });
@@ -10823,6 +12126,7 @@ export async function registerRoutes(
           credibilityScore: users.credibilityScore,
           totalCompletedDeals: users.totalCompletedDeals,
           signupType: users.signupType,
+          creatorProfileJsonb: users.creatorProfile,
           cpId: creatorProfiles.id,
           displayName: creatorProfiles.displayName,
           bio: creatorProfiles.bio,
@@ -10867,8 +12171,15 @@ export async function registerRoutes(
             displayName: p.displayName,
             bio: p.bio,
             niche: p.niche,
-            primaryPlatform: p.primaryPlatform,
+            primaryPlatform: p.primaryPlatform ?? (p.creatorProfileJsonb as any)?.primaryPlatform,
             audienceSize: p.audienceSize,
+            followerCount: (p.creatorProfileJsonb as any)?.followerCount ?? 0,
+            avgEngagementRate: (p.creatorProfileJsonb as any)?.avgEngagementRate ?? 0,
+            contentNiches: (p.creatorProfileJsonb as any)?.contentNiches ?? (p.niche ? [p.niche] : []),
+            instagramHandle: (p.creatorProfileJsonb as any)?.instagramHandle,
+            tiktokHandle: (p.creatorProfileJsonb as any)?.tiktokHandle,
+            youtubeHandle: (p.creatorProfileJsonb as any)?.youtubeHandle,
+            openToCollabs: (p.creatorProfileJsonb as any)?.openToCollabs ?? true,
           },
         })),
         ...legacyCreators
@@ -10989,24 +12300,39 @@ export async function registerRoutes(
 
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
-        let mediaUrl: string;
+        let mediaUrl = "";
 
-        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-        const isOnReplit = !!process.env.REPL_ID;
-        if (privateDir && isOnReplit) {
-          const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-          const dirParts = privateDir.replace(/^\/+/, "").split("/");
-          const bucketName = dirParts[0];
-          const bucketSubDir = dirParts.slice(1).join("/");
-          const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-          await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-            contentType: detected.mime,
-            metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-          });
-          mediaUrl = `/objects/public-uploads/${filename}`;
+        if (r2Enabled()) {
+          mediaUrl = await uploadToR2(generateR2Key("portfolio", detected.ext), req.file.buffer, detected.mime);
         } else {
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-          mediaUrl = `/uploads/${filename}`;
+          const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+          const isOnReplit = !!process.env.REPL_ID;
+          let savedToObjStorage = false;
+          if (privateDir && isOnReplit) {
+            try {
+              const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+              const dirParts = privateDir.replace(/^\/+/, "").split("/");
+              const bucketName = dirParts[0];
+              const bucketSubDir = dirParts.slice(1).join("/");
+              const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+              const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+                contentType: detected.mime,
+                metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+              });
+              await Promise.race([
+                savePromise,
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+              ]);
+              mediaUrl = `/objects/public-uploads/${filename}`;
+              savedToObjStorage = true;
+            } catch (objStorageErr) {
+              console.error("[portfolio upload] Object storage failed, falling back to disk:", objStorageErr);
+            }
+          }
+          if (!savedToObjStorage) {
+            fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+            mediaUrl = `/uploads/${filename}`;
+          }
         }
 
         const mediaType = detected.mime.startsWith("video/") ? "video" : "image";
@@ -11024,10 +12350,10 @@ export async function registerRoutes(
   // GET /api/listings/:id/collab/applications — brand sees all applications for their collab listing
   app.get("/api/listings/:id/collab/applications", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
-      const apps = await storage.getCollabApplicationsByListing(req.params.id);
+      const apps = await storage.getCollabApplicationsByListing(param(req.params.id));
       res.json(apps);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -11037,7 +12363,7 @@ export async function registerRoutes(
   // POST /api/listings/:id/collab/apply — creator applies to a brand collab listing
   app.post("/api/listings/:id/collab/apply", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (!listing.isCollab) return res.status(400).json({ message: "Not a collab listing" });
       if (listing.userId === req.session.userId) return res.status(400).json({ message: "Cannot apply to your own listing" });
@@ -11046,7 +12372,7 @@ export async function registerRoutes(
       if (!pitch || pitch.trim().length < 20) return res.status(400).json({ message: "Pitch must be at least 20 characters" });
 
       const app = await storage.applyToCollab({
-        listingId: req.params.id,
+        listingId: param(req.params.id),
         creatorId: req.session.userId!,
         brandId: listing.userId,
         pitch: pitch.trim(),
@@ -11062,8 +12388,7 @@ export async function registerRoutes(
         type: "collab_application",
         title: "New collab application",
         message: `Someone applied to your collab listing: ${listing.title}`,
-        linkUrl: `/listings/${listing.id}?tab=applications`,
-        relatedId: app.id,
+        relatedListingId: listing.id,
       }).catch(() => {});
 
       res.status(201).json(app);
@@ -11076,14 +12401,14 @@ export async function registerRoutes(
   // PATCH /api/listings/:id/collab/applications/:appId — brand accepts or rejects application
   app.patch("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
     try {
-      const listing = await storage.getListing(req.params.id);
+      const listing = await storage.getListing(param(req.params.id));
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.userId !== req.session.userId) return res.status(403).json({ message: "Forbidden" });
 
       const { status, brandNote } = req.body;
       if (!["accepted", "rejected"].includes(status)) return res.status(400).json({ message: "Invalid status" });
 
-      const existingApp = await storage.getCollabApplication(req.params.appId);
+      const existingApp = await storage.getCollabApplication(param(req.params.appId));
       if (!existingApp) return res.status(404).json({ message: "Application not found" });
 
       let dealId: string | undefined;
@@ -11108,7 +12433,7 @@ export async function registerRoutes(
           { title: "Brand Confirms Delivery", milestoneType: "approval" },
         ];
         for (let i = 0; i < milestones.length; i++) {
-          await storage.createDealMilestone({
+          await storage.createMilestone({
             dealId: deal.id,
             title: milestones[i].title,
             milestoneType: milestones[i].milestoneType,
@@ -11122,8 +12447,7 @@ export async function registerRoutes(
           type: "collab_accepted",
           title: "Collab application accepted! 🎉",
           message: `${listing.title} — your application was accepted. Check your deals to get started.`,
-          linkUrl: `/deals/${deal.id}`,
-          relatedId: deal.id,
+          relatedDealId: deal.id,
         }).catch(() => {});
       } else {
         await storage.createNotification({
@@ -11131,12 +12455,10 @@ export async function registerRoutes(
           type: "collab_rejected",
           title: "Collab application update",
           message: `Your application to "${listing.title}" was not selected this time.`,
-          linkUrl: `/creators`,
-          relatedId: existingApp.id,
         }).catch(() => {});
       }
 
-      const updated = await storage.updateCollabApplication(req.params.appId, { status, brandNote, dealId });
+      const updated = await storage.updateCollabApplication(param(req.params.appId), { status, brandNote, dealId });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -11146,7 +12468,7 @@ export async function registerRoutes(
   // DELETE /api/listings/:id/collab/applications/:appId — creator withdraws application
   app.delete("/api/listings/:id/collab/applications/:appId", requireAuth, async (req, res) => {
     try {
-      await storage.withdrawCollabApplication(req.params.appId, req.session.userId!);
+      await storage.withdrawCollabApplication(param(req.params.appId), req.session.userId!);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -11229,7 +12551,7 @@ export async function registerRoutes(
   app.patch("/api/admin/collab-applications/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { status, brandNote } = req.body;
-      const updated = await storage.updateCollabApplication(req.params.id, { status, brandNote });
+      const updated = await storage.updateCollabApplication(param(req.params.id), { status, brandNote });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -11306,6 +12628,10 @@ export async function registerRoutes(
       return res.redirect(302, "/browse");
     }
     const safe = dest.replace(/[^\w\-/?=&#%.]/g, ""); // strip anything unexpected
+    // Reject protocol-relative URLs like //evil.com that start with / but redirect off-site
+    if (!safe.startsWith("/") || safe.startsWith("//")) {
+      return res.redirect(302, "/browse");
+    }
     if (req.session?.userId) {
       return res.redirect(302, safe);
     }
@@ -11356,7 +12682,7 @@ export async function registerRoutes(
         .where(and(
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
-          sql`${listings.userId} != ${targetListing.userId}`,
+          sqlOperator`${listings.userId} != ${targetListing.userId}`,
         ))
         .limit(60);
 
@@ -11469,7 +12795,7 @@ export async function registerRoutes(
         .where(and(
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
-          sql`${listings.userId} != ${user.id}`,
+          sqlOperator`${listings.userId} != ${user.id}`,
         ))
         .limit(200);
 
@@ -11659,9 +12985,7 @@ export async function registerRoutes(
       // Get target users (with at least one active listing)
       const targetUsers = userId
         ? await db.select().from(users).where(eq(users.id, userId)).limit(1)
-        : await db.select().from(users)
-            .where(and(eq(users.isActive, true), isNull(users.deletedAt as any)))
-            .limit(500);
+        : await db.select().from(users).limit(500);
 
       let sent = 0;
       const errors: string[] = [];
@@ -11682,7 +13006,7 @@ export async function registerRoutes(
             type: listings.type, wantedCategories: listings.wantedCategories, isCollab: listings.isCollab,
           })
             .from(listings)
-            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt), sql`${listings.userId} != ${u.id}`))
+            .where(and(eq(listings.isActive, true), isNull(listings.deletedAt), sqlOperator`${listings.userId} != ${u.id}`))
             .limit(50);
 
           const { findMatches } = await import("./agents/matchingAgent");
@@ -11770,7 +13094,7 @@ export async function registerRoutes(
   // ── Business Profiles ────────────────────────────────────────────────────────
 
   // GET /api/businesses — public directory of active businesses (WHERE is_active = true)
-  app.get("/api/businesses", requireAuth, async (req, res) => {
+  app.get("/api/businesses", async (req, res) => {
     try {
       const rows = await db
         .select({
@@ -11813,7 +13137,7 @@ export async function registerRoutes(
       // Membership check: owner or member only
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      if (profile.ownerId !== userId && !user?.isAdmin) {
+      if (profile.ownerId !== userId && !(await isAllowlistedAdmin(user))) {
         const membership = await storage.getBusinessMembership(userId, profile.id);
         if (!membership) return res.status(403).json({ message: "Not authorised" });
       }
@@ -11826,24 +13150,30 @@ export async function registerRoutes(
 
   // GET /api/businesses/:id/storefront — public-facing company page, any logged-in user.
   // Inactive businesses return 404 to everyone except their owner.
-  app.get("/api/businesses/:id/storefront", requireAuth, async (req, res) => {
+  app.get("/api/businesses/:id/storefront", async (req, res) => {
     try {
       const businessId = param(req.params.id);
       const profile = await storage.getBusinessProfile(businessId);
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
-      const requestingUserId = req.session.userId!;
-      const isOwner = profile.ownerId === requestingUserId;
+      const requestingUserId = req.session.userId ?? null;
+      const isOwner = !!requestingUserId && profile.ownerId === requestingUserId;
       if (!profile.isActive && !isOwner) {
         return res.status(404).json({ message: "Business not found" });
       }
 
-      const [ownerUser, activeListings] = await Promise.all([
+      const [ownerUser, activeListings, ownerListings] = await Promise.all([
         storage.getUser(profile.ownerId),
         db.select().from(listings)
           .where(and(eq(listings.businessId, businessId), eq(listings.isActive, true), isNull(listings.deletedAt)))
           .orderBy(desc(listings.createdAt))
           .limit(20),
+        isOwner
+          ? db.select().from(listings)
+              .where(and(eq(listings.businessId, businessId), isNull(listings.deletedAt)))
+              .orderBy(desc(listings.createdAt))
+              .limit(50)
+          : Promise.resolve([] as any[]),
       ]);
 
       res.json({
@@ -11863,6 +13193,7 @@ export async function registerRoutes(
         isActive: profile.isActive,
         owner: ownerUser ? sanitizePublicUser(ownerUser) : null,
         activeListings,
+        ...(isOwner ? { ownerListings } : {}),
       });
     } catch (error) {
       console.error("Business storefront error:", error);
@@ -11880,9 +13211,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -11908,7 +13238,7 @@ export async function registerRoutes(
 
       const updateData: Parameters<typeof storage.updateBusinessProfileSettings>[1] = { ...ownerFields };
       if (isFeatured !== undefined || isActive !== undefined) {
-        if (!isAdmin) return res.status(403).json({ message: "Only admins can set featured or active status" });
+        if (!(await isAllowlistedAdmin(requestingUser))) return res.status(403).json({ message: "Only admins can set featured or active status" });
         if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
         if (isActive !== undefined) updateData.isActive = isActive;
       }
@@ -11931,9 +13261,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -11948,30 +13277,45 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-      let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      let fileUrl = "";
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        let savedToObjectStorage = false;
+        if (privateDir && isOnReplit) {
+          try {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            await Promise.race([
+              savePromise,
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+            ]);
+            fileUrl = `/objects/public-uploads/${filename}`;
+            savedToObjectStorage = true;
+          } catch (objStorageErr) {
+            console.error("[cover upload] Object storage failed, falling back to disk:", objStorageErr);
+          }
+        }
+        if (!savedToObjectStorage) {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { coverImageUrl: fileUrl });
       res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business cover upload error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
     }
   });
 
@@ -11984,9 +13328,8 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
 
       const requestingUser = await storage.getUser(userId);
-      const isAdmin = requestingUser?.isAdmin || requestingUser?.role === "super_admin" || requestingUser?.role === "admin";
       const isOwner = profile.ownerId === userId;
-      if (!isOwner && !isAdmin) {
+      if (!isOwner && !(await isAllowlistedAdmin(requestingUser))) {
         const membership = await storage.getBusinessMembership(userId, businessId);
         if (!membership || membership.role !== "admin") {
           return res.status(403).json({ message: "Not authorised" });
@@ -12001,30 +13344,45 @@ export async function registerRoutes(
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
-      const isOnReplit = !!process.env.REPL_ID;
-      const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
-      let fileUrl: string;
-      if (privateDir && isOnReplit) {
-        const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
-        const dirParts = privateDir.replace(/^\/+/, "").split("/");
-        const bucketName = dirParts[0];
-        const bucketSubDir = dirParts.slice(1).join("/");
-        const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
-        await objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
-          contentType: detected.mime,
-          metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
-        });
-        fileUrl = `/objects/public-uploads/${filename}`;
+      let fileUrl = "";
+      if (r2Enabled()) {
+        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
       } else {
-        fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
-        fileUrl = `/uploads/${filename}`;
+        const privateDir = (process.env.PRIVATE_OBJECT_DIR || "").replace(/\/+$/, "");
+        const isOnReplit = !!process.env.REPL_ID;
+        let savedToObjectStorage = false;
+        if (privateDir && isOnReplit) {
+          try {
+            const { objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+            const dirParts = privateDir.replace(/^\/+/, "").split("/");
+            const bucketName = dirParts[0];
+            const bucketSubDir = dirParts.slice(1).join("/");
+            const objectName = bucketSubDir ? `${bucketSubDir}/public-uploads/${filename}` : `public-uploads/${filename}`;
+            const savePromise = objectStorageClient.bucket(bucketName).file(objectName).save(req.file.buffer, {
+              contentType: detected.mime,
+              metadata: { metadata: { "custom:aclPolicy": JSON.stringify({ owner: userId, visibility: "public" }) } },
+            });
+            await Promise.race([
+              savePromise,
+              new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Object storage timeout")), 5000)),
+            ]);
+            fileUrl = `/objects/public-uploads/${filename}`;
+            savedToObjectStorage = true;
+          } catch (objStorageErr) {
+            console.error("[logo upload] Object storage failed, falling back to disk:", objStorageErr);
+          }
+        }
+        if (!savedToObjectStorage) {
+          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fileUrl = `/uploads/${filename}`;
+        }
       }
 
       const updated = await storage.updateBusinessProfileSettings(businessId, { logoUrl: fileUrl });
       res.json({ url: fileUrl, profile: updated });
     } catch (error) {
       console.error("Business logo upload error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: `Upload failed: ${error instanceof Error ? error.message : String(error)}` });
     }
   });
 
@@ -12064,9 +13422,17 @@ export async function registerRoutes(
       const workflowId = process.env.DIDIT_KYB_WORKFLOW_ID;
       if (!workflowId) return res.status(500).json({ message: "KYB workflow not configured" });
 
+      // Validate returnTo — must be a same-origin relative path to prevent open redirect
+      const rawReturnTo = typeof req.body.returnTo === "string" ? req.body.returnTo : "";
+      const safeReturnTo = rawReturnTo.startsWith("/") && !rawReturnTo.includes("://") && !rawReturnTo.startsWith("//")
+        ? rawReturnTo
+        : "/settings";
+
       const { createVerificationSession } = await import("./diditClient");
       const baseUrl = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "");
-      const session = await createVerificationSession(workflowId, userId, `${baseUrl}/profile`);
+      const sep = safeReturnTo.includes("?") ? "&" : "?";
+      const callbackUrl = `${baseUrl}${safeReturnTo}${sep}kyb_complete=${businessId}`;
+      const session = await createVerificationSession(workflowId, userId, callbackUrl);
       if (!session) return res.status(500).json({ message: "Could not start KYB session" });
 
       await storage.updateBusinessProfile(businessId, {
@@ -12081,6 +13447,47 @@ export async function registerRoutes(
     }
   });
 
+  // Sync a business's KYB status from Didit — called by client after returning from verification
+  app.post("/api/businesses/:id/kyb/sync", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const sessionId = (profile as any).diditSessionId as string | null;
+      if (!sessionId) return res.json({ kybStatus: profile.kybStatus, synced: false, message: "No active session" });
+
+      const { getSessionStatus } = await import("./diditClient");
+      const latestStatus = await getSessionStatus(sessionId);
+      if (!latestStatus) return res.json({ kybStatus: profile.kybStatus, synced: false, message: "Could not reach verification service" });
+
+      const changed = latestStatus !== profile.kybStatus;
+      if (changed) {
+        const bizUpdate: Record<string, unknown> = { kybStatus: latestStatus };
+        if (latestStatus === "APPROVED") {
+          bizUpdate.kybVerifiedAt = new Date();
+          // Mirror onto the user row so kybStatus/isVerified are consistent
+          await storage.updateUser(userId, {
+            kybStatus: "APPROVED",
+            isVerified: true,
+            verificationStatus: "verified",
+            diditVerifiedAt: new Date(),
+          } as any);
+        } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+          await storage.updateUser(userId, { kybStatus: latestStatus, isVerified: false, verificationStatus: "rejected" } as any);
+        }
+        await storage.updateBusinessProfile(businessId, bizUpdate as any);
+      }
+
+      return res.json({ kybStatus: latestStatus, synced: changed });
+    } catch (error) {
+      console.error("KYB sync error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // ── Listing Claims (split-quantity) ─────────────────────────────────────────
 
   app.get("/api/listings/:id/claims", requireAuth, async (req, res) => {
@@ -12090,8 +13497,8 @@ export async function registerRoutes(
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       const userId = req.session.userId!;
       const user = await storage.getUser(userId);
-      // Only listing owner or admin can see all claims
-      if (listing.userId !== userId && !user?.isAdmin) {
+      // Only listing owner or allowlisted admin can see all claims
+      if (listing.userId !== userId && !(await isAllowlistedAdmin(user))) {
         return res.status(403).json({ message: "Not authorised" });
       }
       const claims = await storage.getListingClaims(listingId);

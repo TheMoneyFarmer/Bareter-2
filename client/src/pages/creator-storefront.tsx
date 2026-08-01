@@ -1,4 +1,5 @@
 import { useParams } from "wouter";
+import { BackButton } from "@/components/BackButton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -187,10 +188,7 @@ export function CreatorStorefrontPage() {
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 space-y-8">
       {/* Back navigation */}
-      <Link href="/browse" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="h-4 w-4" />
-        Browse creators
-      </Link>
+      <BackButton fallback="/browse" label="Browse creators" />
 
       {/* Profile header */}
       <Card className="bareter-card">

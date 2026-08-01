@@ -7,7 +7,7 @@ const POSTHOG_HOST =
 
 let initialized = false;
 
-export function initPostHog(): void {
+export function initPostHog(opts?: { platform?: "ios" | "web" }): void {
   if (initialized || !POSTHOG_KEY) return;
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
@@ -15,6 +15,10 @@ export function initPostHog(): void {
     capture_pageview: false,
     persistence: "localStorage",
   });
+  // Register super-property so every future event carries platform: "ios" | "web"
+  if (opts?.platform) {
+    posthog.register({ platform: opts.platform });
+  }
   initialized = true;
 }
 

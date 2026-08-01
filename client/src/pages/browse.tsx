@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useSeo } from "@/hooks/use-seo";
 import { Link, useSearch, useRoute, useLocation } from "wouter";
 import { categoryFromSlug, subcategoryFromSlug } from "@shared/category-slugs";
@@ -6,7 +8,7 @@ import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { StaggeredReveal } from "@/components/StaggeredReveal";
 import { TrendingTiles } from "@/components/TrendingTiles";
 import { ChainMatchSection } from "@/components/chain-match-section";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CATEGORIES, LOCATIONS, ITEM_CONDITIONS, type ListingWithUser } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, API_BASE } from "@/lib/queryClient";
+import { apiRequest, API_BASE, assetUrl } from "@/lib/queryClient";
 import { useActiveLocation, locationParams } from "@/lib/active-location";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -75,14 +77,14 @@ import {
   ThumbsUp,
   RefreshCw,
 } from "lucide-react";
-import { VerifiedBadge } from "@/components/verified-badge";
+import { VerifiedBadge, VerificationLevelBadge } from "@/components/verified-badge";
 import { FounderBadge } from "@/components/founder-badge";
 import { timeAgo, formatValue } from "@/lib/utils";
 import type { ListingCommentWithUser } from "@shared/schema";
 import type { ExchangeItem } from "@shared/schema";
 import { ShareMenu } from "@/components/share-menu";
 
-type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain" | "creators" | "businesses";
+type ExploreTab = "discover" | "search" | "for-you" | "collabs" | "chain" | "creators" | "businesses" | "requests";
 
 function ForYouTab({
   wishlistedIds,
@@ -166,6 +168,17 @@ export function BrowsePage() {
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
+
+  const handlePullRefresh = useCallback(async () => {
+    // Reset infinite scroll back to page 1 and re-fetch all active queries
+    await queryClient.resetQueries({ queryKey: ["/api/listings"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/listings/for-you"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/creators"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+  }, [queryClient]);
+
+  const { isRefreshing: isPullRefreshing } = usePullToRefresh(handlePullRefresh);
   const searchString = useSearch();
   const [matchCat, paramsCat] = useRoute("/c/:category");
   const [matchSub, paramsSub] = useRoute("/c/:category/:subcategory");
@@ -186,7 +199,7 @@ export function BrowsePage() {
   const [, navigate] = useLocation();
   const initialTab = initialParams.get("tab") as ExploreTab | null;
   const [activeTab, setActiveTab] = useState<ExploreTab>(
-    initialTab && ["discover","search","for-you","collabs","chain","creators","businesses"].includes(initialTab)
+    initialTab && ["discover","search","for-you","collabs","chain","creators","businesses","requests"].includes(initialTab)
       ? initialTab
       : showCategoriesParam ? "discover"
       : (initialQ || initialCategory || initialLocationParam || routeCategory ? "search" : "discover")
@@ -303,6 +316,7 @@ export function BrowsePage() {
   };
 
   const activeLocation = useActiveLocation();
+  const PAGE_SIZE = 20;
   // Browse filters by country only — city is an explicit user-chosen filter, not auto-applied from profile
   const browseParams = new URLSearchParams();
   if (activeLocation.worldwide) {
@@ -311,16 +325,46 @@ export function BrowsePage() {
     browseParams.set("country", activeLocation.country);
   }
   const listingsQs = browseParams.toString();
-  const { data: listings, isLoading } = useQuery<ListingWithUser[]>({
+
+  const {
+    data: listingsPages,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<ListingWithUser[]>({
     queryKey: ["/api/listings", { country: activeLocation.country, worldwide: activeLocation.worldwide }],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/listings${listingsQs ? `?${listingsQs}` : ""}`, { credentials: "include" });
+    queryFn: async ({ pageParam = 0 }) => {
+      const qs = new URLSearchParams(listingsQs);
+      qs.set("limit", String(PAGE_SIZE));
+      qs.set("offset", String(pageParam as number));
+      const res = await fetch(`${API_BASE}/api/listings?${qs.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch listings");
       return res.json();
     },
-    staleTime: 0,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
+    staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
+
+  const listings = listingsPages?.pages.flat() ?? [];
+
+  // Sentinel div — when it enters viewport, load next page
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const { data: featuredListings } = useQuery<ListingWithUser[]>({
     queryKey: ["/api/listings/featured"],
@@ -342,6 +386,10 @@ export function BrowsePage() {
   const [creatorNiche, setCreatorNiche] = useState("");
   const [creatorPlatform, setCreatorPlatform] = useState("");
   const [creatorVerifiedOnly, setCreatorVerifiedOnly] = useState(false);
+  const [creatorAudienceSize, setCreatorAudienceSize] = useState("");
+
+  const [bizCategory, setBizCategory] = useState("");
+  const [bizVerifiedOnly, setBizVerifiedOnly] = useState(false);
 
   const creatorsQs = new URLSearchParams();
   if (creatorNiche) creatorsQs.set("niche", creatorNiche);
@@ -360,6 +408,18 @@ export function BrowsePage() {
     staleTime: 60_000,
   });
 
+  // ── ISO Board — "request" type listings only ──────────────────────────────
+  const { data: isoListings = [], isLoading: isoLoading } = useQuery<ListingWithUser[]>({
+    queryKey: ["/api/listings", { type: "request" }],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/listings?type=request&limit=40`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: activeTab === "requests",
+    staleTime: 30_000,
+  });
+
   // ── Businesses tab — pulled from GET /api/businesses (active only, server-filtered) ───
   const { data: businessDirectory, isLoading: bizDirLoading } = useQuery<any[]>({
     queryKey: ["/api/businesses"],
@@ -368,8 +428,27 @@ export function BrowsePage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: activeTab === "businesses" && !!user,
+    enabled: activeTab === "businesses",
     staleTime: 60_000,
+  });
+
+  const filteredCreators = creatorsData.filter((creator: any) => {
+    if (!creatorAudienceSize) return true;
+    const raw = (creator.creatorProfile?.audienceSize ?? "").replace(/,/g, "").toLowerCase();
+    const m = raw.match(/([\d.]+)\s*([km]?)/);
+    if (!m) return true;
+    const n = parseFloat(m[1]) * (m[2] === "k" ? 1_000 : m[2] === "m" ? 1_000_000 : 1);
+    if (creatorAudienceSize === "1K–10K") return n >= 1_000 && n < 10_000;
+    if (creatorAudienceSize === "10K–100K") return n >= 10_000 && n < 100_000;
+    if (creatorAudienceSize === "100K–1M") return n >= 100_000 && n < 1_000_000;
+    if (creatorAudienceSize === "1M+") return n >= 1_000_000;
+    return true;
+  });
+
+  const filteredBusinesses = (businessDirectory ?? []).filter((biz: any) => {
+    if (bizCategory && biz.category !== bizCategory) return false;
+    if (bizVerifiedOnly && biz.kybStatus !== "verified") return false;
+    return true;
   });
 
   const { data: recommendedUsers } = useQuery<any[]>({
@@ -776,6 +855,11 @@ export function BrowsePage() {
 
   return (
     <div className="bg-bareter-off-white dark:bg-background min-h-screen">
+    {Capacitor.isNativePlatform() && isPullRefreshing && (
+      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-background rounded-full shadow-md p-2.5">
+        <RefreshCw className="h-5 w-5 animate-spin text-bareter-teal" />
+      </div>
+    )}
     <div className="container px-2 sm:px-4 py-4 sm:py-8 mx-auto max-w-7xl">
       <nav aria-label="Breadcrumb" className="text-caption mb-3 hidden sm:flex items-center gap-1.5">
         <Link href="/" className="hover:text-bareter-teal">{t("nav.home")}</Link>
@@ -832,6 +916,15 @@ export function BrowsePage() {
             Chain Deals
           </Button>
         )}
+        <Button
+          variant={activeTab === "requests" ? "bareter" : "bareter-outline"}
+          onClick={() => setActiveTab("requests")}
+          className="gap-2 flex-shrink-0"
+          data-testid="tab-requests"
+        >
+          <ShoppingCart className="h-4 w-4" />
+          ISO Board
+        </Button>
         <Button
           variant={activeTab === "creators" ? "bareter" : "bareter-outline"}
           onClick={() => setActiveTab("creators")}
@@ -929,40 +1022,66 @@ export function BrowsePage() {
             </div>
           </div>
           {/* Filters */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <Select value={creatorNiche || "all"} onValueChange={v => setCreatorNiche(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 text-xs w-36">
-                <SelectValue placeholder="Niche" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All niches</SelectItem>
-                {CREATOR_NICHES_BROWSE.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={creatorPlatform || "all"} onValueChange={v => setCreatorPlatform(v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 text-xs w-40">
-                <SelectValue placeholder="Platform" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All platforms</SelectItem>
-                {CREATOR_PLATFORMS_BROWSE.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <button
-              type="button"
-              onClick={() => setCreatorVerifiedOnly(v => !v)}
-              className={`flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors ${creatorVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40"}`}
-              data-testid="filter-creator-verified"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              Verified only
-            </button>
-            {(creatorNiche || creatorPlatform || creatorVerifiedOnly) && (
-              <button type="button" onClick={() => { setCreatorNiche(""); setCreatorPlatform(""); setCreatorVerifiedOnly(false); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <X className="h-3.5 w-3.5" />
-                Clear
+          <div className="space-y-2">
+            {/* Niche chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {["", ...CREATOR_NICHES_BROWSE].map(n => (
+                <button
+                  key={n || "all"}
+                  type="button"
+                  onClick={() => setCreatorNiche(n)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorNiche === n ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                >
+                  {n || "All niches"}
+                </button>
+              ))}
+            </div>
+            {/* Platform chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {["", ...CREATOR_PLATFORMS_BROWSE].map(p => (
+                <button
+                  key={p || "all"}
+                  type="button"
+                  onClick={() => setCreatorPlatform(p)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorPlatform === p ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                >
+                  {p || "All platforms"}
+                </button>
+              ))}
+            </div>
+            {/* Audience size + Verified toggle */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(["1K–10K", "10K–100K", "100K–1M", "1M+"] as const).map(bucket => (
+                <button
+                  key={bucket}
+                  type="button"
+                  onClick={() => setCreatorAudienceSize(v => v === bucket ? "" : bucket)}
+                  className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorAudienceSize === bucket ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  data-testid={`filter-audience-${bucket}`}
+                >
+                  <Users className="h-3 w-3 inline mr-1" />{bucket}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCreatorVerifiedOnly(v => !v)}
+                className={`flex-shrink-0 flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${creatorVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                data-testid="filter-creator-verified"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Verified only
               </button>
-            )}
+              {(creatorNiche || creatorPlatform || creatorVerifiedOnly || creatorAudienceSize) && (
+                <button
+                  type="button"
+                  onClick={() => { setCreatorNiche(""); setCreatorPlatform(""); setCreatorVerifiedOnly(false); setCreatorAudienceSize(""); }}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           {/* Grid */}
           {creatorsLoading ? (
@@ -971,7 +1090,7 @@ export function BrowsePage() {
                 <Card key={i}><CardContent className="p-4"><div className="flex items-center gap-3"><Skeleton className="h-12 w-12 rounded-full" /><div className="space-y-2 flex-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></div></CardContent></Card>
               ))}
             </div>
-          ) : creatorsData.length === 0 ? (
+          ) : filteredCreators.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <CameraIcon className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
@@ -981,7 +1100,7 @@ export function BrowsePage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {creatorsData.map((creator: any) => (
+              {filteredCreators.map((creator: any) => (
                 <Card
                   key={creator.id}
                   className="hover-elevate cursor-pointer"
@@ -1002,6 +1121,7 @@ export function BrowsePage() {
                             {creator.creatorProfile?.displayName || creator.fullName}
                           </p>
                           {creator.isVerified && <VerifiedBadge />}
+                          <VerificationLevelBadge level={creator.verificationLevel} />
                         </div>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {creator.creatorProfile?.niche && (
@@ -1047,28 +1167,75 @@ export function BrowsePage() {
               <Button variant="bareter-outline" size="sm" className="flex-shrink-0">View all</Button>
             </Link>
           </div>
+          {/* Business Filters */}
+          {!bizDirLoading && businessDirectory && businessDirectory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {["", ...Array.from(new Set((businessDirectory as any[]).map((b: any) => b.category).filter(Boolean))) as string[]].map((cat: string) => (
+                  <button
+                    key={cat || "all"}
+                    type="button"
+                    onClick={() => setBizCategory(cat)}
+                    className={`flex-shrink-0 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${bizCategory === cat ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  >
+                    {cat || "All types"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setBizVerifiedOnly(v => !v)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs font-medium transition-colors ${bizVerifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-input hover:border-primary/40 text-muted-foreground"}`}
+                  data-testid="filter-biz-verified"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  KYB Verified only
+                </button>
+                {(bizCategory || bizVerifiedOnly) && (
+                  <button
+                    type="button"
+                    onClick={() => { setBizCategory(""); setBizVerifiedOnly(false); }}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {bizDirLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}><CardContent className="p-0"><Skeleton className="h-24 rounded-t-xl" /><div className="p-4 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div></CardContent></Card>
               ))}
             </div>
-          ) : !businessDirectory || businessDirectory.length === 0 ? (
+          ) : filteredBusinesses.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Building2 className="h-14 w-14 mx-auto mb-4 text-muted-foreground opacity-30" />
-                <h3 className="font-semibold text-lg mb-2">No businesses yet</h3>
-                <p className="text-muted-foreground text-sm mb-4">
-                  Be the first — create a business profile and start bartering.
-                </p>
-                <Link href="/settings">
-                  <Button variant="bareter" size="sm">Create Business Profile</Button>
-                </Link>
+                {businessDirectory && businessDirectory.length > 0 ? (
+                  <>
+                    <h3 className="font-semibold text-lg mb-2">No matching businesses</h3>
+                    <p className="text-muted-foreground text-sm">Try clearing your filters to see all businesses.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="font-semibold text-lg mb-2">No businesses yet</h3>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Be the first — create a business profile and start bartering.
+                    </p>
+                    <Link href="/settings">
+                      <Button variant="bareter" size="sm">Create Business Profile</Button>
+                    </Link>
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="grid-businesses">
-              {businessDirectory.slice(0, 9).map((biz: any) => (
+              {filteredBusinesses.slice(0, 9).map((biz: any) => (
                 <Link key={biz.id} href={`/businesses/${biz.id}`} className="group block">
                   <article className="bg-white dark:bg-card rounded-xl border border-bareter-border dark:border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col">
                     <div className="h-20 bg-gradient-to-br from-bareter-teal/20 to-bareter-navy/10 relative overflow-hidden flex-shrink-0">
@@ -1111,10 +1278,10 @@ export function BrowsePage() {
               ))}
             </div>
           )}
-          {businessDirectory && businessDirectory.length > 9 && (
+          {filteredBusinesses.length > 9 && (
             <div className="text-center pt-2">
               <Link href="/businesses">
-                <Button variant="bareter-outline" size="sm">View all {businessDirectory.length} businesses →</Button>
+                <Button variant="bareter-outline" size="sm">View all {filteredBusinesses.length} businesses →</Button>
               </Link>
             </div>
           )}
@@ -1126,6 +1293,59 @@ export function BrowsePage() {
         />
       ) : activeTab === "chain" ? (
         <ChainMatchSection />
+      ) : activeTab === "requests" ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-primary" />
+                ISO Board
+              </h2>
+              <p className="text-sm text-muted-foreground">People looking for something to barter — offer what you have</p>
+            </div>
+            <Badge variant="secondary">{isoListings.length} requests</Badge>
+          </div>
+          {isoLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-48 rounded-xl bg-muted animate-pulse" />)}
+            </div>
+          ) : isoListings.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>No requests yet. Be the first to post what you&apos;re looking for!</p>
+              <Link href="/create-listing"><Button variant="bareter" size="sm" className="mt-4">Post a Request</Button></Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {isoListings.map((listing) => (
+                <Link key={listing.id} href={`/listings/${listing.id}`}>
+                  <div className="border rounded-xl p-4 bg-card hover:shadow-bareter-hover transition-shadow cursor-pointer bareter-slide-in">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <Badge variant="outline" className="text-[10px] mb-2">ISO · {listing.categories?.[0] ?? "General"}</Badge>
+                        <h3 className="font-semibold text-sm line-clamp-2">{listing.title}</h3>
+                      </div>
+                      {(listing as any).user?.avatarUrl && (
+                        <img src={assetUrl((listing as any).user.avatarUrl)} alt="" className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
+                      )}
+                    </div>
+                    {listing.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{listing.description}</p>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />{listing.location || "UAE"}
+                      </span>
+                      {listing.retailValue && Number(listing.retailValue) > 0 && (
+                        <span className="text-xs font-semibold text-bareter-teal">Up to AED {Number(listing.retailValue).toLocaleString()}</span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       ) : activeTab === "discover" ? (
         <div className="space-y-8">
           {featuredListings && featuredListings.length > 0 && (
@@ -1409,11 +1629,17 @@ export function BrowsePage() {
                   </CardContent>
                 </Card>
               ) : (
-                <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-results">
-                  {sortedListings.map((listing) => (
-                    <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
-                  ))}
-                </StaggeredReveal>
+                <>
+                  <StaggeredReveal className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" testId="grid-browse-results">
+                    {sortedListings.map((listing) => (
+                      <BrandListingCard key={listing.id} listing={listing} isWishlisted={currentWishlistedIds.has(listing.id)} onWishlistToggle={user ? (id) => toggleWishlistMutation.mutate({ listingId: id, isWishlisted: currentWishlistedIds.has(id) }) : undefined} />
+                    ))}
+                  </StaggeredReveal>
+                  {/* Infinite scroll sentinel — IntersectionObserver triggers next page */}
+                  <div ref={sentinelRef} className="h-8 mt-4 flex items-center justify-center">
+                    {isFetchingNextPage && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                  </div>
+                </>
               )}
             </div>
           </div>

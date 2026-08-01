@@ -31,6 +31,7 @@ export function sanitizePublicUser(user: User): PublicUser {
     bannedAt: _ba,
     bannedReason: _br,
     isAdmin: _ia,
+    role: _role,
     reminderPreferences: _rp,
     emailNotifications: _en,
     dealNotifications: _dn,
@@ -45,6 +46,41 @@ export function sanitizePublicUser(user: User): PublicUser {
     email: user.showEmail ? user.email : null as unknown as string,
     phone: user.showPhone ? (user.phone ?? null) : null,
   };
+}
+
+/**
+ * Strip credential/token fields from a user object before returning it to the
+ * authenticated owner (login, register, auth/me). Keeps notification prefs and
+ * admin flags that the UI needs; removes fields that have no client-side use
+ * and would be dangerous if leaked via XSS.
+ */
+export function stripAuthTokens<T extends Record<string, unknown>>(user: T): Omit<T,
+  | "password" | "passwordResetToken" | "passwordResetExpires"
+  | "emailVerificationToken" | "emailVerificationExpires"
+  | "passwordChangeOtp" | "passwordChangeOtpExpires"
+  | "phoneVerificationCode" | "phoneVerificationExpires"
+  | "diditSessionId" | "diditVerificationData" | "diditVerifiedAt"
+  | "unsubscribeToken" | "googleId" | "appleId"
+> {
+  const {
+    password: _pw,
+    passwordResetToken: _prt,
+    passwordResetExpires: _pre,
+    emailVerificationToken: _evt,
+    emailVerificationExpires: _eve,
+    passwordChangeOtp: _pco,
+    passwordChangeOtpExpires: _pcoe,
+    phoneVerificationCode: _pvc,
+    phoneVerificationExpires: _pve,
+    diditSessionId: _dsi,
+    diditVerificationData: _dvd,
+    diditVerifiedAt: _dva,
+    unsubscribeToken: _ut,
+    googleId: _gid,
+    appleId: _aid,
+    ...safe
+  } = user;
+  return safe as any;
 }
 
 export const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -69,7 +105,7 @@ export function securityHeaders(): RequestHandler {
       ? {
           directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // inline needed for Vite bundle hashes; tighten with nonces later
+            scriptSrc: ["'self'"], // Vite prod emits external JS files — no inline scripts needed
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "blob:", "https:"],
             connectSrc: ["'self'", "https:"],
@@ -102,8 +138,11 @@ export function getAllowedOriginHosts(req: Request): Set<string> {
       allowed.add(o);
     }
   }
-  const selfHost =
-    (req.headers["x-forwarded-host"] as string) || req.headers.host;
+  // SECURITY: do NOT trust x-forwarded-host here. It is attacker-controllable
+  // (the upstream proxy does not always strip it), and adding it to the allowed
+  // set would let any origin pass the CSRF check by forging the header. Trust
+  // only the real Host header and the explicit ALLOWED_ORIGINS env list.
+  const selfHost = req.headers.host;
   if (selfHost) allowed.add(selfHost);
   return allowed;
 }

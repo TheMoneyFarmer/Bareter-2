@@ -23,6 +23,7 @@ import {
   listingLikes,
   listingComments,
   type User,
+  type PublicUser,
   type InsertUser,
   type Listing,
   type InsertListing,
@@ -171,7 +172,7 @@ export interface IStorage {
   getUserByPhone(phone: string): Promise<User | undefined>;
   getUserByPasswordResetToken(token: string): Promise<User | undefined>;
   getUserByDiditSessionId(sessionId: string): Promise<User | undefined>;
-  // getUsersWithPendingVerification(): Promise<User[]>;
+  getUsersWithPendingVerification(): Promise<User[]>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -211,12 +212,12 @@ export interface IStorage {
   // Notifications
   getNotificationsByUser(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  markNotificationAsRead(id: string): Promise<void>;
+  markNotificationAsRead(id: string, userId: string): Promise<void>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
 
   // Followers
-  getFollowers(userId: string): Promise<(Follower & { follower: User })[]>;
-  getFollowing(userId: string): Promise<(Follower & { following: User })[]>;
+  getFollowers(userId: string): Promise<(Follower & { follower: PublicUser })[]>;
+  getFollowing(userId: string): Promise<(Follower & { following: PublicUser })[]>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   followUser(followerId: string, followingId: string): Promise<Follower>;
   unfollowUser(followerId: string, followingId: string): Promise<void>;
@@ -470,7 +471,7 @@ export interface IStorage {
 
   // Collab Applications
   applyToCollab(data: { listingId: string; creatorId: string; brandId: string; pitch: string; socialHandle?: string; followerCount?: number; engagementRate?: number; portfolioLink?: string }): Promise<CollabApplication>;
-  getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]>;
+  getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: PublicUser })[]>;
   getCollabApplicationsByCreator(creatorId: string): Promise<(CollabApplication & { listing: Listing })[]>;
   getCollabApplication(id: string): Promise<CollabApplication | undefined>;
   updateCollabApplication(id: string, data: { status: string; brandNote?: string; dealId?: string }): Promise<CollabApplication | undefined>;
@@ -546,10 +547,17 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // DIDIT CODE ARCHIVED
-  // See _archived/didit/storage-didit-methods.ts
-  // Re-integrate when ENABLE_DIDIT needed
-  // async getUsersWithPendingVerification(...)
+  async getUsersWithPendingVerification(): Promise<User[]> {
+    return db.select().from(users).where(
+      and(
+        isNotNull(users.diditSessionId),
+        or(
+          inArray(users.kycStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+          inArray(users.kybStatus, ["IN_PROGRESS", "IN_REVIEW", "PENDING_REVIEW"]),
+        ),
+      ),
+    );
+  }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
@@ -870,8 +878,10 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async markNotificationAsRead(id: string): Promise<void> {
-    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  async markNotificationAsRead(id: string, userId: string): Promise<void> {
+    // Scope to the owner so a user cannot mark another user's notifications read.
+    await db.update(notifications).set({ isRead: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
   }
 
   async markAllNotificationsAsRead(userId: string): Promise<void> {
@@ -882,7 +892,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Followers
-  async getFollowers(userId: string): Promise<(Follower & { follower: User })[]> {
+  async getFollowers(userId: string): Promise<(Follower & { follower: PublicUser })[]> {
     const result = await db
       .select()
       .from(followers)
@@ -896,7 +906,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getFollowing(userId: string): Promise<(Follower & { following: User })[]> {
+  async getFollowing(userId: string): Promise<(Follower & { following: PublicUser })[]> {
     const result = await db
       .select()
       .from(followers)
@@ -1529,7 +1539,9 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(listings.isActive, true),
         sql`${listings.id} != ${listingId}`,
-        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.raw(cats.map(c => `'${c.replace(/'/g, "''")}'`).join(","))}]` : sql`true`,
+        // Parameterized array binding — never interpolate category strings via
+        // sql.raw(), which bypasses escaping and is a SQL-injection sink.
+        cats.length > 0 ? sql`${listings.categories} ?| array[${sql.join(cats.map((c) => sql`${c}`), sql`, `)}]::text[]` : sql`true`,
       ))
       .orderBy(
         sql`abs(cast(${listings.retailValue} as numeric) - ${value})`,
@@ -2425,7 +2437,7 @@ export class DatabaseStorage implements IStorage {
       GROUP BY 1
       ORDER BY 1
     `);
-    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
     return (list as { date: string; count: number | string }[]).map((r) => ({ date: r.date, count: Number(r.count) }));
   }
 
@@ -2448,7 +2460,7 @@ export class DatabaseStorage implements IStorage {
       ORDER BY COALESCE(l.view_count, 0) DESC, "proposalCount" DESC
       LIMIT ${limit}
     `);
-    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown[]);
+    const list = (rows as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
     return (list as { id: string; title: string; viewCount: number | string; proposalCount: number | string }[]).map((r) => ({
       id: r.id,
       title: r.title,
@@ -3028,7 +3040,7 @@ export class DatabaseStorage implements IStorage {
     return app;
   }
 
-  async getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: User })[]> {
+  async getCollabApplicationsByListing(listingId: string): Promise<(CollabApplication & { creator: PublicUser })[]> {
     const rows = await db
       .select({ app: collabApplications, creator: users })
       .from(collabApplications)
@@ -3113,7 +3125,9 @@ export class DatabaseStorage implements IStorage {
         if (filters.maxFollowers && cp.followerCount > filters.maxFollowers) return false;
         if (filters.niche && !cp.contentNiches?.some(n => n.toLowerCase().includes(filters.niche!.toLowerCase()))) return false;
         return true;
-      }) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
+      })
+      // Strip secrets/tokens/OAuth IDs before these rows reach any caller.
+      .map(u => sanitizePublicUser(u)) as (User & { creatorProfile: NonNullable<User["creatorProfile"]> })[];
   }
 
   // ── Barter Credits ────────────────────────────────────────────────────────────
