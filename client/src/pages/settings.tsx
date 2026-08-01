@@ -229,6 +229,8 @@ export function SettingsPage() {
     onSuccess: () => {
       refetchCreatorProfile();
       toast({ title: "Creator profile created!", description: "You're now discoverable in the Creators directory." });
+      const from = new URLSearchParams(window.location.search).get("from");
+      if (from === "create-listing") setTimeout(() => window.location.assign("/create-listing"), 1200);
     },
     onError: (err: any) => toast({ title: err?.message || "Failed to create creator profile", variant: "destructive" }),
   });
@@ -254,6 +256,8 @@ export function SettingsPage() {
     onSuccess: () => {
       refetchBusinessProfile();
       toast({ title: "Business profile created!", description: "Complete KYB verification to publish business listings." });
+      const from = new URLSearchParams(window.location.search).get("from");
+      if (from === "create-listing") setTimeout(() => window.location.assign("/create-listing"), 1200);
     },
     onError: (err: any) => {
       if (err?.message?.includes("409")) {
