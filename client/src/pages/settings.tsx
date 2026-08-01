@@ -270,7 +270,8 @@ export function SettingsPage() {
 
   const startKybMutation = useMutation({
     mutationFn: async (businessId: string) => {
-      const res = await apiRequest("POST", `/api/businesses/${businessId}/kyb/start`);
+      const returnTo = window.location.pathname + window.location.search;
+      const res = await apiRequest("POST", `/api/businesses/${businessId}/kyb/start`, { returnTo });
       return res.json();
     },
     onSuccess: (data) => {

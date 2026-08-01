@@ -25,6 +25,8 @@ import { LocationMismatchBanner } from "@/components/location-mismatch-banner";
 import { GeoGate } from "@/components/geo-gate";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HandshakeLoader, FullPageLoader } from "@/components/handshake-loader";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 // Route-level code splitting — each page loads only when navigated to
 const LandingPage = lazy(() => import("@/pages/landing").then((m) => ({ default: m.LandingPage })));
@@ -426,6 +428,51 @@ function MaintenanceGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Detects ?kyb_complete=<businessId> added by Didit callback URL, syncs status, invalidates queries.
+// Must live inside <AuthProvider> and <QueryClientProvider>.
+function KybReturnHandler() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bizId = params.get("kyb_complete");
+    if (!bizId) return;
+
+    // Strip the param from the URL without re-navigating
+    params.delete("kyb_complete");
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
+    window.history.replaceState(null, "", newUrl);
+
+    toast({ title: "Checking verification status…", description: "Syncing your business verification result." });
+
+    apiRequest("POST", `/api/businesses/${bizId}/kyb/sync`)
+      .then((r) => r.json())
+      .then((data: { kybStatus?: string; synced?: boolean }) => {
+        qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        qc.invalidateQueries({ queryKey: ["/api/businesses/me"] });
+        qc.invalidateQueries({ queryKey: [`/api/businesses/${bizId}`] });
+        qc.invalidateQueries({ queryKey: [`/api/businesses/${bizId}/storefront`] });
+
+        if (data.kybStatus === "APPROVED") {
+          toast({ title: "Business verified!", description: "Your business is now fully verified. All access granted." });
+        } else if (data.kybStatus === "IN_REVIEW" || data.kybStatus === "PENDING_REVIEW") {
+          toast({ title: "Under review", description: "Your documents are being reviewed. You'll be notified when complete." });
+        } else if (data.kybStatus === "DECLINED" || data.kybStatus === "REJECTED") {
+          toast({ title: "Verification not approved", description: "Please try again or contact support.", variant: "destructive" });
+        }
+      })
+      .catch(() => {
+        qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        qc.invalidateQueries({ queryKey: ["/api/businesses/me"] });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
+
 // Registers for native push notifications once the user is authenticated.
 // Must live inside <AuthProvider> so useAuth() resolves.
 function NativePushManager() {
@@ -571,6 +618,7 @@ function App() {
         <I18nProvider>
           <AuthProvider>
             <LanguageSync />
+            <KybReturnHandler />
             {isNative && <NativePushManager />}
             <TooltipProvider>
               {/* Admin subdomain — stripped-down shell, no public UI chrome */}

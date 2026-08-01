@@ -13422,9 +13422,17 @@ export async function registerRoutes(
       const workflowId = process.env.DIDIT_KYB_WORKFLOW_ID;
       if (!workflowId) return res.status(500).json({ message: "KYB workflow not configured" });
 
+      // Validate returnTo — must be a same-origin relative path to prevent open redirect
+      const rawReturnTo = typeof req.body.returnTo === "string" ? req.body.returnTo : "";
+      const safeReturnTo = rawReturnTo.startsWith("/") && !rawReturnTo.includes("://") && !rawReturnTo.startsWith("//")
+        ? rawReturnTo
+        : "/settings";
+
       const { createVerificationSession } = await import("./diditClient");
       const baseUrl = (process.env.PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "");
-      const session = await createVerificationSession(workflowId, userId, `${baseUrl}/profile`);
+      const sep = safeReturnTo.includes("?") ? "&" : "?";
+      const callbackUrl = `${baseUrl}${safeReturnTo}${sep}kyb_complete=${businessId}`;
+      const session = await createVerificationSession(workflowId, userId, callbackUrl);
       if (!session) return res.status(500).json({ message: "Could not start KYB session" });
 
       await storage.updateBusinessProfile(businessId, {
@@ -13436,6 +13444,47 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Start KYB error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Sync a business's KYB status from Didit — called by client after returning from verification
+  app.post("/api/businesses/:id/kyb/sync", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const sessionId = (profile as any).diditSessionId as string | null;
+      if (!sessionId) return res.json({ kybStatus: profile.kybStatus, synced: false, message: "No active session" });
+
+      const { getSessionStatus } = await import("./diditClient");
+      const latestStatus = await getSessionStatus(sessionId);
+      if (!latestStatus) return res.json({ kybStatus: profile.kybStatus, synced: false, message: "Could not reach verification service" });
+
+      const changed = latestStatus !== profile.kybStatus;
+      if (changed) {
+        const bizUpdate: Record<string, unknown> = { kybStatus: latestStatus };
+        if (latestStatus === "APPROVED") {
+          bizUpdate.kybVerifiedAt = new Date();
+          // Mirror onto the user row so kybStatus/isVerified are consistent
+          await storage.updateUser(userId, {
+            kybStatus: "APPROVED",
+            isVerified: true,
+            verificationStatus: "verified",
+            diditVerifiedAt: new Date(),
+          } as any);
+        } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
+          await storage.updateUser(userId, { kybStatus: latestStatus, isVerified: false, verificationStatus: "rejected" } as any);
+        }
+        await storage.updateBusinessProfile(businessId, bizUpdate as any);
+      }
+
+      return res.json({ kybStatus: latestStatus, synced: changed });
+    } catch (error) {
+      console.error("KYB sync error:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 
