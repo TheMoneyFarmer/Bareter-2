@@ -28,7 +28,7 @@ import {
   Menu, Bell, User, LogOut, Settings,
   Handshake, Search, Plus, Shield, Languages, MessageSquare, MapPin,
   X, Heart, Bookmark, FileText, ChevronDown, ShieldCheck, Sparkles,
-  Clock, ArrowRight, BookOpen, HelpCircle, Compass, Building2, Camera,
+  Clock, ArrowRight, BookOpen, HelpCircle, Compass, Building2, Camera, Package,
 } from "lucide-react";
 import type { Notification } from "@shared/schema";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -50,6 +50,7 @@ function NavLinks({ user }: { user: boolean }) {
       <Link href="/browse"><button type="button" className={base}>Browse Listings</button></Link>
       <Link href="/businesses"><button type="button" className={base}>Business</button></Link>
       <Link href="/creators"><button type="button" className={base}>Creators</button></Link>
+      <Link href="/bulk-deals"><button type="button" className={base}>Bulk Deals</button></Link>
       <Link href={listHref}><button type="button" className={base}>List a Barter</button></Link>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -737,6 +738,7 @@ export function Header() {
                         { href: "/feed", icon: <Compass className="h-4 w-4" />, label: "Discover" },
                         { href: "/browse", icon: <Search className="h-4 w-4" />, label: "Browse Listings" },
                         { href: "/businesses", icon: <Building2 className="h-4 w-4" />, label: "Business" },
+                        { href: "/bulk-deals", icon: <Package className="h-4 w-4" />, label: "Bulk Deals" },
                         { href: "/profile", icon: <User className="h-4 w-4" />, label: "Profile" },
                         { href: "/dashboard", icon: <FileText className="h-4 w-4" />, label: "Dashboard" },
                         { href: "/profile?tab=drafts", icon: <BookOpen className="h-4 w-4" />, label: "My Drafts" },

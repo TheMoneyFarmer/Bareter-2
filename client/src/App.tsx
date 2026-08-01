@@ -70,6 +70,7 @@ const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m)
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
 const MapViewPage = lazy(() => import("@/pages/map-view").then((m) => ({ default: m.MapViewPage })));
 const PostDetailPage = lazy(() => import("@/pages/post-detail").then((m) => ({ default: m.PostDetailPage })));
+const BulkDealsPage = lazy(() => import("@/pages/bulk-deals").then((m) => ({ default: m.BulkDealsPage })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const MaintenancePage = lazy(() => import("@/pages/maintenance").then((m) => ({ default: m.MaintenancePage })));
 // Initialise PostHog once at module load (no-ops if VITE_POSTHOG_KEY is absent)
@@ -371,6 +372,7 @@ function Router() {
       <Route path="/creators" component={CreatorsPage} />
       <Route path="/businesses" component={BusinessesDirectoryPage} />
       <Route path="/businesses/:id" component={BusinessStorefrontPage} />
+      <Route path="/bulk-deals" component={BulkDealsPage} />
       <Route path="/brand-collabs">{() => <Redirect to="/browse?tab=collabs" />}</Route>
       <Route component={NotFound} />
     </Switch>

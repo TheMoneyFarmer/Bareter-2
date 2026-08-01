@@ -155,6 +155,13 @@ export function CreateListingPage() {
     {min: "1", max: "10", label: ""}, {min: "11", max: "50", label: ""}, {min: "51", max: "", label: ""},
   ]);
   const [tradeTerms, setTradeTerms] = useState("");
+  // ── Exchange detail fields ─────────────────────────────────────────────────
+  const [exchangeDescription, setExchangeDescription] = useState("");
+  const [exchangeCondition, setExchangeCondition] = useState("");
+  const [exchangeQuantity, setExchangeQuantity] = useState("");
+  const [exchangeSpecs, setExchangeSpecs] = useState("");
+  const [exchangeMinValue, setExchangeMinValue] = useState("");
+  const [exchangeMaxValue, setExchangeMaxValue] = useState("");
   // ── Creator extra fields ───────────────────────────────────────────────────
   const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
   const [uploadingDemoVideo, setUploadingDemoVideo] = useState(false);
@@ -263,6 +270,7 @@ export function CreateListingPage() {
           : listingMode === "business_wholesale" && businessProfile
           ? {
               listingType: "business_wholesale",
+              isBulkDeal: true,
               businessId: businessProfile.id,
               actingAsBusinessId: businessProfile.id,
               totalQuantity: totalQuantity ? parseInt(totalQuantity) : undefined,
@@ -290,10 +298,20 @@ export function CreateListingPage() {
             }
           : { listingType: "individual_item" };
 
+      const exchangeExtra = {
+        ...(exchangeDescription ? { exchangeDescription } : {}),
+        ...(exchangeCondition ? { exchangeCondition } : {}),
+        ...(exchangeQuantity ? { exchangeQuantity: parseInt(exchangeQuantity) } : {}),
+        ...(exchangeSpecs ? { exchangeSpecs } : {}),
+        ...(exchangeMinValue ? { exchangeMinValue: parseFloat(exchangeMinValue) } : {}),
+        ...(exchangeMaxValue ? { exchangeMaxValue: parseFloat(exchangeMaxValue) } : {}),
+      };
+      const baseCategoryDetails = Object.keys(categoryDetails).length > 0 ? categoryDetails : {};
+      const modeCategoryDetails = (modeFields as any).categoryDetails ?? {};
+      const finalCategoryDetails = { ...baseCategoryDetails, ...modeCategoryDetails, ...exchangeExtra };
       const res = await apiRequest("POST", "/api/listings", {
         ...data,
         retailValue: data.retailValue,
-        categoryDetails: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
         isCollab: listingMode === "creator" || isCollab,
         collabDetails: isCollab ? {
           contentType: collabContentType,
@@ -306,6 +324,7 @@ export function CreateListingPage() {
           productValue: collabProductValue ? parseFloat(collabProductValue) : 0,
         } : undefined,
         ...modeFields,
+        categoryDetails: Object.keys(finalCategoryDetails).length > 0 ? finalCategoryDetails : undefined,
         videoUrl: videoUrl || undefined,
         valuation: aiValuation
           ? {
@@ -1357,6 +1376,90 @@ export function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+
+              {/* Exchange Description */}
+              <div>
+                <FormLabel className="text-base mb-1 block">Describe What You Want</FormLabel>
+                <p className="text-sm text-muted-foreground mb-2">Be as specific as possible — type, brand, colour, grade, finish, quantity, anything that matters to you.</p>
+                <Textarea
+                  placeholder={selectedType === "request"
+                    ? "e.g. I can offer 3 hours of professional photography. Looking for interior design consultation for my office, min 2 hours, experienced with commercial spaces…"
+                    : "e.g. Exterior paint — warm white, eggshell finish, minimum 20 litres. Prefer Jotun or Dulux. Must be suitable for masonry. Happy to accept equivalent value in 2–3 smaller cans…"}
+                  value={exchangeDescription}
+                  onChange={(e) => setExchangeDescription(e.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  className="resize-none"
+                />
+                {exchangeDescription.length > 800 && (
+                  <p className="text-xs text-muted-foreground mt-1 text-right">{exchangeDescription.length}/1000</p>
+                )}
+              </div>
+
+              {/* Condition + Quantity row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FormLabel className="text-sm mb-1.5 block">Condition Required</FormLabel>
+                  <select
+                    value={exchangeCondition}
+                    onChange={(e) => setExchangeCondition(e.target.value)}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">Any condition</option>
+                    <option value="new">New / Unused</option>
+                    <option value="like_new">Like New</option>
+                    <option value="good">Good condition</option>
+                    <option value="used">Used / Functional</option>
+                  </select>
+                </div>
+                <div>
+                  <FormLabel className="text-sm mb-1.5 block">Quantity Needed</FormLabel>
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 3"
+                    value={exchangeQuantity}
+                    onChange={(e) => setExchangeQuantity(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Specifications */}
+              <div>
+                <FormLabel className="text-sm mb-1.5 block">Specifications</FormLabel>
+                <Input
+                  placeholder="e.g. Size L, matte black, 5000K lighting, Grade A timber, organic…"
+                  value={exchangeSpecs}
+                  onChange={(e) => setExchangeSpecs(e.target.value)}
+                  maxLength={300}
+                />
+              </div>
+
+              {/* Value range */}
+              <div>
+                <FormLabel className="text-sm mb-1.5 block">Acceptable Value Range (AED)</FormLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Min AED"
+                    value={exchangeMinValue}
+                    onChange={(e) => setExchangeMinValue(e.target.value)}
+                    className="flex-1"
+                  />
+                  <span className="text-muted-foreground text-sm">–</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Max AED"
+                    value={exchangeMaxValue}
+                    onChange={(e) => setExchangeMaxValue(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Specific items list */}
               <div>
                 <FormLabel className="text-base mb-1 block">{t("create.specificExchangeItems")}</FormLabel>
                 <p className="text-sm text-muted-foreground mb-3">{t("create.addSpecificItems")}</p>
@@ -1408,24 +1511,6 @@ export function CreateListingPage() {
                   <Button type="button" variant="outline" size="icon" onClick={addExchangeItem} data-testid="button-add-exchange-item">
                     <Plus className="h-4 w-4" />
                   </Button>
-                </div>
-              </div>
-
-              <div>
-                <FormLabel className="text-base mb-2 block">{t("create.preferredCategories")}</FormLabel>
-                <p className="text-sm text-muted-foreground mb-3">{t("create.selectCategoriesAccept")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((category) => (
-                    <Badge
-                      key={`wanted-${category}`}
-                      variant={wantedCategories.includes(category) ? "default" : "outline"}
-                      className="cursor-pointer text-sm py-1.5 px-3"
-                      onClick={() => toggleWantedCategory(category)}
-                      data-testid={`badge-wanted-${category.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      {category}
-                    </Badge>
-                  ))}
                 </div>
               </div>
 
