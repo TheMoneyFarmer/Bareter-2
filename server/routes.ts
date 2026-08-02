@@ -142,6 +142,23 @@ const resetPasswordLimiter = makeResetPasswordRateLimiter();
 const supportTicketLimiter = makeSupportTicketRateLimiter();
 const publicListingsLimiter = makePublicListingsRateLimiter();
 const userProfileLimiter = makeUserProfileRateLimiter();
+
+// Simple TTL cache for unauthenticated public listings — avoids hitting DB on
+// every page load. Key = serialised query params. TTL = 30 seconds.
+const _listingsCache = new Map<string, { data: unknown; expiresAt: number }>();
+function getCachedListings(key: string) {
+  const entry = _listingsCache.get(key);
+  if (!entry || Date.now() > entry.expiresAt) return null;
+  return entry.data;
+}
+function setCachedListings(key: string, data: unknown) {
+  _listingsCache.set(key, { data, expiresAt: Date.now() + 30_000 });
+  // Evict old entries to prevent unbounded growth
+  if (_listingsCache.size > 200) {
+    const now = Date.now();
+    for (const [k, v] of _listingsCache) { if (now > v.expiresAt) _listingsCache.delete(k); }
+  }
+}
 const phoneOtpSendLimiter = makePhoneOtpSendLimiter();
 const phoneOtpVerifyLimiter = makePhoneOtpVerifyLimiter();
 
@@ -2307,6 +2324,17 @@ export async function registerRoutes(
       const country = worldwide ? undefined : queryCountry || undefined;
       const city = worldwide ? undefined : queryCity || undefined;
 
+      // Serve from cache for unauthenticated browse (no search/filter active)
+      const userId = req.session?.userId;
+      if (!userId && !search && !type && !category && !location && !verified && !minValue && !maxValue) {
+        const cacheKey = `listings:${country ?? ""}:${city ?? ""}:${limit}:${offset}:${seedParam}:${worldwide}`;
+        const cached = getCachedListings(cacheKey);
+        if (cached) {
+          res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+          return res.json(cached);
+        }
+      }
+
       const listings = await storage.getListingsFiltered({
         search: typeof search === "string" ? search : undefined,
         type: typeof type === "string" ? type : undefined,
@@ -2321,7 +2349,6 @@ export async function registerRoutes(
         offset,
       });
 
-      const userId = req.session?.userId;
       const listingIds = listings.map((l) => l.id);
       const [likedIds, commentCounts] = await Promise.all([
         userId ? storage.getUserLikedListingIds(userId) : Promise.resolve(new Set<string>()),
@@ -2355,6 +2382,10 @@ export async function registerRoutes(
       // include per-user isLiked so they must stay private/uncached.
       if (!userId) {
         res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+        if (!search && !type && !category && !location && !verified && !minValue && !maxValue) {
+          const cacheKey = `listings:${country ?? ""}:${city ?? ""}:${limit}:${offset}:${seedParam}:${worldwide}`;
+          setCachedListings(cacheKey, enriched);
+        }
       } else {
         res.set("Cache-Control", "private, no-cache");
       }
@@ -2368,7 +2399,7 @@ export async function registerRoutes(
   app.get("/api/listings/user/:userId", requireAuth, async (req, res) => {
     try {
       const listings = await storage.getListingsByUser(param(req.params.userId));
-      const commentCounts = await storage.getListingCommentCounts();
+      const commentCounts = await storage.getListingCommentCounts(listings.map(l => l.id));
       const enriched = listings.map(l => ({ ...l, commentCount: commentCounts.get(l.id) || 0 }));
       res.json(enriched);
     } catch (error) {
@@ -2381,8 +2412,10 @@ export async function registerRoutes(
     try {
       const featured = await storage.getFeaturedListings();
       const userId = req.session?.userId;
-      const likedIds = userId ? await storage.getUserLikedListingIds(userId) : new Set<string>();
-      const commentCounts = await storage.getListingCommentCounts();
+      const [likedIds, commentCounts] = await Promise.all([
+        userId ? storage.getUserLikedListingIds(userId) : Promise.resolve(new Set<string>()),
+        storage.getListingCommentCounts(featured.map(l => l.id)),
+      ]);
       const enriched = featured.map(l => ({
         ...l,
         isLiked: likedIds.has(l.id),
@@ -5131,7 +5164,7 @@ export async function registerRoutes(
       // Run secondary enrichment queries independently so a failure in either
       // never prevents the main listings list from returning.
       const [commentCounts, reasonMap] = await Promise.all([
-        storage.getListingCommentCounts().catch(() => new Map<string, number>()),
+        storage.getListingCommentCounts(listingsData.map(l => l.id)).catch(() => new Map<string, number>()),
         (async () => {
           const map = new Map<string, string>();
           try {

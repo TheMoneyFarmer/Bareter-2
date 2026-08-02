@@ -32,4 +32,10 @@ export const pool = new Pool({
   console.error("[DB] Pool error:", err.message);
 });
 
+// Keepalive ping every 4 minutes — prevents Neon free tier from cold-starting
+// on user requests (free tier suspends compute after ~5 min of inactivity).
+setInterval(() => {
+  pool.query("SELECT 1").catch(() => {});
+}, 4 * 60 * 1000);
+
 export const db = drizzle({ client: pool, schema });
