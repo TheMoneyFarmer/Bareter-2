@@ -497,6 +497,7 @@ export interface IStorage {
   // Creator profiles
   getCreatorProfile(userId: string): Promise<CreatorProfile | undefined>;
   createCreatorProfile(data: InsertCreatorProfile): Promise<CreatorProfile>;
+  updateCreatorProfile(id: string, data: Partial<Pick<CreatorProfile, "displayName" | "bio" | "niche" | "primaryPlatform" | "audienceSize">>): Promise<CreatorProfile | undefined>;
 
   // Creator portfolio
   getPortfolioItems(creatorId: string): Promise<CreatorPortfolioItem[]>;
@@ -3382,6 +3383,18 @@ export class DatabaseStorage implements IStorage {
 
   async createCreatorProfile(data: InsertCreatorProfile): Promise<CreatorProfile> {
     const [row] = await db.insert(creatorProfiles).values(data).returning();
+    return row;
+  }
+
+  async updateCreatorProfile(
+    id: string,
+    data: Partial<Pick<CreatorProfile, "displayName" | "bio" | "niche" | "primaryPlatform" | "audienceSize">>,
+  ): Promise<CreatorProfile | undefined> {
+    const [row] = await db
+      .update(creatorProfiles)
+      .set(data)
+      .where(eq(creatorProfiles.id, id))
+      .returning();
     return row;
   }
 

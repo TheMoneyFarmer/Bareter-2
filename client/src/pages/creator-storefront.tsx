@@ -1,11 +1,21 @@
 import { useParams, useLocation, Link } from "wouter";
 import { BackButton } from "@/components/BackButton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Camera,
   MapPin,
@@ -21,9 +31,9 @@ import {
   Package,
   ChevronRight,
   Settings,
+  Save,
 } from "lucide-react";
 import { API_BASE, assetUrl } from "@/lib/queryClient";
-import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { useSeo } from "@/hooks/use-seo";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -254,6 +264,180 @@ function CreatorBarterCard({ listing }: { listing: any }) {
   );
 }
 
+// ── Platform + niche options ───────────────────────────────────────────────
+
+const PLATFORMS = ["Instagram", "TikTok", "YouTube", "Twitter / X", "LinkedIn", "Snapchat", "Pinterest", "Facebook", "Podcast", "Blog", "Other"];
+const NICHES = ["Fashion", "Beauty", "Tech", "Food", "Travel", "Lifestyle", "Fitness", "Business", "Finance", "Entertainment", "Gaming", "Education", "Health", "Parenting", "Sports", "Art", "Music", "Comedy", "News", "Other"];
+
+// ── Inline creator edit sheet ──────────────────────────────────────────────
+
+function CreatorEditSheet({
+  open,
+  onClose,
+  profile,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  profile: any;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [displayName, setDisplayName] = useState(profile.displayName ?? "");
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [niche, setNiche] = useState(profile.niche ?? "");
+  const [platform, setPlatform] = useState(profile.primaryPlatform ?? "");
+  const [audienceSize, setAudienceSize] = useState(profile.audienceSize ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setDisplayName(profile.displayName ?? "");
+    setBio(profile.bio ?? "");
+    setNiche(profile.niche ?? "");
+    setPlatform(profile.primaryPlatform ?? "");
+    setAudienceSize(profile.audienceSize ?? "");
+  }, [open, profile.id]);
+
+  async function handleSave() {
+    if (!displayName.trim()) return toast({ title: "Display name is required", variant: "destructive" });
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/creators/me`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: displayName.trim(),
+          bio: bio.trim() || undefined,
+          niche: niche || undefined,
+          primaryPlatform: platform || undefined,
+          audienceSize: audienceSize.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message ?? "Save failed");
+      }
+      toast({ title: "Profile saved!" });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast({ title: err.message || "Save failed", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={v => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
+        <SheetHeader className="px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
+          <SheetTitle className="flex items-center gap-2">
+            <Camera className="h-4 w-4" />
+            Edit creator profile
+          </SheetTitle>
+        </SheetHeader>
+
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-5 py-5 space-y-5">
+
+            {/* Display name */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-displayname" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Creator name *</Label>
+              <Input
+                id="cr-displayname"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Your creator handle or name"
+                maxLength={100}
+              />
+            </div>
+
+            {/* Bio */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-bio" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bio</Label>
+              <Textarea
+                id="cr-bio"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+                placeholder="Tell brands and the community what you're about…"
+                maxLength={500}
+                rows={3}
+                className="resize-none text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground text-right">{bio.length}/500</p>
+            </div>
+
+            {/* Platform */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Primary platform</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {PLATFORMS.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPlatform((cur: string) => cur === p ? "" : p)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      platform === p
+                        ? "bg-bareter-teal text-white border-bareter-teal"
+                        : "bg-muted text-muted-foreground border-border hover:border-bareter-teal/50"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Niche */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Niche / content type</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {NICHES.map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setNiche((cur: string) => cur === n ? "" : n)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      niche === n
+                        ? "bg-bareter-navy text-white border-bareter-navy"
+                        : "bg-muted text-muted-foreground border-border hover:border-bareter-navy/40"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Audience size */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-audience" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Audience size</Label>
+              <Input
+                id="cr-audience"
+                value={audienceSize}
+                onChange={e => setAudienceSize(e.target.value)}
+                placeholder="e.g. 10K–50K, 200K, 1M+"
+                maxLength={50}
+              />
+              <p className="text-[10px] text-muted-foreground">Self-reported — shown on your public profile as a barter signal.</p>
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Sticky save footer */}
+        <div className="px-5 py-4 border-t border-border flex-shrink-0 bg-background">
+          <Button className="w-full gap-2" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function CreatorStorefrontPage() {
@@ -264,6 +448,7 @@ export function CreatorStorefrontPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery<CreatorStorefrontData | null>({
     queryKey: ["/api/creators", userId],
@@ -390,7 +575,7 @@ export function CreatorStorefrontPage() {
               size="sm"
               variant="outline"
               className="gap-1.5 text-xs bg-black/20 border-white/30 text-white hover:bg-black/30 hover:text-white backdrop-blur-sm"
-              onClick={() => navigate("/settings?tab=creator")}
+              onClick={() => setEditOpen(true)}
             >
               <Settings className="h-3.5 w-3.5" />
               Edit profile
@@ -592,6 +777,14 @@ export function CreatorStorefrontPage() {
           )}
         </section>
       </div>
+
+      {/* ── Inline creator edit sheet ── */}
+      <CreatorEditSheet
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        profile={data}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["/api/creators", userId] })}
+      />
     </div>
   );
 }

@@ -12270,6 +12270,30 @@ export async function registerRoutes(
     }
   });
 
+  // PATCH /api/creators/me — update own creator profile (displayName, bio, niche, platform, audience)
+  app.patch("/api/creators/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await storage.getCreatorProfile(userId);
+      if (!profile) return res.status(404).json({ message: "Creator profile not found" });
+
+      const schema = z.object({
+        displayName:     z.string().min(1).max(100).optional(),
+        bio:             z.string().max(500).optional(),
+        niche:           z.string().max(100).optional(),
+        primaryPlatform: z.string().max(100).optional(),
+        audienceSize:    z.string().max(50).optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const updated = await storage.updateCreatorProfile(profile.id, parsed);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      console.error("Update creator profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // GET /api/creators/:userId — public storefront: profile + portfolio + active listings + stats
   app.get("/api/creators/:userId", async (req, res) => {
     try {
