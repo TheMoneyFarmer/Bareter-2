@@ -47,7 +47,7 @@ function CreatorCard({ creator }: { creator: CreatorUser }) {
     <Card className="group hover:shadow-md transition-shadow">
       <CardContent className="p-5">
         <div className="flex items-start gap-3">
-          <Link href={`/users/${creator.id}`}>
+          <Link href={`/creators/${creator.id}`}>
             <Avatar className="h-14 w-14 ring-2 ring-transparent group-hover:ring-primary/20 transition-all cursor-pointer">
               <AvatarImage src={creator.avatarUrl ?? undefined} />
               <AvatarFallback>{creator.fullName?.charAt(0) ?? "C"}</AvatarFallback>
@@ -55,7 +55,7 @@ function CreatorCard({ creator }: { creator: CreatorUser }) {
           </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Link href={`/users/${creator.id}`}>
+              <Link href={`/creators/${creator.id}`}>
                 <span className="font-semibold text-sm hover:text-primary transition-colors cursor-pointer truncate">{creator.fullName}</span>
               </Link>
               {creator.isVerified && <VerifiedBadge size="sm" />}
@@ -99,7 +99,7 @@ function CreatorCard({ creator }: { creator: CreatorUser }) {
           </div>
         )}
 
-        <Link href={`/users/${creator.id}`}>
+        <Link href={`/creators/${creator.id}`}>
           <Button variant="outline" size="sm" className="w-full mt-4 text-xs h-8 gap-1.5">
             <Camera className="h-3.5 w-3.5" />
             View Profile

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Building2,
   MapPin,
@@ -34,6 +42,8 @@ import {
   X,
   Loader2,
   ArrowLeftRight,
+  Camera,
+  Save,
 } from "lucide-react";
 import { API_BASE, assetUrl, apiRequest } from "@/lib/queryClient";
 import { BackButton } from "@/components/BackButton";
@@ -486,6 +496,290 @@ function AddProductDialog({
   );
 }
 
+// ── Business categories ────────────────────────────────────────────────────
+
+const BIZ_CATEGORIES = [
+  "Retail", "Food & Beverage", "Fashion & Apparel", "Electronics", "Health & Beauty",
+  "Real Estate", "Automotive", "Travel & Hospitality", "Education", "Media & Entertainment",
+  "Finance & Legal", "Construction", "Logistics & Shipping", "Technology", "Events",
+  "Sports & Fitness", "Home & Garden", "Art & Crafts", "Manufacturing", "Other",
+];
+
+const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const EDIT_DAY_LABELS: Record<string, string> = {
+  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
+};
+type EditDayKey = typeof DAYS[number];
+const defaultHours = () =>
+  Object.fromEntries(DAYS.map(d => [d, { open: "09:00", close: "18:00", closed: d === "sun" }])) as Record<EditDayKey, { open: string; close: string; closed: boolean }>;
+
+// ── Inline business edit sheet ─────────────────────────────────────────────
+
+function BusinessEditSheet({
+  open,
+  onClose,
+  profile,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  profile: any;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [companyName, setCompanyName] = useState(profile.companyName ?? "");
+  const [category, setCategory] = useState(profile.category ?? "");
+  const [description, setDescription] = useState(profile.description ?? "");
+  const [location, setLocation] = useState(profile.location ?? "");
+  const [website, setWebsite] = useState(profile.websiteDisplay ?? "");
+  const [hours, setHours] = useState<Record<EditDayKey, { open: string; close: string; closed: boolean }>>(
+    profile.businessHours ? { ...defaultHours(), ...profile.businessHours } : defaultHours()
+  );
+  const [saving, setSaving] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const coverRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  // Sync when profile changes (e.g. after an image upload refreshes data)
+  useEffect(() => {
+    setCompanyName(profile.companyName ?? "");
+    setCategory(profile.category ?? "");
+    setDescription(profile.description ?? "");
+    setLocation(profile.location ?? "");
+    setWebsite(profile.websiteDisplay ?? "");
+    setHours(profile.businessHours ? { ...defaultHours(), ...profile.businessHours } : defaultHours());
+  }, [profile.id, open]);
+
+  async function handleSave() {
+    if (!companyName.trim()) return toast({ title: "Company name is required", variant: "destructive" });
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/businesses/${profile.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: companyName.trim(),
+          category: category.trim() || undefined,
+          description: description.trim() || undefined,
+          location: location.trim() || undefined,
+          websiteDisplay: website.trim() || undefined,
+          businessHours: hours,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message ?? "Save failed");
+      }
+      toast({ title: "Business profile saved!" });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      toast({ title: err.message || "Save failed", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function uploadImage(file: File, endpoint: string, setUploading: (v: boolean) => void) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message ?? "Upload failed");
+      }
+      onSaved();
+      toast({ title: "Image updated!" });
+    } catch (err: any) {
+      toast({ title: err.message || "Upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={v => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
+        <SheetHeader className="px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
+          <SheetTitle className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Edit business profile
+          </SheetTitle>
+        </SheetHeader>
+
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-5 py-5 space-y-6">
+
+            {/* ── Cover + Logo images ───────────────────────────────── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Storefront images</p>
+
+              {/* Cover */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Cover banner</Label>
+                <div
+                  className="relative w-full h-28 rounded-xl overflow-hidden bg-muted border border-border cursor-pointer group"
+                  onClick={() => coverRef.current?.click()}
+                >
+                  {profile.coverImageUrl ? (
+                    <img src={assetUrl(profile.coverImageUrl)} alt="Cover" className="w-full h-full object-cover group-hover:brightness-75 transition-all" />
+                  ) : (
+                    <div className="w-full h-full bg-bareter-navy/10 flex items-center justify-center">
+                      <Camera className="h-8 w-8 text-muted-foreground/40" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    {uploadingCover
+                      ? <Loader2 className="h-6 w-6 text-white animate-spin" />
+                      : <div className="flex items-center gap-1.5 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full"><Camera className="h-3.5 w-3.5" /> Change cover</div>}
+                  </div>
+                </div>
+                <input ref={coverRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f, `/api/businesses/${profile.id}/cover`, setUploadingCover); e.target.value = ""; }} />
+              </div>
+
+              {/* Logo */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Logo</Label>
+                <div className="flex items-center gap-4">
+                  <div
+                    className="relative h-20 w-20 rounded-xl overflow-hidden bg-muted border border-border cursor-pointer group flex-shrink-0"
+                    onClick={() => logoRef.current?.click()}
+                  >
+                    {profile.logoUrl ? (
+                      <img src={assetUrl(profile.logoUrl)} alt="Logo" className="w-full h-full object-cover group-hover:brightness-75 transition-all" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Building2 className="h-8 w-8 text-muted-foreground/40" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {uploadingLogo
+                        ? <Loader2 className="h-5 w-5 text-white animate-spin" />
+                        : <Camera className="h-5 w-5 text-white" />}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Tap your logo to replace it. Square images work best.</p>
+                </div>
+                <input ref={logoRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f, `/api/businesses/${profile.id}/logo`, setUploadingLogo); e.target.value = ""; }} />
+              </div>
+            </div>
+
+            {/* ── Business details ──────────────────────────────────── */}
+            <div className="space-y-4 border-t border-border pt-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Business details</p>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-company-name" className="text-xs">Company name *</Label>
+                <Input id="edit-company-name" value={companyName} onChange={e => setCompanyName(e.target.value)} maxLength={200} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Category</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {BIZ_CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory((c: string) => c === cat ? "" : cat)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        category === cat
+                          ? "bg-bareter-teal text-white border-bareter-teal"
+                          : "bg-muted text-muted-foreground border-border hover:border-bareter-teal/50"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-description" className="text-xs">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="Tell visitors what your business offers…"
+                  maxLength={2000}
+                  rows={3}
+                  className="resize-none text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-location" className="text-xs">Location</Label>
+                  <Input id="edit-location" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Dubai Marina, UAE" maxLength={200} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-website" className="text-xs">Website</Label>
+                  <Input id="edit-website" value={website} onChange={e => setWebsite(e.target.value)} placeholder="www.example.com" maxLength={300} />
+                  <p className="text-[10px] text-muted-foreground">Shown as plain text, not a link.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Business hours ────────────────────────────────────── */}
+            <div className="space-y-3 border-t border-border pt-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Business hours <span className="font-normal normal-case">(Dubai time)</span>
+              </p>
+              <div className="space-y-2">
+                {DAYS.map(day => (
+                  <div key={day} className="flex items-center gap-2.5">
+                    <span className="w-8 text-xs font-medium text-muted-foreground shrink-0">{EDIT_DAY_LABELS[day]}</span>
+                    <Checkbox
+                      checked={!hours[day]?.closed}
+                      onCheckedChange={v => setHours(h => ({ ...h, [day]: { ...h[day], closed: !v } }))}
+                    />
+                    {!hours[day]?.closed ? (
+                      <>
+                        <Input
+                          type="time"
+                          value={hours[day]?.open ?? "09:00"}
+                          onChange={e => setHours(h => ({ ...h, [day]: { ...h[day], open: e.target.value } }))}
+                          className="h-7 w-28 text-xs"
+                        />
+                        <span className="text-xs text-muted-foreground">–</span>
+                        <Input
+                          type="time"
+                          value={hours[day]?.close ?? "18:00"}
+                          onChange={e => setHours(h => ({ ...h, [day]: { ...h[day], close: e.target.value } }))}
+                          className="h-7 w-28 text-xs"
+                        />
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Closed</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Sticky save footer */}
+        <div className="px-5 py-4 border-t border-border flex-shrink-0 bg-background">
+          <Button className="w-full gap-2" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function BusinessStorefrontPage() {
@@ -499,6 +793,7 @@ export function BusinessStorefrontPage() {
   const [maxAed, setMaxAed] = useState("");
   const [mgmtTab, setMgmtTab] = useState<"active" | "pending" | "inactive">("active");
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -661,7 +956,7 @@ export function BusinessStorefrontPage() {
               size="sm"
               variant="outline"
               className="gap-1.5 text-xs bg-black/20 border-white/30 text-white hover:bg-black/30 hover:text-white backdrop-blur-sm"
-              onClick={() => navigate("/settings")}
+              onClick={() => setEditOpen(true)}
             >
               <Settings className="h-3.5 w-3.5" />
               Edit business
@@ -1022,6 +1317,14 @@ export function BusinessStorefrontPage() {
         onClose={() => setShowAddProduct(false)}
         businessId={profile.id}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/businesses", id, "catalog"] })}
+      />
+
+      {/* ── Inline business edit sheet ── */}
+      <BusinessEditSheet
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        profile={profile}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["/api/businesses", id, "storefront"] })}
       />
     </div>
   );

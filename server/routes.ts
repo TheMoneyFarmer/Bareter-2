@@ -13249,6 +13249,8 @@ export async function registerRoutes(
       }
 
       const schema = z.object({
+        companyName:    z.string().min(1).max(200).optional(),
+        category:       z.string().max(100).optional(),
         description:    z.string().max(2000).optional(),
         location:       z.string().max(200).optional(),
         websiteDisplay: z.string().max(300).optional(),

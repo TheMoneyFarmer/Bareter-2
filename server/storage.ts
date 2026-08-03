@@ -487,7 +487,7 @@ export interface IStorage {
   getBusinessProfileByOwnerId(ownerId: string): Promise<BusinessProfile | undefined>;
   getBusinessProfileByDiditSession(sessionId: string): Promise<{ id: string; ownerId: string } | undefined>;
   updateBusinessProfile(id: string, data: Partial<Pick<BusinessProfile, "kybStatus" | "kybVerifiedAt" | "diditSessionId">>): Promise<BusinessProfile | undefined>;
-  updateBusinessProfileSettings(id: string, data: Partial<Pick<BusinessProfile, "coverImageUrl" | "logoUrl" | "description" | "businessHours" | "location" | "websiteDisplay" | "isFeatured" | "isActive">>): Promise<BusinessProfile | undefined>;
+  updateBusinessProfileSettings(id: string, data: Partial<Pick<BusinessProfile, "companyName" | "category" | "coverImageUrl" | "logoUrl" | "description" | "businessHours" | "location" | "websiteDisplay" | "isFeatured" | "isActive">>): Promise<BusinessProfile | undefined>;
 
   // Business members
   getBusinessMembership(userId: string, businessId: string): Promise<BusinessMember | undefined>;
@@ -3344,7 +3344,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateBusinessProfileSettings(
     id: string,
-    data: Partial<Pick<BusinessProfile, "coverImageUrl" | "logoUrl" | "description" | "businessHours" | "location" | "websiteDisplay" | "isFeatured" | "isActive">>,
+    data: Partial<Pick<BusinessProfile, "companyName" | "category" | "coverImageUrl" | "logoUrl" | "description" | "businessHours" | "location" | "websiteDisplay" | "isFeatured" | "isActive">>,
   ): Promise<BusinessProfile | undefined> {
     const [row] = await db
       .update(businessProfiles)
