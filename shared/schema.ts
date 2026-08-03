@@ -2690,6 +2690,23 @@ export const businessMembers = pgTable("business_members", {
 export type BusinessMember = typeof businessMembers.$inferSelect;
 export type InsertBusinessMember = typeof businessMembers.$inferInsert;
 
+// ── Business Catalog Products ──────────────────────────────────────────────────
+export const businessCatalogProducts = pgTable("business_catalog_products", {
+  id:          varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  businessId:  varchar("business_id", { length: 36 }).notNull().references(() => businessProfiles.id),
+  name:        text("name").notNull(),
+  description: text("description"),
+  price:       decimal("price", { precision: 10, scale: 2 }),
+  currency:    text("currency").notNull().default("AED"),
+  images:      jsonb("images").$type<string[]>().notNull().default([]),
+  isActive:    boolean("is_active").notNull().default(true),
+  createdAt:   timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("bcp_business_id_idx").on(table.businessId),
+]);
+export type BusinessCatalogProduct = typeof businessCatalogProducts.$inferSelect;
+export type InsertBusinessCatalogProduct = typeof businessCatalogProducts.$inferInsert;
+
 // ── Creator Profiles ───────────────────────────────────────────────────────────
 // NO URL / LINK / HANDLE / EXTERNAL-REF FIELDS.
 // primary_platform: plain text label only (e.g. "Instagram").

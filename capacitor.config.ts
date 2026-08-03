@@ -46,6 +46,9 @@ const config: CapacitorConfig = {
       style: 'LIGHT',             // light (white) icons on dark teal
       overlaysWebView: false,     // push content below status bar, not underneath
     },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
   },
 };
 

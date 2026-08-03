@@ -43,6 +43,10 @@
 	<string>Bareter needs permission to save photos to your library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Bareter needs photo library access to upload images for your listings and profile.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

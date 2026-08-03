@@ -392,6 +392,12 @@ export function CreateListingPage() {
     const params = new URLSearchParams(window.location.search);
     const draftId = params.get("draft");
 
+    // Pre-select listing mode from storefront "Add Listing" button
+    const modeParam = params.get("mode");
+    if (modeParam && ["business_product", "business_wholesale", "business_service"].includes(modeParam)) {
+      setListingMode(modeParam as "business_product" | "business_wholesale" | "business_service");
+    }
+
     // Pre-fill from rejected proposal redirect (?prefill=1)
     if (params.get("prefill") === "1") {
       const title = params.get("title") || "";

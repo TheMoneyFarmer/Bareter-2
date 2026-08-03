@@ -79,6 +79,7 @@ import {
   creatorPortfolioItems,
   businessMembers,
   savedFolders,
+  businessCatalogProducts,
 } from "@shared/schema";
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
@@ -13604,6 +13605,167 @@ export async function registerRoutes(
       res.json({ message: "Member removed" });
     } catch (error) {
       console.error("Remove business member error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Business Catalog Products ──────────────────────────────────────────────
+
+  // GET /api/businesses/:id/catalog — public
+  app.get("/api/businesses/:id/catalog", async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const products = await db
+        .select()
+        .from(businessCatalogProducts)
+        .where(and(eq(businessCatalogProducts.businessId, businessId), eq(businessCatalogProducts.isActive, true)))
+        .orderBy(desc(businessCatalogProducts.createdAt));
+      res.json(products);
+    } catch (error) {
+      console.error("Get business catalog error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/businesses/:id/catalog — owner or admin member, up to 5 images
+  app.post("/api/businesses/:id/catalog", requireAuth, upload.array("images", 5), async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const userId = req.session.userId!;
+
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner) {
+        const requestingUser = await storage.getUser(userId);
+        if (!(await isAllowlistedAdmin(requestingUser))) {
+          const membership = await storage.getBusinessMembership(userId, businessId);
+          if (!membership || membership.role !== "admin") {
+            return res.status(403).json({ message: "Not authorised" });
+          }
+        }
+      }
+
+      const name = (req.body.name ?? "").trim();
+      if (!name) return res.status(400).json({ message: "Product name is required" });
+
+      const imageUrls: string[] = [];
+      const files = (req.files as Express.Multer.File[]) ?? [];
+      for (const file of files) {
+        const detected = await detectAllowedFileType(file.buffer);
+        if (!detected || !detected.mime.startsWith("image/")) continue;
+        if (r2Enabled()) {
+          imageUrls.push(await uploadToR2(generateR2Key("catalog", detected.ext), file.buffer, detected.mime));
+        } else if (process.env.REPL_ID) {
+          return res.status(503).json({ message: "File storage not configured. Contact support." });
+        } else {
+          const random = crypto.randomBytes(24).toString("hex");
+          const filename = `${random}.${detected.ext}`;
+          fs.writeFileSync(`${uploadDir}/${filename}`, file.buffer);
+          imageUrls.push(`/uploads/${filename}`);
+        }
+      }
+
+      const priceRaw = req.body.price ? parseFloat(req.body.price) : null;
+      const [product] = await db.insert(businessCatalogProducts).values({
+        businessId,
+        name,
+        description: (req.body.description ?? "").trim() || null,
+        price: priceRaw != null && !isNaN(priceRaw) ? String(priceRaw) : null,
+        currency: "AED",
+        images: imageUrls,
+      }).returning();
+
+      res.status(201).json(product);
+    } catch (error) {
+      console.error("Create catalog product error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PATCH /api/businesses/:id/catalog/:productId
+  app.patch("/api/businesses/:id/catalog/:productId", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const productId = param(req.params.productId);
+      const userId = req.session.userId!;
+
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner) {
+        const requestingUser = await storage.getUser(userId);
+        if (!(await isAllowlistedAdmin(requestingUser))) {
+          const membership = await storage.getBusinessMembership(userId, businessId);
+          if (!membership || membership.role !== "admin") {
+            return res.status(403).json({ message: "Not authorised" });
+          }
+        }
+      }
+
+      const allowed = z.object({
+        name: z.string().min(1).max(200).optional(),
+        description: z.string().max(2000).nullable().optional(),
+        price: z.union([z.string(), z.number()]).nullable().optional(),
+        isActive: z.boolean().optional(),
+      });
+      const parsed = allowed.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid fields" });
+
+      const updates: Record<string, unknown> = {};
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (parsed.data.description !== undefined) updates.description = parsed.data.description;
+      if (parsed.data.price !== undefined) {
+        const p = parsed.data.price !== null ? parseFloat(String(parsed.data.price)) : null;
+        updates.price = p != null && !isNaN(p) ? String(p) : null;
+      }
+      if (parsed.data.isActive !== undefined) updates.isActive = parsed.data.isActive;
+
+      const [updated] = await db
+        .update(businessCatalogProducts)
+        .set(updates)
+        .where(and(eq(businessCatalogProducts.id, productId), eq(businessCatalogProducts.businessId, businessId)))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Product not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Update catalog product error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/businesses/:id/catalog/:productId — soft delete
+  app.delete("/api/businesses/:id/catalog/:productId", requireAuth, async (req, res) => {
+    try {
+      const businessId = param(req.params.id);
+      const productId = param(req.params.productId);
+      const userId = req.session.userId!;
+
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+
+      const isOwner = profile.ownerId === userId;
+      if (!isOwner) {
+        const requestingUser = await storage.getUser(userId);
+        if (!(await isAllowlistedAdmin(requestingUser))) {
+          const membership = await storage.getBusinessMembership(userId, businessId);
+          if (!membership || membership.role !== "admin") {
+            return res.status(403).json({ message: "Not authorised" });
+          }
+        }
+      }
+
+      await db
+        .update(businessCatalogProducts)
+        .set({ isActive: false })
+        .where(and(eq(businessCatalogProducts.id, productId), eq(businessCatalogProducts.businessId, businessId)));
+
+      res.json({ message: "Product removed" });
+    } catch (error) {
+      console.error("Delete catalog product error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
