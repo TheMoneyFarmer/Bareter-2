@@ -12,7 +12,6 @@ import {
   Shield,
   Users,
   Play,
-  Upload,
   Loader2,
   ArrowLeftRight,
   Clapperboard,
@@ -20,11 +19,10 @@ import {
   Plus,
   Trash2,
   Package,
-  Star,
-  Sparkles,
   ChevronRight,
+  Settings,
 } from "lucide-react";
-import { API_BASE, assetUrl, apiRequest } from "@/lib/queryClient";
+import { API_BASE, assetUrl } from "@/lib/queryClient";
 import { ListingCard as BrandListingCard } from "@/components/ListingCard";
 import { useSeo } from "@/hooks/use-seo";
 import { useAuth } from "@/lib/auth";
@@ -175,14 +173,16 @@ function PortfolioMediaCard({
   );
 }
 
-// ── Stat pill ──────────────────────────────────────────────────────────────
+// ── Stat chip (below cover) ────────────────────────────────────────────────
 
-function StatPill({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10 text-center">
-      <div className="text-white/80">{icon}</div>
-      <p className="text-white font-bold text-lg leading-none">{value}</p>
-      <p className="text-white/60 text-[10px] uppercase tracking-wider">{label}</p>
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/60 border border-border text-sm">
+      <span className="text-bareter-teal">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider leading-none mb-0.5">{label}</p>
+        <p className="font-semibold text-foreground text-sm leading-none truncate">{value}</p>
+      </div>
     </div>
   );
 }
@@ -377,13 +377,10 @@ export function CreatorStorefrontPage() {
 
   return (
     <div className="min-h-screen bg-bareter-off-white dark:bg-background">
-      {/* ── ① Cover banner + avatar ─────────────────────────────────────────── */}
-      <div className="relative w-full h-48 sm:h-56 overflow-hidden">
-        {/* Purple-violet gradient cover — creator identity colour */}
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-900 via-purple-800 to-fuchsia-700" />
-        {/* Subtle noise texture overlay */}
-        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white to-transparent" />
 
+      {/* ── ① Cover banner — brand navy/teal, no content inside ──────────── */}
+      <div className="relative w-full h-44 sm:h-56 bg-bareter-navy overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-bareter-navy via-bareter-navy/90 to-bareter-teal/50" />
         <div className="absolute top-4 start-4">
           <BackButton fallback="/creators" label="Creators" variant="overlay" />
         </div>
@@ -395,82 +392,72 @@ export function CreatorStorefrontPage() {
               className="gap-1.5 text-xs bg-black/20 border-white/30 text-white hover:bg-black/30 hover:text-white backdrop-blur-sm"
               onClick={() => navigate("/settings?tab=creator")}
             >
+              <Settings className="h-3.5 w-3.5" />
               Edit profile
             </Button>
           </div>
         )}
-
-        {/* Stat pills sit at the bottom of the cover */}
-        <div className="absolute bottom-4 start-4 end-4 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-          {primaryPlatform && (
-            <StatPill
-              icon={<Sparkles className="h-3.5 w-3.5" />}
-              label="Platform"
-              value={primaryPlatform}
-            />
-          )}
-          {audienceSize && (
-            <StatPill
-              icon={<Users className="h-3.5 w-3.5" />}
-              label="Audience"
-              value={audienceSize}
-            />
-          )}
-          {niche && (
-            <StatPill
-              icon={<Star className="h-3.5 w-3.5" />}
-              label="Niche"
-              value={niche}
-            />
-          )}
-          {totalCompletedDeals > 0 && (
-            <StatPill
-              icon={<ArrowLeftRight className="h-3.5 w-3.5" />}
-              label="Deals done"
-              value={totalCompletedDeals}
-            />
-          )}
-        </div>
       </div>
 
       <div className="container mx-auto max-w-4xl px-4">
-        {/* Avatar + name row */}
-        <div className="flex items-end gap-4 -mt-12 mb-5">
-          <Avatar className="h-24 w-24 flex-shrink-0 ring-4 ring-background shadow-lg">
+
+        {/* ── Avatar + name — overlaps cover ──────────────────────────────── */}
+        <div className="flex items-end gap-4 -mt-10 mb-4">
+          <Avatar className="h-20 w-20 flex-shrink-0 ring-4 ring-background shadow-md">
             <AvatarImage src={assetUrl(user?.avatarUrl)} alt={displayName} />
-            <AvatarFallback className="bg-violet-700 text-white text-2xl font-bold">
+            <AvatarFallback className="bg-bareter-navy text-white text-xl font-bold">
               {initials}
             </AvatarFallback>
           </Avatar>
-          <div className="pb-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-foreground leading-tight">{displayName}</h1>
-              {user?.isVerified && (
-                <Shield className="h-5 w-5 text-bareter-teal flex-shrink-0" />
-              )}
-              <Badge className="gap-1 text-xs bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800">
-                <Camera className="h-3 w-3" />
-                Creator
-              </Badge>
-            </div>
-            {(user?.city || user?.country) && (
-              <p className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
-                <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-                {[user?.city, user?.country].filter(Boolean).join(", ")}
-              </p>
-            )}
-          </div>
         </div>
 
-        {/* Bio */}
-        {bio && (
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl mb-6 border-b border-border pb-5">
-            {bio}
-          </p>
-        )}
+        {/* ── Name + badges ───────────────────────────────────────────────── */}
+        <div className="space-y-2 pb-4 border-b border-border">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground leading-tight">{displayName}</h1>
+            {user?.isVerified && (
+              <Shield className="h-5 w-5 text-bareter-teal flex-shrink-0" />
+            )}
+            <Badge variant="outline" className="gap-1 text-xs border-bareter-teal/40 text-bareter-teal bg-bareter-teal/5">
+              <Camera className="h-3 w-3" />
+              Creator
+            </Badge>
+          </div>
+
+          {(user?.city || user?.country) && (
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+              {[user?.city, user?.country].filter(Boolean).join(", ")}
+            </p>
+          )}
+
+          {/* ── Stat chips — horizontal row, never inside cover ────────── */}
+          {(primaryPlatform || audienceSize || niche || totalCompletedDeals > 0) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {primaryPlatform && (
+                <StatChip icon={<Camera className="h-3.5 w-3.5" />} label="Platform" value={primaryPlatform} />
+              )}
+              {audienceSize && (
+                <StatChip icon={<Users className="h-3.5 w-3.5" />} label="Audience" value={audienceSize} />
+              )}
+              {niche && (
+                <StatChip icon={<ArrowLeftRight className="h-3.5 w-3.5" />} label="Niche" value={niche} />
+              )}
+              {totalCompletedDeals > 0 && (
+                <StatChip icon={<ArrowLeftRight className="h-3.5 w-3.5" />} label="Deals done" value={totalCompletedDeals} />
+              )}
+            </div>
+          )}
+
+          {bio && (
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl pt-1">
+              {bio}
+            </p>
+          )}
+        </div>
 
         {/* ── ② Portfolio / Work section ─────────────────────────────────────── */}
-        <section className="mb-10">
+        <section className="mb-10 mt-6">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
