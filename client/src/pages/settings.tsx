@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { WhatsappSettingsToggle } from "@/components/whatsapp-settings-toggle";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +20,16 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
@@ -134,10 +144,11 @@ type PasswordChangeStep = "form" | "otp";
 
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { language: activeLanguage, setLanguage, t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [mobileView, setMobileView] = useState<"menu" | "section">("menu");
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== "undefined") {
@@ -149,6 +160,12 @@ export function SettingsPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     (user?.preferredCategories as string[]) || []
   );
+  // Deletion dialog state
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
+  const [deleteCreatorOpen, setDeleteCreatorOpen] = useState(false);
+  const [deleteBusinessOpen, setDeleteBusinessOpen] = useState(false);
+
   const [passwordChangeStep, setPasswordChangeStep] = useState<PasswordChangeStep>("form");
   const [pendingPasswordData, setPendingPasswordData] = useState<{ currentPassword: string; newPassword: string } | null>(null);
   const [otpValue, setOtpValue] = useState("");
@@ -589,6 +606,66 @@ export function SettingsPage() {
         description: error.message || t("settings.otpInvalid"),
         variant: "destructive",
       });
+    },
+  });
+
+  const deleteCreatorMutation = useMutation({
+    mutationFn: async () => {
+      const hdrs = await mobileHeaders();
+      const res = await fetch(`${API_BASE}/api/creators/me`, { method: "DELETE", credentials: "include", headers: hdrs });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "Failed to delete creator profile");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Creator profile deleted", description: "Your creator profile has been removed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/creators/me"] });
+      setDeleteCreatorOpen(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete creator profile", variant: "destructive" });
+    },
+  });
+
+  const deleteBusinessMutation = useMutation({
+    mutationFn: async (businessId: string) => {
+      const hdrs = await mobileHeaders();
+      const res = await fetch(`${API_BASE}/api/businesses/${businessId}/self`, { method: "DELETE", credentials: "include", headers: hdrs });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "Failed to delete business profile");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Business profile deleted", description: "Your business profile has been removed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses/me"] });
+      setDeleteBusinessOpen(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete business profile", variant: "destructive" });
+    },
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (password: string) => {
+      const hdrs = await mobileHeaders();
+      const res = await fetch(`${API_BASE}/api/me`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...hdrs },
+        body: JSON.stringify({ password }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || "Failed to delete account");
+      return json;
+    },
+    onSuccess: () => {
+      toast({ title: "Account deleted", description: "Your account has been permanently deleted." });
+      setDeleteAccountOpen(false);
+      logout?.();
+      navigate("/");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Could not delete account", variant: "destructive" });
     },
   });
 
@@ -1693,7 +1770,7 @@ export function SettingsPage() {
                       {t("settings.deleteAccountDesc")}
                     </p>
                   </div>
-                  <Button variant="destructive" size="sm" data-testid="button-delete-account">
+                  <Button variant="destructive" size="sm" data-testid="button-delete-account" onClick={() => { setDeleteAccountPassword(""); setDeleteAccountOpen(true); }}>
                     <Trash2 className="h-4 w-4 mr-2" />
                     {t("settings.deleteAccount")}
                   </Button>
@@ -2215,9 +2292,128 @@ export function SettingsPage() {
               </CardContent>
             </Card>
 
+            {/* ── Profile Danger Zone ── */}
+            {(creatorProfile || businessProfile) && (
+              <Card className="border-destructive/40">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-destructive text-base flex items-center gap-2">
+                    <Trash2 className="h-4 w-4" />
+                    Remove Profiles
+                  </CardTitle>
+                  <CardDescription>These actions only remove the profile — your main account stays active.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {creatorProfile && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Delete creator profile</p>
+                        <p className="text-xs text-muted-foreground">Removes your creator page and portfolio. Cannot be undone.</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => setDeleteCreatorOpen(true)}>
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                  {creatorProfile && businessProfile && <Separator />}
+                  {businessProfile && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Delete business profile</p>
+                        <p className="text-xs text-muted-foreground">Removes your business page, catalog, and team. Existing deals are preserved.</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="border-destructive/50 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => setDeleteBusinessOpen(true)}>
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ── Delete Account Dialog ── */}
+      <AlertDialog open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Permanently delete your account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will erase all your listings, deals, messages, and profile data. This cannot be undone. Enter your password to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Input
+              type="password"
+              placeholder="Your password"
+              value={deleteAccountPassword}
+              onChange={e => setDeleteAccountPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteAccountMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={!deleteAccountPassword || deleteAccountMutation.isPending}
+              onClick={(e) => { e.preventDefault(); deleteAccountMutation.mutate(deleteAccountPassword); }}
+            >
+              {deleteAccountMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete my account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Delete Creator Profile Dialog ── */}
+      <AlertDialog open={deleteCreatorOpen} onOpenChange={setDeleteCreatorOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Delete creator profile?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your creator page and all portfolio items will be permanently removed. Your main Bareter account stays intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteCreatorMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={deleteCreatorMutation.isPending}
+              onClick={(e) => { e.preventDefault(); deleteCreatorMutation.mutate(); }}
+            >
+              {deleteCreatorMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Yes, delete creator profile
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Delete Business Profile Dialog ── */}
+      <AlertDialog open={deleteBusinessOpen} onOpenChange={setDeleteBusinessOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Delete business profile?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your business page, product catalog, and team members will be permanently removed. Existing barter deals are preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusinessMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={deleteBusinessMutation.isPending}
+              onClick={(e) => { e.preventDefault(); if (businessProfile) deleteBusinessMutation.mutate(businessProfile.id); }}
+            >
+              {deleteBusinessMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Yes, delete business profile
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       </div>{/* end content wrapper */}
     </div>
   );

@@ -13795,6 +13795,132 @@ export async function registerRoutes(
     }
   });
 
+  // DELETE /api/creators/me — self-service: delete creator profile + portfolio items
+  app.delete("/api/creators/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const profile = await storage.getCreatorProfile(userId);
+      if (!profile) return res.status(404).json({ message: "No creator profile found" });
+
+      await db.transaction(async (tx) => {
+        await tx.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
+        await tx.delete(creatorProfiles).where(eq(creatorProfiles.userId, userId));
+      });
+
+      res.json({ message: "Creator profile deleted" });
+    } catch (error) {
+      console.error("Delete creator profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/businesses/:id/self — owner-initiated business profile deletion
+  app.delete("/api/businesses/:id/self", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const businessId = param(req.params.id);
+      const profile = await storage.getBusinessProfile(businessId);
+      if (!profile) return res.status(404).json({ message: "Business not found" });
+      if (profile.ownerId !== userId) return res.status(403).json({ message: "Only the owner can delete this business" });
+
+      await db.transaction(async (tx) => {
+        await tx.delete(businessCatalogProducts).where(eq(businessCatalogProducts.businessId, businessId));
+        await tx.delete(businessMembers).where(eq(businessMembers.businessId, businessId));
+        // Soft-delete listings owned by this business so deal history is preserved
+        await tx.update(listings).set({ isActive: false, deletedAt: new Date() }).where(eq(listings.businessId, businessId));
+        await tx.delete(businessProfiles).where(eq(businessProfiles.id, businessId));
+      });
+
+      res.json({ message: "Business profile deleted" });
+    } catch (error) {
+      console.error("Delete business profile error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/me — self-service full account deletion with password confirmation
+  const PROTECTED_SELF_DELETE = new Set(["thandolwenkosimceeyah@gmail.com", "thando@bareter.com"]);
+  app.delete("/api/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (PROTECTED_SELF_DELETE.has(user.email.toLowerCase())) {
+        return res.status(403).json({ message: "This account cannot be self-deleted" });
+      }
+
+      const { password } = req.body;
+      if (!password || typeof password !== "string") {
+        return res.status(400).json({ message: "Password is required to delete your account" });
+      }
+      if (!user.password) return res.status(400).json({ message: "No password set on this account" });
+      const valid = await bcrypt.compare(password, user.password);
+      if (!valid) return res.status(401).json({ message: "Incorrect password" });
+
+      await destroyUserSessions(userId);
+      const userEmail = user.email;
+      const cryptoMod = await import("crypto");
+      const emailHash = cryptoMod.createHash("sha256").update(userEmail.trim().toLowerCase()).digest("hex");
+
+      await db.transaction(async (tx) => {
+        await tx.insert(bannedEmails).values({ email: emailHash, bannedBy: null, reason: "self_deletion" }).onConflictDoNothing();
+
+        const userDealRows = await tx.select({ id: deals.id }).from(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+        for (const d of userDealRows) {
+          await tx.delete(messages).where(eq(messages.dealId, d.id));
+          await tx.delete(dealMilestones).where(eq(dealMilestones.dealId, d.id));
+        }
+        await tx.delete(deals).where(or(eq(deals.seekerId, userId), eq(deals.providerId, userId)));
+        await tx.delete(ratings).where(or(eq(ratings.fromUserId, userId), eq(ratings.toUserId, userId)));
+        await tx.delete(listingLikes).where(eq(listingLikes.userId, userId));
+        await tx.delete(listingComments).where(eq(listingComments.userId, userId));
+
+        const userListingRows = await tx.select({ id: listings.id }).from(listings).where(eq(listings.userId, userId));
+        if (userListingRows.length > 0) {
+          for (const lid of userListingRows.map(l => l.id)) {
+            await tx.delete(listingLikes).where(eq(listingLikes.listingId, lid));
+            await tx.delete(listingComments).where(eq(listingComments.listingId, lid));
+          }
+          await tx.delete(listings).where(eq(listings.userId, userId));
+        }
+
+        await tx.delete(wishlists).where(eq(wishlists.userId, userId));
+        await tx.delete(followers).where(or(eq(followers.followerId, userId), eq(followers.followingId, userId)));
+        await tx.delete(referrals).where(or(eq(referrals.referrerId, userId), eq(referrals.referredId, userId)));
+        await tx.delete(postLikes).where(eq(postLikes.userId, userId));
+        await tx.delete(postBookmarks).where(eq(postBookmarks.userId, userId));
+        const userPosts = await tx.select({ id: posts.id }).from(posts).where(eq(posts.userId, userId));
+        for (const p of userPosts) {
+          await tx.delete(postLikes).where(eq(postLikes.postId, p.id));
+          await tx.delete(postComments).where(eq(postComments.postId, p.id));
+        }
+        await tx.delete(postComments).where(eq(postComments.userId, userId));
+        await tx.delete(posts).where(eq(posts.userId, userId));
+        await tx.delete(endorsements).where(or(eq(endorsements.fromUserId, userId), eq(endorsements.toUserId, userId)));
+        await tx.delete(savedSearches).where(eq(savedSearches.userId, userId));
+        await tx.delete(portfolioItems).where(eq(portfolioItems.userId, userId));
+        await tx.delete(quickInquiries).where(or(eq(quickInquiries.fromUserId, userId), eq(quickInquiries.toUserId, userId)));
+        await tx.delete(reports).where(eq(reports.reporterId, userId));
+        await tx.delete(notifications).where(eq(notifications.userId, userId));
+        await tx.delete(consentLogs).where(eq(consentLogs.userId, userId));
+
+        const userSalesLeads = await tx.select({ id: salesLeads.id }).from(salesLeads).where(eq(salesLeads.userId, userId));
+        for (const sl of userSalesLeads) {
+          await tx.delete(salesReengagementEvents).where(eq(salesReengagementEvents.leadId, sl.id));
+        }
+        await tx.delete(salesReengagementEvents).where(eq(salesReengagementEvents.userId, userId));
+        await tx.delete(salesLeads).where(eq(salesLeads.userId, userId));
+        await tx.delete(users).where(eq(users.id, userId));
+      });
+
+      req.session.destroy(() => {});
+      res.json({ message: "Your account has been permanently deleted" });
+    } catch (error) {
+      console.error("Self-delete account error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // DELETE /api/businesses/:id/catalog/:productId — soft delete
   app.delete("/api/businesses/:id/catalog/:productId", requireAuth, async (req, res) => {
     try {

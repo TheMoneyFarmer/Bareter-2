@@ -504,10 +504,10 @@ export function Header() {
                         type="button"
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold transition-colors ${
                           activeProfileType === "creator"
-                            ? "border-bareter-teal/60 bg-bareter-teal/20 text-bareter-teal hover:bg-bareter-teal/30"
+                            ? "border-white/60 bg-white/20 text-white hover:bg-white/30"
                             : activeProfileType === "business"
-                            ? "border-bareter-gold/60 bg-bareter-gold/20 text-bareter-gold hover:bg-bareter-gold/30"
-                            : "border-white/20 bg-white/10 text-white/80 hover:bg-white/15"
+                            ? "border-bareter-gold bg-bareter-gold/40 text-white hover:bg-bareter-gold/55"
+                            : "border-white/30 bg-white/10 text-white hover:bg-white/20"
                         }`}
                         data-testid="button-profile-mode"
                       >
