@@ -28,6 +28,26 @@ export const ALLOWED_UPLOAD_MIMES = new Set([
   "application/pdf",
 ]);
 
+// Extended set for creator portfolio — short reels allowed (mp4, mov, webm)
+export const ALLOWED_PORTFOLIO_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+export async function detectPortfolioFileType(
+  buffer: Buffer,
+): Promise<{ mime: string; ext: string; isVideo: boolean } | null> {
+  const { fileTypeFromBuffer } = await import("file-type");
+  const ft = await fileTypeFromBuffer(buffer);
+  if (!ft || !ALLOWED_PORTFOLIO_MIMES.has(ft.mime)) return null;
+  return { mime: ft.mime, ext: ft.ext, isVideo: ft.mime.startsWith("video/") };
+}
+
 export async function detectAllowedFileType(
   buffer: Buffer,
 ): Promise<{ mime: string; ext: string } | null> {

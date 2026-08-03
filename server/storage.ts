@@ -501,6 +501,7 @@ export interface IStorage {
   // Creator portfolio
   getPortfolioItems(creatorId: string): Promise<CreatorPortfolioItem[]>;
   createCreatorPortfolioItem(data: InsertCreatorPortfolioItem): Promise<CreatorPortfolioItem>;
+  deleteCreatorPortfolioItem(id: string, creatorId: string): Promise<void>;
 
   // Listing claims (split-quantity)
   getListingClaims(listingId: string): Promise<ListingClaim[]>;
@@ -3397,6 +3398,12 @@ export class DatabaseStorage implements IStorage {
   async createCreatorPortfolioItem(data: InsertCreatorPortfolioItem): Promise<CreatorPortfolioItem> {
     const [row] = await db.insert(creatorPortfolioItems).values(data).returning();
     return row;
+  }
+
+  async deleteCreatorPortfolioItem(id: string, creatorId: string): Promise<void> {
+    await db
+      .delete(creatorPortfolioItems)
+      .where(and(eq(creatorPortfolioItems.id, id), eq(creatorPortfolioItems.creatorId, creatorId)));
   }
 
   // ── Listing Claims (split-quantity) ───────────────────────────────────────

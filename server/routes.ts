@@ -100,6 +100,7 @@ import {
   hashResetToken,
   hashOtp,
   detectAllowedFileType,
+  detectPortfolioFileType,
   makeLoginRateLimiter,
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
@@ -178,6 +179,12 @@ if (!fs.existsSync(uploadDir)) {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
+
+// Larger limit for creator portfolio — short reels can be up to ~50MB
+const uploadPortfolio = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 // Magic-byte allow-list and detector live in `handlers/authHardening.ts`
@@ -12294,11 +12301,11 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/creators/:userId/portfolio — upload a portfolio item (images/video only)
+  // POST /api/creators/:userId/portfolio — upload a portfolio item (image or short reel video)
   app.post(
     "/api/creators/:userId/portfolio",
     requireAuth,
-    upload.single("file"),
+    uploadPortfolio.single("file"),
     async (req, res) => {
       try {
         const targetUserId = param(req.params.userId);
@@ -12307,13 +12314,22 @@ export async function registerRoutes(
 
         if (!req.file?.buffer) return res.status(400).json({ message: "No file uploaded" });
 
-        const detected = await detectAllowedFileType(req.file.buffer);
+        const detected = await detectPortfolioFileType(req.file.buffer);
         if (!detected) {
-          return res.status(400).json({ message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed." });
+          return res.status(400).json({ message: "Images (JPG, PNG, GIF, WEBP) and short videos (MP4, MOV, WEBM) only." });
         }
 
         const profile = await storage.getCreatorProfile(userId);
         if (!profile) return res.status(404).json({ message: "Creator profile not found. Create one first." });
+
+        // Enforce max 5 images (videos have no server-side count cap; duration capped client-side)
+        if (!detected.isVideo) {
+          const existing = await storage.getPortfolioItems(profile.id);
+          const imageCount = existing.filter(i => i.mediaType === "image").length;
+          if (imageCount >= 5) {
+            return res.status(400).json({ message: "Maximum 5 images allowed in portfolio." });
+          }
+        }
 
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
@@ -12328,7 +12344,7 @@ export async function registerRoutes(
           mediaUrl = `/uploads/${filename}`;
         }
 
-        const mediaType = detected.mime.startsWith("video/") ? "video" : "image";
+        const mediaType = detected.isVideo ? "video" : "image";
         const caption = typeof req.body.caption === "string" ? req.body.caption.slice(0, 200) : undefined;
 
         const item = await storage.createCreatorPortfolioItem({ creatorId: profile.id, mediaUrl, mediaType, caption });
@@ -12339,6 +12355,22 @@ export async function registerRoutes(
       }
     }
   );
+
+  // DELETE /api/creators/:userId/portfolio/:itemId — remove a creator portfolio item
+  app.delete("/api/creators/:userId/portfolio/:itemId", requireAuth, async (req, res) => {
+    try {
+      const targetUserId = param(req.params.userId);
+      const userId = req.session.userId!;
+      if (targetUserId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const profile = await storage.getCreatorProfile(userId);
+      if (!profile) return res.status(404).json({ message: "Creator profile not found" });
+      await storage.deleteCreatorPortfolioItem(param(req.params.itemId), profile.id);
+      res.json({ message: "Removed" });
+    } catch (error) {
+      console.error("Portfolio delete error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   // GET /api/listings/:id/collab/applications — brand sees all applications for their collab listing
   app.get("/api/listings/:id/collab/applications", requireAuth, async (req, res) => {
