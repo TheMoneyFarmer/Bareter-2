@@ -98,7 +98,19 @@ export function registerObjectStorageRoutes(app: Express): void {
    */
   app.get(/^\/objects\/(.+)$/, async (req, res) => {
     try {
+      // Check If-None-Match for conditional GET — avoids re-downloading on cache revalidation
+      const etag = `"${Buffer.from(req.path).toString("base64")}"`;
+      if (req.headers["if-none-match"] === etag) {
+        return res.status(304).end();
+      }
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      // Public uploads are content-addressed (random filename) — safe to cache permanently
+      if (req.path.includes("/public-uploads/")) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.setHeader("ETag", etag);
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+      }
       await objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error serving object:", error);
