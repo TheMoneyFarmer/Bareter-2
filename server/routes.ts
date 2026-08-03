@@ -143,22 +143,23 @@ const supportTicketLimiter = makeSupportTicketRateLimiter();
 const publicListingsLimiter = makePublicListingsRateLimiter();
 const userProfileLimiter = makeUserProfileRateLimiter();
 
-// Simple TTL cache for unauthenticated public listings — avoids hitting DB on
-// every page load. Key = serialised query params. TTL = 30 seconds.
-const _listingsCache = new Map<string, { data: unknown; expiresAt: number }>();
-function getCachedListings(key: string) {
-  const entry = _listingsCache.get(key);
+// Simple TTL cache for public endpoints — avoids hitting DB on every page load.
+const _ttlCache = new Map<string, { data: unknown; expiresAt: number }>();
+function getCache(key: string) {
+  const entry = _ttlCache.get(key);
   if (!entry || Date.now() > entry.expiresAt) return null;
   return entry.data;
 }
-function setCachedListings(key: string, data: unknown) {
-  _listingsCache.set(key, { data, expiresAt: Date.now() + 30_000 });
-  // Evict old entries to prevent unbounded growth
-  if (_listingsCache.size > 200) {
+function setCache(key: string, data: unknown, ttlMs = 30_000) {
+  _ttlCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  if (_ttlCache.size > 500) {
     const now = Date.now();
-    for (const [k, v] of _listingsCache) { if (now > v.expiresAt) _listingsCache.delete(k); }
+    for (const [k, v] of _ttlCache) { if (now > v.expiresAt) _ttlCache.delete(k); }
   }
 }
+// Kept for backwards compat with the listings cache calls below
+const getCachedListings = (key: string) => getCache(key);
+const setCachedListings = (key: string, data: unknown) => setCache(key, data, 30_000);
 const phoneOtpSendLimiter = makePhoneOtpSendLimiter();
 const phoneOtpVerifyLimiter = makePhoneOtpVerifyLimiter();
 
@@ -3707,6 +3708,8 @@ export async function registerRoutes(
   // any error so the landing page never breaks.
   app.get("/api/deals/recent-completed", async (_req, res) => {
     try {
+      const cached = getCache("recent-completed-deals");
+      if (cached) { res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300"); return res.json(cached); }
       const recent = await storage.getRecentCompletedDeals(10);
 
       // Initials only — never expose a real first or last name in full.
@@ -3764,6 +3767,8 @@ export async function registerRoutes(
         }))
         .filter((s) => s.swap && s.forItem && s.value > 0);
 
+      setCache("recent-completed-deals", stories, 60_000);
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json(stories);
     } catch (error) {
       console.error("Get recent completed deals error:", error);
@@ -8724,22 +8729,15 @@ export async function registerRoutes(
       const queryCityPosts = req.query.city as string | undefined;
       const country = worldwide ? undefined : queryCountryPosts || undefined;
       const city = worldwide ? undefined : queryCityPosts || undefined;
-      const allPosts = await storage.getPosts({ category, limit: limit * 4, offset });
       const currentUserId = req.session?.userId;
-      // Legacy-tolerant filter: posts without country/city are kept (legacy/seed
-      // data may have only `location` set). Strict country/city match is applied
-      // when those fields exist. Authenticated users never see their own posts in the feed.
-      const filtered = allPosts.filter((p) => {
-        if (currentUserId && p.userId === currentUserId) return false;
-        if (country && p.country) {
-          if (p.country.toUpperCase() !== country) return false;
-        }
-        if (city && p.city) {
-          if (p.city !== city) return false;
-        }
-        return true;
+      const postsData = await storage.getPosts({
+        category,
+        limit,
+        offset,
+        country: country || undefined,
+        city: city || undefined,
+        excludeUserId: currentUserId || undefined,
       });
-      const postsData = filtered.slice(0, limit);
 
       // Enrich posts with comment counts and user-specific state (3 batch queries total)
       const postIds = postsData.map((p) => p.id);
@@ -8774,7 +8772,11 @@ export async function registerRoutes(
 
   app.get("/api/posts/trending", async (req, res) => {
     try {
+      const cached = getCache("posts-trending");
+      if (cached) { res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300"); return res.json(cached); }
       const trending = await storage.getTrendingPosts();
+      setCache("posts-trending", trending, 60_000);
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json(trending);
     } catch (error) {
       console.error("Get trending posts error:", error);
@@ -12139,6 +12141,12 @@ export async function registerRoutes(
       const lim = Math.min(Number(limit) || 40, 60);
       const off = Number(offset) || 0;
 
+      // Cache unfiltered first page for 60s
+      if (!niche && !platform && !verifiedOnly && off === 0) {
+        const cached = getCache(`creators:${lim}`);
+        if (cached) { res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300"); return res.json(cached); }
+      }
+
       // ── New table (primary) ────────────────────────────────────────────
       const conds: any[] = [];
       if (niche) conds.push(ilike(creatorProfiles.niche, `%${String(niche)}%`));
@@ -12234,6 +12242,10 @@ export async function registerRoutes(
           })),
       ];
 
+      if (!niche && !platform && !verifiedOnly && off === 0) {
+        setCache(`creators:${lim}`, result, 60_000);
+        res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      }
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -13129,6 +13141,8 @@ export async function registerRoutes(
   // GET /api/businesses — public directory of active businesses (WHERE is_active = true)
   app.get("/api/businesses", async (req, res) => {
     try {
+      const cached = getCache("businesses-directory");
+      if (cached) { res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300"); return res.json(cached); }
       const rows = await db
         .select({
           id: businessProfiles.id,
@@ -13145,6 +13159,8 @@ export async function registerRoutes(
         .from(businessProfiles)
         .where(eq(businessProfiles.isActive, true))
         .orderBy(desc(businessProfiles.isFeatured), desc(businessProfiles.createdAt));
+      setCache("businesses-directory", rows, 60_000);
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
       res.json(rows);
     } catch (error) {
       console.error("Business directory error:", error);

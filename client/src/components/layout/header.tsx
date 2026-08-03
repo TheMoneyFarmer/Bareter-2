@@ -150,10 +150,13 @@ export function Header() {
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
   const { data: inboxData } = useQuery<{ count: number }>({
     queryKey: ["/api/inbox-unread-count"],
     enabled: !!user,
+    staleTime: 15_000,
     refetchInterval: 30000,
   });
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;

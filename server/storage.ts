@@ -1060,7 +1060,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Posts
-  async getPosts(options?: { category?: string; limit?: number; offset?: number; userId?: string }): Promise<PostWithUser[]> {
+  async getPosts(options?: { category?: string; limit?: number; offset?: number; userId?: string; country?: string; city?: string; excludeUserId?: string }): Promise<PostWithUser[]> {
     const limit = options?.limit || 20;
     const offset = options?.offset || 0;
 
@@ -1070,6 +1070,15 @@ export class DatabaseStorage implements IStorage {
     }
     if (options?.userId) {
       conditions.push(eq(posts.userId, options.userId));
+    }
+    if (options?.excludeUserId) {
+      conditions.push(sql`${posts.userId} != ${options.excludeUserId}`);
+    }
+    if (options?.country) {
+      conditions.push(or(isNull(posts.country), sql`UPPER(${posts.country}) = ${options.country.toUpperCase()}`)!);
+    }
+    if (options?.city) {
+      conditions.push(or(isNull(posts.city), eq(posts.city, options.city))!);
     }
 
     const result = await db
