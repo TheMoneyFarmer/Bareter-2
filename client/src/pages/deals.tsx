@@ -167,8 +167,8 @@ export function DealsPage() {
 
   const handlePullRefresh = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/listings/my-pending-proposals"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/listings/my-outgoing-proposals"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/me/pending-proposals"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/me/outgoing-proposals"] });
   }, [queryClient]);
 
   const { isRefreshing: isPullRefreshing } = usePullToRefresh(handlePullRefresh);
@@ -187,12 +187,12 @@ export function DealsPage() {
   });
 
   const { data: pendingProposals, isLoading: proposalsLoading } = useQuery<ProposalWithListing[]>({
-    queryKey: ["/api/listings/my-pending-proposals"],
+    queryKey: ["/api/me/pending-proposals"],
     enabled: !!user,
   });
 
   const { data: outgoingProposals, isLoading: outgoingLoading } = useQuery<ProposalWithListing[]>({
-    queryKey: ["/api/listings/my-outgoing-proposals"],
+    queryKey: ["/api/me/outgoing-proposals"],
     enabled: !!user,
   });
 
@@ -202,7 +202,7 @@ export function DealsPage() {
       return res.json();
     },
     onSuccess: (data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/my-pending-proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/pending-proposals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       if (vars.status === "accepted" && data?.dealId) {
         void hapticSuccess();

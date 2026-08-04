@@ -132,7 +132,7 @@ export function SavedListingsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const { data: likedListings = [], isLoading: likedLoading } = useQuery<LikedListing[]>({
-    queryKey: ["/api/listings/liked"],
+    queryKey: ["/api/me/liked-listings"],
     enabled: !!user,
     staleTime: 0,
   });
@@ -163,7 +163,7 @@ export function SavedListingsPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/saved-folders/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-folders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
       setOpenFolder(null);
       toast({ title: "Folder deleted" });
     },
@@ -174,7 +174,7 @@ export function SavedListingsPage() {
       apiRequest("PATCH", `/api/likes/${listingId}/folder`, { folderId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-folders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
       toast({ title: "Moved to folder" });
     },
   });
@@ -182,7 +182,7 @@ export function SavedListingsPage() {
   const unlikeMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/listings/${id}/like`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/saved-folders"] });
       toast({ title: "Removed from liked" });
     },

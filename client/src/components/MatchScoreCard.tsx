@@ -65,10 +65,10 @@ export function MatchScoreCard({
   hideIfMissing = true,
 }: MatchScoreCardProps) {
   const { data, isLoading, isError, error } = useQuery<MatchScoreResponse>({
-    queryKey: ["/api/listings/match-score", listingAId, listingBId],
+    queryKey: ["/api/listings-match-score", listingAId, listingBId],
     queryFn: async () => {
       const res = await fetch(
-        `/api/listings/match-score?a=${encodeURIComponent(
+        `/api/listings-match-score?a=${encodeURIComponent(
           listingAId,
         )}&b=${encodeURIComponent(listingBId)}`,
         { credentials: "include" },

@@ -57,7 +57,7 @@ function BulkListingCardSkeleton() {
 
 export function BulkDealsPage() {
   const { data, isLoading } = useQuery<BulkDealsResponse>({
-    queryKey: ["/api/listings/bulk"],
+    queryKey: ["/api/bulk-listings"],
   });
 
   const listings = data?.listings ?? [];

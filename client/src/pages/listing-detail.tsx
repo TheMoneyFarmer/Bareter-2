@@ -645,7 +645,7 @@ export function ListingDetailPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
     },
   });
 

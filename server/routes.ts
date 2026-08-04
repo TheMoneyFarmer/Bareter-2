@@ -2786,7 +2786,7 @@ export async function registerRoutes(
   });
 
   // All incoming proposals on the current user's listings (all statuses)
-  app.get("/api/listings/my-pending-proposals", requireAuth, async (req, res) => {
+  app.get("/api/me/pending-proposals", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const userListings = await storage.getListingsByUser(userId);
@@ -2823,7 +2823,7 @@ export async function registerRoutes(
   });
 
   // All outgoing proposals the current user has submitted on other listings
-  app.get("/api/listings/my-outgoing-proposals", requireAuth, async (req, res) => {
+  app.get("/api/me/outgoing-proposals", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const rows = await db
@@ -3467,7 +3467,7 @@ export async function registerRoutes(
   });
 
   // ── Trending listings (by proposal activity last 7d) ─────────────────────
-  app.get("/api/listings/trending", async (req, res) => {
+  app.get("/api/trending-listings", async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 10, 20);
       const trending = await storage.getTrendingListings(limit);
@@ -9239,7 +9239,7 @@ export async function registerRoutes(
   });
 
   // ── Liked Listings (Favorites) ────────────────────────────────────
-  app.get("/api/listings/liked", requireAuth, async (req, res) => {
+  app.get("/api/me/liked-listings", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const rows = await db
@@ -9630,7 +9630,7 @@ export async function registerRoutes(
   });
 
   // "For You" — personalised feed combining liked categories, search history, followed users and wishlist signals
-  app.get("/api/listings/for-you", requireAuth, async (req, res) => {
+  app.get("/api/me/for-you", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
       const limit = Math.min(Number(req.query.limit) || 24, 48);
@@ -9710,7 +9710,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/listings/nearby", async (req, res) => {
+  app.get("/api/listings-nearby", async (req, res) => {
     try {
       const city = req.query.city as string;
       if (!city) return res.json([]);
@@ -10424,7 +10424,7 @@ export async function registerRoutes(
   // safe to expose on any authenticated surface.
   //
   // GET /api/listings/match-score?a=<listingId>&b=<listingId>
-  app.get("/api/listings/match-score", requireAuth, async (req, res) => {
+  app.get("/api/listings-match-score", requireAuth, async (req, res) => {
     try {
       const aId = typeof req.query.a === "string" ? req.query.a : "";
       const bId = typeof req.query.b === "string" ? req.query.b : "";
@@ -12761,7 +12761,7 @@ export async function registerRoutes(
   });
 
   // ── F2: Bulk Deal Board ────────────────────────────────────────────────────
-  app.get("/api/listings/bulk", async (req, res) => {
+  app.get("/api/bulk-listings", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string || "1");
       const limit = 20;

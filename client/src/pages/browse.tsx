@@ -94,7 +94,7 @@ function ForYouTab({
   onWishlistToggle?: (id: string) => void;
 }) {
   const { data: forYouListings = [], isLoading, refetch } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings/for-you"],
+    queryKey: ["/api/me/for-you"],
     staleTime: 60_000,
   });
 
@@ -173,7 +173,7 @@ export function BrowsePage() {
     // Reset infinite scroll back to page 1 and re-fetch all active queries
     await queryClient.resetQueries({ queryKey: ["/api/listings"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/listings/for-you"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/me/for-you"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/creators"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
   }, [queryClient]);
@@ -463,10 +463,10 @@ export function BrowsePage() {
 
   const userCity = (user as any)?.city || activeLocation.city || "";
   const { data: nearbyListings } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings/nearby", userCity],
+    queryKey: ["/api/listings-nearby", userCity],
     queryFn: async () => {
       if (!userCity) return [];
-      const res = await fetch(`${API_BASE}/api/listings/nearby?city=${encodeURIComponent(userCity)}`, { credentials: "include" });
+      const res = await fetch(`${API_BASE}/api/listings-nearby?city=${encodeURIComponent(userCity)}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -589,7 +589,7 @@ export function BrowsePage() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings/featured"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
     },
   });
 

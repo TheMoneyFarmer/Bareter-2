@@ -1923,7 +1923,7 @@ function ListingFeedCard({ listing }: { listing: ListingWithUser }) {
     onSuccess: (data) => {
       setLiked(data.liked);
       setLikeCount(data.likeCount);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
     },
     onError: () => toast({ title: "Failed to like", variant: "destructive" }),
   });
@@ -2204,7 +2204,7 @@ function CompactListingCard({ listing }: { listing: ListingWithUser }) {
     onSuccess: (data) => {
       setLiked(data.liked);
       setLikeCount(data.likeCount);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/liked"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/liked-listings"] });
     },
     onError: () => toast({ title: "Failed to like", variant: "destructive" }),
   });
@@ -2316,10 +2316,10 @@ export function FeedPage() {
   };
 
   const { data: trendingListings } = useQuery<ListingWithUser[]>({
-    queryKey: ["/api/listings/trending"],
+    queryKey: ["/api/trending-listings"],
     queryFn: async () => {
       const extra = await mobileHeaders();
-      const res = await fetch(`${API_BASE}/api/listings/trending?limit=10`, { credentials: "include", headers: extra });
+      const res = await fetch(`${API_BASE}/api/trending-listings?limit=10`, { credentials: "include", headers: extra });
       if (!res.ok) return [];
       return res.json();
     },
