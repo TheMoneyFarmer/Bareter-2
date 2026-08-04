@@ -151,7 +151,7 @@ import {
   Cell,
 } from "recharts";
 
-type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses" | "verifications" | "mobile";
+type AdminSection = "queue" | "dashboard" | "users" | "listings" | "deals" | "disputes" | "analytics" | "settings" | "reports" | "flags" | "logs" | "waitlist" | "feature-waitlist" | "intl-waitlist" | "legal" | "email" | "support" | "reviews" | "creators" | "collabs" | "barter-credits" | "success-stories" | "feature-stats" | "businesses" | "verifications" | "mobile" | "agents";
 
 type WaitlistEntryRow = {
   id: number;
@@ -464,6 +464,24 @@ export function AdminPage() {
   const { data: featureStats, isLoading: featureStatsLoading, refetch: refetchFeatureStats } = useQuery<FeatureStats>({
     queryKey: ["/api/admin/features/stats"],
     enabled: activeSection === "feature-stats" && !!user?.isAdmin,
+    staleTime: 0,
+  });
+
+  type AgentHealthRow = {
+    agentName: string;
+    enabled: boolean;
+    status: "healthy" | "idle" | "never_called" | "errored" | "disabled";
+    totalCalls: number;
+    calls24h: number;
+    calls7d: number;
+    errors: number;
+    lastInvocationAt: string | null;
+    monthlyCapAed: number | null;
+    hasBudgetRow: boolean;
+  };
+  const { data: agentHealth, isLoading: agentHealthLoading, refetch: refetchAgentHealth } = useQuery<{ generatedAt: string; agents: AgentHealthRow[] }>({
+    queryKey: ["/api/admin/agents/health"],
+    enabled: activeSection === "agents" && !!user?.isAdmin,
     staleTime: 0,
   });
 
@@ -1308,6 +1326,7 @@ export function AdminPage() {
     { id: "barter-credits", label: "Barter Credits", icon: Coins },
     { id: "success-stories", label: "Success Stories", icon: Trophy },
     { id: "mobile", label: "Mobile App", icon: Smartphone },
+    { id: "agents", label: "Agent Health", icon: Bot },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -3726,6 +3745,70 @@ export function AdminPage() {
 
   const auditAdmins = Array.from(new Set(auditLogs.map(l => ({ id: l.adminId, email: l.adminEmail })).filter(a => a.email).map(a => JSON.stringify(a)))).map(s => JSON.parse(s) as { id: string; email: string });
   const auditActions = Array.from(new Set(auditLogs.map(l => l.action))).sort();
+
+  // ── Agent Health ─────────────────────────────────────────────────────────────
+  const renderAgentHealth = () => {
+    const statusColor = (s: AgentHealthRow["status"]) => {
+      if (s === "healthy") return "text-green-600 bg-green-50 border-green-200";
+      if (s === "errored") return "text-red-600 bg-red-50 border-red-200";
+      if (s === "idle") return "text-amber-600 bg-amber-50 border-amber-200";
+      if (s === "disabled") return "text-muted-foreground bg-muted border-border";
+      return "text-blue-600 bg-blue-50 border-blue-200";
+    };
+    const statusLabel = (s: AgentHealthRow["status"]) =>
+      s === "never_called" ? "never called" : s;
+    const agents = agentHealth?.agents ?? [];
+    const healthy = agents.filter(a => a.status === "healthy").length;
+    const errored = agents.filter(a => a.status === "errored").length;
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold mb-1">Agent Health</h2>
+            <p className="text-muted-foreground">Live status for all CompanyOS and in-app agents</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetchAgentHealth()}>
+            <RefreshCw className="h-4 w-4 mr-2" />Refresh
+          </Button>
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          <Card><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Total Agents</p><p className="text-2xl font-bold">{agents.length}</p></CardContent></Card>
+          <Card><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Healthy</p><p className="text-2xl font-bold text-green-600">{healthy}</p></CardContent></Card>
+          <Card><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Errored</p><p className="text-2xl font-bold text-red-600">{errored}</p></CardContent></Card>
+          <Card><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Total Calls (24h)</p><p className="text-2xl font-bold">{agents.reduce((s, a) => s + a.calls24h, 0)}</p></CardContent></Card>
+        </div>
+        {agentHealthLoading ? (
+          <div className="space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+        ) : (
+          <Card>
+            <CardContent className="pt-4 divide-y">
+              {agents.map(a => (
+                <div key={a.agentName} className="py-3 flex items-center gap-4">
+                  <Bot className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold capitalize">{a.agentName}</span>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusColor(a.status)}`}>{statusLabel(a.status)}</span>
+                      {!a.enabled && <span className="text-[10px] text-muted-foreground">disabled</span>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {a.calls24h} calls today · {a.calls7d} this week · {a.errors} errors
+                      {a.monthlyCapAed !== null && ` · cap AED ${a.monthlyCapAed}`}
+                      {a.lastInvocationAt && ` · last: ${new Date(a.lastInvocationAt).toLocaleString()}`}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-medium">{a.totalCalls.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">all time</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   // ── Feature Hub ──────────────────────────────────────────────────────────────
   const renderFeatureHub = () => (
@@ -6597,6 +6680,8 @@ export function AdminPage() {
         return renderSuccessStories();
       case "mobile":
         return renderMobileSection();
+      case "agents":
+        return renderAgentHealth();
       case "settings":
         return renderSettings();
       default:

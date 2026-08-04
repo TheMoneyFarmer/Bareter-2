@@ -11,6 +11,7 @@ const config: CapacitorConfig = {
       'accounts.google.com',
       'appleid.apple.com',
       '*.didit.me',
+      '*.openstreetmap.org',
     ],
   },
   ios: {
