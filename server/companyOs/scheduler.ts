@@ -1025,7 +1025,9 @@ export function startScheduler(): void {
   // + META_AD_ACCOUNT_ID; the manual `campaign update` command stays as
   // a fallback for everything else. Skips silently if no Meta creds are
   // wired so dev environments don't see noisy errors.
-  schedule("diditStatusPoll", "*/5 * * * *", diditStatusPollJob);
+  // Every 15 minutes — reduced from every 5 min. At zero users with pending
+  // verification sessions the poll is a no-op DB query; 15 min is fast enough.
+  schedule("diditStatusPoll", "*/15 * * * *", diditStatusPollJob);
   schedule("dailyMetaCampaignSync", "30 3 * * *", dailyMetaCampaignSyncJob);
   // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
@@ -1062,9 +1064,11 @@ export function startScheduler(): void {
   // and clearer logs.
   schedule("waitlistFinalCall", "0 11 * * *", waitlistFinalCallJob);
 
-  // Every 4 hours — full database backup to Cloudflare R2.
-  // Keeps the last 30 backups (~5 days at 6x/day). Zero egress cost on R2.
-  schedule("dailyDbBackup", "0 */4 * * *", dailyDbBackupJob);
+  // 02:30 Dubai daily — full database backup to Cloudflare R2.
+  // Reduced from every-4-hours to once-daily: the full table scan was
+  // generating ~1.6M Neon object-storage page reads per billing cycle at
+  // zero user traffic. Once/day is more than sufficient for a pre-launch DB.
+  schedule("dailyDbBackup", "30 2 * * *", dailyDbBackupJob);
 
   // 09:00 Dubai daily — deal inactivity reminders. Emails both parties
   // in any deal that has been stuck (no updatedAt change) for ≥36 hours
