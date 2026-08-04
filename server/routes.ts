@@ -12704,7 +12704,6 @@ export async function registerRoutes(
   // Runs the AI matching agent for a specific listing and returns top matches.
   app.get("/api/listings/:id/instant-match", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
       const listingId = param(req.params.id);
       const targetListing = await storage.getListing(listingId);
       if (!targetListing) return res.status(404).json({ message: "Listing not found" });
@@ -12814,14 +12813,14 @@ export async function registerRoutes(
 
   // ── F3: Three-Way Chain Match ──────────────────────────────────────────────
   // Find A→B→C→A cycles across listings. Pure in-memory graph traversal.
-  app.get("/api/listings/chain-matches", requireAuth, async (req, res) => {
+  app.get("/api/me/chain-matches", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const userId = req.session.userId!;
 
       // Get current user's active listings
       const myListings = await db.select().from(listings)
         .where(and(
-          eq(listings.userId, user.id),
+          eq(listings.userId, userId),
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
         )).limit(10);
@@ -12844,7 +12843,7 @@ export async function registerRoutes(
         .where(and(
           eq(listings.isActive, true),
           isNull(listings.deletedAt),
-          sqlOperator`${listings.userId} != ${user.id}`,
+          sqlOperator`${listings.userId} != ${userId}`,
         ))
         .limit(200);
 
@@ -12863,7 +12862,7 @@ export async function registerRoutes(
         // Find B: listings that want what I have
         const bNodes = othersListings.filter(l =>
           overlap(myCategories, (l.wantedCategories as string[]) || []) &&
-          l.userId !== user.id
+          l.userId !== userId
         );
 
         for (const b of bNodes.slice(0, 20)) {
@@ -12871,7 +12870,7 @@ export async function registerRoutes(
           // Find C: listings that want what B has and are owned by a 3rd user
           const cNodes = othersListings.filter(l =>
             l.userId !== b.userId &&
-            l.userId !== user.id &&
+            l.userId !== userId &&
             overlap(bCats, (l.wantedCategories as string[]) || [])
           );
 
@@ -12898,8 +12897,7 @@ export async function registerRoutes(
   // ── F4: Barter Credits ────────────────────────────────────────────────────
   app.get("/api/me/barter-credits", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
-      const data = await storage.getBarterCredits(user.id);
+      const data = await storage.getBarterCredits(req.session.userId!);
       res.json(data);
     } catch (error) {
       console.error("Get barter credits error:", error);
@@ -12932,8 +12930,7 @@ export async function registerRoutes(
   // ── F5: WhatsApp Settings ─────────────────────────────────────────────────
   app.get("/api/me/whatsapp-settings", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
-      const settings = await storage.getWhatsappSettings(user.id);
+      const settings = await storage.getWhatsappSettings(req.session.userId!);
       res.json(settings ?? { optedIn: false, phone: null, notifyDealProposals: true, notifyMessages: true, notifyMatches: true });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -12942,9 +12939,8 @@ export async function registerRoutes(
 
   app.put("/api/me/whatsapp-settings", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
       const { phone, optedIn, notifyDealProposals, notifyMessages, notifyMatches } = req.body;
-      const settings = await storage.upsertWhatsappSettings(user.id, {
+      const settings = await storage.upsertWhatsappSettings(req.session.userId!, {
         phone, optedIn, notifyDealProposals, notifyMessages, notifyMatches,
       });
       res.json(settings);
@@ -12966,19 +12962,19 @@ export async function registerRoutes(
   // ── F6: Deal Success Stories ──────────────────────────────────────────────
   app.post("/api/deals/:id/success-story", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const userId = req.session.userId!;
       const dealId = param(req.params.id);
       const deal = await storage.getDeal(dealId);
       if (!deal) return res.status(404).json({ message: "Deal not found" });
       if (deal.state !== "completed") return res.status(400).json({ message: "Can only create a success story for a completed deal" });
-      if (deal.seekerId !== user.id && deal.providerId !== user.id) return res.status(403).json({ message: "Not your deal" });
+      if (deal.seekerId !== userId && deal.providerId !== userId) return res.status(403).json({ message: "Not your deal" });
 
-      const partnerId = deal.seekerId === user.id ? deal.providerId : deal.seekerId;
+      const partnerId = deal.seekerId === userId ? deal.providerId : deal.seekerId;
       const { caption, imageUrl } = req.body;
 
       const story = await storage.createSuccessStory({
         dealId,
-        authorId: user.id,
+        authorId: userId,
         partnerId,
         caption: caption ?? null,
         imageUrl: imageUrl ?? null,

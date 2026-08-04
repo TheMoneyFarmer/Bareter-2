@@ -28,7 +28,7 @@ export function ChainMatchSection() {
   const { user } = useAuth();
 
   const { data: chains, isLoading } = useQuery<TradeChain[]>({
-    queryKey: ["/api/listings/chain-matches"],
+    queryKey: ["/api/me/chain-matches"],
     enabled: !!user,
   });
 
