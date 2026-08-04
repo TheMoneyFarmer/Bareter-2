@@ -1516,15 +1516,20 @@ export async function registerRoutes(
   });
 
   app.get("/api/auth/reset-password/validate", async (req, res) => {
-    const { token } = req.query;
-    if (!token || typeof token !== "string") {
-      return res.status(400).json({ valid: false, message: "Token is required" });
+    try {
+      const { token } = req.query;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ valid: false, message: "Token is required" });
+      }
+      const user = await storage.getUserByPasswordResetToken(hashResetToken(token));
+      if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
+        return res.status(400).json({ valid: false, message: "Reset link is invalid or has expired" });
+      }
+      res.json({ valid: true });
+    } catch (err) {
+      console.error("[reset-password/validate]", err);
+      res.status(500).json({ valid: false, message: "Unable to validate token" });
     }
-    const user = await storage.getUserByPasswordResetToken(hashResetToken(token));
-    if (!user || !user.passwordResetExpires || new Date() > new Date(user.passwordResetExpires)) {
-      return res.status(400).json({ valid: false, message: "Reset link is invalid or has expired" });
-    }
-    res.json({ valid: true });
   });
 
   // Dev-only: auth diagnostics — shows account state without exposing passwords.
@@ -1662,12 +1667,17 @@ export async function registerRoutes(
 
   // Public client config — what features are wired up in this environment.
   app.get("/api/config", async (_req, res) => {
-    const maintenanceMode = await storage.getAppSetting("maintenance_mode");
-    // Only expose the absolute minimum the frontend needs — no operational status flags.
-    res.json({
-      cookiePolicyVersion: COOKIE_POLICY_VERSION,
-      maintenanceMode: maintenanceMode === "true",
-    });
+    try {
+      const maintenanceMode = await storage.getAppSetting("maintenance_mode");
+      // Only expose the absolute minimum the frontend needs — no operational status flags.
+      res.json({
+        cookiePolicyVersion: COOKIE_POLICY_VERSION,
+        maintenanceMode: maintenanceMode === "true",
+      });
+    } catch (err) {
+      console.error("[/api/config]", err);
+      res.json({ cookiePolicyVersion: COOKIE_POLICY_VERSION, maintenanceMode: false });
+    }
   });
 
   // Cookie consent — append-only audit log so we can prove (UAE PDPL /
@@ -1836,13 +1846,18 @@ export async function registerRoutes(
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await storage.getUser(req.session.userId);
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
 
-    const stripped = stripAuthTokens(user);
-    res.json(await sanitizeAdminFlag(stripped));
+      const stripped = stripAuthTokens(user);
+      res.json(await sanitizeAdminFlag(stripped));
+    } catch (err) {
+      console.error("[/api/auth/me]", err);
+      res.status(500).json({ message: "Unable to load user" });
+    }
   });
 
   // Serve uploaded files

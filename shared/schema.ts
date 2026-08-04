@@ -857,7 +857,10 @@ export const ratings = pgTable("ratings", {
   score: integer("score").notNull(), // 1-5
   review: text("review"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("ratings_to_user_id_idx").on(table.toUserId),
+  index("ratings_from_user_id_idx").on(table.fromUserId),
+]);
 
 // Notifications table
 export const notifications = pgTable("notifications", {
@@ -1149,7 +1152,11 @@ export const reports = pgTable("reports", {
   notes: text("notes"),
   status: text("status").notNull().default("pending"), // "pending", "dismissed", "actioned"
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("reports_status_idx").on(table.status),
+  index("reports_target_id_idx").on(table.targetId),
+  index("reports_reporter_id_idx").on(table.reporterId),
+]);
 
 // Image scans table
 export const imageScans = pgTable("image_scans", {
@@ -1159,7 +1166,10 @@ export const imageScans = pgTable("image_scans", {
   flagged: boolean("flagged").default(false),
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("image_scans_listing_id_idx").on(table.listingId),
+  index("image_scans_flagged_idx").on(table.flagged),
+]);
 
 // AI Agent tables
 
@@ -2469,7 +2479,9 @@ export const searchQueryHistory = pgTable("search_query_history", {
   category: text("category"),
   resultCount: integer("result_count").default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("search_query_history_user_id_idx").on(table.userId),
+]);
 
 export type SearchQueryHistory = typeof searchQueryHistory.$inferSelect;
 
