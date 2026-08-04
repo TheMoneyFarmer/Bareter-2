@@ -7610,12 +7610,22 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      const userListings = await storage.getListingsByUser(user.id);
-      const userDeals = await storage.getDealsByUser(user.id);
+      const [userListings, userDeals, userRatings] = await Promise.all([
+        storage.getListingsByUser(user.id),
+        storage.getDealsByUser(user.id),
+        db.select({
+          id: ratings.id,
+          score: ratings.score,
+          review: ratings.review,
+          fromUserId: ratings.fromUserId,
+          createdAt: ratings.createdAt,
+        }).from(ratings).where(eq(ratings.toUserId, user.id)).orderBy(desc(ratings.createdAt)).limit(50),
+      ]);
       res.json({
         ...stripAuthTokens(user),
         listings: userListings,
         deals: userDeals,
+        ratings: userRatings,
       });
     } catch (error) {
       console.error("Admin user detail error:", error);
@@ -11467,6 +11477,49 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/admin/ratings — deal satisfaction scores (distinct from written reviews)
+  app.get("/api/admin/ratings", requireAdmin, async (req, res) => {
+    try {
+      const rows = await db
+        .select({
+          id: ratings.id,
+          score: ratings.score,
+          review: ratings.review,
+          fromUserId: ratings.fromUserId,
+          toUserId: ratings.toUserId,
+          dealId: ratings.dealId,
+          createdAt: ratings.createdAt,
+        })
+        .from(ratings)
+        .orderBy(desc(ratings.createdAt))
+        .limit(300);
+
+      const userIds = [...new Set([...rows.map(r => r.fromUserId), ...rows.map(r => r.toUserId)])];
+      const userMap = new Map<string, { id: string; fullName: string }>();
+      if (userIds.length > 0) {
+        const us = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, userIds));
+        us.forEach(u => userMap.set(u.id, u));
+      }
+
+      const total = rows.length;
+      const avgScore = total > 0 ? rows.reduce((s, r) => s + r.score, 0) / total : 0;
+      const byScore: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      rows.forEach(r => { byScore[r.score] = (byScore[r.score] ?? 0) + 1; });
+
+      res.json({
+        ratings: rows.map(r => ({
+          ...r,
+          from: userMap.get(r.fromUserId) ?? { id: r.fromUserId, fullName: "Unknown" },
+          to: userMap.get(r.toUserId) ?? { id: r.toUserId, fullName: "Unknown" },
+        })),
+        stats: { total, avgScore: Math.round(avgScore * 10) / 10, byScore },
+      });
+    } catch (err) {
+      console.error("[admin/ratings]", err);
+      res.status(500).json({ message: "Failed to load ratings" });
+    }
+  });
+
   app.get("/api/admin/support/tickets", requireAdmin, async (req, res) => {
     try {
       const { status, priority } = req.query;
@@ -13818,6 +13871,16 @@ export async function registerRoutes(
         await tx.delete(creatorProfiles).where(eq(creatorProfiles.userId, userId));
       });
 
+      await storage.createAuditLog({
+        adminId: userId,
+        adminEmail: (await storage.getUser(userId))?.email || null,
+        action: "self_creator_profile_deletion",
+        targetType: "user",
+        targetId: userId,
+        details: null,
+        ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+      }).catch(() => {});
+
       res.json({ message: "Creator profile deleted" });
     } catch (error) {
       console.error("Delete creator profile error:", error);
@@ -13834,6 +13897,7 @@ export async function registerRoutes(
       if (!profile) return res.status(404).json({ message: "Business not found" });
       if (profile.ownerId !== userId) return res.status(403).json({ message: "Only the owner can delete this business" });
 
+      const bizOwnerEmail = (await storage.getUser(userId))?.email || null;
       await db.transaction(async (tx) => {
         await tx.delete(businessCatalogProducts).where(eq(businessCatalogProducts.businessId, businessId));
         await tx.delete(businessMembers).where(eq(businessMembers.businessId, businessId));
@@ -13841,6 +13905,16 @@ export async function registerRoutes(
         await tx.update(listings).set({ isActive: false, deletedAt: new Date() }).where(eq(listings.businessId, businessId));
         await tx.delete(businessProfiles).where(eq(businessProfiles.id, businessId));
       });
+
+      await storage.createAuditLog({
+        adminId: userId,
+        adminEmail: bizOwnerEmail,
+        action: "self_business_profile_deletion",
+        targetType: "business",
+        targetId: businessId,
+        details: { businessId },
+        ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+      }).catch(() => {});
 
       res.json({ message: "Business profile deleted" });
     } catch (error) {
@@ -13867,6 +13941,17 @@ export async function registerRoutes(
       if (!user.password) return res.status(400).json({ message: "No password set on this account" });
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return res.status(401).json({ message: "Incorrect password" });
+
+      // Write audit log BEFORE destroying the user row
+      await storage.createAuditLog({
+        adminId: userId,
+        adminEmail: user.email,
+        action: "self_account_deletion",
+        targetType: "user",
+        targetId: userId,
+        details: { email: user.email, fullName: user.fullName },
+        ipAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null,
+      }).catch(() => {});
 
       await destroyUserSessions(userId);
       const userEmail = user.email;

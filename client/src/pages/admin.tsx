@@ -853,7 +853,7 @@ export function AdminPage() {
     onError: () => toast({ title: "Error", description: "Bulk action failed", variant: "destructive" }),
   });
 
-  const { data: userDetail } = useQuery<User & { listings: Listing[]; deals: DealWithUsers[] }>({
+  const { data: userDetail } = useQuery<User & { listings: Listing[]; deals: DealWithUsers[]; ratings: { id: string; score: number; review: string | null; fromUserId: string; createdAt: string }[] }>({
     queryKey: ["/api/admin/users", selectedUserId, "detail"],
     enabled: !!selectedUserId,
     staleTime: 0,
@@ -7153,6 +7153,37 @@ export function AdminPage() {
                   <p className="text-sm text-muted-foreground">No deals</p>
                 )}
               </div>
+
+              {userDetail.ratings && userDetail.ratings.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Star className="h-4 w-4" />
+                      Ratings Received ({userDetail.ratings.length})
+                      {userDetail.ratings.length > 0 && (
+                        <span className="text-sm font-normal text-muted-foreground ml-1">
+                          avg {(userDetail.ratings.reduce((s, r) => s + r.score, 0) / userDetail.ratings.length).toFixed(1)}★
+                        </span>
+                      )}
+                    </h4>
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto">
+                      {userDetail.ratings.map((r) => (
+                        <div key={r.id} className="flex items-start justify-between p-2 border rounded-lg gap-2">
+                          <div className="min-w-0">
+                            {r.review && <p className="text-xs text-muted-foreground line-clamp-2">{r.review}</p>}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {Array.from({ length: r.score }).map((_, i) => (
+                              <Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
