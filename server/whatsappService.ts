@@ -17,6 +17,8 @@ const SESSION_PREFIX = "whatsapp-session/";
 async function restoreSessionFromStorage(): Promise<void> {
   try {
     const bucket = objectStorageClient.bucket(BUCKET);
+    // COST AUDIT: getFiles() = 1 advanced LIST op on every reconnect
+    console.log(`[objstore-audit] restoreSessionFromStorage: 1 advanced op (LIST)`);
     const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
     if (files.length === 0) return;
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -38,6 +40,9 @@ async function backupSessionToStorage(): Promise<void> {
     const bucket = objectStorageClient.bucket(BUCKET);
     const files = fs.readdirSync(AUTH_DIR);
     if (files.length === 0) return;
+    // COST AUDIT: each file.save() = 1 advanced op. Log before writing so
+    // Replit deployment logs show exactly how often this fires.
+    console.log(`[objstore-audit] backupSessionToStorage: writing ${files.length} files (${files.length} advanced ops) caller=${new Error().stack?.split("\n")[2]?.trim()}`);
     await Promise.all(files.map(async (name) => {
       const contents = fs.readFileSync(path.join(AUTH_DIR, name));
       await bucket.file(`${SESSION_PREFIX}${name}`).save(contents, { resumable: false });
