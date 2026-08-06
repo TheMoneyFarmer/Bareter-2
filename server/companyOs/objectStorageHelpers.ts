@@ -79,6 +79,7 @@ export async function uploadPrivateBuffer(
 ): Promise<string> {
   const fullPath = resolveFullPath(relativeKey);
   const { bucketName, objectName } = parseObjectPath(fullPath);
+  console.log(`[objstore-audit] uploadPrivateBuffer: 1 advanced op — key=${relativeKey} size=${buffer.length}`);
   await withRetry(
     () =>
       objectStorageClient
