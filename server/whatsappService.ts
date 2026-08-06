@@ -96,8 +96,15 @@ const RECONNECT_DELAYS_MS = [5000, 10000, 20000, 30000, 60000];
 const WATCHDOG_INTERVAL_MS = 45_000;
 const WATCHDOG_MAX_DISCONNECTED_MS = 90_000;
 
-// Periodic session backup when connected (every 5 min)
-const SESSION_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
+// Periodic session backup when connected (every 30 min — reduced from 5 min
+// to avoid runaway object storage advanced-ops costs).
+const SESSION_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
+
+// Debounce window for creds.update → backup. Baileys fires creds.update
+// hundreds of times per session (pre-key refresh, signal-key rotation, etc.)
+// so a per-event backup generates millions of PUT ops. One write per
+// CREDS_BACKUP_DEBOUNCE_MS window is more than sufficient.
+const CREDS_BACKUP_DEBOUNCE_MS = 60_000;
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
@@ -115,6 +122,7 @@ class WhatsAppService extends EventEmitter {
   private disconnectedSince: number | null = null; // timestamp of last disconnect
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private sessionBackupTimer: ReturnType<typeof setInterval> | null = null;
+  private credsBackupDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Consecutive OTP failure tracking
   private consecutiveFailures = 0;
@@ -193,6 +201,7 @@ class WhatsAppService extends EventEmitter {
     this.stopped = true;
     this.stopWatchdog();
     this.stopSessionBackup();
+    if (this.credsBackupDebounceTimer) { clearTimeout(this.credsBackupDebounceTimer); this.credsBackupDebounceTimer = null; }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.sock?.end(undefined);
     this.sock = null;
@@ -201,6 +210,7 @@ class WhatsAppService extends EventEmitter {
   }
 
   async logout() {
+    if (this.credsBackupDebounceTimer) { clearTimeout(this.credsBackupDebounceTimer); this.credsBackupDebounceTimer = null; }
     try {
       await this.sock?.logout();
     } catch {}
@@ -387,7 +397,14 @@ class WhatsAppService extends EventEmitter {
 
       sock.ev.on("creds.update", async () => {
         await saveCreds();
-        backupSessionToStorage().catch(() => {});
+        // Baileys fires creds.update hundreds of times per session (pre-key
+        // refresh, signal-key rotation). Debounce the object storage backup to
+        // at most once per CREDS_BACKUP_DEBOUNCE_MS to prevent runaway PUT costs.
+        if (this.credsBackupDebounceTimer) clearTimeout(this.credsBackupDebounceTimer);
+        this.credsBackupDebounceTimer = setTimeout(() => {
+          this.credsBackupDebounceTimer = null;
+          backupSessionToStorage().catch(() => {});
+        }, CREDS_BACKUP_DEBOUNCE_MS);
       });
     } catch (err: any) {
       clearTimeout(hardTimeout);
