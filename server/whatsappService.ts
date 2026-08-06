@@ -326,7 +326,15 @@ class WhatsAppService extends EventEmitter {
 
     try {
       if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
-      await restoreSessionFromStorage();
+      // Only restore from object storage on first start (no local files).
+      // On reconnects after a drop the files are still in AUTH_DIR — re-listing
+      // storage on every reconnect generates a LIST advanced op each time.
+      const hasLocalSession = fs.readdirSync(AUTH_DIR).length > 0;
+      if (!hasLocalSession) {
+        await restoreSessionFromStorage();
+      } else {
+        console.log(`[whatsapp] Auth files already present locally — skipping object storage restore`);
+      }
     } catch (err: any) {
       this.lastError = `Cannot create auth dir: ${err?.message}`;
       console.error("[whatsapp]", this.lastError);
