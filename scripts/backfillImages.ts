@@ -158,6 +158,44 @@ async function main() {
     console.error("R2 is not configured — refusing to run. Set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_PUBLIC_URL.");
     process.exit(1);
   }
+  // Which database are we actually about to touch?
+  //
+  // This project has more than one: a local .env.local, the Replit workspace
+  // shell, and the Replit *Deployment* can each carry a different DATABASE_URL.
+  // An earlier run of this script converted the wrong one because nothing told
+  // the operator which host it had connected to. Print it, always, and make
+  // --apply refuse to proceed unless the operator names the host themselves.
+  let dbHost = "unknown";
+  let dbName = "unknown";
+  try {
+    const u = new URL(process.env.DATABASE_URL ?? "");
+    dbHost = u.hostname;
+    dbName = u.pathname.slice(1);
+  } catch {
+    console.error("DATABASE_URL is missing or unparseable — refusing to run.");
+    process.exit(1);
+  }
+
+  console.log("──────────────────────────────────────────────");
+  console.log(`  database : ${dbName}`);
+  console.log(`  host     : ${dbHost}`);
+  console.log("──────────────────────────────────────────────");
+
+  if (APPLY) {
+    const confirmArg = process.argv.find((a) => a.startsWith("--host-confirm="));
+    const claimed = confirmArg?.split("=")[1] ?? "";
+    if (!claimed || !dbHost.includes(claimed)) {
+      console.error(
+        `\nRefusing to --apply.\n` +
+          `Re-run with --host-confirm=<part of the host above> to confirm you are\n` +
+          `pointed at the database you intend to modify, e.g.:\n\n` +
+          `  --host-confirm=${dbHost.split(".")[0]}\n`,
+      );
+      process.exit(1);
+    }
+    console.log(`Host confirmed ("${claimed}") — proceeding with writes.\n`);
+  }
+
   console.log(APPLY ? "MODE: APPLY (writes to R2 and the database)" : "MODE: DRY RUN (no writes — pass --apply to commit)");
   console.log(`Fetching relative URLs from ${ORIGIN}`);
 
