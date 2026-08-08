@@ -103,12 +103,38 @@ export class ObjectStorageService {
       const aclPolicyRaw = metadata?.metadata?.["custom:aclPolicy"];
       const aclPolicy = aclPolicyRaw ? JSON.parse(aclPolicyRaw as string) : null;
       const isPublic = aclPolicy?.visibility === "public";
+
       res.set({
         "Content-Type": metadata.contentType || "application/octet-stream",
         "Content-Length": metadata.size,
-        "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
-        "ETag": metadata.etag || "",
       });
+
+      // Do NOT clobber caching headers the caller already set.
+      //
+      // The /objects/ route marks content-addressed public uploads as
+      // `max-age=31536000, immutable` and sets an ETag derived from the request
+      // path, which it then compares against If-None-Match to answer repeat
+      // requests with a cheap 304. This method used to unconditionally overwrite
+      // BOTH headers, which silently defeated that:
+      //
+      //   - the 1-year immutable policy was downgraded to max-age=3600, and
+      //     to `private` whenever the object had no custom:aclPolicy metadata
+      //     (so shared/CDN caches refused to store it at all);
+      //   - the ETag was replaced with the GCS etag, which never equals the
+      //     path-derived ETag the route compares against — so the 304
+      //     short-circuit could never fire and every image was re-streamed in
+      //     full through this process on every single page load.
+      //
+      // Only fill these in when the caller hasn't already decided.
+      if (!res.getHeader("Cache-Control")) {
+        res.setHeader(
+          "Cache-Control",
+          `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
+        );
+      }
+      if (!res.getHeader("ETag") && metadata.etag) {
+        res.setHeader("ETag", metadata.etag);
+      }
 
       const stream = file.createReadStream();
       stream.on("error", (err) => {
