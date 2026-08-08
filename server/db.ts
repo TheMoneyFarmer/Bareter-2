@@ -32,10 +32,24 @@ export const pool = new Pool({
   console.error("[DB] Pool error:", err.message);
 });
 
-// Keepalive ping every 4 minutes — prevents Neon free tier from cold-starting
-// on user requests (free tier suspends compute after ~5 min of inactivity).
-setInterval(() => {
-  pool.query("SELECT 1").catch(() => {});
-}, 4 * 60 * 1000);
+// Keepalive ping. This was written for the Neon FREE tier, where compute was
+// free and a cold start was the only cost worth avoiding — so pinging every
+// 4 minutes (under the ~5 min autosuspend threshold) was strictly a win.
+//
+// On a PAID plan that calculus inverts: compute is billed per hour, and this
+// timer guarantees the compute NEVER suspends. Worse, it is pure waste by
+// construction — it only has any effect when there is no real traffic, which
+// is exactly when you want the compute to scale to zero. Real user requests
+// keep the compute warm on their own; the ping only ever pays to keep an
+// otherwise-idle database awake.
+//
+// Off by default. Set DB_KEEPALIVE=1 to restore the old behaviour if cold
+// starts on the first request after an idle period become a problem.
+if (process.env.DB_KEEPALIVE === "1") {
+  console.log("[DB] Keepalive enabled — compute will not autosuspend (billed continuously)");
+  setInterval(() => {
+    pool.query("SELECT 1").catch(() => {});
+  }, 4 * 60 * 1000).unref?.();
+}
 
 export const db = drizzle({ client: pool, schema });

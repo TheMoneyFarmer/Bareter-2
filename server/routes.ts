@@ -444,6 +444,15 @@ export async function registerRoutes(
         pool: pool as any,
         tableName: "session",
         createTableIfMissing: true,
+        // connect-pg-simple defaults to pruning expired sessions every 15 min
+        // (DEFAULT_PRUNE_INTERVAL_IN_SECONDS = 900). That is a DELETE against
+        // the session table four times an hour forever, which on its own is
+        // enough to stop Neon compute from ever autosuspending. Expired rows
+        // are never *read* (the store filters on `expire`), so pruning is
+        // housekeeping, not correctness — a once-daily sweep in the Company OS
+        // scheduler ("sessionPrune") does the same job without holding the
+        // database awake around the clock.
+        pruneSessionInterval: false,
       }),
       cookie: {
         secure: process.env.NODE_ENV === "production",

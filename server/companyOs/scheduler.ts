@@ -46,7 +46,7 @@ import {
 import { withRetry } from "./retry";
 import { storage } from "../storage";
 import { isSlackConfigured, postSlackAlert } from "../integrations/slack";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { deals, users, listingComments, listings } from "@shared/schema";
 import { and, inArray, lt, eq, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
@@ -270,6 +270,23 @@ async function weeklyDisputeRiskJob(): Promise<void> {
     }
   } catch (err) {
     console.error("[companyOs.scheduler] weeklyDisputeRisk failed:", err);
+  }
+}
+
+/**
+ * Delete expired rows from the connect-pg-simple `session` table.
+ *
+ * This replaces the store's built-in 15-minute prune timer, which kept Neon
+ * compute awake around the clock for pure housekeeping. Only rows whose
+ * `expire` timestamp is already in the past are removed — those are rows the
+ * session store would refuse to load anyway, so no live session is affected.
+ */
+async function sessionPruneJob(): Promise<void> {
+  try {
+    const res = await pool.query('DELETE FROM "session" WHERE "expire" < NOW()');
+    console.log(`[sessionPrune] Removed ${res.rowCount ?? 0} expired session row(s)`);
+  } catch (err: any) {
+    console.error("[sessionPrune] Failed to prune expired sessions:", err?.message);
   }
 }
 
@@ -1040,6 +1057,11 @@ export function startScheduler(): void {
   // no founder notification — just persists a `kpi_snapshots` row so
   // the admin page has 30-day history to chart.
   schedule("dailyDashboardSnapshot", "0 2 * * *", dailyDashboardSnapshotJob);
+  // 02:30 Dubai daily — prune expired session rows. Replaces connect-pg-simple's
+  // built-in 15-minute prune timer, which kept Neon compute from ever
+  // autosuspending just to delete already-dead rows. Anchored to the same quiet
+  // hour as the dashboard snapshot so both share one compute wake-up.
+  schedule("sessionPrune", "30 2 * * *", sessionPruneJob);
   // Every 4 hours from 06:00 to 22:00 Dubai — Intelligence Agent sweep.
   // Daytime only so the founder isn't woken by warnings. Detectors are
   // dedup'd at the SQL level (alertType + dayKey) so multiple ticks per
