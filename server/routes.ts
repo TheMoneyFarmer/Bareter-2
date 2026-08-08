@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
+import { uploadPublicImageWithThumb } from "./lib/images";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
@@ -1950,7 +1951,10 @@ export async function registerRoutes(
         const random = crypto.randomBytes(24).toString("hex");
         const filename = `${random}.${detected.ext}`;
         if (r2Enabled()) {
-          fileUrl = await uploadToR2(generateR2Key("public-uploads", detected.ext), req.file.buffer, detected.mime);
+          // Resizes to MAX_DISPLAY_PX and writes a grid thumbnail alongside.
+          // Camera originals measured ~3.4 MB in production; the display copy
+          // is ~290 KB and the thumbnail ~44 KB.
+          fileUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext);
         } else if (process.env.REPL_ID) {
           // Replit production must have R2 configured — refuse rather than bill Replit object storage
           return res.status(503).json({ message: "File storage not configured. Contact support." });
@@ -6583,6 +6587,62 @@ export async function registerRoutes(
   // Agent Health Dashboard — for each canonical agent, surface
   // last-call timestamp, recent activity counts, status (healthy /
   // never_called / errored), enabled flag, and budget row presence.
+  // Test Firebase FCM credentials and optionally send a real push to the admin.
+  app.post("/api/admin/push/test", requireAdmin, async (req, res) => {
+    try {
+      const { sendNativePushToUser } = await import("./nativePushService");
+      const { GoogleAuth } = await import("google-auth-library");
+
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+      if (!projectId || !raw) {
+        return res.status(500).json({ ok: false, error: "FIREBASE_PROJECT_ID or FIREBASE_SERVICE_ACCOUNT_JSON not set" });
+      }
+
+      let serviceAccountEmail = "unknown";
+      try {
+        const parsed = JSON.parse(raw) as { client_email?: string };
+        serviceAccountEmail = parsed.client_email ?? "unknown";
+      } catch {
+        return res.status(500).json({ ok: false, error: "FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON" });
+      }
+
+      // Verify credentials by obtaining an access token from Google
+      const auth = new GoogleAuth({
+        credentials: JSON.parse(raw),
+        scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
+      });
+      const tokenResult = await auth.getAccessToken();
+      const token = typeof tokenResult === "string" ? tokenResult : (tokenResult as { token?: string })?.token;
+      if (!token) {
+        return res.status(500).json({ ok: false, error: "Could not obtain access token from Google — check service account permissions" });
+      }
+
+      // If sendTo is provided, send a real test push
+      const { sendTo } = req.body as { sendTo?: string };
+      let pushSent = false;
+      if (sendTo) {
+        await sendNativePushToUser(sendTo, {
+          title: "Bareter Push Test",
+          body: "Firebase push notifications are working correctly.",
+        });
+        pushSent = true;
+      }
+
+      return res.json({
+        ok: true,
+        projectId,
+        serviceAccountEmail,
+        credentialsValid: true,
+        pushSent,
+        sendTo: sendTo ?? null,
+      });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Single endpoint so the founder has one place to verify the entire
   // agent fleet is alive.
   app.get("/api/admin/agents/health", requireAdmin, async (_req, res) => {
@@ -12437,7 +12497,7 @@ export async function registerRoutes(
         let mediaUrl = "";
 
         if (r2Enabled()) {
-          mediaUrl = await uploadToR2(generateR2Key("portfolio", detected.ext), req.file.buffer, detected.mime);
+          mediaUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext, "portfolio");
         } else if (process.env.REPL_ID) {
           return res.status(503).json({ message: "File storage not configured. Contact support." });
         } else {
@@ -13407,7 +13467,7 @@ export async function registerRoutes(
       const filename = `${random}.${detected.ext}`;
       let fileUrl = "";
       if (r2Enabled()) {
-        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
+        fileUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext, "business");
       } else if (process.env.REPL_ID) {
         return res.status(503).json({ message: "File storage not configured. Contact support." });
       } else {
@@ -13450,7 +13510,7 @@ export async function registerRoutes(
       const filename = `${random}.${detected.ext}`;
       let fileUrl = "";
       if (r2Enabled()) {
-        fileUrl = await uploadToR2(generateR2Key("business", detected.ext), req.file.buffer, detected.mime);
+        fileUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext, "business");
       } else if (process.env.REPL_ID) {
         return res.status(503).json({ message: "File storage not configured. Contact support." });
       } else {

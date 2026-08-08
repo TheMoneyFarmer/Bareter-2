@@ -14,6 +14,31 @@ export function assetUrl(path: string | null | undefined): string {
   return `${API_BASE}${path}`;
 }
 
+/**
+ * Grid/card variant of an uploaded image.
+ *
+ * The upload pipeline writes a ~600px WebP thumbnail beside every image at a
+ * predictable `thumbs/<stem>.webp` key on the same host, so the thumbnail URL is
+ * derived from the display URL by string rewrite — no extra field on the row and
+ * no request to look it up.
+ *
+ * Returns the ORIGINAL url unchanged when it isn't a recognised upload URL
+ * (data: URIs, external images, and older `/objects/...` images the backfill
+ * hasn't reached). Callers should additionally fall back to the original on a
+ * load error, since a thumbnail is not guaranteed to exist for older rows —
+ * see `useThumbWithFallback`.
+ */
+export function thumbUrl(path: string | null | undefined): string {
+  const full = assetUrl(path);
+  if (!full || full.startsWith("data:")) return full;
+  // https://<host>/<public-uploads|business|portfolio>/<stem>.<ext>
+  //   -> https://<host>/thumbs/<stem>.webp
+  return full.replace(
+    /^(https?:\/\/[^/]+)\/(?:public-uploads|business|portfolio)\/([^/?#]+?)\.[a-z0-9]+(\?[^#]*)?$/i,
+    "$1/thumbs/$2.webp",
+  );
+}
+
 const MOBILE_TOKEN_KEY = "bareter_mobile_token";
 
 export async function storeMobileToken(token: string): Promise<void> {

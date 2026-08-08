@@ -372,7 +372,23 @@ app.use((req, res, next) => {
         console.log("[whatsapp] Skipped — only runs in the production deployment (avoids session conflict with prod)");
       }
 
-      // 6. Warm per-agent budget cache (degrades gracefully on miss).
+      // 6. Verify Firebase / FCM credentials are readable.
+      (() => {
+        const fbProject = process.env.FIREBASE_PROJECT_ID;
+        const fbJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+        if (!fbProject || !fbJson) {
+          console.warn("[startup] Firebase NOT configured — push notifications disabled (set FIREBASE_PROJECT_ID + FIREBASE_SERVICE_ACCOUNT_JSON in Secrets)");
+        } else {
+          try {
+            const sa = JSON.parse(fbJson) as { client_email?: string };
+            log(`Firebase OK — project=${fbProject} service_account=${sa.client_email ?? "unknown"}`, "fcm");
+          } catch {
+            console.error("[startup] FIREBASE_SERVICE_ACCOUNT_JSON is set but not valid JSON — push notifications will fail");
+          }
+        }
+      })();
+
+      // 7. Warm per-agent budget cache (degrades gracefully on miss).
       import("./companyOs/costTracker")
         .then(async ({ ensureAgentBudgetOverridesLoaded, seedAgentBudgetDefaults }) => {
           await seedAgentBudgetDefaults();
