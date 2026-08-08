@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
-import { assetUrl } from "@/lib/queryClient";
+import { assetUrl, thumbUrl } from "@/lib/queryClient";
 
 interface ImageCarouselProps {
   images: string[];
@@ -11,6 +11,50 @@ interface ImageCarouselProps {
   testIdPrefix?: string;
   overlays?: React.ReactNode;
   onFirstLoad?: () => void;
+  /**
+   * Render the ~600px thumbnail instead of the full-size image. Set this on
+   * grid/card usages; leave it off for detail views that need full resolution.
+   * The lightbox always loads full-size regardless.
+   */
+  thumb?: boolean;
+}
+
+/**
+ * Card image with a two-stage fallback.
+ *
+ * Older rows may have no thumbnail generated yet, so a 404 on the thumbnail
+ * must NOT be treated as a broken image — the carousel's `onError` drops the
+ * slide entirely, which would make those listings look image-less. Instead the
+ * first failure retries the full-size URL, and only a second failure reports
+ * the image as genuinely broken.
+ */
+function CarouselImg({
+  src,
+  useThumb,
+  onFail,
+  ...imgProps
+}: {
+  src: string;
+  useThumb: boolean;
+  onFail: () => void;
+} & React.ImgHTMLAttributes<HTMLImageElement>) {
+  const initial = useThumb ? thumbUrl(src) : assetUrl(src);
+  const [current, setCurrent] = useState(initial);
+
+  // Reset when the underlying image changes (carousel reuse across listings).
+  useEffect(() => { setCurrent(useThumb ? thumbUrl(src) : assetUrl(src)); }, [src, useThumb]);
+
+  return (
+    <img
+      {...imgProps}
+      src={current}
+      onError={() => {
+        const full = assetUrl(src);
+        if (current !== full) setCurrent(full); // thumbnail missing — try full size
+        else onFail();                          // full size failed too — genuinely broken
+      }}
+    />
+  );
 }
 
 function Lightbox({
@@ -149,6 +193,7 @@ export function ImageCarousel({
   testIdPrefix,
   overlays,
   onFirstLoad,
+  thumb,
 }: ImageCarouselProps) {
   const [failedSrcs, setFailedSrcs] = useState<Set<string>>(new Set());
   const handleError = (src: string) => setFailedSrcs(prev => new Set(prev).add(src));
@@ -215,13 +260,14 @@ export function ImageCarousel({
                 className="relative h-full min-w-0 flex-[0_0_100%]"
                 data-testid={testIdPrefix ? `${testIdPrefix}-slide-${i}` : undefined}
               >
-                <img
-                  src={assetUrl(src)}
+                <CarouselImg
+                  src={src}
+                  useThumb={!!thumb}
                   alt={`${alt} ${i + 1} of ${safeImages.length}`}
                   loading={i === 0 ? "eager" : "lazy"}
                   className="w-full h-full object-cover"
                   onLoad={i === 0 ? onFirstLoad : undefined}
-                  onError={() => handleError(src)}
+                  onFail={() => handleError(src)}
                   draggable={false}
                 />
               </div>

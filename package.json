@@ -136,6 +136,7 @@
     "recharts": "^2.15.2",
     "resend": "^4.0.0",
     "sanity": "^3.99.0",
+    "sharp": "^0.35.3",
     "supertest": "^7.2.2",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

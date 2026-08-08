@@ -184,6 +184,7 @@ export function ListingCard({ listing, className = "", style, testId, isWishlist
           images={allImages}
           alt={listing.title}
           aspect="aspect-[16/9]"
+          thumb
           testIdPrefix={`listing-media-${listing.id}`}
           overlays={
             <>
