@@ -1042,9 +1042,24 @@ export function startScheduler(): void {
   // + META_AD_ACCOUNT_ID; the manual `campaign update` command stays as
   // a fallback for everything else. Skips silently if no Meta creds are
   // wired so dev environments don't see noisy errors.
-  // Every 15 minutes — reduced from every 5 min. At zero users with pending
-  // verification sessions the poll is a no-op DB query; 15 min is fast enough.
-  schedule("diditStatusPoll", "*/15 * * * *", diditStatusPollJob);
+  // Hourly — reduced from every 15 min (and originally every 5).
+  //
+  // This poll is a SAFETY NET, not the primary path. Didit pushes results to
+  // /api/webhooks/didit (signature-verified, updates kycStatus/kybStatus and
+  // sends the approved/declined emails), so in the normal case a user's status
+  // flips the instant Didit decides — the poll never sees pending work.
+  //
+  // The "no-op DB query" framing above understated the cost: a query every
+  // 15 min never lets Neon compute reach its ~5 min idle autosuspend threshold
+  // for long, so 96 polls/day kept the database awake a large part of the day
+  // purely to ask a question that is almost always "nobody is pending".
+  //
+  // At hourly, the compute sleeps between ticks. The only case that degrades is
+  // a user whose webhook was DROPPED — they now wait up to an hour instead of
+  // 15 min for the fallback to catch it. Users who don't want to wait already
+  // have an instant manual path: POST /api/verification/refresh, which the
+  // verification screen calls directly.
+  schedule("diditStatusPoll", "0 * * * *", diditStatusPollJob);
   schedule("dailyMetaCampaignSync", "30 3 * * *", dailyMetaCampaignSyncJob);
   // 09:30 Dubai daily — Sales Agent leads sync + re-engagement sweep.
   // Re-engagement is deduped at the SQL level (14-day cooldown) so the
