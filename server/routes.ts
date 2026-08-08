@@ -2500,7 +2500,33 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/listings/:id", async (req, res) => {
+  // Literal /api/listings/<word> routes that are registered LATER in this file.
+  //
+  // Express matches routes in registration order, so "/api/listings/:id" below
+  // swallows every sibling literal route defined after it — the request is
+  // treated as a lookup for a listing whose id is the literal word, which never
+  // exists, so the endpoint silently 404s instead of running. That killed nine
+  // endpoints in production (trending, for-you, nearby, liked, bulk,
+  // chain-matches, match-score, and both proposal views) with no error logged.
+  //
+  // Rather than relocate a large handler in a 13k-line file, the :id route
+  // yields with next() for these reserved words so Express continues on to the
+  // real handler further down. Anything added later as /api/listings/<literal>
+  // must be listed here too — the routing test in tests/ asserts that.
+  const RESERVED_LISTING_PATHS = new Set([
+    "my-pending-proposals",
+    "my-outgoing-proposals",
+    "trending",
+    "liked",
+    "for-you",
+    "nearby",
+    "match-score",
+    "bulk",
+    "chain-matches",
+  ]);
+
+  app.get("/api/listings/:id", async (req, res, next) => {
+    if (RESERVED_LISTING_PATHS.has(req.params.id)) return next();
     try {
       const listing = await storage.getListingWithUser(param(req.params.id));
       if (!listing) {
