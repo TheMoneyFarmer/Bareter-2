@@ -7,6 +7,8 @@ import * as QRCode from "qrcode";
 import * as path from "path";
 import * as fs from "fs";
 import { EventEmitter } from "events";
+import { gzipSync, gunzipSync } from "zlib";
+import { createHash } from "crypto";
 import P from "pino";
 import { objectStorageClient } from "./replit_integrations/object_storage/objectStorage";
 
@@ -14,21 +16,74 @@ const AUTH_DIR = path.join(process.cwd(), "whatsapp-auth");
 const BUCKET = process.env.REPLIT_OBJECT_STORE_BUCKET ?? "replit-objstore-7e5628f2-57c3-4e06-a847-99cef1d8fb27";
 const SESSION_PREFIX = "whatsapp-session/";
 
+// Baileys' multi-file auth state writes one file per pre-key, sender-key and
+// signal session — roughly 180 of them on a live session. Backing those up
+// file-by-file cost 1 advanced PUT op *each*, which at one backup per minute
+// billed ~259k advanced ops/day on Replit object storage.
+//
+// Instead the whole directory is bundled into a single gzipped JSON blob and
+// written to ONE key. That makes a backup cost exactly 1 advanced op no matter
+// how many key files Baileys has produced. The auth files are small JSON
+// documents, so the bundle compresses to a few hundred KB at most.
+const SESSION_BLOB_KEY = `${SESSION_PREFIX}session.json.gz`;
+
+// sha256 of the last bundle we successfully uploaded. Baileys re-emits
+// creds.update constantly (keepalive-driven key rotation) but the on-disk
+// bytes are frequently identical, so hashing lets us skip the write entirely
+// and drop the op count to zero for idle sessions.
+let lastBackupHash: string | null = null;
+
+/** Read AUTH_DIR into a single gzipped JSON bundle: { name: base64 }. */
+function buildSessionBundle(): { buf: Buffer; hash: string; count: number } | null {
+  if (!fs.existsSync(AUTH_DIR)) return null;
+  const names = fs.readdirSync(AUTH_DIR).filter((n) =>
+    fs.statSync(path.join(AUTH_DIR, n)).isFile()
+  );
+  if (names.length === 0) return null;
+  const payload: Record<string, string> = {};
+  for (const name of names.sort()) {
+    payload[name] = fs.readFileSync(path.join(AUTH_DIR, name)).toString("base64");
+  }
+  const buf = gzipSync(Buffer.from(JSON.stringify(payload), "utf8"));
+  return { buf, hash: createHash("sha256").update(buf).digest("hex"), count: names.length };
+}
+
 async function restoreSessionFromStorage(): Promise<void> {
+  const bucket = objectStorageClient.bucket(BUCKET);
+
+  // Preferred path: one GET (a *basic* op, effectively free) for the bundle.
   try {
-    const bucket = objectStorageClient.bucket(BUCKET);
-    // COST AUDIT: getFiles() = 1 advanced LIST op on every reconnect
-    console.log(`[objstore-audit] restoreSessionFromStorage: 1 advanced op (LIST)`);
-    const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
-    if (files.length === 0) return;
+    const [contents] = await bucket.file(SESSION_BLOB_KEY).download();
+    const payload = JSON.parse(gunzipSync(contents).toString("utf8")) as Record<string, string>;
     if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
-    await Promise.all(files.map(async (file) => {
+    for (const [name, b64] of Object.entries(payload)) {
+      if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) continue;
+      fs.writeFileSync(path.join(AUTH_DIR, name), Buffer.from(b64, "base64"));
+    }
+    lastBackupHash = createHash("sha256").update(contents).digest("hex");
+    console.log(`[whatsapp] Restored ${Object.keys(payload).length} session file(s) from session bundle`);
+    return;
+  } catch (err: any) {
+    if (err?.code !== 404) {
+      console.warn("[whatsapp] Session bundle restore failed:", err?.message);
+    }
+  }
+
+  // One-time migration path: an older deploy left per-file objects behind.
+  // Costs 1 LIST, but only until the first bundle backup lands.
+  try {
+    console.log("[whatsapp] No session bundle — falling back to legacy per-file restore (1 LIST op)");
+    const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
+    const legacy = files.filter((f) => f.name !== SESSION_BLOB_KEY);
+    if (legacy.length === 0) return;
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    await Promise.all(legacy.map(async (file) => {
       const localName = file.name.slice(SESSION_PREFIX.length);
-      if (!localName) return;
+      if (!localName || localName.includes("/")) return;
       const [contents] = await file.download();
       fs.writeFileSync(path.join(AUTH_DIR, localName), contents);
     }));
-    console.log(`[whatsapp] Restored ${files.length} session file(s) from Object Storage`);
+    console.log(`[whatsapp] Restored ${legacy.length} legacy session file(s) — will re-save as a bundle`);
   } catch (err: any) {
     console.warn("[whatsapp] Could not restore session from Object Storage:", err?.message);
   }
@@ -36,18 +91,19 @@ async function restoreSessionFromStorage(): Promise<void> {
 
 async function backupSessionToStorage(): Promise<void> {
   try {
-    if (!fs.existsSync(AUTH_DIR)) return;
-    const bucket = objectStorageClient.bucket(BUCKET);
-    const files = fs.readdirSync(AUTH_DIR);
-    if (files.length === 0) return;
-    // COST AUDIT: each file.save() = 1 advanced op. Log before writing so
-    // Replit deployment logs show exactly how often this fires.
-    console.log(`[objstore-audit] backupSessionToStorage: writing ${files.length} files (${files.length} advanced ops) caller=${new Error().stack?.split("\n")[2]?.trim()}`);
-    await Promise.all(files.map(async (name) => {
-      const contents = fs.readFileSync(path.join(AUTH_DIR, name));
-      await bucket.file(`${SESSION_PREFIX}${name}`).save(contents, { resumable: false });
-    }));
-    console.log(`[whatsapp] Backed up ${files.length} session file(s) to Object Storage`);
+    const bundle = buildSessionBundle();
+    if (!bundle) return;
+    if (bundle.hash === lastBackupHash) {
+      // Nothing on disk actually changed — skip the write and the op entirely.
+      return;
+    }
+    console.log(`[objstore-audit] backupSessionToStorage: 1 advanced op — ${bundle.count} file(s), ${(bundle.buf.length / 1024).toFixed(1)} KB bundled`);
+    await objectStorageClient
+      .bucket(BUCKET)
+      .file(SESSION_BLOB_KEY)
+      .save(bundle.buf, { contentType: "application/gzip", resumable: false });
+    lastBackupHash = bundle.hash;
+    console.log(`[whatsapp] Backed up ${bundle.count} session file(s) as one bundle`);
   } catch (err: any) {
     console.warn("[whatsapp] Could not backup session to Object Storage:", err?.message);
   }
@@ -57,7 +113,8 @@ async function clearSessionFromStorage(): Promise<void> {
   try {
     const bucket = objectStorageClient.bucket(BUCKET);
     const [files] = await bucket.getFiles({ prefix: SESSION_PREFIX });
-    await Promise.all(files.map(f => f.delete()));
+    await Promise.all(files.map(f => f.delete().catch(() => {})));
+    lastBackupHash = null;
     console.log("[whatsapp] Cleared session from Object Storage");
   } catch (err: any) {
     console.warn("[whatsapp] Could not clear session from Object Storage:", err?.message);
@@ -109,7 +166,12 @@ const SESSION_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 // hundreds of times per session (pre-key refresh, signal-key rotation, etc.)
 // so a per-event backup generates millions of PUT ops. One write per
 // CREDS_BACKUP_DEBOUNCE_MS window is more than sufficient.
-const CREDS_BACKUP_DEBOUNCE_MS = 60_000;
+//
+// 60s was still firing ~1440 backups/day. Since a backup only exists to
+// survive a container restart — and Baileys regenerates pre-keys on demand
+// after a restore — a 10-minute window loses nothing in practice while
+// cutting the worst-case op count by 10x on top of the bundling change.
+const CREDS_BACKUP_DEBOUNCE_MS = 10 * 60 * 1000;
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
