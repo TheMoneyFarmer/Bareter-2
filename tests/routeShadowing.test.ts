@@ -32,15 +32,37 @@ const ROUTE_FILES = [
 
 interface Route { file: string; line: number; method: string; path: string }
 
+/**
+ * Parse route registrations, including ones split across lines:
+ *
+ *   app.patch(
+ *     "/api/admin/users/:id/kyb",
+ *     requireAuth, requireAdmin, ...
+ *
+ * A line-by-line regex misses those. When this test was first written it used
+ * one, and silently skipped 5 real routes — the kind of blind spot that makes a
+ * security test worse than none, because it reports green over an unchecked gap.
+ * Scan the whole file as one string instead.
+ */
 function collectRoutes(): Route[] {
   const routes: Route[] = [];
   for (const rel of ROUTE_FILES) {
     const abs = path.resolve(process.cwd(), rel);
     if (!fs.existsSync(abs)) continue;
-    fs.readFileSync(abs, "utf8").split("\n").forEach((ln, i) => {
-      const m = ln.match(/app\.(get|post|put|patch|delete)\(\s*"([^"]+)"/);
-      if (m) routes.push({ file: rel, line: i + 1, method: m[1], path: m[2] });
-    });
+    const src = fs.readFileSync(abs, "utf8");
+    const rx = /app\.(get|post|put|patch|delete)\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(src))) {
+      const after = src.slice(m.index + m[0].length, m.index + m[0].length + 400);
+      const pm = after.match(/^\s*"([^"]+)"/); // path may sit on the next line
+      if (!pm) continue;
+      routes.push({
+        file: rel,
+        line: src.slice(0, m.index).split("\n").length,
+        method: m[1],
+        path: pm[1],
+      });
+    }
   }
   return routes;
 }
