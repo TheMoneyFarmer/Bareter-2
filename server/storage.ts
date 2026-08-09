@@ -1,6 +1,44 @@
 import { db } from "./db";
 import { eq, and, or, desc, sql, ilike, gte, lte, count as drizzleCount, inArray, isNotNull, isNull } from "drizzle-orm";
 import { sanitizePublicUser } from "./security";
+
+/**
+ * Fields on `users` that grant privilege, assert identity, or authenticate.
+ *
+ * A user must never be able to set these about themselves by including them in
+ * a request body — doing so is straightforward privilege escalation. They are
+ * excluded from `SafeUserUpdate` so `updateUser` cannot write them at all;
+ * legitimate writes go through `updateUserPrivileged`.
+ */
+export const PRIVILEGED_USER_FIELDS = [
+  "isAdmin",
+  "role",
+  "password",
+  "email",
+  "emailVerified",
+  "isVerified",
+  "verificationLevel",
+  "verificationStatus",
+  "kycStatus",
+  "kybStatus",
+  "credibilityScore",
+  "totalCompletedDeals",
+  "isPaused",
+  "isBanned",
+  "founderBadge",
+] as const;
+
+export type PrivilegedUserField = (typeof PRIVILEGED_USER_FIELDS)[number];
+
+/** A user update with every privilege-granting field removed. */
+export type SafeUserUpdate = Omit<Partial<User>, PrivilegedUserField>;
+
+/** Why a privileged write is happening — forces intent to be explicit. */
+export type PrivilegedUpdateReason =
+  | "admin-action"
+  | "auth-flow"
+  | "verification-pipeline"
+  | "system-job";
 import {
   users,
   listings,
@@ -176,7 +214,8 @@ export interface IStorage {
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
+  updateUser(id: string, data: SafeUserUpdate): Promise<User | undefined>;
+  updateUserPrivileged(id: string, data: Partial<User>, reason: PrivilegedUpdateReason): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   // Listings
@@ -564,7 +603,77 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+  /**
+   * Update a user with fields a user is allowed to change about themselves.
+   *
+   * `PRIVILEGED_USER_FIELDS` are rejected at COMPILE TIME by `SafeUserUpdate`.
+   * The previous signature took `Partial<User>`, which type-permitted
+   * `{ isAdmin: true }` from any of its 40 call sites — safe only because every
+   * caller happened to be careful. Narrowing the type means a route that
+   * forwards user input into a privilege field no longer compiles, rather than
+   * shipping a silent escalation path.
+   *
+   * Legitimate privileged writes (admin actions, verification webhooks, password
+   * resets) go through `updateUserPrivileged`, which is greppable and audited.
+   */
+  async updateUser(id: string, data: SafeUserUpdate): Promise<User | undefined> {
+    // Runtime backstop for the type above.
+    //
+    // TypeScript's excess-property check only fires on object LITERALS, so a
+    // caller passing a `Record<string, unknown>` — or writing `as any`, of which
+    // this file's callers had several — slips privileged fields straight past
+    // the compiler. Strip them here so neither a cast nor an intermediate
+    // variable can turn a self-service update into privilege escalation.
+    //
+    // Stripping rather than throwing is deliberate: a thrown error in a hot
+    // profile-update path would be a self-inflicted outage, whereas dropping the
+    // field preserves the user's legitimate edit and fails closed on the
+    // dangerous part. The warning is loud so it surfaces in logs if a real
+    // caller ever needs `updateUserPrivileged` instead.
+    const clean: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+    const stripped: string[] = [];
+    for (const f of PRIVILEGED_USER_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(clean, f)) {
+        delete clean[f];
+        stripped.push(f);
+      }
+    }
+    if (stripped.length > 0) {
+      console.warn(
+        `[authz] BLOCKED privileged field(s) in updateUser — user=${id} fields=${stripped.join(",")}. ` +
+          `Use updateUserPrivileged() if this write is legitimate.`,
+      );
+    }
+
+    const [user] = await db
+      .update(users)
+      .set({ ...clean, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  /**
+   * Update a user INCLUDING privileged fields (isAdmin, role, kycStatus,
+   * password, …). Only for admin-gated routes, the verification pipeline, and
+   * unauthenticated auth flows such as password reset — never for data that came
+   * straight from a request body.
+   *
+   * `reason` is required so every privileged write states its intent at the call
+   * site and can be traced in logs. It is not decorative: grepping this function
+   * enumerates the app's complete privilege-escalation surface.
+   */
+  async updateUserPrivileged(
+    id: string,
+    data: Partial<User>,
+    reason: PrivilegedUpdateReason,
+  ): Promise<User | undefined> {
+    const touched = Object.keys(data).filter((k) =>
+      (PRIVILEGED_USER_FIELDS as readonly string[]).includes(k),
+    );
+    if (touched.length > 0) {
+      console.log(`[authz] privileged user update — user=${id} reason=${reason} fields=${touched.join(",")}`);
+    }
     const [user] = await db
       .update(users)
       .set({ ...data, updatedAt: new Date() })

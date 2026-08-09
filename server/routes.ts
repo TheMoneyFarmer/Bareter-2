@@ -1571,7 +1571,7 @@ export async function registerRoutes(
       const user = await storage.getUserByEmail(email.trim().toLowerCase());
       if (!user) return res.status(404).json({ message: "User not found" });
       const hash = await bcrypt.hash(password, 10);
-      await storage.updateUser(user.id, { password: hash });
+      await storage.updateUserPrivileged(user.id, { password: hash }, "auth-flow");
       res.json({ message: "Password updated. You can now log in." });
     } catch (err: any) {
       res.status(500).json({ message: err?.message ?? "Failed" });
@@ -1595,11 +1595,11 @@ export async function registerRoutes(
 
       const hashedPassword = await hashPassword(password);
 
-      await storage.updateUser(user.id, {
+      await storage.updateUserPrivileged(user.id, {
         password: hashedPassword,
         passwordResetToken: null,
         passwordResetExpires: null,
-      });
+      }, "auth-flow");
 
       // Reset is performed by an unauthenticated caller — destroy ALL of
       // the user's existing sessions so any attacker who was already in is
@@ -1946,10 +1946,10 @@ export async function registerRoutes(
       if (uploadType === "avatar") {
         await storage.updateUser(userId, { avatarUrl: fileUrl });
       } else if (uploadType === "verification") {
-        await storage.updateUser(userId, {
+        await storage.updateUserPrivileged(userId, {
           verificationDocUrl: fileUrl,
           verificationStatus: "submitted",
-        });
+        }, "verification-pipeline");
       } else if (uploadType === "portfolio") {
         const user = await storage.getUser(userId);
         if (user) {
@@ -1957,10 +1957,10 @@ export async function registerRoutes(
           await storage.updateUser(userId, { portfolioImages });
         }
       } else if (uploadType === "business_license") {
-        await storage.updateUser(userId, {
+        await storage.updateUserPrivileged(userId, {
           businessLicenseUrl: fileUrl,
           kybStatus: "PENDING_REVIEW",
-        });
+        }, "verification-pipeline");
       }
 
       res.json({ url: fileUrl, type: uploadType });
@@ -2217,11 +2217,11 @@ export async function registerRoutes(
       }
 
       const hashedPassword = await hashPassword(newPassword);
-      await storage.updateUser(req.session.userId!, {
+      await storage.updateUserPrivileged(req.session.userId!, {
         password: hashedPassword,
         passwordChangeOtp: null,
         passwordChangeOtpExpires: null,
-      });
+      }, "auth-flow");
 
       // Destroy every other active session for this user so a stolen
       // session is invalidated as soon as the legitimate user changes
@@ -4722,12 +4722,12 @@ export async function registerRoutes(
       const session = await createVerificationSession(workflowId, user.id, callbackUrl);
       if (!session) return res.status(500).json({ message: "Could not start verification. Please try again." });
 
-      await storage.updateUser(user.id, {
+      await storage.updateUserPrivileged(user.id, {
         accountType: userAccountType,
         diditSessionId: session.session_id,
         verificationSessionStartedAt: new Date(),
         ...(userAccountType === "business" ? { kybStatus: "IN_PROGRESS" } : { kycStatus: "IN_PROGRESS" }),
-      } as any);
+      } as any, "verification-pipeline");
 
       res.json({ sessionId: session.session_id, verificationUrl: session.url, resumed: false });
     } catch (error) {
@@ -5099,7 +5099,7 @@ export async function registerRoutes(
         country: "AE",
       });
       if (isVerified) {
-        user = (await storage.updateUser(user.id, { isVerified: true })) ?? user;
+        user = (await storage.updateUserPrivileged(user.id, { isVerified: true }, "verification-pipeline")) ?? user;
       }
       const { password: _pw, ...safe } = user;
       res.status(201).json(safe);
@@ -5310,7 +5310,7 @@ export async function registerRoutes(
         updateData.verificationLevel = 2;
         updateData.identityVerifiedAt = new Date();
       }
-      const user = await storage.updateUser(param(req.params.id), updateData);
+      const user = await storage.updateUserPrivileged(param(req.params.id), updateData, "admin-action");
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -6880,7 +6880,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid role" });
       }
       const isAdmin = role === "admin" || role === "super_admin";
-      const user = await storage.updateUser(param(req.params.id), { role, isAdmin });
+      const user = await storage.updateUserPrivileged(param(req.params.id), { role, isAdmin }, "admin-action");
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -6902,7 +6902,7 @@ export async function registerRoutes(
       if (targetId === req.session.userId) {
         return res.status(400).json({ message: "You are already an admin" });
       }
-      const user = await storage.updateUser(targetId, { isAdmin: true, role: "admin" });
+      const user = await storage.updateUserPrivileged(targetId, { isAdmin: true, role: "admin" }, "admin-action");
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.email) {
         await updateAdminAllowlist(user.email, "add", req.session.userId);
@@ -6921,7 +6921,7 @@ export async function registerRoutes(
       if (targetId === req.session.userId) {
         return res.status(400).json({ message: "You cannot demote yourself" });
       }
-      const user = await storage.updateUser(targetId, { isAdmin: false, role: "user" });
+      const user = await storage.updateUserPrivileged(targetId, { isAdmin: false, role: "user" }, "admin-action");
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.email) {
         await updateAdminAllowlist(user.email, "remove", req.session.userId);
@@ -7053,7 +7053,7 @@ export async function registerRoutes(
         accountType: "individual",
         country: "AE",
       });
-      const user = (await storage.updateUser(createdUser.id, { isAdmin: true })) || createdUser;
+      const user = (await storage.updateUserPrivileged(createdUser.id, { isAdmin: true }, "admin-action")) || createdUser;
       await updateAdminAllowlist(invite.email, "add", invite.invitedByUserId);
       await storage.markAdminInviteAccepted(invite.id, user.id);
       await storage.createAuditLog({
@@ -7099,7 +7099,7 @@ export async function registerRoutes(
         bannedReason: banned ? reason : null,
         bannedAt: banned ? new Date() : null
       };
-      const user = await storage.updateUser(param(req.params.id), banUpdates);
+      const user = await storage.updateUserPrivileged(param(req.params.id), banUpdates, "admin-action");
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -7629,7 +7629,7 @@ export async function registerRoutes(
         tierUpdates.kybStatus = "APPROVED";
         tierUpdates.accountType = "business";
       }
-      const user = await storage.updateUser(param(req.params.id), tierUpdates);
+      const user = await storage.updateUserPrivileged(param(req.params.id), tierUpdates, "admin-action");
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -9850,9 +9850,9 @@ export async function registerRoutes(
     async (req, res) => {
       try {
         const status = res.locals.kybStatus as string;
-        const updated = await storage.updateUser(param(req.params.id), {
+        const updated = await storage.updateUserPrivileged(param(req.params.id), {
           kybStatus: status,
-        });
+        }, "admin-action");
         res.json(updated);
       } catch (error) {
         console.error("KYB update error:", error);
@@ -9865,7 +9865,7 @@ export async function registerRoutes(
   app.patch("/api/admin/users/:id/pause", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { isPaused } = req.body;
-      const updated = await storage.updateUser(param(req.params.id), { isPaused: !!isPaused });
+      const updated = await storage.updateUserPrivileged(param(req.params.id), { isPaused: !!isPaused }, "admin-action");
       await logAdminAction(req, isPaused ? "user_paused" : "user_unpaused", "user", param(req.params.id));
       res.json(updated);
     } catch (error) {
@@ -13512,14 +13512,14 @@ export async function registerRoutes(
         if (latestStatus === "APPROVED") {
           bizUpdate.kybVerifiedAt = new Date();
           // Mirror onto the user row so kybStatus/isVerified are consistent
-          await storage.updateUser(userId, {
+          await storage.updateUserPrivileged(userId, {
             kybStatus: "APPROVED",
             isVerified: true,
             verificationStatus: "verified",
             diditVerifiedAt: new Date(),
-          } as any);
+          } as any, "verification-pipeline");
         } else if (latestStatus === "DECLINED" || latestStatus === "REJECTED") {
-          await storage.updateUser(userId, { kybStatus: latestStatus, isVerified: false, verificationStatus: "rejected" } as any);
+          await storage.updateUserPrivileged(userId, { kybStatus: latestStatus, isVerified: false, verificationStatus: "rejected" } as any, "verification-pipeline");
         }
         await storage.updateBusinessProfile(businessId, bizUpdate as any);
       }

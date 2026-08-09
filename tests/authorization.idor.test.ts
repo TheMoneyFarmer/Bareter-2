@@ -72,8 +72,9 @@ maybe("IDOR — a user cannot mutate another user's rows", () => {
       await db.delete(t).where(inArray(t.userId, createdUserIds)).catch(() => {});
     }
     await db.delete(schema.users).where(inArray(schema.users.id, createdUserIds)).catch(() => {});
-    const { pool } = await import("../server/db");
-    await pool.end().catch(() => {});
+    // NB: do not close the pool here — it is shared with the suites below, and
+    // ending it made their beforeAll fail (which vitest reports as "skipped",
+    // quietly turning three real security assertions into no-ops).
   });
 
   it("guards the fixtures themselves", () => {
@@ -146,5 +147,53 @@ maybe("IDOR — a user cannot mutate another user's rows", () => {
     const [still] = await db.select().from(schema.notifications)
       .where(eq(schema.notifications.id, row.id));
     expect(still, "B deleted A's notification").toBeTruthy();
+  });
+});
+
+maybe("privilege escalation via updateUser is blocked at runtime", () => {
+  let db: any, storage: any, schema: any;
+  let victim = "";
+  const created: string[] = [];
+
+  beforeAll(async () => {
+    ({ db } = await import("../server/db"));
+    ({ storage } = await import("../server/storage"));
+    schema = await import("@shared/schema");
+    const u = await storage.createUser({
+      email: `idor-test-priv-${randomUUID()}@example.invalid`,
+      password: "x".repeat(60),
+      fullName: "IDOR Priv Test",
+    });
+    victim = u.id;
+    created.push(u.id);
+  });
+
+  afterAll(async () => {
+    if (created.length) {
+      await db.delete(schema.users).where(inArray(schema.users.id, created)).catch(() => {});
+    }
+  });
+
+  it("strips isAdmin/role even when smuggled past the type with `as any`", async () => {
+    // Exactly what a route forwarding an unvalidated body would do.
+    await storage.updateUser(victim, { bio: "hi", isAdmin: true, role: "super_admin" } as any);
+
+    const [after] = await db.select().from(schema.users).where(eq(schema.users.id, victim));
+    expect(after.isAdmin, "isAdmin was set through updateUser").toBeFalsy();
+    expect(after.role, "role was escalated through updateUser").not.toBe("super_admin");
+    expect(after.bio, "the legitimate field was dropped too").toBe("hi");
+  });
+
+  it("strips identity fields (kycStatus, isVerified) from a self-service update", async () => {
+    await storage.updateUser(victim, { kycStatus: "APPROVED", isVerified: true } as any);
+    const [after] = await db.select().from(schema.users).where(eq(schema.users.id, victim));
+    expect(after.isVerified).toBeFalsy();
+    expect(after.kycStatus).not.toBe("APPROVED");
+  });
+
+  it("still allows the privileged path for legitimate admin action", async () => {
+    await storage.updateUserPrivileged(victim, { isAdmin: true }, "admin-action");
+    const [after] = await db.select().from(schema.users).where(eq(schema.users.id, victim));
+    expect(after.isAdmin, "updateUserPrivileged failed to apply a legitimate change").toBe(true);
   });
 });
