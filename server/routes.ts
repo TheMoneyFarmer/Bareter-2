@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import { uploadPublicImageWithThumb } from "./lib/images";
+import { safeGlobalApiLimiter } from "./handlers/globalRateLimit";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import { z } from "zod";
@@ -460,6 +461,20 @@ export async function registerRoutes(
   // and (req as any).__mobileAuth so all downstream handlers work unchanged.
   // Must run after session middleware so req.session is available.
   app.use(bearerPreAuthMiddleware);
+
+  // Baseline /api rate limit — a backstop, not a policy.
+  //
+  // Mounted HERE, after the session and bearer middleware, so the limiter can
+  // key on the logged-in user. Mounting it earlier would key everything by IP,
+  // and every user behind one mobile carrier NAT would share a single bucket —
+  // throttling real customers to stop a scraper.
+  //
+  // Disabled under NODE_ENV=test so the suite is not rate limited, and it fails
+  // OPEN: see safeGlobalApiLimiter. Targeted limiters (auth, OTP, AI, support)
+  // remain the real defence and still apply on top of this.
+  if (process.env.NODE_ENV !== "test") {
+    app.use("/api", safeGlobalApiLimiter());
+  }
 
   // ── Google OAuth ────────────────────────────────────────────────────────────
   // Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.
