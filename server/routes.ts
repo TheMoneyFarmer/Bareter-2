@@ -484,6 +484,45 @@ export async function registerRoutes(
     app.use("/api", safeGlobalApiLimiter());
   }
 
+  // ── Health check ────────────────────────────────────────────────────────
+  //
+  // Registered early and deliberately dependency-light: this must answer even
+  // when the rest of the app cannot.
+  //
+  // Why a real endpoint matters here: unmatched paths do NOT 404 in production.
+  // Replit's edge serves index.html for anything Node has not claimed, so
+  // /api/health and /api/total-nonsense-xyz both returned "200 text/html". An
+  // uptime monitor pointed at either would have reported all-green throughout
+  // the outage where every API route was returning 500 — which is exactly what
+  // happened, and why nobody noticed until it was checked by hand.
+  //
+  // So the contract is: this route returns JSON with an explicit "status" field,
+  // and 503 when the database is unreachable. A monitor must assert on the BODY
+  // (status === "ok"), not merely on a 200, because 200-with-HTML is precisely
+  // the failure this is meant to catch.
+  //
+  // Exempt from the global rate limiter (see EXEMPT_PREFIXES) so a throttled
+  // client can never make the service look down.
+  const BOOT_TIME = Date.now();
+  app.get("/api/health", async (_req, res) => {
+    // Bound the DB probe: a hung connection must surface as "down" rather than
+    // leaving the monitor waiting until its own timeout fires.
+    const probe = pool
+      .query("SELECT 1")
+      .then(() => true)
+      .catch(() => false);
+    const timeout = new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000));
+    const dbUp = await Promise.race([probe, timeout]);
+
+    res.set("Cache-Control", "no-store");
+    res.status(dbUp ? 200 : 503).json({
+      status: dbUp ? "ok" : "degraded",
+      db: dbUp ? "up" : "down",
+      uptimeSeconds: Math.round((Date.now() - BOOT_TIME) / 1000),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // ── Google OAuth ────────────────────────────────────────────────────────────
   // Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.
   // Set authorized redirect URI in Google Cloud Console to:

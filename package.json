@@ -68,6 +68,7 @@
     "@radix-ui/react-tooltip": "^1.2.0",
     "@sanity/client": "^7.22.0",
     "@sanity/vision": "^3.99.0",
+    "@sentry/node": "^10.70.0",
     "@tanstack/query-sync-storage-persister": "^5.100.14",
     "@tanstack/react-query": "^5.60.5",
     "@tanstack/react-query-persist-client": "^5.100.14",

@@ -47,6 +47,7 @@ const APPROVED_PUBLIC = new Set([
   "GET /api/deals/recent-completed",
   "GET /api/endorsements/:userId",
   "GET /api/explore/stats",
+  "GET /api/health",
   "GET /api/geo/lookup",
   "GET /api/legal",
   "GET /api/legal/:slug",

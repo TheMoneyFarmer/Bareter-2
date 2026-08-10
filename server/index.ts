@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction, type RequestHandler } fr
 import { securityHeaders, originCsrfGuard, getAllowedOriginHosts, originHostOf } from "./security";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { initErrorTracking, errorTrackingMiddleware } from "./lib/errorTracking";
 import { createServer } from "http";
 import { pool } from "./db";
 import { backfillLocationFields, purgeSeedUsers, wipePlatformContent } from "./seed";
@@ -45,6 +46,12 @@ if (process.env.REPL_ID && !process.env.PRIVATE_OBJECT_DIR) {
 // so that rate-limiting and similar anti-abuse checks cannot be bypassed by
 // a forged X-Forwarded-For header from a direct client.
 app.set("trust proxy", 1);
+
+// Start error tracking as early as possible so failures during boot — the ones
+// that are hardest to diagnose after the fact — are captured too. Fire-and-
+// forget and self-contained: a no-op when SENTRY_DSN is unset, and its own
+// failures are swallowed, so monitoring can never stop the app from starting.
+void initErrorTracking();
 
 // Gzip/deflate all responses — biggest single win for JSON-heavy API payloads
 app.use(compression());
@@ -200,6 +207,10 @@ app.use((req, res, next) => {
   const voiceApp = express();
   registerAudioRoutes(voiceApp);
   app.use("/voice", voiceApp);
+
+  // Report 5xx before the responder below turns them into a bare JSON message.
+  // No-op unless SENTRY_DSN is set.
+  app.use(errorTrackingMiddleware());
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
