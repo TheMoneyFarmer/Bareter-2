@@ -1,6 +1,7 @@
 import { BadgeCheck, Mail, MessageCircle, ShieldCheck } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { isAccountVerified } from "@shared/verification";
 
 interface VerifiedBadgeProps {
   kycStatus?: string | null;
@@ -19,18 +20,35 @@ const SIZES = {
   lg: "h-5 w-5",
 };
 
+/**
+ * Whether to show the "Verified" badge.
+ *
+ * Delegates to the shared rule in `@shared/verification` — the same function
+ * the server gates listing creation and trade creation on. Keeping these in
+ * lockstep is the whole point: this badge previously counted a verified phone
+ * as verified while the server demanded an approved identity KYC, so users
+ * saw a green badge and were still refused at listing creation.
+ *
+ * Callers that only have kyc/kyb (e.g. a listing card, which does not carry
+ * the poster's email/phone flags) still work: an APPROVED status short-circuits
+ * the shared rule, which is exactly the signal those surfaces have.
+ */
 export function isUserVerified(
   kycStatus?: string | null,
   kybStatus?: string | null,
   phoneVerified?: boolean | null,
   isVerified?: boolean | null,
+  emailVerified?: boolean | null,
+  accountType?: string | null,
 ): boolean {
-  return (
-    kycStatus === "APPROVED" ||
-    kybStatus === "APPROVED" ||
-    !!isVerified ||
-    !!phoneVerified
-  );
+  return isAccountVerified({
+    accountType,
+    kycStatus,
+    kybStatus,
+    isVerified,
+    phoneVerified,
+    emailVerified,
+  });
 }
 
 // ── Email / Phone trust badges ───────────────────────────────────────────────

@@ -674,7 +674,7 @@ export function ListingDetailPage() {
     try {
       const urls = await Promise.all(Array.from(files).map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         return uploadFile(file, "listing");
       }));
       setCommentImages(prev => [...prev, ...urls]);
@@ -1729,7 +1729,7 @@ export function ListingDetailPage() {
                           <Upload className="h-6 w-6" />
                         )}
                         <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
-                        <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+                        <span className="text-[11px]">JPG, PNG, WEBP · Max 10MB each</span>
                       </button>
                     ) : (
                       <div className="grid grid-cols-3 gap-2">

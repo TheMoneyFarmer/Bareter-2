@@ -20,6 +20,7 @@ import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, handleAuthExpiry, API_BASE, uploadFile } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
+import { ALL_UAE_AREAS, resolveEmirate } from "@shared/uae-areas";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";
 import {
@@ -44,7 +45,8 @@ function makeCreateListingSchema(t: (key: string) => string) {
     description: z.string().min(20, t("create.validation.descMin")),
     categories: z.array(z.string()),
     retailValue: z.string().optional(),
-    location: z.string().min(1, t("create.validation.locationRequired")),
+    // Free text — any specific area. The emirate is captured separately in `city`.
+    location: z.string().trim().min(1, t("create.validation.locationRequired")).max(200),
     country: z.string().length(2).optional(),
     city: z.string().optional(),
     tags: z.array(z.string()).optional(),
@@ -536,7 +538,7 @@ export function CreateListingPage() {
     try {
       const urls = await Promise.all(files.map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         return uploadFile(file, "listing");
       }));
       form.setValue("images", [...currentImages, ...urls], { shouldValidate: true });
@@ -587,7 +589,7 @@ export function CreateListingPage() {
   const handleVideoUpload = async (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
-    if (file.size > 50 * 1024 * 1024) { toast({ title: "Video must be under 50MB", variant: "destructive" }); return; }
+    if (file.size > 100 * 1024 * 1024) { toast({ title: "Video must be under 100MB", variant: "destructive" }); return; }
     setUploadingVideo(true);
     try {
       const url = await uploadFile(file, "listing");
@@ -1256,7 +1258,7 @@ export function CreateListingPage() {
                 </p>
               )}
 
-              {/* Video clip — optional, max 30s / 50MB */}
+              {/* Video clip — optional, max 30s / 100MB */}
               {selectedType === "offer" && (
                 <div className="mt-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Short video clip (optional)</p>
@@ -1273,7 +1275,7 @@ export function CreateListingPage() {
                       {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
                     </Button>
                   )}
-                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 50MB.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 100MB.</p>
                 </div>
               )}
             </CardContent>
@@ -1317,15 +1319,42 @@ export function CreateListingPage() {
                 </FormItem>
               )} />
 
-              <FormField control={form.control} name="location" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("listing.location")}</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. Dubai Marina" data-testid="input-location" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* Free text — any area, typed or picked from the suggestions.
+                  If the typed area maps to a known emirate we fill the emirate
+                  dropdown for them, so "Downtown Dubai" alone is enough. */}
+              <FormField control={form.control} name="location" render={({ field }) => {
+                const suggestions = (form.watch("country") || "AE") === "AE" ? ALL_UAE_AREAS : [];
+                return (
+                  <FormItem>
+                    <FormLabel>{t("listing.location")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. Dubai Marina, JBR, Downtown Dubai, Al Quoz..."
+                        maxLength={200}
+                        list={suggestions.length ? "uae-area-suggestions" : undefined}
+                        data-testid="input-location"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          const emirate = resolveEmirate(e.target.value);
+                          if (emirate && !form.getValues("city")) {
+                            form.setValue("city", emirate, { shouldValidate: true });
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    {suggestions.length > 0 && (
+                      <datalist id="uae-area-suggestions">
+                        {suggestions.map((a) => <option key={a} value={a} />)}
+                      </datalist>
+                    )}
+                    <FormDescription>
+                      Type your neighbourhood or community — anything works.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }} />
 
               <FormField control={form.control} name="country" render={({ field }) => (
                 <FormItem>

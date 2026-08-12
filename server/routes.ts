@@ -85,6 +85,8 @@ import {
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
+import { getVerificationBlock } from "@shared/verification";
+import { resolveEmirate } from "@shared/uae-areas";
 import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
@@ -101,7 +103,10 @@ import {
   hashResetToken,
   hashOtp,
   detectAllowedFileType,
+  maxBytesForMime,
+  MAX_UPLOAD_BYTES,
   makeLoginRateLimiter,
+  // (verification + area helpers imported from @shared below)
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
   makeConsentRateLimiter,
@@ -176,9 +181,14 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// ONE generous multer ceiling (100MB) for every upload route. Per-type limits
+// (10MB images, 100MB video, 10MB PDF) are applied after magic-byte detection
+// in the handler, where we actually know what the file is. Separate multer
+// instances with different limits caused a 30MB video to be rejected as "File
+// too large" against an advertised 50MB video limit.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 // Magic-byte allow-list and detector live in `handlers/authHardening.ts`
@@ -565,6 +575,10 @@ export async function registerRoutes(
             fullName,
             avatarUrl: avatarUrl ?? undefined,
             googleId: profile.id,
+            // Google already proved ownership of this address and we never
+            // send these users a confirmation link — leaving this false would
+            // permanently mark them unverified.
+            emailVerified: true,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -683,6 +697,8 @@ export async function registerRoutes(
             fullName,
             avatarUrl: avatarUrl ?? undefined,
             googleId,
+            // Verified by Google — see the web OAuth path above.
+            emailVerified: true,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -897,6 +913,10 @@ export async function registerRoutes(
             password: randomPw,
             fullName,
             appleId,
+            // Only when Apple actually shared an address — the synthesized
+            // privaterelay placeholder above is not a real verified inbox.
+            // Either way `appleId` keeps them past the email gate.
+            emailVerified: !!email,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -1925,7 +1945,20 @@ export async function registerRoutes(
       const detected = await detectAllowedFileType(req.file.buffer);
       if (!detected) {
         return res.status(400).json({
-          message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed.",
+          message:
+            "Invalid file type. Only JPG, PNG, GIF, WEBP, PDF, MP4, MOV and WEBM are allowed.",
+        });
+      }
+
+      // Per-category ceiling, applied now that we know the real type.
+      const typeLimit = maxBytesForMime(detected.mime);
+      if (req.file.size > typeLimit) {
+        const limitMb = Math.round(typeLimit / (1024 * 1024));
+        const actualMb = (req.file.size / (1024 * 1024)).toFixed(1);
+        return res.status(413).json({
+          message: `This file is ${actualMb}MB. The limit for ${
+            detected.mime.startsWith("video/") ? "videos" : detected.mime === "application/pdf" ? "documents" : "images"
+          } is ${limitMb}MB.`,
         });
       }
 
@@ -2070,7 +2103,9 @@ export async function registerRoutes(
     .object({
       fullName: z.string().min(2).max(100).optional(),
       bio: z.string().max(600).optional(),
-      location: z.string().max(100).optional(),
+      // Free text — a specific area ("Dubai Marina", "Al Quoz Industrial 3"),
+      // not an emirate. The emirate lives in `city`.
+      location: z.string().max(200).optional(),
       country: z.string().length(2).optional(),
       city: z.string().max(100).optional(),
       locationPrompted: z.boolean().optional(),
@@ -2115,9 +2150,18 @@ export async function registerRoutes(
           ? data.city || null
           : data.location;
 
+      // If they typed a neighbourhood ("Downtown Dubai") without picking an
+      // emirate, derive the emirate so location filtering still works. Never
+      // overwrites an emirate they chose explicitly.
+      const derivedCity =
+        data.city === undefined && data.location !== undefined
+          ? resolveEmirate(data.location) ?? undefined
+          : undefined;
+
       const updatedUser = await storage.updateUser(req.session.userId!, {
         ...data,
         ...(syncedLocation !== undefined ? { location: syncedLocation } : {}),
+        ...(derivedCity ? { city: derivedCity } : {}),
         profileCompleted,
       });
       if (!updatedUser) {
@@ -2614,46 +2658,65 @@ export async function registerRoutes(
                 message: "Listing creation is currently disabled — no active emirates configured.",
               });
             }
-            const listingCity = (req.body.location || listingUser.city || "").trim();
-            if (listingCity && !activeEmirates.some(e => e.toLowerCase() === listingCity.toLowerCase())) {
+            // Resolve the EMIRATE, never the free-text `location`. `location`
+            // holds a neighbourhood — "Downtown Dubai", "World Trade Center",
+            // "JBR" — which will never equal an emirate name, so matching it
+            // against this list rejected every specific address.
+            //
+            // Every candidate is run through resolveEmirate, including `city`
+            // itself. That matters for EXISTING accounts: an old backfill did
+            // `UPDATE users SET city = location`, so plenty of rows carry a
+            // neighbourhood in the city column. Resolving it here unblocks
+            // those users immediately, without waiting on a data repair.
+            // `city` is a CLAIMED emirate. If it neither matches the active
+            // list nor resolves to an emirate, we hand back the raw value so
+            // a genuine out-of-region claim ("Doha") is still refused.
+            const fromCityField = (v: string | null | undefined): string => {
+              const raw = (v ?? "").trim();
+              if (!raw) return "";
+              if (activeEmirates.some(e => e.toLowerCase() === raw.toLowerCase())) return raw;
+              return resolveEmirate(raw) ?? raw;
+            };
+            // `location` is FREE TEXT. It is never rejected: if it doesn't map
+            // to a known emirate we return "" (unknown) and fall through, so
+            // "Behind the big roundabout" is accepted rather than treated as
+            // an out-of-region claim.
+            const fromFreeText = (v: string | null | undefined): string =>
+              resolveEmirate(v) ?? "";
+
+            const listingEmirate = (
+              fromCityField(req.body.city) ||
+              fromFreeText(req.body.location) ||
+              fromCityField(listingUser.city) ||
+              fromFreeText(listingUser.location) ||
+              ""
+            ).trim();
+            if (listingEmirate && !activeEmirates.some(e => e.toLowerCase() === listingEmirate.toLowerCase())) {
               return res.status(403).json({
-                message: `Listings are currently only allowed in: ${activeEmirates.join(", ")}. Your location "${listingCity}" is not active.`,
+                message: `Listings are currently only allowed in: ${activeEmirates.join(", ")}. Your area "${req.body.location || listingEmirate}" is in ${listingEmirate}, which is not active yet.`,
               });
             }
           }
         } catch {}
       }
 
-      // Phone verification gate — must verify WhatsApp number before listing
-      if (!listingUser.phoneVerified) {
-        return res.status(403).json({ message: "Phone verification required to create a listing.", phoneVerificationRequired: true });
-      }
-
-      // Business license gate
-      if (listingUser.accountType === "business" && listingUser.kybStatus !== "APPROVED") {
+      // ── Listing eligibility gate ────────────────────────────────────────
+      // Individual/creator: email + phone. Business: email + phone + approved
+      // trade licence. Identity KYC is never asked of an individual.
+      // The rule and its copy live in shared/verification.ts so the client
+      // badge and this gate can never disagree again.
+      const listingBlock = getVerificationBlock(listingUser, "list");
+      if (listingBlock) {
         return res.status(403).json({
-          message: "Business accounts must have a verified trade license before creating listings.",
-          requiresTradeLicense: true
+          message: listingBlock.message,
+          code: listingBlock.code,
+          actionUrl: listingBlock.actionUrl,
+          actionLabel: listingBlock.actionLabel,
+          // Legacy flags kept so existing clients keep branching correctly.
+          requiresEmailVerification: listingBlock.code === "EMAIL_VERIFICATION_REQUIRED",
+          phoneVerificationRequired: listingBlock.code === "PHONE_VERIFICATION_REQUIRED",
+          requiresTradeLicense: listingBlock.code === "TRADE_LICENSE_REQUIRED",
         });
-      }
-
-      {
-        const { isUserVerified } = await import("./diditClient");
-        const listingUser = await storage.getUser(req.session.userId!);
-        if (listingUser) {
-          const userVerified = isUserVerified(
-            listingUser.accountType || "individual",
-            listingUser.kycStatus || "NOT_STARTED",
-            listingUser.kybStatus || "NOT_STARTED",
-            listingUser.isVerified,
-          );
-          if (!userVerified) {
-            return res.status(403).json({
-              message: "You must be verified to create listings. Please complete identity verification first.",
-              requiresVerification: true
-            });
-          }
-        }
       }
 
       const { isValueFlagged } = await import("./marketValues");
@@ -2706,7 +2769,21 @@ export async function registerRoutes(
         // Always stamp country/city from the poster's profile so location filtering works.
         // Body values take precedence if explicitly provided.
         country: listingBody.country || listingUser.country || "AE",
-        city: listingBody.city || listingUser.city || null,
+        // Stamp the resolved EMIRATE, so emirate filtering finds the listing
+        // even when the poster only typed a neighbourhood — and so a legacy
+        // profile carrying a neighbourhood in `city` doesn't propagate it.
+        city:
+          resolveEmirate(listingBody.city) ||
+          listingBody.city ||
+          resolveEmirate(listingBody.location) ||
+          resolveEmirate(listingUser.city) ||
+          listingUser.city ||
+          null,
+        // Free-text specific area. Any value is accepted — it is never matched
+        // against the emirate allow-list — capped at 200 chars.
+        location: typeof listingBody.location === "string"
+          ? listingBody.location.trim().slice(0, 200)
+          : (listingBody.location ?? null),
       });
       const listing = await storage.createListing(data);
       res.json(listing);
@@ -4088,20 +4165,20 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      {
-        const { isUserVerified } = await import("./diditClient");
-        const seekerVerified = isUserVerified(
-          seeker.accountType || "individual",
-          seeker.kycStatus || "NOT_STARTED",
-          seeker.kybStatus || "NOT_STARTED",
-          seeker.isVerified,
-        );
-        if (!seekerVerified) {
-          return res.status(403).json({
-            message: "You must be verified to start a trade. Please complete identity verification first.",
-            requiresVerification: true
-          });
-        }
+      // Same rule as listing creation: individuals/creators need email + phone,
+      // businesses additionally need an approved trade licence. An individual
+      // is never asked to complete identity KYC to trade.
+      const tradeBlock = getVerificationBlock(seeker, "trade");
+      if (tradeBlock) {
+        return res.status(403).json({
+          message: tradeBlock.message,
+          code: tradeBlock.code,
+          actionUrl: tradeBlock.actionUrl,
+          actionLabel: tradeBlock.actionLabel,
+          requiresEmailVerification: tradeBlock.code === "EMAIL_VERIFICATION_REQUIRED",
+          phoneVerificationRequired: tradeBlock.code === "PHONE_VERIFICATION_REQUIRED",
+          requiresTradeLicense: tradeBlock.code === "TRADE_LICENSE_REQUIRED",
+        });
       }
 
       const listing = await storage.getListing(providerListingId);
@@ -12457,7 +12534,11 @@ export async function registerRoutes(
 
         const detected = await detectAllowedFileType(req.file.buffer);
         if (!detected) {
-          return res.status(400).json({ message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed." });
+          return res.status(400).json({ message: "Invalid file type. Only JPG, PNG, GIF, WEBP, PDF, MP4, MOV and WEBM are allowed." });
+        }
+        if (req.file.size > maxBytesForMime(detected.mime)) {
+          const limitMb = Math.round(maxBytesForMime(detected.mime) / (1024 * 1024));
+          return res.status(413).json({ message: `File too large — the limit for this file type is ${limitMb}MB.` });
         }
 
         const profile = await storage.getCreatorProfile(userId);
@@ -13419,6 +13500,9 @@ export async function registerRoutes(
       if (!detected || !detected.mime.startsWith("image/")) {
         return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
       }
+      if (req.file.size > maxBytesForMime(detected.mime)) {
+        return res.status(413).json({ message: "Image too large — the limit is 10MB." });
+      }
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
@@ -13461,6 +13545,9 @@ export async function registerRoutes(
       const detected = await detectAllowedFileType(req.file.buffer);
       if (!detected || !detected.mime.startsWith("image/")) {
         return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
+      }
+      if (req.file.size > maxBytesForMime(detected.mime)) {
+        return res.status(413).json({ message: "Image too large — the limit is 10MB." });
       }
 
       const random = crypto.randomBytes(24).toString("hex");

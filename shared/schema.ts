@@ -730,6 +730,10 @@ export const listings = pgTable("listings", {
   openToOffers: boolean("open_to_offers").default(true),
   categoryDetails: jsonb("category_details").$type<Record<string, string | number>>(),
   condition: text("condition").default("like_new"),
+  // Optional short clip shown in the listing gallery (and the creator demo
+  // reel). The form and the client payload have always sent this; without the
+  // column, insertListingSchema stripped it and the upload was discarded.
+  videoUrl: text("video_url"),
   serviceTiers: jsonb("service_tiers").$type<ServiceTier[]>(),
   likeCount: integer("like_count").default(0),
   valueFlagged: boolean("value_flagged").default(false),

@@ -14,6 +14,35 @@ export async function backfillLocationFields() {
     await db.execute(sql`UPDATE users SET country = 'AE' WHERE country IS NULL`);
     await db.execute(sql`UPDATE users SET city = location WHERE city IS NULL AND location IS NOT NULL`);
     await db.execute(sql`UPDATE listings SET city = location WHERE city IS NULL AND location IS NOT NULL`);
+
+    // Repair rows the copy above corrupted. `location` is free text — a
+    // neighbourhood like "Downtown Dubai" or "World Trade Center" — so copying
+    // it into `city` left a value that is not an emirate. Those rows drop out
+    // of emirate filters, and (before the gate learned to resolve them) their
+    // owners were refused at listing creation.
+    //
+    // Map each distinct bad value back to its emirate in one statement per
+    // emirate, so this is a handful of indexed updates rather than a row scan.
+    // Idempotent: once repaired, the WHERE clauses match nothing.
+    const { UAE_AREAS } = await import("@shared/uae-areas");
+    for (const [emirate, areas] of Object.entries(UAE_AREAS)) {
+      if (!areas.length) continue;
+      const lowered = areas.map((a) => a.toLowerCase());
+      await db.execute(sql`UPDATE users    SET city = ${emirate} WHERE city IS NOT NULL AND lower(city) = ANY(${lowered})`);
+      await db.execute(sql`UPDATE listings SET city = ${emirate} WHERE city IS NOT NULL AND lower(city) = ANY(${lowered})`);
+      await db.execute(sql`UPDATE posts    SET city = ${emirate} WHERE city IS NOT NULL AND lower(city) = ANY(${lowered})`);
+    }
+
+    // Existing Google/Apple accounts were created before the OAuth paths set
+    // email_verified. Their address WAS verified by the provider; the column
+    // just never recorded it. Left alone they show as unverified in the
+    // funnel and in admin. (The gate itself does not depend on this — it
+    // reads the OAuth ids directly — so this is a correctness repair.)
+    await db.execute(sql`
+      UPDATE users SET email_verified = true
+       WHERE email_verified IS NOT TRUE
+         AND (google_id IS NOT NULL OR apple_id IS NOT NULL)
+    `);
     // Force all active listings to country='AE'. Skip rows already correct so
     // subsequent startups are a no-op and don't lock the table unnecessarily.
     await db.execute(sql`UPDATE listings SET country = 'AE' WHERE deleted_at IS NULL AND (country IS NULL OR country != 'AE')`);
