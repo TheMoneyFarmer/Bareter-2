@@ -909,6 +909,7 @@ export function ListingDetailPage() {
                 <video
                   src={(listing as any).videoUrl}
                   controls
+                  playsInline
                   className="w-full h-full object-cover"
                   preload="metadata"
                 />

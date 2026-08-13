@@ -66,6 +66,7 @@ function PortfolioMediaCard({ item }: { item: PortfolioItem }) {
             src={url}
             className="w-full h-full object-cover"
             muted
+            playsInline
             preload="metadata"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/20 transition-colors">

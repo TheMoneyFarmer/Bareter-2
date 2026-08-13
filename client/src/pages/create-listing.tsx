@@ -1008,7 +1008,13 @@ export function CreateListingPage() {
                   <input ref={demoVideoRef} type="file" accept="video/*" className="hidden" onChange={e => handleDemoVideoUpload(e.target.files?.[0] ?? null)} />
                   {demoVideoUrl ? (
                     <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
-                      <video src={demoVideoUrl} controls className="w-full h-full object-contain" />
+                      <video
+                        src={demoVideoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
                       <button type="button" onClick={() => setDemoVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"><X className="h-3.5 w-3.5" /></button>
                     </div>
                   ) : (
@@ -1265,7 +1271,17 @@ export function CreateListingPage() {
                   <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => handleVideoUpload(e.target.files?.[0] ?? null)} />
                   {videoUrl ? (
                     <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
-                      <video src={videoUrl} controls className="w-full h-full object-contain" />
+                      {/* playsInline is required on iOS: without it Safari refuses
+                          to play inline and renders an unplayable black box.
+                          preload="metadata" pulls the first frame so the box
+                          isn't blank before the user taps play. */}
+                      <video
+                        src={videoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
                       <button type="button" onClick={() => setVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
                         <X className="h-3.5 w-3.5" />
                       </button>
