@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import request from "supertest";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { randomUUID } from "node:crypto";
 
 // End-to-end HTTP exercise of the exact flow a beta user was blocked on:
@@ -168,6 +169,28 @@ function makeJpeg(totalBytes: number): Buffer {
   return Buffer.concat([header, Buffer.alloc(Math.max(0, totalBytes - header.length), 0x00)]);
 }
 
+/**
+ * A genuinely decodable 1-second H.264 .mov, generated on the fly with the
+ * same ffmpeg-static binary the server transcodes with. makeMov() above only
+ * has valid magic bytes — enough to pass file-type sniffing but nothing
+ * ffmpeg can actually decode — so it can't prove a real transcode happened.
+ * This can.
+ */
+async function makeRealMov(): Promise<Buffer> {
+  const ffmpegPath = (await import("ffmpeg-static")).default as string;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  const outPath = path.join(os.tmpdir(), `bareter-test-src-${randomUUID()}.mov`);
+  await execFileAsync(ffmpegPath, [
+    "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:duration=1:rate=12",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", outPath,
+  ]);
+  const buf = fs.readFileSync(outPath);
+  fs.unlinkSync(outPath);
+  return buf;
+}
+
 describe("E2E — the beta user posts their first listing", () => {
   it("uploads the 30MB .MOV that used to fail with 'File too large'", async () => {
     const uid = betaUser();
@@ -180,11 +203,48 @@ describe("E2E — the beta user posts their first listing", () => {
       .field("type", "listing")
       .attach("file", mov, { filename: "IMG_7595.MOV", contentType: "video/quicktime" });
 
+    // A fake .mov with no real video stream inside cannot be decoded by
+    // ffmpeg, so the server's transcode-then-fallback path is expected to
+    // fail the transcode and fall back to storing the original bytes as-is
+    // — same outcome as before transcoding existed, never a broken upload.
     expect(res.status).toBe(200);
     expect(res.body.url).toMatch(/\.mov$/);
     if (res.body.url?.startsWith("/uploads/")) {
       writtenFiles.push(path.join("./uploads", path.basename(res.body.url)));
     }
+  }, 30000);
+
+  it("a real, decodable .mov is genuinely transcoded to a universally-playable MP4", async () => {
+    const uid = betaUser();
+    const realMov = await makeRealMov();
+
+    const res = await request(app)
+      .post("/api/upload")
+      .set("x-test-user-id", uid)
+      .field("type", "listing")
+      .attach("file", realMov, { filename: "clip.mov", contentType: "video/quicktime" });
+
+    expect(res.status).toBe(200);
+    // The whole point: the STORED file is .mp4, not .mov. If this were still
+    // .mov, the transcode silently failed and fell back — which the .mov
+    // test above already covers as an acceptable outcome for undecodable
+    // input, but this input is real and must succeed.
+    expect(res.body.url).toMatch(/\.mp4$/);
+
+    const stored = path.join("./uploads", path.basename(res.body.url));
+    writtenFiles.push(stored);
+    const bytes = fs.readFileSync(stored);
+
+    // MP4 magic bytes: 'ftyp' at offset 4.
+    expect(bytes.subarray(4, 8).toString("ascii")).toBe("ftyp");
+
+    // faststart must have moved moov before mdat, or the browser can't start
+    // playback before the whole file has downloaded from R2/a CDN.
+    const moovAt = bytes.indexOf(Buffer.from("moov"));
+    const mdatAt = bytes.indexOf(Buffer.from("mdat"));
+    expect(moovAt).toBeGreaterThan(-1);
+    expect(mdatAt).toBeGreaterThan(-1);
+    expect(moovAt).toBeLessThan(mdatAt);
   }, 30000);
 
   it("creates the listing with a free-text Dubai neighbourhood", async () => {

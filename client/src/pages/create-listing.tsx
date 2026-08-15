@@ -593,20 +593,12 @@ export function CreateListingPage() {
     if (file.size > 100 * 1024 * 1024) { toast({ title: "Video must be under 100MB", variant: "destructive" }); return; }
     setUploadingVideo(true);
     try {
+      // The server transcodes any video to H.264/AAC MP4 before it's stored,
+      // so whatever the source format (iPhone HEVC/.MOV included) the URL
+      // that comes back plays in every browser — no client-side warning
+      // needed here.
       const url = await uploadFile(file, "listing");
       setVideoUrl(url);
-      // iPhones save clips as .MOV/HEVC by default. Safari plays that fine;
-      // Chrome, Firefox and Android cannot decode the `video/quicktime`
-      // container at all — the clip uploads correctly and then renders as an
-      // unplayable black box for most viewers. There is no transcoding step
-      // in this pipeline yet, so warn instead of silently shipping a video
-      // most visitors won't be able to see.
-      if (file.type === "video/quicktime" || /\.mov$/i.test(file.name)) {
-        toast({
-          title: "Video uploaded",
-          description: "iPhone .MOV clips only play in Safari. For a video everyone can watch, set Settings → Camera → Formats → Most Compatible and re-record, or upload an MP4.",
-        });
-      }
     } catch (err: any) {
       toast({ title: "Video upload failed", description: err.message, variant: "destructive" });
     } finally {
@@ -1307,15 +1299,16 @@ export function CreateListingPage() {
                       {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
                     </Button>
                   )}
-                  {/* R2 keys are named from the magic-byte-detected extension
-                      (see detectAllowedFileType), so a .mov URL reliably means
-                      an HEVC/QuickTime clip — playable in Safari only. No
-                      transcoding step exists yet, so this stays visible for as
-                      long as the clip is attached, not just at upload time. */}
+                  {/* The server transcodes every upload to MP4 (server/lib/video.ts),
+                      so a successful upload always comes back as .mp4. A .mov URL
+                      here means that specific transcode failed and the server fell
+                      back to storing the original file untouched — a rare edge
+                      case (malformed video, ffmpeg unavailable), but real enough
+                      to still warn about rather than hide. */}
                   {videoUrl?.toLowerCase().endsWith(".mov") && (
                     <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1">
                       <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                      This .MOV clip will only play for Safari/iPhone viewers. For a video everyone can watch, re-record with Settings → Camera → Formats → Most Compatible, or upload an MP4.
+                      We couldn't optimize this clip, so it will only play for Safari/iPhone viewers. Try re-uploading, or upload an MP4 instead.
                     </p>
                   )}
                   <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 100MB.</p>

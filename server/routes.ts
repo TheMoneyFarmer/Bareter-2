@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import { uploadPublicImageWithThumb } from "./lib/images";
+import { maybeTranscodeVideo } from "./lib/video";
 import { safeGlobalApiLimiter } from "./handlers/globalRateLimit";
 import bcrypt from "bcryptjs";
 import session from "express-session";
@@ -2012,19 +2013,29 @@ export async function registerRoutes(
         // Public URL exposed by our app — actual download is gated.
         fileUrl = `/api/private-docs/${userId}/${random}.${detected.ext}`;
       } else {
+        // Re-encode video to H.264/AAC MP4 before it ever reaches storage.
+        // Phones default to HEVC/.MOV, which only Safari can decode — the
+        // upload used to succeed and the clip would simply never play for
+        // most visitors. maybeTranscodeVideo() is a no-op for images/PDFs
+        // and falls back to the original bytes if ffmpeg fails for any
+        // reason, so a transcode problem degrades to "Safari-only, like
+        // before this existed" rather than breaking the upload.
+        const { buffer: uploadBuffer, mime: uploadMime, ext: uploadExt } =
+          await maybeTranscodeVideo({ buffer: req.file.buffer, mime: detected.mime, ext: detected.ext });
+
         const random = crypto.randomBytes(24).toString("hex");
-        const filename = `${random}.${detected.ext}`;
+        const filename = `${random}.${uploadExt}`;
         if (r2Enabled()) {
           // Resizes to MAX_DISPLAY_PX and writes a grid thumbnail alongside.
           // Camera originals measured ~3.4 MB in production; the display copy
           // is ~290 KB and the thumbnail ~44 KB.
-          fileUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext);
+          fileUrl = await uploadPublicImageWithThumb(uploadBuffer, uploadMime, uploadExt);
         } else if (process.env.REPL_ID) {
           // Replit production must have R2 configured — refuse rather than bill Replit object storage
           return res.status(503).json({ message: "File storage not configured. Contact support." });
         } else {
           // Local dev only: fall back to disk
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fs.writeFileSync(`${uploadDir}/${filename}`, uploadBuffer);
           fileUrl = `/uploads/${filename}`;
         }
       }
@@ -12564,16 +12575,22 @@ export async function registerRoutes(
         const profile = await storage.getCreatorProfile(userId);
         if (!profile) return res.status(404).json({ message: "Creator profile not found. Create one first." });
 
+        // Same transcode as /api/upload — a creator's demo reel is exactly
+        // the case an HEVC/.MOV phone recording would otherwise go unseen by
+        // any non-Safari visitor.
+        const { buffer: uploadBuffer, mime: uploadMime, ext: uploadExt } =
+          await maybeTranscodeVideo({ buffer: req.file.buffer, mime: detected.mime, ext: detected.ext });
+
         const random = crypto.randomBytes(24).toString("hex");
-        const filename = `${random}.${detected.ext}`;
+        const filename = `${random}.${uploadExt}`;
         let mediaUrl = "";
 
         if (r2Enabled()) {
-          mediaUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext, "portfolio");
+          mediaUrl = await uploadPublicImageWithThumb(uploadBuffer, uploadMime, uploadExt, "portfolio");
         } else if (process.env.REPL_ID) {
           return res.status(503).json({ message: "File storage not configured. Contact support." });
         } else {
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fs.writeFileSync(`${uploadDir}/${filename}`, uploadBuffer);
           mediaUrl = `/uploads/${filename}`;
         }
 
