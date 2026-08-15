@@ -57,6 +57,8 @@ import {
   X,
   ImagePlus,
   Loader2,
+  Video,
+  AlertTriangle,
 } from "lucide-react";
 import { VerifiedBadge } from "@/components/verified-badge";
 import {
@@ -116,6 +118,7 @@ type EditForm = {
   condition: string;
   openToOffers: boolean;
   images: string[];
+  videoUrl: string | null;
 };
 
 export default function DashboardPage() {
@@ -137,13 +140,32 @@ export default function DashboardPage() {
     condition: "like_new",
     openToOffers: true,
     images: [],
+    videoUrl: null,
   });
   const [uploadingEditImages, setUploadingEditImages] = useState(false);
+  const [uploadingEditVideo, setUploadingEditVideo] = useState(false);
 
   if (!authLoading && !user) {
     navigate(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     return null;
   }
+
+  // Video is creator-only at listing creation (product decision — see
+  // create-listing.tsx). The edit dialog mirrors that: a non-creator can
+  // still replace/remove a video their listing already has, but the field
+  // only appears for a listing that already carries one, or for a creator.
+  const { data: creatorProfile } = useQuery<Record<string, any> | null>({
+    queryKey: ["/api/creators/me"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/creators/me`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+  });
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/dashboard/analytics", timeRange],
@@ -298,6 +320,7 @@ export default function DashboardPage() {
       condition: listing.condition ?? "like_new",
       openToOffers: listing.openToOffers ?? true,
       images: (listing.images as string[] | null) ?? [],
+      videoUrl: (listing as any).videoUrl ?? null,
     });
   }
 
@@ -327,6 +350,29 @@ export default function DashboardPage() {
     setEditForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== index) }));
   }
 
+  async function handleUploadEditVideo(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
+    if (file.size > 100 * 1024 * 1024) { toast({ title: "Video must be under 100MB", variant: "destructive" }); return; }
+    setUploadingEditVideo(true);
+    try {
+      // Server transcodes to H.264/AAC MP4 (server/lib/video.ts), so
+      // re-uploading here is also how an existing .mov — from before that
+      // pipeline existed — gets fixed: this is exactly the flow that finally
+      // gives an old broken video a playable URL.
+      const url = await uploadFile(file, "listing");
+      setEditForm((f) => ({ ...f, videoUrl: url }));
+    } catch (err: any) {
+      toast({ title: "Video upload failed", description: err.message || "Could not upload video", variant: "destructive" });
+    } finally {
+      setUploadingEditVideo(false);
+    }
+  }
+
+  function handleRemoveEditVideo() {
+    setEditForm((f) => ({ ...f, videoUrl: null }));
+  }
+
   function handleSaveEdit() {
     if (!editingListing) return;
     editListingMutation.mutate({
@@ -340,6 +386,7 @@ export default function DashboardPage() {
         condition: editForm.condition,
         openToOffers: editForm.openToOffers,
         images: editForm.images,
+        videoUrl: editForm.videoUrl,
       },
     });
   }
@@ -1113,6 +1160,58 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted-foreground">No photos — add at least one so buyers can see your item.</p>
               )}
             </div>
+            {/* Video: creators only, EXCEPT a listing that already has one —
+                see the matching server-side check in PATCH /api/listings/:id.
+                This is also how an old, unplayable .mov (from before
+                server-side transcoding existed) gets fixed: re-uploading it
+                here runs it through the same transcode as a new upload. */}
+            {(!!creatorProfile || !!editForm.videoUrl) && (
+              <div className="space-y-2">
+                <Label>Video clip</Label>
+                {editForm.videoUrl ? (
+                  <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
+                    <video
+                      src={assetUrl(editForm.videoUrl)}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveEditVideo}
+                      className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-muted-foreground/30 rounded-lg p-3 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
+                    {uploadingEditVideo ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm text-muted-foreground">Uploading…</span></>
+                    ) : (
+                      <><Video className="h-4 w-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">Add a short video</span></>
+                    )}
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      disabled={uploadingEditVideo}
+                      onChange={(e) => {
+                        handleUploadEditVideo(e.target.files?.[0] ?? null);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+                {editForm.videoUrl?.toLowerCase().endsWith(".mov") && (
+                  <p className="text-[11px] text-amber-500 flex items-start gap-1">
+                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                    This clip predates automatic optimization and may only play for Safari/iPhone viewers. Re-upload it to fix that.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-tags">Tags (comma separated)</Label>
               <Input

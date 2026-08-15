@@ -60,6 +60,8 @@ type AnyRecord = Record<string, any>;
 const users = new Map<string, AnyRecord>();
 const createdListings: AnyRecord[] = [];
 const appSettings = new Map<string, string>();
+// User ids in here have a creator profile — see makeCreatorProfileFor() below.
+const creatorUserIds = new Set<string>();
 
 const inMemoryStorage = new Proxy(
   {
@@ -84,8 +86,17 @@ const inMemoryStorage = new Proxy(
       createdListings.push(listing);
       return listing;
     },
-    async getCreatorProfile() {
-      return undefined;
+    async getListing(id: string) {
+      return createdListings.find((l) => l.id === id);
+    },
+    async updateListing(id: string, data: AnyRecord) {
+      const idx = createdListings.findIndex((l) => l.id === id);
+      if (idx === -1) return undefined;
+      createdListings[idx] = { ...createdListings[idx], ...data };
+      return createdListings[idx];
+    },
+    async getCreatorProfile(userId: string) {
+      return creatorUserIds.has(userId) ? { id: `creator-${userId}`, userId } : undefined;
     },
   } as AnyRecord,
   {
@@ -572,5 +583,90 @@ describe("E2E — gates that must still hold", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toMatch(/invalid file type/i);
+  });
+});
+
+describe("E2E — editing a listing's video respects the creator-only gate", () => {
+  // Same rule as listing creation, but grandfathered: a non-creator can
+  // replace or remove a video their listing ALREADY has (e.g. re-uploading
+  // to pick up the transcode fix), but cannot originate video on a listing
+  // that never had one. This is the exact scenario a real user hit — video
+  // was gated to creators after their non-creator listing already had one.
+  async function createListingAs(uid: string, videoUrl?: string) {
+    const res = await request(app)
+      .post("/api/listings").set("x-test-user-id", uid)
+      .send({
+        type: "offer",
+        title: "Test listing",
+        description: "A description comfortably past the minimum length requirement.",
+        categories: ["collectibles"],
+        retailValue: "100",
+        location: "Dubai Marina",
+        images: ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"],
+        ...(videoUrl ? { videoUrl } : {}),
+      });
+    expect(res.status).toBe(200);
+    return res.body.id as string;
+  }
+
+  it("strips videoUrl for a non-creator adding video to a listing that never had one", async () => {
+    const uid = betaUser();
+    const listingId = await createListingAs(uid); // no video at creation
+
+    const res = await request(app)
+      .patch(`/api/listings/${listingId}`).set("x-test-user-id", uid)
+      .send({ videoUrl: "/uploads/new-clip.mp4" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.videoUrl ?? null).toBeNull();
+  });
+
+  it("lets a non-creator replace a video their listing already has", async () => {
+    const uid = betaUser();
+    const listingId = await createListingAs(uid, "/uploads/old-clip.mov");
+
+    const res = await request(app)
+      .patch(`/api/listings/${listingId}`).set("x-test-user-id", uid)
+      .send({ videoUrl: "/uploads/re-uploaded-clip.mp4" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.videoUrl).toBe("/uploads/re-uploaded-clip.mp4");
+  });
+
+  it("lets a non-creator remove a video their listing already has", async () => {
+    const uid = betaUser();
+    const listingId = await createListingAs(uid, "/uploads/old-clip.mov");
+
+    const res = await request(app)
+      .patch(`/api/listings/${listingId}`).set("x-test-user-id", uid)
+      .send({ videoUrl: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.videoUrl).toBeNull();
+  });
+
+  it("lets a creator add video to any of their listings", async () => {
+    const uid = betaUser();
+    creatorUserIds.add(uid);
+    const listingId = await createListingAs(uid); // no video at creation
+
+    const res = await request(app)
+      .patch(`/api/listings/${listingId}`).set("x-test-user-id", uid)
+      .send({ videoUrl: "/uploads/new-clip.mp4" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.videoUrl).toBe("/uploads/new-clip.mp4");
+  });
+
+  it("still refuses to edit someone else's listing", async () => {
+    const owner = betaUser();
+    const other = betaUser();
+    const listingId = await createListingAs(owner);
+
+    const res = await request(app)
+      .patch(`/api/listings/${listingId}`).set("x-test-user-id", other)
+      .send({ title: "Hijacked" });
+
+    expect(res.status).toBe(403);
   });
 });

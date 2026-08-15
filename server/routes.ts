@@ -2900,11 +2900,26 @@ export async function registerRoutes(
       const LISTING_OWNER_FIELDS = new Set([
         "title", "description", "category", "subcategory", "condition",
         "retailValue", "lookingFor", "location", "images", "tags",
-        "isNegotiable", "tradeRadius", "shippingAvailable",
+        "isNegotiable", "tradeRadius", "shippingAvailable", "videoUrl",
       ]);
       const sanitized = Object.fromEntries(
         Object.entries(req.body).filter(([k]) => LISTING_OWNER_FIELDS.has(k)),
       );
+
+      // Video is gated to creator accounts at listing CREATION (product
+      // decision — most non-creator uploads are the low-effort clips this
+      // gate was built to reduce). Editing must not be a backdoor around
+      // that: a non-creator can still replace or remove a video their
+      // listing already has (e.g. re-uploading to pick up the transcode
+      // fix below), but cannot originate video on a listing that never had
+      // one. Enforced here, not just in the client — the client gate alone
+      // is trivially bypassed by calling this endpoint directly.
+      if ("videoUrl" in sanitized) {
+        const profile = await storage.getCreatorProfile(req.session.userId!);
+        const canManageVideo = !!profile || !!listing.videoUrl;
+        if (!canManageVideo) delete sanitized.videoUrl;
+      }
+
       const updated = await storage.updateListing(param(req.params.id), sanitized);
       res.json(updated);
     } catch (error) {
