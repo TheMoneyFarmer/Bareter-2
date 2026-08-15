@@ -43,6 +43,20 @@ export async function backfillLocationFields() {
        WHERE email_verified IS NOT TRUE
          AND (google_id IS NOT NULL OR apple_id IS NOT NULL)
     `);
+
+    // Video is creator-only going forward (see the PATCH gate in routes.ts),
+    // but listings created before that shipped can carry a video from a
+    // non-creator account. Hide it — not just stop offering the option —
+    // so it doesn't show up unexplained on a listing where the uploader can
+    // no longer manage it. Runs every boot, not just once: if a creator
+    // profile is ever revoked later, this keeps their old listings' videos
+    // hidden too rather than only catching the state at deploy time.
+    await db.execute(sql`
+      UPDATE listings
+         SET video_url = NULL
+       WHERE video_url IS NOT NULL
+         AND user_id NOT IN (SELECT user_id FROM creator_profiles)
+    `);
     // Force all active listings to country='AE'. Skip rows already correct so
     // subsequent startups are a no-op and don't lock the table unnecessarily.
     await db.execute(sql`UPDATE listings SET country = 'AE' WHERE deleted_at IS NULL AND (country IS NULL OR country != 'AE')`);
