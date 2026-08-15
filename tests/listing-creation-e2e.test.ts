@@ -344,6 +344,86 @@ describe("E2E — existing users, not just freshly-registered ones", () => {
   });
 });
 
+describe("E2E — value-flagging must not fire on physical goods", () => {
+  // UAE_MARKET_AVERAGES is a SERVICE pricing table (SaaS, Legal, Real Estate).
+  // Roxanne's AED 95 vinyl record, tagged "Entertainment" for lack of a
+  // Collectibles category, was compared against a AED 6,000 average for
+  // entertainment BOOKINGS and flagged as suspiciously cheap. The AI
+  // valuation panel had just told her AED 95 was the fair price for the same
+  // item — the platform contradicted its own estimate.
+  it("does not flag a cheap goods listing whose category overlaps a service category name", async () => {
+    const uid = betaUser();
+    const res = await request(app)
+      .post("/api/listings").set("x-test-user-id", uid)
+      .send({
+        type: "offer",
+        title: "Bob Marley Legend Vinyl LP",
+        description: "Classic compilation on vinyl, gently used, sleeve in good condition.",
+        categories: ["Entertainment"], // the only close-enough tag for a record
+        retailValue: "95",
+        location: "Dubai Marina",
+        images: ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"],
+        // no listingType/categoryDetails sent → defaults to individual_item (goods)
+      });
+    expect(res.status).toBe(200);
+    expect(createdListings.at(-1)!.valueFlagged).toBe(false);
+  });
+
+  it("still flags a genuinely underpriced SERVICE listing", async () => {
+    const uid = betaUser();
+    const res = await request(app)
+      .post("/api/listings").set("x-test-user-id", uid)
+      .send({
+        type: "offer",
+        title: "Full day photography package",
+        description: "Professional event photography, edited gallery delivered within a week.",
+        categories: ["Photography"], // avg 4500 in UAE_MARKET_AVERAGES
+        retailValue: "50", // well under 70% of 4500
+        location: "Dubai Marina",
+        images: ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"],
+        listingType: "individual_item",
+        categoryDetails: { isService: true },
+      });
+    expect(res.status).toBe(200);
+    expect(createdListings.at(-1)!.valueFlagged).toBe(true);
+  });
+
+  it("still flags any listing — goods or service — above the high-value threshold", async () => {
+    const uid = betaUser();
+    const res = await request(app)
+      .post("/api/listings").set("x-test-user-id", uid)
+      .send({
+        type: "offer",
+        title: "Luxury watch",
+        description: "Authentic, box and papers included, purchased new this year.",
+        categories: ["Jewelry & Watches"],
+        retailValue: "60000", // >= the 50000 default high_value_threshold
+        location: "Dubai Marina",
+        images: ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"],
+      });
+    expect(res.status).toBe(200);
+    expect(createdListings.at(-1)!.valueFlagged).toBe(true);
+  });
+
+  it("does not flag a business_product listing under a service-named category", async () => {
+    const uid = betaUser();
+    const res = await request(app)
+      .post("/api/listings").set("x-test-user-id", uid)
+      .send({
+        type: "offer",
+        title: "Wholesale event decor lot",
+        description: "Bulk lot of reusable event decoration items, gently used.",
+        categories: ["Events"], // avg 10000 in UAE_MARKET_AVERAGES
+        retailValue: "200",
+        location: "Dubai Marina",
+        images: ["/uploads/a.jpg", "/uploads/b.jpg", "/uploads/c.jpg"],
+        listingType: "business_product",
+      });
+    expect(res.status).toBe(200);
+    expect(createdListings.at(-1)!.valueFlagged).toBe(false);
+  });
+});
+
 describe("E2E — gates that must still hold", () => {
   it("blocks an unverified email with actionable copy, not a dead end", async () => {
     const uid = betaUser({ emailVerified: false });

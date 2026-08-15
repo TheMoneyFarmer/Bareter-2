@@ -30,7 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, API_BASE, assetUrl } from "@/lib/queryClient";
+import { apiRequest, queryClient, API_BASE, assetUrl, uploadFile } from "@/lib/queryClient";
 import {
   BarChart3,
   Users,
@@ -307,16 +307,17 @@ export default function DashboardPage() {
     try {
       const urls: string[] = [];
       for (const file of files) {
-        const fd = new FormData();
-        fd.append("image", file);
-        const res = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: fd, credentials: "include" });
-        if (!res.ok) throw new Error("Upload failed");
-        const data = await res.json();
-        urls.push(data.url);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
+        // Shared helper: posts the field as "file" (not "image" — this used to
+        // be a hand-rolled fetch that sent the wrong field name, so multer
+        // never populated req.file and every upload 400'd with a real server
+        // message that the old code then discarded and replaced with the
+        // literal string "Upload failed" — hence the blank, unexplained toast.
+        urls.push(await uploadFile(file, "listing"));
       }
       setEditForm((f) => ({ ...f, images: [...f.images, ...urls] }));
     } catch (err: any) {
-      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+      toast({ title: "Upload failed", description: err.message || "Could not upload image", variant: "destructive" });
     } finally {
       setUploadingEditImages(false);
     }

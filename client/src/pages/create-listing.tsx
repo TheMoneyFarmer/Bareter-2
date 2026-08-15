@@ -30,6 +30,7 @@ import {
   Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake, Layers,
   Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
   Wrench, TreePine, Luggage, Watch, Utensils, PawPrint, Share2, Video,
+  AlertTriangle,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -594,6 +595,18 @@ export function CreateListingPage() {
     try {
       const url = await uploadFile(file, "listing");
       setVideoUrl(url);
+      // iPhones save clips as .MOV/HEVC by default. Safari plays that fine;
+      // Chrome, Firefox and Android cannot decode the `video/quicktime`
+      // container at all — the clip uploads correctly and then renders as an
+      // unplayable black box for most viewers. There is no transcoding step
+      // in this pipeline yet, so warn instead of silently shipping a video
+      // most visitors won't be able to see.
+      if (file.type === "video/quicktime" || /\.mov$/i.test(file.name)) {
+        toast({
+          title: "Video uploaded",
+          description: "iPhone .MOV clips only play in Safari. For a video everyone can watch, set Settings → Camera → Formats → Most Compatible and re-record, or upload an MP4.",
+        });
+      }
     } catch (err: any) {
       toast({ title: "Video upload failed", description: err.message, variant: "destructive" });
     } finally {
@@ -1264,8 +1277,11 @@ export function CreateListingPage() {
                 </p>
               )}
 
-              {/* Video clip — optional, max 30s / 100MB */}
-              {selectedType === "offer" && (
+              {/* Video clip — creators only. Individuals/businesses don't get
+                  the option; this is the field creators use for a quick demo
+                  of the item/service, and most reported clip uploads come
+                  from creator accounts. */}
+              {selectedType === "offer" && listingMode === "creator" && creatorProfile && (
                 <div className="mt-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Short video clip (optional)</p>
                   <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => handleVideoUpload(e.target.files?.[0] ?? null)} />
@@ -1290,6 +1306,17 @@ export function CreateListingPage() {
                     <Button type="button" variant="outline" className="w-full h-14 border-dashed gap-2 text-sm" onClick={() => videoInputRef.current?.click()} disabled={uploadingVideo}>
                       {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
                     </Button>
+                  )}
+                  {/* R2 keys are named from the magic-byte-detected extension
+                      (see detectAllowedFileType), so a .mov URL reliably means
+                      an HEVC/QuickTime clip — playable in Safari only. No
+                      transcoding step exists yet, so this stays visible for as
+                      long as the clip is attached, not just at upload time. */}
+                  {videoUrl?.toLowerCase().endsWith(".mov") && (
+                    <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                      This .MOV clip will only play for Safari/iPhone viewers. For a video everyone can watch, re-record with Settings → Camera → Formats → Most Compatible, or upload an MP4.
+                    </p>
                   )}
                   <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 100MB.</p>
                 </div>

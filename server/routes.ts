@@ -2724,7 +2724,27 @@ export async function registerRoutes(
       const retailVal = parseFloat(req.body.retailValue) || 0;
       const hvtSetting = await storage.getAppSetting("high_value_threshold");
       const highValueThreshold = hvtSetting ? parseFloat(hvtSetting) : 50000;
-      const valueFlagged = isValueFlagged(retailVal, rawCategories) || (retailVal >= highValueThreshold);
+
+      // UAE_MARKET_AVERAGES is a table of SERVICE pricing (SaaS retainers,
+      // legal consultations, real-estate deals) — it has no relationship to
+      // the price of a physical good. Category names overlap between the two
+      // ("Entertainment", "Fashion", "Food" can mean either a service or an
+      // item), so running isValueFlagged() against every listing compared a
+      // AED 95 vinyl record tagged "Entertainment" against a AED 6,000
+      // average for entertainment BOOKINGS and flagged it as suspiciously
+      // cheap. Restrict the sanity check to listings that are actually
+      // services — the only case this heuristic was built for.
+      const listingTypeForFlag = typeof req.body.listingType === "string" ? req.body.listingType : "individual_item";
+      const categoryDetailsForFlag =
+        req.body.categoryDetails && typeof req.body.categoryDetails === "object" ? req.body.categoryDetails : {};
+      const isServiceListing =
+        listingTypeForFlag === "business_service" ||
+        listingTypeForFlag === "creator_service" ||
+        categoryDetailsForFlag.isService === true;
+
+      const valueFlagged =
+        (isServiceListing && isValueFlagged(retailVal, rawCategories)) ||
+        (retailVal >= highValueThreshold);
 
       // Map the optional AI valuation payload from the client into the
       // listing columns. Server clamps the range to sane bounds so a
