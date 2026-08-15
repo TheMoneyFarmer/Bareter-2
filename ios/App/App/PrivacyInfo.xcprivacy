@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	App-level Privacy Manifest, required by Apple for any app submitted or
+	updated since Spring 2024 that uses "required reason" APIs — directly or
+	via a linked SDK. Xcode can reject the archive/upload to App Store
+	Connect without this file present at the app target level. Only a
+	third-party plugin's own bundled manifest (ion-ios-camera) existed
+	before this; the app itself had none.
+
+	NSPrivacyCollectedDataTypes below must match whatever is answered in App
+	Store Connect's own Privacy "Nutrition Label" questionnaire — Apple
+	checks the two against each other. Fill in that questionnaire FROM this
+	file, not independently of it.
+
+	NSPrivacyAccessedAPITypes reasons reflect the known, documented
+	requirements for what this app actually links: Capacitor core (WebView +
+	Preferences plugin for local token storage), Firebase (push
+	notifications, via GoogleService-Info.plist), and the standard iOS
+	runtime. This is a well-reasoned draft, not a substitute for Apple's own
+	tooling — once Xcode is available, generate the authoritative version via
+	Product > Archive > Distribute App > (right-click the archive) >
+	Generate Privacy Report, and reconcile any difference before submitting.
+	Re-run that check after adding the Apple Sign-In plugin (or any future
+	native dependency) — a new SDK can introduce required-reason API usage
+	this file doesn't yet know about.
+	-->
+
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<!--
+	No advertising identifier (IDFA) is read, no cross-app/cross-site
+	tracking, and no data is shared with a third party for their own
+	advertising. PostHog analytics (client/src/lib/posthog.ts) is
+	first-party product analytics only: persistence is "localStorage" (not
+	IDFA-backed), autocapture is off, and identifyUser() sends a SHA-256
+	hash of the internal user id, never a raw identifier. If that changes —
+	an ad SDK is ever added, or PostHog config switches to a
+	device-identifier-based mode — this must flip to <true/> and
+	NSPrivacyTrackingDomains below must list every such domain.
+	-->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<!-- Account fields: users.email / .phone / .fullName in shared/schema.ts -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhoneNumber</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeName</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Listing/profile/KYC images and video clips; camera + photo library
+		     usage strings already declared in Info.plist. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Internal account id — session/auth only, never used to track
+		     across other companies' apps or sites. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- First-party PostHog analytics — see NSPrivacyTracking note above.
+		     Linked=false: identifyUser() sends a one-way hash, not the
+		     reversible id itself. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- @capacitor/preferences (client/src/lib/queryClient.ts) stores the
+		     mobile auth token — own-app data only, never read across apps. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<!-- Capacitor's WebView serves the bundled web build from local files. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<!-- Firebase (push notifications, via GoogleService-Info.plist) —
+		     commonly requires boot-time access for session/event timing. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+		<!-- Firebase — commonly checks available disk space for local caching. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -950,9 +950,99 @@ export async function registerRoutes(
         res.redirect("/login?apple_error=1");
       }
     });
+
+    // Native Sign in with Apple — called from the Capacitor app after the OS
+    // ASAuthorizationController sheet resolves. Mirrors /api/auth/google/native:
+    // verifies the identityToken from the native SDK against Apple's public
+    // keys, finds/creates the user, and returns a mobileToken (no session
+    // cookie needed). This is the endpoint the App Store review team expects
+    // to exist per Guideline 4.8 — Google Sign-In already has a native path,
+    // so Apple Sign-In needs an equivalent one, not just the web redirect
+    // flow above (which still serves the desktop/browser experience).
+    //
+    // Apple sends the user's name only on the FIRST authorization ever, and
+    // only the identityToken on every one after that — same constraint the
+    // web callback already works around via `userJson`. The client is
+    // responsible for capturing givenName/familyName from the plugin's
+    // response on that first call and sending it as `fullName` here; the
+    // server never sees it again after that.
+    app.post("/api/auth/apple/native", async (req, res) => {
+      try {
+        const { identityToken, fullName: providedFullName } = req.body as {
+          identityToken?: string;
+          fullName?: string;
+        };
+        if (!identityToken) return res.status(400).json({ message: "identityToken required" });
+
+        // A token from ASAuthorizationController (native iOS) carries `aud` =
+        // the app's BUNDLE ID, not the web Services ID `APPLE_CLIENT_ID`
+        // checked above for the browser flow — those are two different
+        // identifiers in Apple's own system. Checking against APPLE_CLIENT_ID
+        // alone here would reject every real native sign-in with an
+        // audience-mismatch error. apple-signin-auth accepts an array and
+        // passes if the token's `aud` matches ANY entry, matching how the
+        // native Google endpoint above checks both its web and iOS client
+        // ids. The bundle id itself isn't a secret — it's public in the App
+        // Store listing and in capacitor.config.ts — so a fixed default is
+        // fine, with an env var to override if a second bundle id is ever
+        // needed (e.g. a separate Android flow).
+        const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || "com.bareter.app";
+        const applePayload = await appleSignin.default.verifyIdToken(identityToken, {
+          audience: [APPLE_CLIENT_ID as string, APPLE_BUNDLE_ID],
+          ignoreExpiration: false,
+        });
+
+        const appleId = applePayload.sub;
+        const email = (applePayload.email as string | undefined)?.toLowerCase().trim();
+        const fullName = providedFullName?.trim() || "Bareter Member";
+
+        let user = await storage.getUserByAppleId?.(appleId);
+        if (!user && email) {
+          user = await storage.getUserByEmail(email);
+          if (user) await storage.updateUser(user.id, { appleId } as any);
+        }
+        if (!user) {
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email: email || `apple_${appleId}@privaterelay.appleid.com`,
+            password: randomPw,
+            fullName,
+            appleId,
+            // Only when Apple actually shared an address — see the identical
+            // comment on the web callback above.
+            emailVerified: !!email,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+        }
+
+        if ((user as any).isBanned) return res.status(403).json({ message: "Account suspended" });
+
+        await new Promise<void>((resolve, reject) =>
+          req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+        );
+        req.session.userId = user!.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err: any) => (err ? reject(err) : resolve()))
+        );
+
+        const mobileToken = await issueMobileToken(user!.id, req.headers["user-agent"] ?? null);
+        const { password: _pw, ...safeUser } = user as any;
+        return res.json({ ...safeUser, mobileToken });
+      } catch (err: any) {
+        console.error("[apple/native]", err?.message ?? err);
+        return res.status(401).json({ message: "Apple sign-in failed" });
+      }
+    });
   } else {
     app.get("/auth/apple", (_req, res) => res.redirect("/login?apple_error=not_configured"));
     app.post("/auth/apple/callback", (_req, res) => res.redirect("/login?apple_error=not_configured"));
+    // Keep the mobile client's error handling uniform: a clear 503 with a
+    // JSON body, not a raw 404, when Apple Sign-In env vars aren't set.
+    app.post("/api/auth/apple/native", (_req, res) => {
+      res.status(503).json({ message: "Apple Sign-In is not configured" });
+    });
   }
 
   // ── Maintenance mode middleware ──────────────────────────────────────
