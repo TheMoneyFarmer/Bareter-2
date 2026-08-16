@@ -779,7 +779,7 @@ export function CreateListingPage() {
 
                 {/* Creator — requires creator profile */}
                 <button type="button"
-                  onClick={() => creatorProfile ? setListingMode("creator") : window.location.assign("/settings?tab=creator&from=create-listing")}
+                  onClick={() => creatorProfile ? setListingMode("creator") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors relative ${listingMode === "creator" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Camera className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Creator</span>
@@ -789,7 +789,7 @@ export function CreateListingPage() {
 
                 {/* Business Product */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_product") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_product") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_product" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Building2 className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Business</span>
@@ -799,7 +799,7 @@ export function CreateListingPage() {
 
                 {/* Business Service */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_service") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_service") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_service" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Handshake className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Biz Service</span>
@@ -809,7 +809,7 @@ export function CreateListingPage() {
 
                 {/* Wholesale — business + KYB verified */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_wholesale") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_wholesale") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_wholesale" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Package className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Wholesale</span>

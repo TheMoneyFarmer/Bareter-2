@@ -138,7 +138,18 @@ export function SettingsPage() {
   const { language: activeLanguage, setLanguage, t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [mobileView, setMobileView] = useState<"menu" | "section">("menu");
+  // A deep link like /settings?tab=profile-mode (used by create-listing to
+  // send someone straight to "become a business/creator") used to always land
+  // on the mobile MENU list regardless of the tab param — the user still had
+  // to find and tap the right row themselves. Starting in "section" whenever
+  // a tab is specified in the URL mirrors profile.tsx's already-correct
+  // pattern and takes them straight to the content they were sent here for.
+  const [mobileView, setMobileView] = useState<"menu" | "section">(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab")) {
+      return "section";
+    }
+    return "menu";
+  });
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== "undefined") {
       const t = new URLSearchParams(window.location.search).get("tab");
