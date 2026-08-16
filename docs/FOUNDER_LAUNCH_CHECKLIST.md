@@ -7,6 +7,11 @@ DNS access, a third-party dashboard login, your own ID document, or a
 publish click. They're listed in the order you should do them — earlier
 items unlock later ones.
 
+Covers the web platform. For the iOS native app specifically —
+Apple Developer enrollment, App Store Connect, signing, TestFlight,
+submission — see
+[`APP_STORE_LAUNCH_CHECKLIST.md`](APP_STORE_LAUNCH_CHECKLIST.md).
+
 For each item:
 - **Who** — who on your team should own it.
 - **Why it matters** — what breaks if you skip it.
