@@ -2749,6 +2749,417 @@ export async function registerRoutes(
     }
   });
 
+  // The nine handlers RESERVED_LISTING_PATHS above falls through to.
+  //
+  // These existed at their own scattered positions further down this file on
+  // main. Merging main into mobile-app dropped all nine silently — no
+  // conflict marker, no error, just gone — because mobile-app had
+  // independently built equivalent features under different route names
+  // (/api/trending-listings, /api/listings-nearby, /api/bulk-listings) in
+  // roughly the same regions of this very large file, and git's line-based
+  // merge resolved the surrounding context without preserving these
+  // insertions. Restored verbatim from origin/main and consolidated here,
+  // directly after the route whose next() they depend on, rather than
+  // re-scattered across the file where the same silent loss could recur.
+  app.get("/api/listings/trending", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 10, 20);
+      const trending = await storage.getTrendingListings(limit);
+      res.json(trending);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch trending listings" });
+    }
+  });
+
+  app.get("/api/listings/for-you", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const limit = Math.min(Number(req.query.limit) || 24, 48);
+
+      // Gather signals in parallel
+      const [likedRows, searchRows, followingRows, wishlistRows] = await Promise.all([
+        db.select({ listingId: listingLikes.listingId }).from(listingLikes).where(eq(listingLikes.userId, userId)).limit(50),
+        db.select({ query: searchQueryHistory.query, category: searchQueryHistory.category })
+          .from(searchQueryHistory).where(eq(searchQueryHistory.userId, userId)).orderBy(desc(searchQueryHistory.createdAt)).limit(20),
+        db.select({ followingId: followers.followingId }).from(followers).where(eq(followers.followerId, userId)),
+        db.select({ listingId: wishlists.listingId }).from(wishlists).where(eq(wishlists.userId, userId)).limit(50),
+      ]);
+
+      // Collect liked listing categories as signal
+      const likedListingIds = likedRows.map(r => r.listingId).concat(wishlistRows.map(r => r.listingId));
+      let preferredCategories: string[] = [];
+      if (likedListingIds.length > 0) {
+        const catRows = await db
+          .select({ categories: listings.categories })
+          .from(listings)
+          .where(inArray(listings.id, likedListingIds.slice(0, 30)));
+        preferredCategories = catRows.flatMap(r => (r.categories as string[]) || []);
+      }
+
+      // Add search query categories
+      searchRows.forEach(r => { if (r.category) preferredCategories.push(r.category); });
+      const catFreq = new Map<string, number>();
+      preferredCategories.forEach(c => catFreq.set(c, (catFreq.get(c) || 0) + 1));
+      const topCats = [...catFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
+
+      const followedUserIds = followingRows.map(r => r.followingId);
+      const excludeIds = new Set([userId]);
+
+      // Build OR conditions: followed users' listings + matching categories + recent searches
+      const orConds: any[] = [];
+      if (followedUserIds.length > 0) orConds.push(inArray(listings.userId, followedUserIds));
+      if (topCats.length > 0) {
+        // Match any of the top categories (Postgres array overlap)
+        topCats.forEach(cat => orConds.push(sqlOperator`${listings.categories}::text ilike ${'%' + cat + '%'}`));
+      }
+      // Also bring in listings matching top search queries
+      const topQueries = Array.from(new Set(searchRows.map(r => r.query))).slice(0, 3);
+      topQueries.forEach(q => {
+        orConds.push(ilike(listings.title, `%${q}%`));
+        orConds.push(ilike(listings.description, `%${q}%`));
+      });
+
+      let forYouListings: any[] = [];
+      if (orConds.length > 0) {
+        forYouListings = await db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.isActive, true), not(inArray(listings.userId, [...excludeIds])), or(...orConds)))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit);
+      }
+
+      // Fill up to limit with recent active listings if not enough personalised results
+      if (forYouListings.length < limit) {
+        const existingIds = new Set(forYouListings.map((l: any) => l.id));
+        const filler = await db
+          .select()
+          .from(listings)
+          .where(and(eq(listings.isActive, true), not(eq(listings.userId, userId))))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit - forYouListings.length + 10);
+        filler.forEach(l => { if (!existingIds.has(l.id)) forYouListings.push(l); });
+        forYouListings = forYouListings.slice(0, limit);
+      }
+
+      // Attach wishlist flag
+      const wishlistedSet = new Set(wishlistRows.map(r => r.listingId).concat(likedRows.map(r => r.listingId)));
+      res.json(forYouListings.map(l => ({ ...l, isWishlisted: wishlistedSet.has(l.id) })));
+    } catch (error) {
+      console.error("For-you listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/nearby", async (req, res) => {
+    try {
+      const city = req.query.city as string;
+      if (!city) return res.json([]);
+      const limit = Math.min(Number(req.query.limit) || 6, 12);
+      const excludeUserId = req.session.userId;
+      const nearby = await storage.getListingsByCity(city, excludeUserId, limit);
+      const wishlistedIds = excludeUserId ? await storage.getUserLikedListingIds(excludeUserId) : new Set<string>();
+      res.json(nearby.map(l => ({ ...l, isWishlisted: wishlistedIds.has(l.id) })));
+    } catch (error) {
+      console.error("Get nearby listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/liked", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db
+        .select({
+          id: listings.id,
+          title: listings.title,
+          description: listings.description,
+          categories: listings.categories,
+          type: listings.type,
+          images: listings.images,
+          retailValue: listings.retailValue,
+          location: listings.location,
+          condition: listings.condition,
+          isActive: listings.isActive,
+          likeCount: listings.likeCount,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          likedAt: listingLikes.createdAt,
+        })
+        .from(listingLikes)
+        .innerJoin(listings, eq(listingLikes.listingId, listings.id))
+        .where(and(eq(listingLikes.userId, userId), eq(listings.isActive, true)))
+        .orderBy(desc(listingLikes.createdAt));
+
+      res.json(rows.map((r) => ({ ...r, isLiked: true })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch liked listings" });
+    }
+  });
+
+  app.get("/api/listings/bulk", async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string || "1");
+      const limit = 20;
+      const offset = (page - 1) * limit;
+
+      const [rows, totalRes] = await Promise.all([
+        db.select({
+          id: listings.id,
+          title: listings.title,
+          description: listings.description,
+          categories: listings.categories,
+          retailValue: listings.retailValue,
+          bulkQuantity: listings.bulkQuantity,
+          bulkUnit: listings.bulkUnit,
+          bulkMinOrder: listings.bulkMinOrder,
+          bulkMaxPartners: listings.bulkMaxPartners,
+          location: listings.location,
+          country: listings.country,
+          city: listings.city,
+          type: listings.type,
+          images: listings.images,
+          createdAt: listings.createdAt,
+          userId: listings.userId,
+          userName: users.fullName,
+          userEmail: users.email,
+        })
+          .from(listings)
+          .leftJoin(users, eq(listings.userId, users.id))
+          .where(and(
+            eq(listings.isBulkDeal, true),
+            eq(listings.isActive, true),
+            isNull(listings.deletedAt),
+          ))
+          .orderBy(desc(listings.createdAt))
+          .limit(limit).offset(offset),
+        db.select({ count: count() }).from(listings).where(and(
+          eq(listings.isBulkDeal, true),
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+        )),
+      ]);
+
+      res.json({ listings: rows, total: Number(totalRes[0]?.count ?? 0), page, limit });
+    } catch (error) {
+      console.error("Bulk listings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/chain-matches", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      // Get current user's active listings
+      const myListings = await db.select().from(listings)
+        .where(and(
+          eq(listings.userId, user.id),
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+        )).limit(10);
+
+      if (myListings.length === 0) return res.json([]);
+
+      // Fetch all active listings from OTHER users (limited for performance)
+      const othersListings = await db.select({
+        id: listings.id,
+        title: listings.title,
+        categories: listings.categories,
+        wantedCategories: listings.wantedCategories,
+        retailValue: listings.retailValue,
+        userId: listings.userId,
+        images: listings.images,
+        userName: users.fullName,
+      })
+        .from(listings)
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(and(
+          eq(listings.isActive, true),
+          isNull(listings.deletedAt),
+          sqlOperator`${listings.userId} != ${user.id}`,
+        ))
+        .limit(200);
+
+      const chains: Array<{
+        myListing: { id: string; title: string; categories: unknown };
+        nodeB: { id: string; title: string; userName: string | null; userId: string };
+        nodeC: { id: string; title: string; userName: string | null; userId: string };
+      }> = [];
+
+      const overlap = (a: string[], b: string[]) => a.some(x => b.includes(x));
+
+      for (const mine of myListings) {
+        const myCategories = (mine.categories as string[]) || [];
+        const myWanted = (mine.wantedCategories as string[]) || [];
+
+        // Find B: listings that want what I have
+        const bNodes = othersListings.filter(l =>
+          overlap(myCategories, (l.wantedCategories as string[]) || []) &&
+          l.userId !== user.id
+        );
+
+        for (const b of bNodes.slice(0, 20)) {
+          const bCats = (b.categories as string[]) || [];
+          // Find C: listings that want what B has and are owned by a 3rd user
+          const cNodes = othersListings.filter(l =>
+            l.userId !== b.userId &&
+            l.userId !== user.id &&
+            overlap(bCats, (l.wantedCategories as string[]) || [])
+          );
+
+          for (const c of cNodes.slice(0, 5)) {
+            const cCats = (c.categories as string[]) || [];
+            // Check: does C want what I have? (completes the cycle)
+            if (overlap(myWanted, cCats)) {
+              chains.push({ myListing: mine, nodeB: b as any, nodeC: c as any });
+              if (chains.length >= 10) break;
+            }
+          }
+          if (chains.length >= 10) break;
+        }
+        if (chains.length >= 10) break;
+      }
+
+      res.json(chains);
+    } catch (error) {
+      console.error("Chain match error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/match-score", requireAuth, async (req, res) => {
+    try {
+      const aId = typeof req.query.a === "string" ? req.query.a : "";
+      const bId = typeof req.query.b === "string" ? req.query.b : "";
+      if (!aId || !bId) {
+        return res.status(400).json({ message: "Both ?a and ?b listing IDs are required" });
+      }
+      if (aId === bId) {
+        return res.status(400).json({ message: "Cannot compare a listing with itself" });
+      }
+      const [a, b] = await Promise.all([
+        storage.getListing(aId),
+        storage.getListing(bId),
+      ]);
+      if (!a || !b) {
+        return res.status(404).json({ message: "One or both listings not found" });
+      }
+      const aMin = a.valuationMinAed;
+      const aMax = a.valuationMaxAed;
+      const bMin = b.valuationMinAed;
+      const bMax = b.valuationMaxAed;
+      if (aMin == null || aMax == null || bMin == null || bMax == null) {
+        return res.status(409).json({
+          message: "One or both listings have no AI valuation yet",
+          missing: {
+            a: aMin == null || aMax == null,
+            b: bMin == null || bMax == null,
+          },
+        });
+      }
+      const avgA = (aMin + aMax) / 2;
+      const avgB = (bMin + bMax) / 2;
+      const higher = Math.max(avgA, avgB);
+      const lower = Math.min(avgA, avgB);
+      const pctDiff = higher > 0 ? ((higher - lower) / higher) * 100 : 0;
+      const score = Math.max(0, Math.min(100, Math.round(100 - pctDiff)));
+      const aedDifference = Math.round(higher - lower);
+
+      let label: "excellent" | "good" | "fair" | "poor";
+      let message: string;
+      let suggestion: string | null = null;
+      if (score >= 85) {
+        label = "excellent";
+        message = "These items are very closely matched in value. A fair exchange for both parties.";
+      } else if (score >= 70) {
+        label = "good";
+        message = "These items are well matched. A reasonable exchange.";
+      } else if (score >= 50) {
+        label = "fair";
+        message = "There is a noticeable value difference between these items.";
+        suggestion = `Consider adding an item worth approximately AED ${aedDifference.toLocaleString()} to balance this exchange.`;
+      } else {
+        label = "poor";
+        message = "These items have a significant value difference.";
+        suggestion = `The value gap is approximately AED ${aedDifference.toLocaleString()}. A direct exchange may not be fair for both parties.`;
+      }
+
+      return res.json({
+        score,
+        label,
+        message,
+        suggestion,
+        aedDifference,
+        currency: "AED",
+        a: { id: a.id, title: a.title, min: aMin, max: aMax, avg: Math.round(avgA) },
+        b: { id: b.id, title: b.title, min: bMin, max: bMax, avg: Math.round(avgB) },
+      });
+    } catch (error) {
+      console.error("Match score error:", error);
+      res.status(500).json({ message: "Match score unavailable" });
+    }
+  });
+
+  app.get("/api/listings/my-pending-proposals", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const userListings = await storage.getListingsByUser(userId);
+      if (!userListings.length) return res.json([]);
+
+      const allProposals = await Promise.all(
+        userListings.map(async (listing) => {
+          const comments = await storage.getListingComments(listing.id);
+          return comments.map((c) => ({ ...c, listing }));
+        })
+      );
+      const flat = allProposals.flat();
+
+      // Attach proposer user info
+      const withProposers = await Promise.all(
+        flat.map(async (p) => {
+          const proposer = await storage.getUser(p.userId);
+          return { ...p, proposer };
+        })
+      );
+
+      // Sort: pending first, then by date desc
+      withProposers.sort((a, b) => {
+        const order = (s: string | null) => (!s || s === "pending" ? 0 : s === "accepted" ? 1 : 2);
+        if (order(a.status) !== order(b.status)) return order(a.status) - order(b.status);
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+
+      res.json(withProposers);
+    } catch (error) {
+      console.error("Get incoming proposals error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/listings/my-outgoing-proposals", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const rows = await db
+        .select()
+        .from(listingComments)
+        .leftJoin(listings, eq(listingComments.listingId, listings.id))
+        .leftJoin(users, eq(listings.userId, users.id))
+        .where(eq(listingComments.userId, userId))
+        .orderBy(desc(listingComments.createdAt));
+
+      const result = rows.map((r) => ({
+        ...r.listing_comments,
+        listing: r.listings ? { ...r.listings, user: r.users } : null,
+      }));
+
+      res.json(result);
+    } catch (error) {
+      console.error("Get outgoing proposals error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/listings", requireAuth, async (req, res) => {
     try {
       const listingUser = await storage.getUser(req.session.userId!);
@@ -6907,7 +7318,10 @@ export async function registerRoutes(
         scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
       });
       const tokenResult = await auth.getAccessToken();
-      const token = typeof tokenResult === "string" ? tokenResult : (tokenResult as { token?: string })?.token;
+      // getAccessToken() can resolve to null (no credentials available), not
+      // just undefined — the object-shaped branch needs to allow for that too,
+      // or TS correctly flags the cast as unsound.
+      const token = typeof tokenResult === "string" ? tokenResult : (tokenResult as { token?: string } | null)?.token;
       if (!token) {
         return res.status(500).json({ ok: false, error: "Could not obtain access token from Google — check service account permissions" });
       }

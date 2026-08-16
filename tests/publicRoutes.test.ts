@@ -39,7 +39,9 @@ const APPROVED_PUBLIC = new Set([
   "GET /api/auth/verify-email",
   "GET /api/blog",
   "GET /api/blog/:slug",
+  "GET /api/bulk-listings",
   "GET /api/businesses",
+  "GET /api/businesses/:id/catalog",
   "GET /api/businesses/:id/storefront",
   "GET /api/config",
   "GET /api/creators",
@@ -52,6 +54,14 @@ const APPROVED_PUBLIC = new Set([
   "GET /api/legal",
   "GET /api/legal/:slug",
   "GET /api/listings",
+  // /api/listings-nearby and /api/trending-listings are an older, differently
+  // named implementation of the same features as /api/listings/nearby and
+  // /api/listings/trending below — built independently on the mobile-app
+  // branch before that naming convention existed. Both sets are load-bearing
+  // (feed.tsx, browse.tsx, bulk-deals.tsx all call the dashed names) and
+  // equally safe: read-only, no PII, no auth bypass. Consolidating them is a
+  // real product decision, not something to do inside a merge.
+  "GET /api/listings-nearby",
   "GET /api/listings/:id",
   "GET /api/listings/:id/chain-candidates",
   "GET /api/listings/:id/comments",
@@ -79,6 +89,8 @@ const APPROVED_PUBLIC = new Set([
   "GET /api/support/tickets",
   "GET /api/support/tickets/:id",
   "GET /api/support/tickets/:id/messages",
+  // See the /api/listings-nearby comment above — same situation.
+  "GET /api/trending-listings",
   "GET /api/users/:userId/credibility",
   "GET /api/users/:userId/reviews",
   "GET /api/users/search",
