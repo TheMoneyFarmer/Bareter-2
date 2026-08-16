@@ -106,6 +106,7 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [step, setStep] = useState(() => {
     try {
       return new URL(window.location.href).searchParams.get("step") === "verify" ? 0 : 1;
@@ -257,6 +258,39 @@ export function RegisterPage() {
     </div>
   );
 
+  const handleAppleNative = async () => {
+    setAppleLoading(true);
+    try {
+      const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+      // See the identical comment in login.tsx's handleAppleNative — these
+      // two fields are required by the plugin's shared TypeScript interface
+      // but unused by the native iOS ASAuthorizationController path itself.
+      const result = await SignInWithApple.authorize({
+        clientId: "com.bareter.app",
+        redirectURI: "https://bareter.com/auth/apple/callback",
+        scopes: "email name",
+      });
+      const { identityToken, givenName, familyName } = result.response;
+      const fullName = [givenName, familyName].filter(Boolean).join(" ").trim() || undefined;
+      const userData = await apiRequest("POST", "/api/auth/apple/native", { identityToken, fullName });
+      const { mobileToken, ...user } = userData as any;
+      if (mobileToken) await storeMobileToken(mobileToken);
+      queryClient.setQueryData(["/api/auth/me"], user);
+      navigate("/browse");
+    } catch (err: any) {
+      const msg = (err?.message ?? "").toLowerCase();
+      if (msg.includes("cancel") || msg.includes("1001")) return;
+      apiRequest("POST", "/api/logs/client-error", {
+        context: "apple-sign-in-register",
+        error: String(err?.message ?? err),
+        platform: "ios-native",
+      }).catch(() => {});
+      toast({ title: "Sign-in failed", description: "Please try again or use email.", variant: "destructive" });
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
   const handleGoogleNative = async () => {
     setGoogleLoading(true);
     try {
@@ -321,14 +355,27 @@ export function RegisterPage() {
         )}
 
         {appleEnabled && (
-          <a
-            href="/auth/apple"
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors shadow-sm"
-            data-testid="button-apple-register"
-          >
-            <AppleSignInIcon />
-            Continue with Apple
-          </a>
+          Capacitor.isNativePlatform() ? (
+            <button
+              type="button"
+              onClick={handleAppleNative}
+              disabled={appleLoading}
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors shadow-sm disabled:opacity-50"
+              data-testid="button-apple-register"
+            >
+              {appleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AppleSignInIcon />}
+              Continue with Apple
+            </button>
+          ) : (
+            <a
+              href="/auth/apple"
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors shadow-sm"
+              data-testid="button-apple-register"
+            >
+              <AppleSignInIcon />
+              Continue with Apple
+            </a>
+          )
         )}
 
         {(googleEnabled || appleEnabled) && (

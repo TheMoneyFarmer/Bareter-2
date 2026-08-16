@@ -2094,7 +2094,7 @@ export function AdminPage() {
                             <Ban className="h-3 w-3" />
                             Banned
                           </Badge>
-                        ) : isUserVerified(u.kycStatus, u.kybStatus, (u as any).phoneVerified, u.isVerified) ? (
+                        ) : isUserVerified(u.kycStatus, u.kybStatus, (u as any).phoneVerified, u.isVerified, (u as any).emailVerified, (u as any).accountType) ? (
                           <Badge className="gap-1">
                             <ShieldCheck className="h-3 w-3" />
                             Verified

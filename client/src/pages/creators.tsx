@@ -270,7 +270,7 @@ export function CreatorsPage() {
           <Link href="/register">
             <Button>Join as Creator</Button>
           </Link>
-          <Link href="/settings?tab=creator">
+          <Link href="/settings?tab=profile-mode">
             <Button variant="outline">Set Up Creator Profile</Button>
           </Link>
         </div>

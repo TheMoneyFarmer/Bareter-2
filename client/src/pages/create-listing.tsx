@@ -20,6 +20,7 @@ import { trackEvent } from "@/lib/posthog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, handleAuthExpiry, API_BASE, uploadFile } from "@/lib/queryClient";
 import { CATEGORIES, COUNTRIES, getCitiesForCountry } from "@shared/schema";
+import { ALL_UAE_AREAS, resolveEmirate } from "@shared/uae-areas";
 import AiValuationPanel from "@/components/ai-valuation-panel";
 import { ListingDetailFields, ITEM_TYPE_LABELS, type ItemType } from "@/components/listing-detail-fields";
 import {
@@ -29,6 +30,7 @@ import {
   Camera, Users, Sparkles, Check, BedDouble, Building2, Briefcase, Handshake, Layers,
   Anchor, Dumbbell, Heart, Zap, BookOpen, Palette, Music, Gamepad2,
   Wrench, TreePine, Luggage, Watch, Utensils, PawPrint, Share2, Video,
+  AlertTriangle,
 } from "lucide-react";
 import { z } from "zod";
 
@@ -44,7 +46,8 @@ function makeCreateListingSchema(t: (key: string) => string) {
     description: z.string().min(20, t("create.validation.descMin")),
     categories: z.array(z.string()),
     retailValue: z.string().optional(),
-    location: z.string().min(1, t("create.validation.locationRequired")),
+    // Free text — any specific area. The emirate is captured separately in `city`.
+    location: z.string().trim().min(1, t("create.validation.locationRequired")).max(200),
     country: z.string().length(2).optional(),
     city: z.string().optional(),
     tags: z.array(z.string()).optional(),
@@ -542,7 +545,7 @@ export function CreateListingPage() {
     try {
       const urls = await Promise.all(files.map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         return uploadFile(file, "listing");
       }));
       form.setValue("images", [...currentImages, ...urls], { shouldValidate: true });
@@ -593,9 +596,13 @@ export function CreateListingPage() {
   const handleVideoUpload = async (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith("video/")) { toast({ title: "Video files only", variant: "destructive" }); return; }
-    if (file.size > 50 * 1024 * 1024) { toast({ title: "Video must be under 50MB", variant: "destructive" }); return; }
+    if (file.size > 100 * 1024 * 1024) { toast({ title: "Video must be under 100MB", variant: "destructive" }); return; }
     setUploadingVideo(true);
     try {
+      // The server transcodes any video to H.264/AAC MP4 before it's stored,
+      // so whatever the source format (iPhone HEVC/.MOV included) the URL
+      // that comes back plays in every browser — no client-side warning
+      // needed here.
       const url = await uploadFile(file, "listing");
       setVideoUrl(url);
     } catch (err: any) {
@@ -778,7 +785,7 @@ export function CreateListingPage() {
 
                 {/* Creator — requires creator profile */}
                 <button type="button"
-                  onClick={() => creatorProfile ? setListingMode("creator") : window.location.assign("/settings?tab=creator&from=create-listing")}
+                  onClick={() => creatorProfile ? setListingMode("creator") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors relative ${listingMode === "creator" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Camera className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Creator</span>
@@ -788,7 +795,7 @@ export function CreateListingPage() {
 
                 {/* Business Product */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_product") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_product") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_product" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Building2 className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Business</span>
@@ -798,7 +805,7 @@ export function CreateListingPage() {
 
                 {/* Business Service */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_service") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_service") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_service" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Handshake className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Biz Service</span>
@@ -808,7 +815,7 @@ export function CreateListingPage() {
 
                 {/* Wholesale — business + KYB verified */}
                 <button type="button"
-                  onClick={() => businessProfile ? setListingMode("business_wholesale") : window.location.assign("/settings?tab=business&from=create-listing")}
+                  onClick={() => businessProfile ? setListingMode("business_wholesale") : window.location.assign("/settings?tab=profile-mode&from=create-listing")}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-center transition-colors ${listingMode === "business_wholesale" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/40"}`}>
                   <Package className="h-5 w-5 text-muted-foreground" />
                   <span className="text-xs font-semibold">Wholesale</span>
@@ -1012,7 +1019,13 @@ export function CreateListingPage() {
                   <input ref={demoVideoRef} type="file" accept="video/*" className="hidden" onChange={e => handleDemoVideoUpload(e.target.files?.[0] ?? null)} />
                   {demoVideoUrl ? (
                     <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
-                      <video src={demoVideoUrl} controls className="w-full h-full object-contain" />
+                      <video
+                        src={demoVideoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
                       <button type="button" onClick={() => setDemoVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"><X className="h-3.5 w-3.5" /></button>
                     </div>
                   ) : (
@@ -1262,14 +1275,27 @@ export function CreateListingPage() {
                 </p>
               )}
 
-              {/* Video clip — optional, max 30s / 50MB */}
-              {selectedType === "offer" && (
+              {/* Video clip — creators only. Individuals/businesses don't get
+                  the option; this is the field creators use for a quick demo
+                  of the item/service, and most reported clip uploads come
+                  from creator accounts. */}
+              {selectedType === "offer" && listingMode === "creator" && creatorProfile && (
                 <div className="mt-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Short video clip (optional)</p>
                   <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => handleVideoUpload(e.target.files?.[0] ?? null)} />
                   {videoUrl ? (
                     <div className="relative rounded-lg overflow-hidden border aspect-video bg-black">
-                      <video src={videoUrl} controls className="w-full h-full object-contain" />
+                      {/* playsInline is required on iOS: without it Safari refuses
+                          to play inline and renders an unplayable black box.
+                          preload="metadata" pulls the first frame so the box
+                          isn't blank before the user taps play. */}
+                      <video
+                        src={videoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
                       <button type="button" onClick={() => setVideoUrl(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -1279,7 +1305,19 @@ export function CreateListingPage() {
                       {uploadingVideo ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : <><Video className="h-4 w-4" />Add a short video</>}
                     </Button>
                   )}
-                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 50MB.</p>
+                  {/* The server transcodes every upload to MP4 (server/lib/video.ts),
+                      so a successful upload always comes back as .mp4. A .mov URL
+                      here means that specific transcode failed and the server fell
+                      back to storing the original file untouched — a rare edge
+                      case (malformed video, ffmpeg unavailable), but real enough
+                      to still warn about rather than hide. */}
+                  {videoUrl?.toLowerCase().endsWith(".mov") && (
+                    <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                      We couldn't optimize this clip, so it will only play for Safari/iPhone viewers. Try re-uploading, or upload an MP4 instead.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">Shows in the listing gallery. Max 100MB.</p>
                 </div>
               )}
             </CardContent>
@@ -1323,15 +1361,42 @@ export function CreateListingPage() {
                 </FormItem>
               )} />
 
-              <FormField control={form.control} name="location" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("listing.location")}</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. Dubai Marina" data-testid="input-location" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* Free text — any area, typed or picked from the suggestions.
+                  If the typed area maps to a known emirate we fill the emirate
+                  dropdown for them, so "Downtown Dubai" alone is enough. */}
+              <FormField control={form.control} name="location" render={({ field }) => {
+                const suggestions = (form.watch("country") || "AE") === "AE" ? ALL_UAE_AREAS : [];
+                return (
+                  <FormItem>
+                    <FormLabel>{t("listing.location")}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. Dubai Marina, JBR, Downtown Dubai, Al Quoz..."
+                        maxLength={200}
+                        list={suggestions.length ? "uae-area-suggestions" : undefined}
+                        data-testid="input-location"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          const emirate = resolveEmirate(e.target.value);
+                          if (emirate && !form.getValues("city")) {
+                            form.setValue("city", emirate, { shouldValidate: true });
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    {suggestions.length > 0 && (
+                      <datalist id="uae-area-suggestions">
+                        {suggestions.map((a) => <option key={a} value={a} />)}
+                      </datalist>
+                    )}
+                    <FormDescription>
+                      Type your neighbourhood or community — anything works.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }} />
 
               <FormField control={form.control} name="country" render={({ field }) => (
                 <FormItem>

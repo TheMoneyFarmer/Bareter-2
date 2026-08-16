@@ -280,8 +280,8 @@ export function CreatePostPage() {
         if (!file.type.startsWith("image/")) {
           throw new Error(`${file.name} is not an image file`);
         }
-        if (file.size > 5 * 1024 * 1024) {
-          throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`${file.name} exceeds the 10MB image limit`);
         }
         const formData = new FormData();
         formData.append("file", file);

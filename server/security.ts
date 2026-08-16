@@ -80,6 +80,16 @@ export function stripAuthTokens<T extends Record<string, unknown>>(user: T): Omi
     appleId: _aid,
     ...safe
   } = user;
+
+  // Normalise `emailVerified` to its EFFECTIVE value before the OAuth ids are
+  // dropped. Signing in with Google/Apple is email verification, but those
+  // accounts never get a confirmation link so the raw column stays false
+  // forever. The ids themselves must not reach the client, so the derived
+  // answer is folded in here — otherwise the badge would show every OAuth
+  // user as unverified while the server happily lets them list and trade.
+  if (_gid || _aid) {
+    (safe as Record<string, unknown>).emailVerified = true;
+  }
   return safe as any;
 }
 

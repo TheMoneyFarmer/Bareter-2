@@ -60,6 +60,7 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   // Always show the forgot-password link — if email is not configured the page will show an error
   const passwordResetEnabled = true;
   const { data: googleStatus } = useQuery<{ enabled: boolean }>({ queryKey: ["/api/auth/google/status"], staleTime: Infinity });
@@ -131,6 +132,50 @@ export function LoginPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAppleNative = async () => {
+    setAppleLoading(true);
+    try {
+      const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+      // clientId/redirectURI are required by this plugin's shared TypeScript
+      // interface, but on the native iOS path they're vestiges of the
+      // plugin's own web-fallback implementation — ASAuthorizationController
+      // authenticates using the app's bundle id directly, not these values.
+      // We never invoke this plugin's web path (the browser already has the
+      // separate /auth/apple redirect flow above), so any well-formed values
+      // are fine here; using the real ones costs nothing and avoids a
+      // meaningless placeholder if this ever shows up in a log.
+      const result = await SignInWithApple.authorize({
+        clientId: "com.bareter.app",
+        redirectURI: "https://bareter.com/auth/apple/callback",
+        scopes: "email name",
+      });
+      const { identityToken, givenName, familyName } = result.response;
+      // Apple sends the name ONLY on the very first authorization ever, then
+      // null on every call after — same constraint the server-side web
+      // callback already documents. Send it up while we have it; the server
+      // never asks for it again.
+      const fullName = [givenName, familyName].filter(Boolean).join(" ").trim() || undefined;
+      const userData = await apiRequest("POST", "/api/auth/apple/native", { identityToken, fullName });
+      const { mobileToken, ...user } = userData as any;
+      if (mobileToken) await storeMobileToken(mobileToken);
+      queryClient.setQueryData(["/api/auth/me"], user);
+      trackEvent("login");
+      navigate(redirectTo.startsWith("/") ? redirectTo : "/browse");
+    } catch (err: any) {
+      const msg = (err?.message ?? "").toLowerCase();
+      // ASAuthorizationError.canceled === 1001 — the user dismissed the sheet.
+      if (msg.includes("cancel") || msg.includes("1001")) return;
+      apiRequest("POST", "/api/logs/client-error", {
+        context: "apple-sign-in",
+        error: String(err?.message ?? err),
+        platform: "ios-native",
+      }).catch(() => {});
+      toast({ title: "Sign-in failed", description: "Please try again or use email.", variant: "destructive" });
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -266,14 +311,27 @@ export function LoginPage() {
                     )
                   )}
                   {appleEnabled && (
-                    <a
-                      href={`/auth/apple${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
-                      className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
-                      data-testid="button-apple-login"
-                    >
-                      <AppleIcon />
-                      Apple
-                    </a>
+                    Capacitor.isNativePlatform() ? (
+                      <button
+                        type="button"
+                        onClick={handleAppleNative}
+                        disabled={appleLoading}
+                        className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm disabled:opacity-50"
+                        data-testid="button-apple-login"
+                      >
+                        {appleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AppleIcon />}
+                        Apple
+                      </button>
+                    ) : (
+                      <a
+                        href={`/auth/apple${redirectTo !== "/browse" ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+                        className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 dark:border-border bg-black hover:bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
+                        data-testid="button-apple-login"
+                      >
+                        <AppleIcon />
+                        Apple
+                      </a>
+                    )
                   )}
                 </div>
 

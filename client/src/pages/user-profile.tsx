@@ -923,7 +923,7 @@ export function UserProfilePage() {
                     ? portfolioItems.map((item) => (
                       <div key={item.id} className="relative aspect-square rounded-lg overflow-hidden bg-muted group" data-testid={`portfolio-item-${item.id}`}>
                         {item.mediaType === "video" ? (
-                          <video src={assetUrl(item.mediaUrl)} className="w-full h-full object-cover" muted />
+                          <video src={assetUrl(item.mediaUrl)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
                         ) : (
                           <img src={assetUrl(item.mediaUrl)} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         )}

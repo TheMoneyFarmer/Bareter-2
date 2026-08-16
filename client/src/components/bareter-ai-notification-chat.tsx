@@ -164,6 +164,7 @@ export default function BareterAiNotificationChat() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
@@ -294,18 +295,34 @@ export default function BareterAiNotificationChat() {
           </div>
 
           {/* Footer input area */}
-          <div className="border-t bg-gray-50 dark:bg-muted/30 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
-            <div className="flex-1 h-9 rounded-xl bg-white dark:bg-background border border-gray-200 dark:border-border flex items-center px-3">
-              <span className="text-xs text-muted-foreground">Ask Bareter…</span>
-            </div>
+          <form
+            className="border-t bg-gray-50 dark:bg-muted/30 px-3 py-2.5 flex items-center gap-2 flex-shrink-0"
+            onSubmit={(e) => {
+              e.preventDefault();
+              // There is no assistant behind this field to answer a typed
+              // question — routing to the inbox (where the user CAN act on
+              // whatever they typed, via a real conversation) is honest about
+              // that. Faking a reply here would be worse than this.
+              navigate("/inbox");
+              setIsOpen(false);
+              setDraftMessage("");
+            }}
+          >
+            <input
+              type="text"
+              value={draftMessage}
+              onChange={(e) => setDraftMessage(e.target.value)}
+              placeholder="Ask Bareter…"
+              aria-label="Message"
+              className="flex-1 h-9 rounded-xl bg-white dark:bg-background border border-gray-200 dark:border-border flex items-center px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-bareter-teal/40"
+            />
             <button
-              type="button"
-              onClick={() => { navigate("/inbox"); setIsOpen(false); }}
+              type="submit"
               className="h-9 w-9 rounded-xl bg-bareter-teal hover:bg-bareter-teal/90 flex items-center justify-center flex-shrink-0 transition-colors"
             >
               <Send className="h-4 w-4 text-white" />
             </button>
-          </div>
+          </form>
         </div>
       )}
 

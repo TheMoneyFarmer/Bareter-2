@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { r2Enabled, uploadToR2, generateR2Key } from "./lib/r2";
 import { uploadPublicImageWithThumb } from "./lib/images";
+import { maybeTranscodeVideo } from "./lib/video";
 import { safeGlobalApiLimiter } from "./handlers/globalRateLimit";
 import bcrypt from "bcryptjs";
 import session from "express-session";
@@ -86,6 +87,8 @@ import {
 import { detectContactCircumvention, CONTACT_CIRCUMVENTION_WARNING } from "./messageGuard";
 import { bearerPreAuthMiddleware, issueMobileToken } from "./lib/mobileAuth";
 import { allCategorySlugs, allSubcategorySlugs } from "@shared/category-slugs";
+import { getVerificationBlock } from "@shared/verification";
+import { resolveEmirate } from "@shared/uae-areas";
 import {
   isValidPrivateDocPath,
   canAccessPrivateDoc,
@@ -103,7 +106,10 @@ import {
   hashOtp,
   detectAllowedFileType,
   detectPortfolioFileType,
+  maxBytesForMime,
+  MAX_UPLOAD_BYTES,
   makeLoginRateLimiter,
+  // (verification + area helpers imported from @shared below)
   makeRegisterRateLimiter,
   makeForgotPasswordRateLimiter,
   makeConsentRateLimiter,
@@ -178,9 +184,14 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// ONE generous multer ceiling (100MB) for every upload route. Per-type limits
+// (10MB images, 100MB video, 10MB PDF) are applied after magic-byte detection
+// in the handler, where we actually know what the file is. Separate multer
+// instances with different limits caused a 30MB video to be rejected as "File
+// too large" against an advertised 50MB video limit.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 // Larger limit for creator portfolio — short reels can be up to ~50MB
@@ -573,6 +584,10 @@ export async function registerRoutes(
             fullName,
             avatarUrl: avatarUrl ?? undefined,
             googleId: profile.id,
+            // Google already proved ownership of this address and we never
+            // send these users a confirmation link — leaving this false would
+            // permanently mark them unverified.
+            emailVerified: true,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -691,6 +706,8 @@ export async function registerRoutes(
             fullName,
             avatarUrl: avatarUrl ?? undefined,
             googleId,
+            // Verified by Google — see the web OAuth path above.
+            emailVerified: true,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -905,6 +922,10 @@ export async function registerRoutes(
             password: randomPw,
             fullName,
             appleId,
+            // Only when Apple actually shared an address — the synthesized
+            // privaterelay placeholder above is not a real verified inbox.
+            // Either way `appleId` keeps them past the email gate.
+            emailVerified: !!email,
             country: "AE",
             signupType: "personal",
           } as any);
@@ -937,9 +958,99 @@ export async function registerRoutes(
         res.redirect("/login?apple_error=1");
       }
     });
+
+    // Native Sign in with Apple — called from the Capacitor app after the OS
+    // ASAuthorizationController sheet resolves. Mirrors /api/auth/google/native:
+    // verifies the identityToken from the native SDK against Apple's public
+    // keys, finds/creates the user, and returns a mobileToken (no session
+    // cookie needed). This is the endpoint the App Store review team expects
+    // to exist per Guideline 4.8 — Google Sign-In already has a native path,
+    // so Apple Sign-In needs an equivalent one, not just the web redirect
+    // flow above (which still serves the desktop/browser experience).
+    //
+    // Apple sends the user's name only on the FIRST authorization ever, and
+    // only the identityToken on every one after that — same constraint the
+    // web callback already works around via `userJson`. The client is
+    // responsible for capturing givenName/familyName from the plugin's
+    // response on that first call and sending it as `fullName` here; the
+    // server never sees it again after that.
+    app.post("/api/auth/apple/native", async (req, res) => {
+      try {
+        const { identityToken, fullName: providedFullName } = req.body as {
+          identityToken?: string;
+          fullName?: string;
+        };
+        if (!identityToken) return res.status(400).json({ message: "identityToken required" });
+
+        // A token from ASAuthorizationController (native iOS) carries `aud` =
+        // the app's BUNDLE ID, not the web Services ID `APPLE_CLIENT_ID`
+        // checked above for the browser flow — those are two different
+        // identifiers in Apple's own system. Checking against APPLE_CLIENT_ID
+        // alone here would reject every real native sign-in with an
+        // audience-mismatch error. apple-signin-auth accepts an array and
+        // passes if the token's `aud` matches ANY entry, matching how the
+        // native Google endpoint above checks both its web and iOS client
+        // ids. The bundle id itself isn't a secret — it's public in the App
+        // Store listing and in capacitor.config.ts — so a fixed default is
+        // fine, with an env var to override if a second bundle id is ever
+        // needed (e.g. a separate Android flow).
+        const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || "com.bareter.app";
+        const applePayload = await appleSignin.default.verifyIdToken(identityToken, {
+          audience: [APPLE_CLIENT_ID as string, APPLE_BUNDLE_ID],
+          ignoreExpiration: false,
+        });
+
+        const appleId = applePayload.sub;
+        const email = (applePayload.email as string | undefined)?.toLowerCase().trim();
+        const fullName = providedFullName?.trim() || "Bareter Member";
+
+        let user = await storage.getUserByAppleId?.(appleId);
+        if (!user && email) {
+          user = await storage.getUserByEmail(email);
+          if (user) await storage.updateUser(user.id, { appleId } as any);
+        }
+        if (!user) {
+          const randomPw = crypto.randomBytes(32).toString("hex");
+          user = await storage.createUser({
+            email: email || `apple_${appleId}@privaterelay.appleid.com`,
+            password: randomPw,
+            fullName,
+            appleId,
+            // Only when Apple actually shared an address — see the identical
+            // comment on the web callback above.
+            emailVerified: !!email,
+            country: "AE",
+            signupType: "personal",
+          } as any);
+        }
+
+        if ((user as any).isBanned) return res.status(403).json({ message: "Account suspended" });
+
+        await new Promise<void>((resolve, reject) =>
+          req.session.regenerate((err: any) => (err ? reject(err) : resolve()))
+        );
+        req.session.userId = user!.id;
+        (req.session as any).uaFingerprint = uaFingerprint(req);
+        await new Promise<void>((resolve, reject) =>
+          req.session.save((err: any) => (err ? reject(err) : resolve()))
+        );
+
+        const mobileToken = await issueMobileToken(user!.id, req.headers["user-agent"] ?? null);
+        const { password: _pw, ...safeUser } = user as any;
+        return res.json({ ...safeUser, mobileToken });
+      } catch (err: any) {
+        console.error("[apple/native]", err?.message ?? err);
+        return res.status(401).json({ message: "Apple sign-in failed" });
+      }
+    });
   } else {
     app.get("/auth/apple", (_req, res) => res.redirect("/login?apple_error=not_configured"));
     app.post("/auth/apple/callback", (_req, res) => res.redirect("/login?apple_error=not_configured"));
+    // Keep the mobile client's error handling uniform: a clear 503 with a
+    // JSON body, not a raw 404, when Apple Sign-In env vars aren't set.
+    app.post("/api/auth/apple/native", (_req, res) => {
+      res.status(503).json({ message: "Apple Sign-In is not configured" });
+    });
   }
 
   // ── Maintenance mode middleware ──────────────────────────────────────
@@ -1948,7 +2059,20 @@ export async function registerRoutes(
       const detected = await detectAllowedFileType(req.file.buffer);
       if (!detected) {
         return res.status(400).json({
-          message: "Invalid file type. Only JPG, PNG, GIF, WEBP and PDF are allowed.",
+          message:
+            "Invalid file type. Only JPG, PNG, GIF, WEBP, PDF, MP4, MOV and WEBM are allowed.",
+        });
+      }
+
+      // Per-category ceiling, applied now that we know the real type.
+      const typeLimit = maxBytesForMime(detected.mime);
+      if (req.file.size > typeLimit) {
+        const limitMb = Math.round(typeLimit / (1024 * 1024));
+        const actualMb = (req.file.size / (1024 * 1024)).toFixed(1);
+        return res.status(413).json({
+          message: `This file is ${actualMb}MB. The limit for ${
+            detected.mime.startsWith("video/") ? "videos" : detected.mime === "application/pdf" ? "documents" : "images"
+          } is ${limitMb}MB.`,
         });
       }
 
@@ -2002,19 +2126,29 @@ export async function registerRoutes(
         // Public URL exposed by our app — actual download is gated.
         fileUrl = `/api/private-docs/${userId}/${random}.${detected.ext}`;
       } else {
+        // Re-encode video to H.264/AAC MP4 before it ever reaches storage.
+        // Phones default to HEVC/.MOV, which only Safari can decode — the
+        // upload used to succeed and the clip would simply never play for
+        // most visitors. maybeTranscodeVideo() is a no-op for images/PDFs
+        // and falls back to the original bytes if ffmpeg fails for any
+        // reason, so a transcode problem degrades to "Safari-only, like
+        // before this existed" rather than breaking the upload.
+        const { buffer: uploadBuffer, mime: uploadMime, ext: uploadExt } =
+          await maybeTranscodeVideo({ buffer: req.file.buffer, mime: detected.mime, ext: detected.ext });
+
         const random = crypto.randomBytes(24).toString("hex");
-        const filename = `${random}.${detected.ext}`;
+        const filename = `${random}.${uploadExt}`;
         if (r2Enabled()) {
           // Resizes to MAX_DISPLAY_PX and writes a grid thumbnail alongside.
           // Camera originals measured ~3.4 MB in production; the display copy
           // is ~290 KB and the thumbnail ~44 KB.
-          fileUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext);
+          fileUrl = await uploadPublicImageWithThumb(uploadBuffer, uploadMime, uploadExt);
         } else if (process.env.REPL_ID) {
           // Replit production must have R2 configured — refuse rather than bill Replit object storage
           return res.status(503).json({ message: "File storage not configured. Contact support." });
         } else {
           // Local dev only: fall back to disk
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fs.writeFileSync(`${uploadDir}/${filename}`, uploadBuffer);
           fileUrl = `/uploads/${filename}`;
         }
       }
@@ -2093,7 +2227,9 @@ export async function registerRoutes(
     .object({
       fullName: z.string().min(2).max(100).optional(),
       bio: z.string().max(600).optional(),
-      location: z.string().max(100).optional(),
+      // Free text — a specific area ("Dubai Marina", "Al Quoz Industrial 3"),
+      // not an emirate. The emirate lives in `city`.
+      location: z.string().max(200).optional(),
       country: z.string().length(2).optional(),
       city: z.string().max(100).optional(),
       locationPrompted: z.boolean().optional(),
@@ -2138,9 +2274,18 @@ export async function registerRoutes(
           ? data.city || null
           : data.location;
 
+      // If they typed a neighbourhood ("Downtown Dubai") without picking an
+      // emirate, derive the emirate so location filtering still works. Never
+      // overwrites an emirate they chose explicitly.
+      const derivedCity =
+        data.city === undefined && data.location !== undefined
+          ? resolveEmirate(data.location) ?? undefined
+          : undefined;
+
       const updatedUser = await storage.updateUser(req.session.userId!, {
         ...data,
         ...(syncedLocation !== undefined ? { location: syncedLocation } : {}),
+        ...(derivedCity ? { city: derivedCity } : {}),
         profileCompleted,
       });
       if (!updatedUser) {
@@ -2637,46 +2782,65 @@ export async function registerRoutes(
                 message: "Listing creation is currently disabled — no active emirates configured.",
               });
             }
-            const listingCity = (req.body.location || listingUser.city || "").trim();
-            if (listingCity && !activeEmirates.some(e => e.toLowerCase() === listingCity.toLowerCase())) {
+            // Resolve the EMIRATE, never the free-text `location`. `location`
+            // holds a neighbourhood — "Downtown Dubai", "World Trade Center",
+            // "JBR" — which will never equal an emirate name, so matching it
+            // against this list rejected every specific address.
+            //
+            // Every candidate is run through resolveEmirate, including `city`
+            // itself. That matters for EXISTING accounts: an old backfill did
+            // `UPDATE users SET city = location`, so plenty of rows carry a
+            // neighbourhood in the city column. Resolving it here unblocks
+            // those users immediately, without waiting on a data repair.
+            // `city` is a CLAIMED emirate. If it neither matches the active
+            // list nor resolves to an emirate, we hand back the raw value so
+            // a genuine out-of-region claim ("Doha") is still refused.
+            const fromCityField = (v: string | null | undefined): string => {
+              const raw = (v ?? "").trim();
+              if (!raw) return "";
+              if (activeEmirates.some(e => e.toLowerCase() === raw.toLowerCase())) return raw;
+              return resolveEmirate(raw) ?? raw;
+            };
+            // `location` is FREE TEXT. It is never rejected: if it doesn't map
+            // to a known emirate we return "" (unknown) and fall through, so
+            // "Behind the big roundabout" is accepted rather than treated as
+            // an out-of-region claim.
+            const fromFreeText = (v: string | null | undefined): string =>
+              resolveEmirate(v) ?? "";
+
+            const listingEmirate = (
+              fromCityField(req.body.city) ||
+              fromFreeText(req.body.location) ||
+              fromCityField(listingUser.city) ||
+              fromFreeText(listingUser.location) ||
+              ""
+            ).trim();
+            if (listingEmirate && !activeEmirates.some(e => e.toLowerCase() === listingEmirate.toLowerCase())) {
               return res.status(403).json({
-                message: `Listings are currently only allowed in: ${activeEmirates.join(", ")}. Your location "${listingCity}" is not active.`,
+                message: `Listings are currently only allowed in: ${activeEmirates.join(", ")}. Your area "${req.body.location || listingEmirate}" is in ${listingEmirate}, which is not active yet.`,
               });
             }
           }
         } catch {}
       }
 
-      // Phone verification gate — must verify WhatsApp number before listing
-      if (!listingUser.phoneVerified) {
-        return res.status(403).json({ message: "Phone verification required to create a listing.", phoneVerificationRequired: true });
-      }
-
-      // Business license gate
-      if (listingUser.accountType === "business" && listingUser.kybStatus !== "APPROVED") {
+      // ── Listing eligibility gate ────────────────────────────────────────
+      // Individual/creator: email + phone. Business: email + phone + approved
+      // trade licence. Identity KYC is never asked of an individual.
+      // The rule and its copy live in shared/verification.ts so the client
+      // badge and this gate can never disagree again.
+      const listingBlock = getVerificationBlock(listingUser, "list");
+      if (listingBlock) {
         return res.status(403).json({
-          message: "Business accounts must have a verified trade license before creating listings.",
-          requiresTradeLicense: true
+          message: listingBlock.message,
+          code: listingBlock.code,
+          actionUrl: listingBlock.actionUrl,
+          actionLabel: listingBlock.actionLabel,
+          // Legacy flags kept so existing clients keep branching correctly.
+          requiresEmailVerification: listingBlock.code === "EMAIL_VERIFICATION_REQUIRED",
+          phoneVerificationRequired: listingBlock.code === "PHONE_VERIFICATION_REQUIRED",
+          requiresTradeLicense: listingBlock.code === "TRADE_LICENSE_REQUIRED",
         });
-      }
-
-      {
-        const { isUserVerified } = await import("./diditClient");
-        const listingUser = await storage.getUser(req.session.userId!);
-        if (listingUser) {
-          const userVerified = isUserVerified(
-            listingUser.accountType || "individual",
-            listingUser.kycStatus || "NOT_STARTED",
-            listingUser.kybStatus || "NOT_STARTED",
-            listingUser.isVerified,
-          );
-          if (!userVerified) {
-            return res.status(403).json({
-              message: "You must be verified to create listings. Please complete identity verification first.",
-              requiresVerification: true
-            });
-          }
-        }
       }
 
       const { isValueFlagged } = await import("./marketValues");
@@ -2684,7 +2848,27 @@ export async function registerRoutes(
       const retailVal = parseFloat(req.body.retailValue) || 0;
       const hvtSetting = await storage.getAppSetting("high_value_threshold");
       const highValueThreshold = hvtSetting ? parseFloat(hvtSetting) : 50000;
-      const valueFlagged = isValueFlagged(retailVal, rawCategories) || (retailVal >= highValueThreshold);
+
+      // UAE_MARKET_AVERAGES is a table of SERVICE pricing (SaaS retainers,
+      // legal consultations, real-estate deals) — it has no relationship to
+      // the price of a physical good. Category names overlap between the two
+      // ("Entertainment", "Fashion", "Food" can mean either a service or an
+      // item), so running isValueFlagged() against every listing compared a
+      // AED 95 vinyl record tagged "Entertainment" against a AED 6,000
+      // average for entertainment BOOKINGS and flagged it as suspiciously
+      // cheap. Restrict the sanity check to listings that are actually
+      // services — the only case this heuristic was built for.
+      const listingTypeForFlag = typeof req.body.listingType === "string" ? req.body.listingType : "individual_item";
+      const categoryDetailsForFlag =
+        req.body.categoryDetails && typeof req.body.categoryDetails === "object" ? req.body.categoryDetails : {};
+      const isServiceListing =
+        listingTypeForFlag === "business_service" ||
+        listingTypeForFlag === "creator_service" ||
+        categoryDetailsForFlag.isService === true;
+
+      const valueFlagged =
+        (isServiceListing && isValueFlagged(retailVal, rawCategories)) ||
+        (retailVal >= highValueThreshold);
 
       // Map the optional AI valuation payload from the client into the
       // listing columns. Server clamps the range to sane bounds so a
@@ -2729,7 +2913,21 @@ export async function registerRoutes(
         // Always stamp country/city from the poster's profile so location filtering works.
         // Body values take precedence if explicitly provided.
         country: listingBody.country || listingUser.country || "AE",
-        city: listingBody.city || listingUser.city || null,
+        // Stamp the resolved EMIRATE, so emirate filtering finds the listing
+        // even when the poster only typed a neighbourhood — and so a legacy
+        // profile carrying a neighbourhood in `city` doesn't propagate it.
+        city:
+          resolveEmirate(listingBody.city) ||
+          listingBody.city ||
+          resolveEmirate(listingBody.location) ||
+          resolveEmirate(listingUser.city) ||
+          listingUser.city ||
+          null,
+        // Free-text specific area. Any value is accepted — it is never matched
+        // against the emirate allow-list — capped at 200 chars.
+        location: typeof listingBody.location === "string"
+          ? listingBody.location.trim().slice(0, 200)
+          : (listingBody.location ?? null),
       });
       const listing = await storage.createListing(data);
       res.json(listing);
@@ -2815,11 +3013,26 @@ export async function registerRoutes(
       const LISTING_OWNER_FIELDS = new Set([
         "title", "description", "category", "subcategory", "condition",
         "retailValue", "lookingFor", "location", "images", "tags",
-        "isNegotiable", "tradeRadius", "shippingAvailable",
+        "isNegotiable", "tradeRadius", "shippingAvailable", "videoUrl",
       ]);
       const sanitized = Object.fromEntries(
         Object.entries(req.body).filter(([k]) => LISTING_OWNER_FIELDS.has(k)),
       );
+
+      // Video is gated to creator accounts at listing CREATION (product
+      // decision — most non-creator uploads are the low-effort clips this
+      // gate was built to reduce). Editing must not be a backdoor around
+      // that: a non-creator can still replace or remove a video their
+      // listing already has (e.g. re-uploading to pick up the transcode
+      // fix below), but cannot originate video on a listing that never had
+      // one. Enforced here, not just in the client — the client gate alone
+      // is trivially bypassed by calling this endpoint directly.
+      if ("videoUrl" in sanitized) {
+        const profile = await storage.getCreatorProfile(req.session.userId!);
+        const canManageVideo = !!profile || !!listing.videoUrl;
+        if (!canManageVideo) delete sanitized.videoUrl;
+      }
+
       const updated = await storage.updateListing(param(req.params.id), sanitized);
       res.json(updated);
     } catch (error) {
@@ -4111,20 +4324,20 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
 
-      {
-        const { isUserVerified } = await import("./diditClient");
-        const seekerVerified = isUserVerified(
-          seeker.accountType || "individual",
-          seeker.kycStatus || "NOT_STARTED",
-          seeker.kybStatus || "NOT_STARTED",
-          seeker.isVerified,
-        );
-        if (!seekerVerified) {
-          return res.status(403).json({
-            message: "You must be verified to start a trade. Please complete identity verification first.",
-            requiresVerification: true
-          });
-        }
+      // Same rule as listing creation: individuals/creators need email + phone,
+      // businesses additionally need an approved trade licence. An individual
+      // is never asked to complete identity KYC to trade.
+      const tradeBlock = getVerificationBlock(seeker, "trade");
+      if (tradeBlock) {
+        return res.status(403).json({
+          message: tradeBlock.message,
+          code: tradeBlock.code,
+          actionUrl: tradeBlock.actionUrl,
+          actionLabel: tradeBlock.actionLabel,
+          requiresEmailVerification: tradeBlock.code === "EMAIL_VERIFICATION_REQUIRED",
+          phoneVerificationRequired: tradeBlock.code === "PHONE_VERIFICATION_REQUIRED",
+          requiresTradeLicense: tradeBlock.code === "TRADE_LICENSE_REQUIRED",
+        });
       }
 
       const listing = await storage.getListing(providerListingId);
@@ -12556,8 +12769,14 @@ export async function registerRoutes(
         if (!req.file?.buffer) return res.status(400).json({ message: "No file uploaded" });
 
         const detected = await detectPortfolioFileType(req.file.buffer);
+        // ALLOWED_PORTFOLIO_MIMES has no PDF entry — this message describes
+        // what the endpoint actually accepts (image/video only).
         if (!detected) {
           return res.status(400).json({ message: "Images (JPG, PNG, GIF, WEBP) and short videos (MP4, MOV, WEBM) only." });
+        }
+        if (req.file.size > maxBytesForMime(detected.mime)) {
+          const limitMb = Math.round(maxBytesForMime(detected.mime) / (1024 * 1024));
+          return res.status(413).json({ message: `File too large — the limit for this file type is ${limitMb}MB.` });
         }
 
         const profile = await storage.getCreatorProfile(userId);
@@ -12572,16 +12791,22 @@ export async function registerRoutes(
           }
         }
 
+        // Same transcode as /api/upload — a creator's demo reel is exactly
+        // the case an HEVC/.MOV phone recording would otherwise go unseen by
+        // any non-Safari visitor.
+        const { buffer: uploadBuffer, mime: uploadMime, ext: uploadExt } =
+          await maybeTranscodeVideo({ buffer: req.file.buffer, mime: detected.mime, ext: detected.ext });
+
         const random = crypto.randomBytes(24).toString("hex");
-        const filename = `${random}.${detected.ext}`;
+        const filename = `${random}.${uploadExt}`;
         let mediaUrl = "";
 
         if (r2Enabled()) {
-          mediaUrl = await uploadPublicImageWithThumb(req.file.buffer, detected.mime, detected.ext, "portfolio");
+          mediaUrl = await uploadPublicImageWithThumb(uploadBuffer, uploadMime, uploadExt, "portfolio");
         } else if (process.env.REPL_ID) {
           return res.status(503).json({ message: "File storage not configured. Contact support." });
         } else {
-          fs.writeFileSync(`${uploadDir}/${filename}`, req.file.buffer);
+          fs.writeFileSync(`${uploadDir}/${filename}`, uploadBuffer);
           mediaUrl = `/uploads/${filename}`;
         }
 
@@ -13542,6 +13767,9 @@ export async function registerRoutes(
       if (!detected || !detected.mime.startsWith("image/")) {
         return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
       }
+      if (req.file.size > maxBytesForMime(detected.mime)) {
+        return res.status(413).json({ message: "Image too large — the limit is 10MB." });
+      }
 
       const random = crypto.randomBytes(24).toString("hex");
       const filename = `${random}.${detected.ext}`;
@@ -13584,6 +13812,9 @@ export async function registerRoutes(
       const detected = await detectAllowedFileType(req.file.buffer);
       if (!detected || !detected.mime.startsWith("image/")) {
         return res.status(400).json({ message: "Images only (JPG, PNG, GIF, WEBP)" });
+      }
+      if (req.file.size > maxBytesForMime(detected.mime)) {
+        return res.status(413).json({ message: "Image too large — the limit is 10MB." });
       }
 
       const random = crypto.randomBytes(24).toString("hex");

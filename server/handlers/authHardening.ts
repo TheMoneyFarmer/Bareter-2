@@ -26,6 +26,11 @@ export const ALLOWED_UPLOAD_MIMES = new Set([
   "image/gif",
   "image/webp",
   "application/pdf",
+  // Short listing clips / creator demo reels. Magic-byte detected like
+  // everything else — `video/*` is never trusted from the client header.
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
 ]);
 
 // Extended set for creator portfolio — short reels allowed (mp4, mov, webm)
@@ -46,6 +51,22 @@ export async function detectPortfolioFileType(
   const ft = await fileTypeFromBuffer(buffer);
   if (!ft || !ALLOWED_PORTFOLIO_MIMES.has(ft.mime)) return null;
   return { mime: ft.mime, ext: ft.ext, isVideo: ft.mime.startsWith("video/") };
+}
+
+// Per-category ceilings, enforced after magic-byte detection. Multer itself
+// runs a single generous limit (MAX_UPLOAD_BYTES) so that a video does not
+// trip an image-sized limit before we know what the file actually is —
+// that mismatch is what made 30MB videos fail against a "50MB" promise.
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10MB
+export const MAX_UPLOAD_BYTES = MAX_VIDEO_BYTES; // multer's single ceiling
+
+/** Category ceiling for a detected MIME, in bytes. */
+export function maxBytesForMime(mime: string): number {
+  if (mime.startsWith("video/")) return MAX_VIDEO_BYTES;
+  if (mime === "application/pdf") return MAX_DOCUMENT_BYTES;
+  return MAX_IMAGE_BYTES;
 }
 
 export async function detectAllowedFileType(

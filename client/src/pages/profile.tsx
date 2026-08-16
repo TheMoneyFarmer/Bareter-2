@@ -814,7 +814,7 @@ export function ProfilePage() {
             </Button>
           </div>
           <div className="flex items-center gap-2 mt-3">
-            {isUserVerified(user.kycStatus, user.kybStatus, !!(user as any).phoneVerified, user.isVerified) ? (
+            {isUserVerified(user.kycStatus, user.kybStatus, !!(user as any).phoneVerified, user.isVerified, !!(user as any).emailVerified, (user as any).accountType) ? (
               <Badge className="gap-1">
                 <Shield className="h-3 w-3" />
                 {t("profile.status.verified")}

@@ -273,7 +273,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
     try {
       const urls = await Promise.all(Array.from(files).map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
@@ -495,7 +495,7 @@ function CommentsSection({ postId, commentCount: initialCount }: { postId: strin
             >
               {uploadingImages ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
               <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
-              <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+              <span className="text-[11px]">JPG, PNG, WEBP · Max 10MB each</span>
             </button>
           ) : (
             <div className="grid grid-cols-4 gap-1.5">
@@ -1408,7 +1408,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
     try {
       const urls = await Promise.all(Array.from(files).map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         const fd = new FormData();
         fd.append("file", file);
         fd.append("type", "listing");
@@ -1785,7 +1785,7 @@ function ListingProposalsSection({ listing, ownerId, showCompose = true }: { lis
               >
                 {uploadingImages ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
                 <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
-                <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+                <span className="text-[11px]">JPG, PNG, WEBP · Max 10MB each</span>
               </button>
             ) : (
               <div className="grid grid-cols-4 gap-1.5">

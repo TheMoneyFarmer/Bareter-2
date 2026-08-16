@@ -220,6 +220,12 @@ export function ListingDetailPage() {
   const { t, language, isRTL } = useI18n();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  // Every "sign in to barter/claim/apply" prompt on this page must return the
+  // visitor to THIS listing after auth, not to a generic page. Without the
+  // redirect param, login.tsx/register.tsx fall back to /browse and the
+  // listing the visitor was looking at is lost.
+  const loginHref = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  const registerHref = `/register?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
   const searchParams = new URLSearchParams(window.location.search);
   const [proposeOpen, setProposeOpen] = useState(searchParams.get("propose") === "true");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -674,7 +680,7 @@ export function ListingDetailPage() {
     try {
       const urls = await Promise.all(Array.from(files).map(async (file) => {
         if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not an image file`);
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} exceeds 5MB limit`);
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} exceeds the 10MB image limit`);
         return uploadFile(file, "listing");
       }));
       setCommentImages(prev => [...prev, ...urls]);
@@ -909,6 +915,7 @@ export function ListingDetailPage() {
                 <video
                   src={(listing as any).videoUrl}
                   controls
+                  playsInline
                   className="w-full h-full object-cover"
                   preload="metadata"
                 />
@@ -1339,7 +1346,7 @@ export function ListingDetailPage() {
                         )
                       ) : (
                         <p className="text-xs text-muted-foreground text-center">
-                          <Link href="/register" className="text-primary hover:underline">Create a creator account</Link> to apply to brand collab opportunities.
+                          <Link href={registerHref} className="text-primary hover:underline">Create a creator account</Link> to apply to brand collab opportunities.
                         </p>
                       )}
                     </div>
@@ -1613,8 +1620,8 @@ export function ListingDetailPage() {
                 <div className="pt-3 border-t space-y-2 text-center" data-testid="proposal-login-prompt">
                   <p className="text-sm text-muted-foreground">Sign up or log in to propose a barter.</p>
                   <div className="flex gap-2 justify-center">
-                    <Link href="/register" className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-3 hover:bg-primary/90 transition-colors">Create account</Link>
-                    <Link href="/login" className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-8 px-3 hover:bg-accent transition-colors">Log in</Link>
+                    <Link href={registerHref} className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-8 px-3 hover:bg-primary/90 transition-colors">Create account</Link>
+                    <Link href={loginHref} className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-8 px-3 hover:bg-accent transition-colors">Log in</Link>
                   </div>
                 </div>
               )}
@@ -1729,7 +1736,7 @@ export function ListingDetailPage() {
                           <Upload className="h-6 w-6" />
                         )}
                         <span className="text-xs font-medium">Upload at least 2 photos of your offer</span>
-                        <span className="text-[11px]">JPG, PNG, WEBP · Max 5MB each</span>
+                        <span className="text-[11px]">JPG, PNG, WEBP · Max 10MB each</span>
                       </button>
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
@@ -1966,7 +1973,7 @@ export function ListingDetailPage() {
                         </div>
                       )
                     ) : (
-                      <Link href="/login">
+                      <Link href={loginHref}>
                         <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
                           <Camera className="h-5 w-5" />
                           Sign In to Apply
@@ -2042,7 +2049,7 @@ export function ListingDetailPage() {
                         </div>
                       )
                     ) : (
-                      <Link href="/login">
+                      <Link href={loginHref}>
                         <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
                           <Handshake className="h-5 w-5" />
                           Sign in to claim
@@ -2081,7 +2088,7 @@ export function ListingDetailPage() {
                         {t("listingDetail.proposeBarter")}
                       </Button>
                     ) : (
-                      <Link href="/login">
+                      <Link href={loginHref}>
                         <Button variant="bareter" className="w-full h-[52px] gap-2 text-base">
                           <Handshake className="h-5 w-5" />
                           {t("listingDetail.signInToBarter")}
@@ -2557,7 +2564,7 @@ export function ListingDetailPage() {
                 </Link>
               )
             ) : (
-              <Link href="/login">
+              <Link href={loginHref}>
                 <Button variant="bareter" className="w-full h-14 text-base gap-2">
                   <Camera className="h-5 w-5" />
                   Sign In to Apply
@@ -2600,7 +2607,7 @@ export function ListingDetailPage() {
                 </div>
               )
             ) : (
-              <Link href="/login">
+              <Link href={loginHref}>
                 <Button variant="bareter" className="w-full h-14 text-base gap-2">
                   <Handshake className="h-5 w-5" />
                   Sign in to claim
@@ -2619,7 +2626,7 @@ export function ListingDetailPage() {
                 {t("listingDetail.proposeBarter")} · AED {parseFloat(listing.retailValue as string).toLocaleString()}
               </Button>
             ) : (
-              <Link href="/login">
+              <Link href={loginHref}>
                 <Button variant="bareter" className="w-full h-14 text-base gap-2">
                   <Handshake className="h-5 w-5" />
                   {t("listingDetail.signInToBarter")}

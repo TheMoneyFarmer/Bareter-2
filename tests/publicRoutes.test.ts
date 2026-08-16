@@ -105,6 +105,7 @@ const APPROVED_PUBLIC = new Set([
   "GET /sitemap.xml",
   "GET /verify",
   "POST /api/admin/invites/accept",
+  "POST /api/auth/apple/native",
   "POST /api/auth/dev-set-password",
   "POST /api/auth/forgot-password",
   "POST /api/auth/google/native",

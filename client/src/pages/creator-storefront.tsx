@@ -130,6 +130,7 @@ function PortfolioMediaCard({
             ref={videoRef}
             src={url}
             className="w-full h-full object-cover"
+            muted
             preload="metadata"
             playsInline
             loop
