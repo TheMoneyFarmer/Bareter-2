@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   ArrowRight, CheckCircle2, Camera, Sparkles, Handshake,
   ArrowLeftRight, FileSignature, LayoutList, MessageSquare,
-  ChevronDown, ChevronUp, MapPin, ShieldCheck, Search,
+  ChevronDown, ChevronUp, MapPin, ShieldCheck, Search, Building2,
 } from "lucide-react";
 
 // ── Intersection-observer stagger hook ───────────────────────────────────────
@@ -373,13 +373,12 @@ function DealClosedCard() {
       </div>
       <div className="grid grid-cols-2 gap-2 mb-3">
         {[
-          { l: "Hessa N.", v: "Gym Membership (3 mo)", a: "AED 750" },
-          { l: "Omar F.",  v: "Meal Prep (4 weeks)",   a: "AED 720" },
+          { l: "You give", v: "Gym Membership (3 mo)" },
+          { l: "You get",  v: "Meal Prep (4 weeks)"   },
         ].map(p => (
           <div key={p.l} className="bg-slate-50 rounded-xl p-2.5">
             <p className="text-[8px] text-slate-400 font-semibold">{p.l}</p>
             <p className="text-[9px] font-semibold text-slate-700 mt-0.5">{p.v}</p>
-            <p className="text-[10px] font-bold text-bareter-teal">{p.a}</p>
           </div>
         ))}
       </div>
@@ -392,7 +391,7 @@ function DealClosedCard() {
           <div className="h-full w-full bg-bareter-teal/50 rounded-full" />
         </div>
       </div>
-      <p className="text-[9px] text-slate-400 text-center">Completed 2 hrs ago · Dubai, UAE 📍</p>
+      <p className="text-[9px] text-slate-400 text-center">Zero cash changes hands 🤝</p>
     </div>
   );
 }
@@ -405,7 +404,7 @@ function AnalyticsCard() {
           <p className="text-[11px] font-bold text-slate-800">My Barters</p>
           <p className="text-[9px] text-slate-400">Last 30 days</p>
         </div>
-        <span className="text-[9px] text-bareter-teal bg-bareter-teal/10 px-2 py-1 rounded-full font-semibold">+34% ↑</span>
+        <span className="text-[9px] text-bareter-teal bg-bareter-teal/10 px-2 py-1 rounded-full font-semibold">Activity</span>
       </div>
       <div className="flex items-end gap-1.5 h-20 mb-3">
         {[35, 55, 40, 72, 48, 88, 62].map((h, i) => (
@@ -414,13 +413,12 @@ function AnalyticsCard() {
       </div>
       <div className="grid grid-cols-3 gap-2">
         {[
-          { v: "8",       l: "Deals closed" },
-          { v: "AED 6.2K", l: "Total value" },
-          { v: "4.9★",    l: "Avg. rating"  },
+          { l: "Deals closed" },
+          { l: "Total value"  },
+          { l: "Avg. rating"  },
         ].map(s => (
-          <div key={s.l} className="text-center bg-slate-50 rounded-xl py-2.5">
-            <p className="text-xs font-bold text-bareter-teal leading-tight">{s.v}</p>
-            <p className="text-[8px] text-slate-400 leading-tight mt-0.5">{s.l}</p>
+          <div key={s.l} className="text-center bg-slate-50 rounded-xl py-3">
+            <p className="text-[8px] text-slate-400 leading-tight">{s.l}</p>
           </div>
         ))}
       </div>
@@ -434,21 +432,20 @@ function VerifiedMemberCard() {
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-shrink-0">
           <div className="h-12 w-12 rounded-full bg-bareter-teal/12 flex items-center justify-center">
-            <span className="text-bareter-teal text-sm font-bold">KM</span>
+            <Building2 className="h-5 w-5 text-bareter-teal" />
           </div>
           <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-bareter-teal flex items-center justify-center border-2 border-white">
             <ShieldCheck className="h-2.5 w-2.5 text-white" />
           </span>
         </div>
         <div>
-          <p className="text-sm font-bold text-slate-800">Khalid Al-Mansoori</p>
-          <p className="text-[10px] text-bareter-teal font-semibold">Verified Business · Dubai</p>
+          <p className="text-sm font-bold text-slate-800">Business profile</p>
+          <p className="text-[10px] text-bareter-teal font-semibold">Verified Business · UAE</p>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 mb-3">
-        {[["22", "Deals"], ["AED 140K", "Volume"], ["4.9★", "Rating"]].map(([v, l]) => (
-          <div key={l} className="text-center bg-slate-50 rounded-xl py-2.5">
-            <p className="text-[10px] font-bold text-slate-800 leading-tight">{v}</p>
+        {["Deals", "Volume", "Rating"].map((l) => (
+          <div key={l} className="text-center bg-slate-50 rounded-xl py-3">
             <p className="text-[8px] text-slate-400">{l}</p>
           </div>
         ))}
@@ -620,28 +617,6 @@ export function LandingPage() {
   const [heroQuery, setHeroQuery] = useState("");
   const [showSugg, setShowSugg] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-  const [displayCount, setDisplayCount] = useState(0);
-
-  const { data: exchangeCountData } = useQuery<{ count: number }>({
-    queryKey: ["/api/stats/exchanges/count"],
-    queryFn: () => fetch(`${API_BASE}/api/stats/exchanges/count`).then(r => r.json()),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-
-  // Animated count-up when the real count first arrives
-  useEffect(() => {
-    const target = exchangeCountData?.count ?? 0;
-    if (target <= 0) return;
-    let current = 0;
-    const step = Math.max(1, Math.floor(target / 40));
-    const timer = setInterval(() => {
-      current = Math.min(current + step, target);
-      setDisplayCount(current);
-      if (current >= target) clearInterval(timer);
-    }, 30);
-    return () => clearInterval(timer);
-  }, [exchangeCountData?.count]);
 
   // Redirect logged-in users away from the marketing landing page
   useEffect(() => {
@@ -1021,25 +996,6 @@ export function LandingPage() {
                   List Your Barter
                 </Button>
               </div>
-
-              {/* Live exchange counter */}
-              {displayCount > 0 && (
-                <div className="flex items-center gap-2 mb-6 sm:mb-8" data-testid="exchange-counter">
-                  <span className="text-2xl sm:text-3xl font-extrabold text-bareter-teal tabular-nums">
-                    {displayCount.toLocaleString()}
-                  </span>
-                  <span className="text-sm sm:text-base text-white/70 font-medium">exchanges completed on Bareter</span>
-                </div>
-              )}
-
-              {/* Trust row */}
-              <div className="flex items-center gap-4 text-white/50 text-xs">
-                {[""].map(t => (
-                  <span key={t} className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-bareter-teal flex-shrink-0" />{t}
-                  </span>
-                ))}
-              </div>
             </div>
 
         </div>
@@ -1065,24 +1021,6 @@ export function LandingPage() {
           <HeroCarousel />
         </div>
 
-        {/* ── Stats strip at hero bottom ── */}
-        <div className="relative z-[7] border-t border-white/10 w-full bg-bareter-navy/95">
-          <div className="container mx-auto max-w-4xl px-5 sm:px-10 py-4 sm:py-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8">
-              {[
-                { value: "500+", label: "Active members" },
-                { value: "400+", label: "Listings posted" },
-                { value: "100+", label: "Deals closed" },
-                { value: "$100k+", label: "In deal value" },
-              ].map((s, i) => (
-                <div key={i} className="text-center">
-                  <p className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white leading-tight">{s.value}</p>
-                  <p className="text-white/50 text-[11px] sm:text-xs mt-0.5">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════════
