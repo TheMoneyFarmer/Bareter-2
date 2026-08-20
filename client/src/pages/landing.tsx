@@ -153,9 +153,9 @@ function ChatDealCard() {
     <div className={`${CARD_BASE} p-4`} style={{ height: CARD_H }}>
       <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-slate-100">
         <div className="h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold"
-          style={{ background: "linear-gradient(135deg,#2AA0A0,#1a7a7a)" }}>FA</div>
+          style={{ background: "linear-gradient(135deg,#2AA0A0,#1a7a7a)" }}>BC</div>
         <div>
-          <p className="text-[11px] font-semibold text-slate-800">Fatima A. · Barter Chat</p>
+          <p className="text-[11px] font-semibold text-slate-800">Barter Chat</p>
           <p className="text-[9px] text-slate-400">Abu Dhabi · Active now</p>
         </div>
         <div className="ms-auto h-2 w-2 rounded-full bg-green-400" />
@@ -262,10 +262,10 @@ function DeviceSwapCard() {
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-2.5 py-2.5 flex items-center gap-2">
           <div className="h-9 w-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[9px] font-extrabold shadow-sm"
             style={{ background: "linear-gradient(135deg, #2AA0A0, #1a7a7a)" }}>
-            NH
+            YO
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-800 truncate">Nour Al Hashimi</p>
+            <p className="text-[10px] font-bold text-slate-800 truncate">You</p>
             <div className="flex items-center gap-1 mt-0.5">
               <ShieldCheck className="h-2.5 w-2.5 text-bareter-teal flex-shrink-0" />
               <p className="text-[8px] text-slate-400">Dubai · Verified</p>
@@ -277,10 +277,10 @@ function DeviceSwapCard() {
         <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-2.5 py-2.5 flex items-center gap-2">
           <div className="h-9 w-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[9px] font-extrabold shadow-sm"
             style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)" }}>
-            KR
+            MA
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-slate-800 truncate">Khalid Al Rashidi</p>
+            <p className="text-[10px] font-bold text-slate-800 truncate">Your match</p>
             <div className="flex items-center gap-1 mt-0.5">
               <ShieldCheck className="h-2.5 w-2.5 text-bareter-teal flex-shrink-0" />
               <p className="text-[8px] text-slate-400">Sharjah · Verified</p>
@@ -304,7 +304,7 @@ function BrandCollabCard() {
       <div className="bg-bareter-teal/8 rounded-xl p-3 mb-2.5">
         <p className="text-[9px] text-slate-500 mb-1">Brand is offering</p>
         <p className="text-sm font-bold text-slate-800">Iftar Dinner for 4 — Emirati Restaurant</p>
-        <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">Value: AED 350 · Al Fanar Dubai</p>
+        <p className="text-[9px] text-bareter-teal font-semibold mt-0.5">Value: AED 350</p>
       </div>
       <div className="bg-slate-50 rounded-xl p-3 mb-3">
         <p className="text-[9px] text-slate-500 mb-1">Creator must deliver</p>
@@ -323,7 +323,7 @@ function BrandCollabCard() {
             </div>
           ))}
         </div>
-        <p className="text-[9px] text-slate-500 flex-1">18 creators applied</p>
+        <p className="text-[9px] text-slate-500 flex-1">Creators applying</p>
         <span className="text-[9px] text-bareter-teal font-semibold">Select →</span>
       </div>
     </div>
@@ -1077,7 +1077,7 @@ export function LandingPage() {
                   <div className="chat-msg flex items-start gap-2">
                     <div className="h-7 w-7 rounded-full bg-bareter-teal/15 flex-shrink-0 flex items-center justify-center text-bareter-teal text-[10px] font-bold">B</div>
                     <div className="bg-gray-100 dark:bg-muted rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[210px] text-left">
-                      <p className="text-bareter-navy dark:text-foreground text-xs leading-relaxed">Top match: <strong>Khalid Auto Group</strong> — value AED 8,000 ✓</p>
+                      <p className="text-bareter-navy dark:text-foreground text-xs leading-relaxed">Top match found — value AED 8,000 ✓</p>
                     </div>
                   </div>
                   {/* message 4 — input bar */}
